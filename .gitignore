@@ -1,0 +1,26 @@
+# Afhankelijkheden en build
+node_modules/
+dist/
+dev-dist/
+*.tsbuildinfo
+
+# Test-uitvoer
+test-results/
+playwright-report/
+coverage/
+
+# Geheimen (beveiligingsregel 4)
+.env*
+*.key
+secrets/
+
+# Echte importbestanden (beveiligingsregel 4)
+*.csv
+*.xlsx
+# Uitzondering: gegenereerde nepdata
+!tests/fixtures/
+!tests/fixtures/**
+
+# Editor en OS
+.DS_Store
+Thumbs.db
