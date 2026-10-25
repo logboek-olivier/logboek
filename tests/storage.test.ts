@@ -273,18 +273,19 @@ describe('sync tussen twee apparaten', () => {
     await b.store.sync()
     expect(b.store.list('trips.json.enc')[0]?.name).toContain(MARKER)
 
+    // Alleen lange markers: willekeurige ciphertext kan korte tekenreeksen toevallig bevatten.
     const wire = wireText(github)
     expect(wire).not.toContain(MARKER)
-    expect(wire).not.toContain('Tocht')
-    expect(wire).not.toContain('"id"')
-    expect(wire).not.toContain('t1')
+    expect(wire).not.toContain('logboek-collection')
+    expect(wire).not.toContain('"deletedAt"')
     // De token gaat alleen als Authorization-header mee, nooit in URL of body.
     expect(wire).not.toContain(TOKEN)
 
     const local = await idbText(a.db)
     expect(local).not.toContain(MARKER)
     expect(local).not.toContain(TOKEN)
-    expect(local).not.toContain('"records"')
+    expect(local).not.toContain('logboek-collection')
+    expect(local).not.toContain('"deletedAt"')
   })
 
   it('wist het geheugen bij vergrendelen', async () => {
