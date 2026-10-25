@@ -90,12 +90,17 @@ export class Store {
     return this.get(path).filter((r) => r.deletedAt === null)
   }
 
-  async put<P extends CollectionPath>(path: P, record: Collections[P]): Promise<void> {
+  put<P extends CollectionPath>(path: P, record: Collections[P]): Promise<void> {
+    return this.putMany(path, [record])
+  }
+
+  /** Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). */
+  async putMany<P extends CollectionPath>(path: P, records: readonly Collections[P][]): Promise<void> {
     this.assertUnlocked()
-    const records = (this.collections.get(path) ?? []).filter((r) => r.id !== record.id)
-    records.push(record)
-    this.collections.set(path, records)
-    this.outbox = markPending(this.outbox, path, record.id, record.updatedAt)
+    const ids = new Set(records.map((r) => r.id))
+    const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
+    this.collections.set(path, [...kept, ...records])
+    for (const r of records) this.outbox = markPending(this.outbox, path, r.id, r.updatedAt)
     if (this.syncing) this.syncAgain = true
     await this.persist(path)
   }
