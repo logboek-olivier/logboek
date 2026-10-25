@@ -1,0 +1,344 @@
+import { useState, type FormEvent } from 'react'
+import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
+import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } from '../session'
+
+// Eerste keer op een apparaat: nieuw logboek of bestaand logboek koppelen.
+
+type Step =
+  | { kind: 'choose' }
+  | { kind: 'token'; mode: 'new' | 'link' }
+  | { kind: 'passphrase'; token: string }
+  | { kind: 'words'; token: string; vault: PreparedVault }
+  | { kind: 'confirm'; token: string; vault: PreparedVault; positions: number[] }
+  | { kind: 'secret'; token: string }
+
+export function Setup() {
+  const [step, setStep] = useState<Step>({ kind: 'choose' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const session = useSession()
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+    } catch (e) {
+      setError(describeError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (step.kind === 'choose') {
+    return (
+      <Screen title="Eerste keer">
+        <p className="muted">Kies hoe dit apparaat aan het logboek komt.</p>
+        <div className="stack">
+          <button className="btn primary" onClick={() => setStep({ kind: 'token', mode: 'new' })}>
+            Nieuw logboek
+          </button>
+          <button className="btn" onClick={() => setStep({ kind: 'token', mode: 'link' })}>
+            Bestaand logboek koppelen
+          </button>
+        </div>
+      </Screen>
+    )
+  }
+
+  if (step.kind === 'token') {
+    const onSubmit = (token: string) =>
+      run(async () => {
+        if (step.mode === 'new') {
+          await session.checkEmptyRepo(token)
+          setStep({ kind: 'passphrase', token })
+        } else {
+          setStep({ kind: 'secret', token })
+        }
+      })
+    return (
+      <Screen title={step.mode === 'new' ? 'Nieuw logboek' : 'Logboek koppelen'} onBack={() => setStep({ kind: 'choose' })}>
+        <TokenForm busy={busy} error={error} onSubmit={onSubmit} />
+      </Screen>
+    )
+  }
+
+  if (step.kind === 'passphrase') {
+    return (
+      <Screen title="Wachtzin kiezen" onBack={() => setStep({ kind: 'token', mode: 'new' })}>
+        <PassphraseForm
+          busy={busy}
+          error={error}
+          onSubmit={(passphrase) =>
+            run(async () => {
+              const vault = await session.prepareVault(passphrase)
+              setStep({ kind: 'words', token: step.token, vault })
+            })
+          }
+        />
+      </Screen>
+    )
+  }
+
+  if (step.kind === 'words') {
+    return (
+      <Screen title="Herstelcode">
+        <p>
+          Schrijf deze {RECOVERY_WORD_COUNT} woorden op papier, in deze volgorde. Zonder wachtzin en zonder deze
+          woorden is het logboek niet te openen.
+        </p>
+        <ol className="words">
+          {step.vault.recoveryWords.map((w, i) => (
+            <li key={i}>{w}</li>
+          ))}
+        </ol>
+        <button
+          className="btn primary"
+          onClick={() => setStep({ kind: 'confirm', token: step.token, vault: step.vault, positions: pickPositions() })}
+        >
+          Ik heb ze opgeschreven
+        </button>
+      </Screen>
+    )
+  }
+
+  if (step.kind === 'confirm') {
+    return (
+      <Screen title="Herstelcode controleren" onBack={() => setStep({ kind: 'words', token: step.token, vault: step.vault })}>
+        <ConfirmWordsForm
+          busy={busy}
+          error={error}
+          positions={step.positions}
+          words={step.vault.recoveryWords}
+          onSubmit={() => run(() => session.finishNewVault(step.token, step.vault))}
+        />
+      </Screen>
+    )
+  }
+
+  return (
+    <Screen title="Logboek koppelen" onBack={() => setStep({ kind: 'token', mode: 'link' })}>
+      <SecretForm
+        busy={busy}
+        error={error}
+        submitLabel="Koppelen"
+        onSubmit={(secret) => run(() => session.link(step.token, secret))}
+      />
+    </Screen>
+  )
+}
+
+function pickPositions(): number[] {
+  const all = Array.from({ length: RECOVERY_WORD_COUNT }, (_, i) => i)
+  const bytes = crypto.getRandomValues(new Uint8Array(3))
+  const picked: number[] = []
+  for (const b of bytes) picked.push(...all.splice(b % all.length, 1))
+  return picked.sort((a, b) => a - b)
+}
+
+export function Screen({
+  title,
+  onBack,
+  children,
+}: {
+  title: string
+  onBack?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <main className="app">
+      <header className="screen-header">
+        {onBack && (
+          <button className="btn link" onClick={onBack} aria-label="Terug">
+            ‹ Terug
+          </button>
+        )}
+        <h1>{title}</h1>
+      </header>
+      {children}
+    </main>
+  )
+}
+
+export function ErrorLine({ error }: { error: string | null }) {
+  return error ? (
+    <p className="error" role="alert">
+      {error}
+    </p>
+  ) : null
+}
+
+function TokenForm({
+  busy,
+  error,
+  onSubmit,
+}: {
+  busy: boolean
+  error: string | null
+  onSubmit: (token: string) => void
+}) {
+  const [token, setToken] = useState('')
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (token.trim().length > 0) onSubmit(token)
+  }
+  return (
+    <form onSubmit={submit} className="stack">
+      <label>
+        GitHub-token
+        <input
+          type="password"
+          autoComplete="off"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="github_pat_…"
+          required
+        />
+      </label>
+      <p className="muted">Fine-grained token met alleen Contents: lezen en schrijven op logboek-data.</p>
+      <ErrorLine error={error} />
+      <button className="btn primary" type="submit" disabled={busy || token.trim().length === 0}>
+        {busy ? 'Controleren…' : 'Verder'}
+      </button>
+    </form>
+  )
+}
+
+function PassphraseForm({
+  busy,
+  error,
+  onSubmit,
+}: {
+  busy: boolean
+  error: string | null
+  onSubmit: (passphrase: string) => void
+}) {
+  const [first, setFirst] = useState('')
+  const [second, setSecond] = useState('')
+  const tooShort = first.length > 0 && first.length < MIN_PASSPHRASE_LENGTH
+  const mismatch = second.length > 0 && first !== second
+  const ok = first.length >= MIN_PASSPHRASE_LENGTH && first === second
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (ok) onSubmit(first)
+  }
+  return (
+    <form onSubmit={submit} className="stack">
+      <label>
+        Wachtzin
+        <input type="password" autoComplete="new-password" value={first} onChange={(e) => setFirst(e.target.value)} />
+      </label>
+      <label>
+        Nog een keer
+        <input type="password" autoComplete="new-password" value={second} onChange={(e) => setSecond(e.target.value)} />
+      </label>
+      <p className="muted">Minimaal {MIN_PASSPHRASE_LENGTH} tekens. Een zin van een paar woorden werkt het best.</p>
+      {tooShort && <p className="error">Te kort</p>}
+      {mismatch && <p className="error">De twee wachtzinnen verschillen</p>}
+      <ErrorLine error={error} />
+      <button className="btn primary" type="submit" disabled={busy || !ok}>
+        {busy ? 'Sleutels maken…' : 'Verder'}
+      </button>
+    </form>
+  )
+}
+
+function ConfirmWordsForm({
+  busy,
+  error,
+  positions,
+  words,
+  onSubmit,
+}: {
+  busy: boolean
+  error: string | null
+  positions: number[]
+  words: string[]
+  onSubmit: () => void
+}) {
+  const [typed, setTyped] = useState<string[]>(positions.map(() => ''))
+  const [wrong, setWrong] = useState(false)
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const allRight = positions.every((p, i) => (typed[i] ?? '').trim().toLowerCase() === words[p])
+    setWrong(!allRight)
+    if (allRight) onSubmit()
+  }
+  return (
+    <form onSubmit={submit} className="stack">
+      <p>Typ drie woorden van de herstelcode.</p>
+      {positions.map((p, i) => (
+        <label key={p}>
+          Woord {p + 1}
+          <input
+            type="text"
+            autoComplete="off"
+            autoCapitalize="none"
+            value={typed[i] ?? ''}
+            onChange={(e) => setTyped(typed.map((t, j) => (j === i ? e.target.value : t)))}
+          />
+        </label>
+      ))}
+      {wrong && <p className="error">Een of meer woorden kloppen niet</p>}
+      <ErrorLine error={error} />
+      <button className="btn primary" type="submit" disabled={busy || typed.some((t) => t.trim() === '')}>
+        {busy ? 'Logboek aanmaken…' : 'Logboek aanmaken'}
+      </button>
+    </form>
+  )
+}
+
+export function SecretForm({
+  busy,
+  error,
+  submitLabel,
+  onSubmit,
+}: {
+  busy: boolean
+  error: string | null
+  submitLabel: string
+  onSubmit: (secret: { passphrase: string } | { recoveryCode: string }) => void
+}) {
+  const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
+  const [value, setValue] = useState('')
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (value.trim().length === 0) return
+    onSubmit(mode === 'passphrase' ? { passphrase: value } : { recoveryCode: value })
+  }
+  return (
+    <form onSubmit={submit} className="stack">
+      {mode === 'passphrase' ? (
+        <label>
+          Wachtzin
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+          />
+        </label>
+      ) : (
+        <label>
+          Herstelcode ({RECOVERY_WORD_COUNT} woorden)
+          <textarea rows={4} autoComplete="off" autoCapitalize="none" value={value} onChange={(e) => setValue(e.target.value)} />
+        </label>
+      )}
+      <ErrorLine error={error} />
+      <button className="btn primary" type="submit" disabled={busy || value.trim().length === 0}>
+        {busy ? 'Bezig…' : submitLabel}
+      </button>
+      <button
+        className="btn link"
+        type="button"
+        onClick={() => {
+          setMode(mode === 'passphrase' ? 'recovery' : 'passphrase')
+          setValue('')
+        }}
+      >
+        {mode === 'passphrase' ? 'Herstelcode gebruiken' : 'Wachtzin gebruiken'}
+      </button>
+    </form>
+  )
+}
