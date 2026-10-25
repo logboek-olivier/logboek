@@ -7,9 +7,13 @@ const HKDF_INFO = 'logboek/webauthn-kek/v1'
 const RP_NAME = 'Logboek'
 
 export class WebAuthnError extends Error {
-  constructor(message: string) {
+  /** Naam van de onderliggende DOMException (bijvoorbeeld NotAllowedError, AbortError); nooit inhoud. */
+  readonly reason: string
+
+  constructor(message: string, cause?: unknown) {
     super(message)
     this.name = 'WebAuthnError'
+    this.reason = cause instanceof Error ? cause.name : 'unknown'
   }
 }
 
@@ -61,8 +65,8 @@ export async function registerFingerprint(): Promise<Registration> {
         extensions,
       },
     })
-  } catch {
-    throw new WebAuthnError('Vingerafdruk registreren is afgebroken')
+  } catch (error) {
+    throw new WebAuthnError('Vingerafdruk registreren is afgebroken', error)
   }
   if (!(credential instanceof PublicKeyCredential)) throw new WebAuthnError('Vingerafdruk registreren mislukt')
   const results = credential.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & PrfOutputs
@@ -75,11 +79,12 @@ export async function registerFingerprint(): Promise<Registration> {
 }
 
 /** Vraagt de vingerafdruk en geeft de PRF-uitkomst voor deze credential en salt. */
-export async function evaluateFingerprint(credentialId: Bytes, prfSalt: Bytes): Promise<Bytes> {
+export async function evaluateFingerprint(credentialId: Bytes, prfSalt: Bytes, signal?: AbortSignal): Promise<Bytes> {
   const extensions: AuthenticationExtensionsClientInputs & PrfInputs = { prf: { eval: { first: prfSalt } } }
   let assertion: Credential | null
   try {
     assertion = await navigator.credentials.get({
+      signal,
       publicKey: {
         challenge: randomBytes(32),
         rpId: location.hostname,
@@ -89,8 +94,8 @@ export async function evaluateFingerprint(credentialId: Bytes, prfSalt: Bytes): 
         extensions,
       },
     })
-  } catch {
-    throw new WebAuthnError('Vingerafdruk is afgebroken')
+  } catch (error) {
+    throw new WebAuthnError('Vingerafdruk is afgebroken', error)
   }
   if (!(assertion instanceof PublicKeyCredential)) throw new WebAuthnError('Vingerafdruk mislukt')
   const results = assertion.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & PrfOutputs
