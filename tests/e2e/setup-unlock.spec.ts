@@ -1,47 +1,14 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { mockGithub, type E2eGithub } from './helpers/fake-github'
-
-// Verzonnen testgegevens; dit is geen echte token en geen echte wachtzin.
-const TOKEN = 'github_pat_E2E_TEST_0123456789abcdefghijklmnopqrstuvwxyz'
-const PASSPHRASE = 'nep wachtzin voor e2e'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE, TOKEN } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
-/** Consolefouten, behalve de verwachte 404's van de nagebootste GitHub (bestand bestaat nog niet). */
-async function collectConsoleErrors(page: Page): Promise<string[]> {
-  const errors: string[] = []
-  page.on('console', (msg) => {
-    if (msg.type() === 'error' && !msg.text().includes('404')) errors.push(msg.text())
-  })
-  page.on('pageerror', (e) => errors.push(e.message))
-  return errors
-}
-
-async function createNewLogbook(page: Page): Promise<string[]> {
-  await page.goto('./')
-  await page.getByRole('button', { name: 'Nieuw logboek' }).click()
-  await page.getByLabel('GitHub-token').fill(TOKEN)
-  await page.getByRole('button', { name: 'Verder' }).click()
-  await page.getByLabel('Wachtzin', { exact: true }).fill(PASSPHRASE)
-  await page.getByLabel('Nog een keer').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Verder' }).click()
-  await expect(page.getByRole('heading', { name: 'Herstelcode' })).toBeVisible({ timeout: 30_000 })
-  const words = await page.locator('.words li').allTextContents()
-  expect(words).toHaveLength(24)
-  await page.getByRole('button', { name: 'Ik heb ze opgeschreven' }).click()
-  for (const label of await page.locator('label').allTextContents()) {
-    const m = /Woord (\d+)/.exec(label)
-    if (m) await page.getByLabel(`Woord ${m[1]}`, { exact: true }).fill(words[Number(m[1]) - 1] ?? '')
-  }
-  await page.getByRole('button', { name: 'Logboek aanmaken' }).click()
-  await expect(page.getByRole('button', { name: 'Vergrendelen' })).toBeVisible({ timeout: 30_000 })
-  return words
-}
-
 test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrendelen, ontgrendelen', async ({ page }) => {
-  const errors = await collectConsoleErrors(page)
+  const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
+  await expectNoHorizontalOverflow(page)
 
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
   expect(github.files.has('meta.json.enc')).toBe(true)

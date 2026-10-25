@@ -1,0 +1,17 @@
+;;;;;;;;;Schipper;20 nm;120 nm;60 nm;200 nm;4;
+;;;;;;;;;Co-schipper;0 nm;30 nm;80 nm;110 nm;6;
+;;;;;;;;;bem./trainee:;15 nm;45 nm;0 nm;60 nm;2;
+;;;;;;;;;totaal:;35 nm;195 nm;140 nm;370 nm;12;
+;;;;;;;;;;;;;;;
+Datum;Van (plaats);Van (land);Naar (plaats);Naar (land);Rol;Schip;Schipper/trainer;Co-schipper (flot.leider);Wind (bft);Binnenwater;Zee;Zee (getijnavigatie);Totaal;Nacht-uren;Bijzonderheden
+03-05-2024;Fjordhaven;Noordland;Kaap Nevel;Noordland;Schipper;Nepboot Een;;;3-4;12;;;12;;Oefentocht noord
+;Kaap Nevel;Noordland;Zoutbaai;Noordland;Schipper;Nepboot Een;;;4;8;20;;28;;Lange dag
+04-05-2024;Zoutbaai;Noordland;Fjordhaven;Noordland;Schipper;Nepboot Een;;;2;;;30;30;4;
+;;;;;;;;;;;;;;;
+10-06-2024;Westeiland;Verreland;Oosteiland;Verreland;Co-schipper;Nepboot Twee;Kapitein Nep;;5;;30;;30;;
+11-06-2024;Oosteiland;Verreland;Zuidrif;Verreland;Co-schipper;Nepboot Twee;Kapitein Nep;;3;;;40;40;6;
+12-06-2024;Zuidrif;Verreland;Westeiland;Verreland;Co-schipper;Nepboot Twee;Kapitein Nep;;;;;40;40;;Terug
+;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;
+2024-07-20;Meerdorp;Noordland;Rietmeer;Noordland;Trainee;Nepboot Drie;Trainer Nep;;2;15;;;15;;Cursus binnenwater
+21-07-2024;Rietmeer;Noordland;Meerdorp;Noordland;Bemanningslid;Nepboot Drie;Trainer Nep;Nep Co;3;;45;;45;2;
