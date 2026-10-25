@@ -320,6 +320,184 @@ button:focus-visible {
   border-bottom: none;
 }
 
+h2 {
+  margin: 8px 0 0;
+  font-size: 1.05rem;
+}
+
+.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.amount {
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.segments {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.segment {
+  flex: 1;
+  min-height: 40px;
+  border: none;
+  border-radius: calc(var(--radius) - 4px);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.segment.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.segments.small .segment {
+  min-height: 36px;
+  font-size: 0.9rem;
+}
+
+.btn.inline {
+  display: inline;
+  padding: 0;
+  font-size: inherit;
+  vertical-align: baseline;
+}
+
+.btn.icon {
+  min-height: 40px;
+  min-width: 40px;
+  padding: 0;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.check input {
+  width: 22px;
+  min-height: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+}
+
+.positive {
+  color: var(--positive);
+}
+
+.negative {
+  color: var(--negative);
+}
+
+.small {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.table td,
+.table th {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bars li {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar-label {
+  color: var(--text-muted);
+}
+
+.bar-track {
+  height: 10px;
+  background: var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 5px;
+}
+
+.bar-value {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .sync-status {
   margin: 0 0 var(--space);
   font-size: 0.85rem;
