@@ -1,7 +1,7 @@
 import { utf8 } from '../crypto/encrypt'
 import { META_PATH, parseMeta, serializeMeta, type Meta } from '../crypto/keys'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, NetworkError, type GithubClient } from './github'
+import { AuthError, GithubError, NetworkError, type GithubClient } from './github'
 import { getObject, putObject, type Db } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
 import { decryptRecords, encryptRecords, syncCollection } from './sync'
@@ -39,6 +39,8 @@ export class Store {
   private outbox: Outbox = {}
   private status: SyncStatus = { kind: 'synced' }
   private syncing: Promise<void> | null = null
+  /** Er kwam een wijziging of een sync-verzoek binnen terwijl een sync liep: daarna nog een ronde. */
+  private syncAgain = false
   private locked = false
 
   private constructor(
@@ -94,6 +96,7 @@ export class Store {
     records.push(record)
     this.collections.set(path, records)
     this.outbox = markPending(this.outbox, path, record.id, record.updatedAt)
+    if (this.syncing) this.syncAgain = true
     await this.persist(path)
   }
 
@@ -108,13 +111,23 @@ export class Store {
     return pendingCount(this.outbox)
   }
 
-  /** Synchroniseert alle bestanden. Loopt er al een sync, dan wordt die afgewacht. */
+  /** Synchroniseert alle bestanden. Loopt er al een sync, dan volgt na afloop nog een ronde. */
   sync(): Promise<void> {
-    if (this.syncing) return this.syncing
-    this.syncing = this.runSync().finally(() => {
+    if (this.syncing) {
+      this.syncAgain = true
+      return this.syncing
+    }
+    this.syncing = this.runRounds().finally(() => {
       this.syncing = null
     })
     return this.syncing
+  }
+
+  private async runRounds(): Promise<void> {
+    do {
+      this.syncAgain = false
+      await this.runSync()
+    } while (this.syncAgain && !this.locked && this.status.kind !== 'offline' && this.status.kind !== 'error')
   }
 
   /** Wist alle ontsleutelde data uit het geheugen. De Store is daarna onbruikbaar. */
@@ -127,43 +140,64 @@ export class Store {
 
   private async runSync(): Promise<void> {
     this.setStatus({ kind: 'syncing' })
-    try {
-      for (const path of COLLECTION_PATHS) {
-        if (this.locked) return
-        const snapshot = { ...(this.outbox[path] ?? {}) }
-        const local = this.collections.get(path) ?? []
-        const result = await syncCollection(this.client, this.masterKey, path, local)
-        if (this.locked) return
-        // Wijzigingen tijdens het wachten blijven staan: samenvoegen met wat ondertussen lokaal is gezet.
-        const during = (this.collections.get(path) ?? []).filter((r) => {
-          const synced = result.records.find((s) => s.id === r.id)
-          return !synced || r.updatedAt > synced.updatedAt
-        })
-        const merged = [...result.records.filter((s) => !during.some((d) => d.id === s.id)), ...during]
-        this.collections.set(path, merged)
-        this.outbox = clearSynced(this.outbox, path, snapshot)
-        await putObject(this.db, { path, blob: await encryptRecords(this.masterKey, path, merged), sha: result.sha })
-        await saveOutbox(this.db, this.masterKey, this.outbox)
-      }
-      this.setStatus(this.idleStatus())
-    } catch (error) {
+    // Eén onleesbaar of blijvend conflicterend bestand houdt de andere bestanden niet tegen;
+    // zonder verbinding of met een ongeldige token stoppen we wel direct.
+    let failure: unknown = null
+    for (const path of COLLECTION_PATHS) {
       if (this.locked) return
-      const count = this.pendingCount()
-      if (error instanceof NetworkError) this.setStatus({ kind: 'offline', count })
-      else if (error instanceof AuthError) this.setStatus({ kind: 'error', message: 'Token ongeldig', count })
-      else this.setStatus({ kind: 'error', message: 'Synchroniseren mislukt', count })
+      try {
+        await this.syncPath(path)
+      } catch (error) {
+        if (this.locked) return
+        failure = error
+        if (error instanceof NetworkError || error instanceof AuthError) break
+      }
     }
+    if (this.locked) return
+    if (failure === null) {
+      this.setStatus(this.idleStatus())
+      return
+    }
+    const count = this.pendingCount()
+    if (failure instanceof NetworkError) this.setStatus({ kind: 'offline', count })
+    else if (failure instanceof AuthError) this.setStatus({ kind: 'error', message: 'Token ongeldig', count })
+    else if (failure instanceof GithubError) this.setStatus({ kind: 'error', message: failure.message, count })
+    else this.setStatus({ kind: 'error', message: 'Synchroniseren mislukt', count })
+  }
+
+  private async syncPath(path: CollectionPath): Promise<void> {
+    const snapshot = { ...(this.outbox[path] ?? {}) }
+    const local = this.collections.get(path) ?? []
+    const result = await syncCollection(this.client, this.masterKey, path, local)
+    if (this.locked) return
+    // Wijzigingen tijdens het wachten blijven staan: samenvoegen met wat ondertussen lokaal is gezet.
+    const during = (this.collections.get(path) ?? []).filter((r) => {
+      const synced = result.records.find((s) => s.id === r.id)
+      return !synced || r.updatedAt > synced.updatedAt
+    })
+    const merged = [...result.records.filter((s) => !during.some((d) => d.id === s.id)), ...during]
+    this.collections.set(path, merged)
+    this.outbox = clearSynced(this.outbox, path, snapshot)
+    const outbox = this.outbox
+    const blob = await encryptRecords(this.masterKey, path, merged)
+    if (this.locked) return
+    await putObject(this.db, { path, blob, sha: result.sha })
+    if (this.locked) return
+    await saveOutbox(this.db, this.masterKey, outbox)
   }
 
   private async persist(path: CollectionPath): Promise<void> {
+    // Na vergrendelen niets meer schrijven: het geheugen is gewist en de outbox zou leeg worden opgeslagen.
+    // lock() kan tijdens elke await komen, daarom na elke await opnieuw controleren.
     const records = this.collections.get(path) ?? []
+    const outbox = this.outbox
+    const blob = await encryptRecords(this.masterKey, path, records)
     const stored = await getObject(this.db, path)
-    await putObject(this.db, {
-      path,
-      blob: await encryptRecords(this.masterKey, path, records),
-      sha: stored?.sha ?? null,
-    })
-    await saveOutbox(this.db, this.masterKey, this.outbox)
+    if (this.locked) return
+    await putObject(this.db, { path, blob, sha: stored?.sha ?? null })
+    if (this.locked) return
+    await saveOutbox(this.db, this.masterKey, outbox)
+    if (this.locked) return
     if (this.status.kind !== 'syncing') this.setStatus(this.idleStatus())
     else this.notify()
   }

@@ -75,8 +75,34 @@ export class GithubClient {
     } catch {
       throw new NetworkError()
     }
-    if (response.status === 401 || response.status === 403) throw new AuthError(response.status)
+    if (response.status === 401) throw new AuthError(401)
+    if (response.status === 403) {
+      // Een 403 met uitgeputte rate limit is geen tokenfout.
+      if (response.headers.get('x-ratelimit-remaining') === '0') {
+        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', 403)
+      }
+      throw new AuthError(403)
+    }
     return response
+  }
+
+  private async json(response: Response): Promise<Record<string, unknown>> {
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      throw new GithubError('Onverwacht antwoord', response.status)
+    }
+    if (!isRecord(body)) throw new GithubError('Onverwacht antwoord', response.status)
+    return body
+  }
+
+  private decode(base64: string, status: number): Bytes {
+    try {
+      return fromBase64(base64)
+    } catch {
+      throw new GithubError('Onverwacht antwoord', status)
+    }
   }
 
   /** Controleert dat de token de repo kan lezen. */
@@ -90,10 +116,10 @@ export class GithubClient {
     const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`)
     if (response.status === 404) return null
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status)
-    const body: unknown = await response.json()
-    if (!isRecord(body) || typeof body.sha !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
+    const body = await this.json(response)
+    if (typeof body.sha !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
     const base64 = typeof body.content === 'string' ? body.content.replace(/\s/g, '') : ''
-    if (base64.length > 0) return { sha: body.sha, content: fromBase64(base64) }
+    if (base64.length > 0) return { sha: body.sha, content: this.decode(base64, response.status) }
     // Boven 1 MB geeft de contents-API geen inhoud; dan via de blob-API.
     return { sha: body.sha, content: await this.getBlob(body.sha) }
   }
@@ -101,9 +127,9 @@ export class GithubClient {
   private async getBlob(sha: string): Promise<Bytes> {
     const response = await this.request(`/repos/${this.repo}/git/blobs/${sha}`)
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status)
-    const body: unknown = await response.json()
-    if (!isRecord(body) || typeof body.content !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
-    return fromBase64(body.content.replace(/\s/g, ''))
+    const body = await this.json(response)
+    if (typeof body.content !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
+    return this.decode(body.content.replace(/\s/g, ''), response.status)
   }
 
   /**
@@ -121,8 +147,8 @@ export class GithubClient {
     })
     if (response.status === 409 || response.status === 422) throw new ConflictError(response.status)
     if (!response.ok) throw new GithubError('Schrijven mislukt', response.status)
-    const body: unknown = await response.json()
-    if (!isRecord(body) || !isRecord(body.content) || typeof body.content.sha !== 'string') {
+    const body = await this.json(response)
+    if (!isRecord(body.content) || typeof body.content.sha !== 'string') {
       throw new GithubError('Onverwacht antwoord', response.status)
     }
     return body.content.sha

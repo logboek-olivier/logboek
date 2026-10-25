@@ -24,6 +24,11 @@ export class FakeGithub {
   offline = false
   /** Antwoordstatus voor elk request, bijvoorbeeld 401 om een ongeldige token na te bootsen. */
   forceStatus: number | null = null
+  forceHeaders: Record<string, string> = {}
+  /** Statussen van alle antwoorden, in volgorde. */
+  readonly statuses: number[] = []
+  /** Wordt vóór elk request afgewacht; handig om een sync op te houden. */
+  gate: Promise<void> | null = null
   /** Wordt vlak vóór elke PUT aangeroepen; handig om een gelijktijdige schrijver na te bootsen. */
   beforePut: ((path: string) => void) | null = null
   private shaCounter = 0
@@ -37,11 +42,18 @@ export class FakeGithub {
   }
 
   readonly fetch: FetchLike = async (url, init) => {
+    if (this.gate) await this.gate
+    const response = await this.handle(url, init)
+    this.statuses.push(response.status)
+    return response
+  }
+
+  private async handle(url: string, init: RequestInit): Promise<Response> {
     const method = init.method ?? 'GET'
     const body = typeof init.body === 'string' ? init.body : null
     this.requests.push({ method, url, body })
     if (this.offline) throw new TypeError('Failed to fetch')
-    if (this.forceStatus !== null) return json(this.forceStatus, { message: 'nagebootste fout' })
+    if (this.forceStatus !== null) return json(this.forceStatus, { message: 'nagebootste fout' }, this.forceHeaders)
     const headers = init.headers as Record<string, string>
     if (!headers.Authorization?.startsWith('Bearer ')) return json(401, { message: 'Requires authentication' })
 
@@ -80,6 +92,6 @@ export class FakeGithub {
   }
 }
 
-function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
 }

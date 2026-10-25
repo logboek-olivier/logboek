@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fromBase64, toBase64, utf8 } from '../src/crypto/encrypt'
 import { createVault, parseWordlistForTests } from './helpers/vault'
-import { AuthError, ConflictError, GithubClient, NetworkError } from '../src/storage/github'
+import { AuthError, ConflictError, GithubClient, GithubError, NetworkError, type FetchLike } from '../src/storage/github'
 import { openLogboekDb, type Db } from '../src/storage/idb'
 import { clearSynced, markPending, pendingCount } from '../src/storage/outbox'
 import { Store } from '../src/storage/store'
@@ -89,9 +89,23 @@ describe('GithubClient', () => {
     await expect(new GithubClient(TOKEN, github.fetch).getFile('x')).rejects.toBeInstanceOf(AuthError)
     github.forceStatus = 403
     await expect(new GithubClient(TOKEN, github.fetch).checkAccess()).rejects.toBeInstanceOf(AuthError)
+    // 403 door een uitgeputte rate limit is geen tokenfout.
+    github.forceHeaders = { 'x-ratelimit-remaining': '0' }
+    const limited = new GithubClient(TOKEN, github.fetch).getFile('x')
+    await expect(limited).rejects.toBeInstanceOf(GithubError)
+    await expect(limited).rejects.not.toBeInstanceOf(AuthError)
+    await expect(limited).rejects.toThrow('GitHub-limiet bereikt')
+    github.forceHeaders = {}
     github.forceStatus = null
     github.offline = true
     await expect(new GithubClient(TOKEN, github.fetch).getFile('x')).rejects.toBeInstanceOf(NetworkError)
+  })
+
+  it('vertaalt een onleesbaar 200-antwoord naar GithubError', async () => {
+    const broken: FetchLike = async () => new Response('<html>', { status: 200 })
+    await expect(new GithubClient(TOKEN, broken).getFile('x')).rejects.toBeInstanceOf(GithubError)
+    const badBase64: FetchLike = async () => new Response(JSON.stringify({ sha: 's', content: '!!niet-base64!!' }), { status: 200 })
+    await expect(new GithubClient(TOKEN, badBase64).getFile('x')).rejects.toBeInstanceOf(GithubError)
   })
 
   it('haalt grote bestanden via de blob-API', async () => {
@@ -210,8 +224,76 @@ describe('sync tussen twee apparaten', () => {
     expect(a.store.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['a', 'b'])
     await b.store.sync()
     expect(b.store.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['a', 'b'])
-    const conflicts = github.requests.filter((r) => r.method === 'PUT').length
-    expect(conflicts).toBeGreaterThanOrEqual(3)
+    // Precies één 409, gevolgd door een geslaagde nieuwe poging.
+    expect(github.statuses.filter((s) => s === 409)).toHaveLength(1)
+    expect(github.requests.filter((r) => r.method === 'PUT' && r.url.endsWith('trips.json.enc'))).toHaveLength(3)
+  })
+
+  it('doet na een sync nog een ronde als er ondertussen iets is gewijzigd of opnieuw om sync is gevraagd', async () => {
+    const github = new FakeGithub()
+    const a = await device(github)
+    await a.store.put('trips.json.enc', trip('t1', 'eerste'))
+    let release = () => {}
+    github.gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const first = a.store.sync()
+    // Tijdens de lopende sync: een wijziging en een tweede sync-verzoek.
+    await a.store.put('trips.json.enc', trip('t2', 'tijdens sync'))
+    const second = a.store.sync()
+    expect(second).toBe(first)
+    github.gate = null
+    release()
+    await first
+    expect(a.store.getStatus()).toEqual({ kind: 'synced' })
+    expect(a.store.pendingCount()).toBe(0)
+    const b = await device(github)
+    await b.store.sync()
+    expect(b.store.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['t1', 't2'])
+  })
+
+  it('synct de andere bestanden als één bestand onleesbaar is en meldt de fout', async () => {
+    const github = new FakeGithub()
+    const a = await device(github)
+    github.write('trips.json.enc', toBase64(utf8('geen geldige ciphertext maar wel base64')))
+    await a.store.put('legs.json.enc', {
+      id: 'l1',
+      tripId: 't',
+      date: '2026-01-01',
+      fromPlace: 'A',
+      fromCountry: 'X',
+      toPlace: 'B',
+      toCountry: 'X',
+      role: 'schipper',
+      boat: 'Nep',
+      nmInland: 0,
+      nmSea: 1,
+      nmTidal: 0,
+      nightHours: 0,
+      dateEstimated: false,
+      source: 'manual',
+      updatedAt: new Date().toISOString(),
+      deletedAt: null,
+    })
+    await a.store.sync()
+    expect(a.store.getStatus()).toEqual({ kind: 'error', message: 'Synchroniseren mislukt', count: 0 })
+    expect(github.files.has('legs.json.enc')).toBe(true)
+    const b = await device(github)
+    await b.store.sync()
+    expect(b.store.list('legs.json.enc')).toHaveLength(1)
+  })
+
+  it('schrijft niets meer naar IndexedDB na vergrendelen tijdens een lopende put', async () => {
+    const github = new FakeGithub()
+    const a = await device(github)
+    await a.store.put('trips.json.enc', trip('t1', 'x'))
+    const pending = a.store.put('trips.json.enc', trip('t2', 'y'))
+    a.store.lock()
+    await pending
+    const again = await Store.open(a.db, masterKey, new GithubClient(TOKEN, github.fetch))
+    // t2 is na lock() niet meer weggeschreven; t1 en de outbox van t1 staan er nog.
+    expect(again.list('trips.json.enc').map((t) => t.id)).toEqual(['t1'])
+    expect(again.pendingCount()).toBe(1)
   })
 
   it('verwijdert met een tombstone die op het andere apparaat aankomt', async () => {
