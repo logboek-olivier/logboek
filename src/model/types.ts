@@ -1,0 +1,122 @@
+// Alle datatypen. Elk record heeft id (UUIDv4), updatedAt (ISO) en deletedAt (ISO of null, tombstone).
+
+export interface SyncRecord {
+  id: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+export type Role = 'schipper' | 'co-schipper' | 'bemanningslid' | 'trainee' | 'instructeur'
+
+export const ROLES: readonly Role[] = ['schipper', 'co-schipper', 'bemanningslid', 'trainee', 'instructeur']
+
+export const ROLE_LABELS: Record<Role, string> = {
+  schipper: 'Schipper',
+  'co-schipper': 'Co-schipper',
+  bemanningslid: 'Bemanningslid',
+  trainee: 'Trainee',
+  instructeur: 'Instructeur',
+}
+
+export interface Trip extends SyncRecord {
+  name: string
+}
+
+export interface Leg extends SyncRecord {
+  tripId: string
+  /** jjjj-mm-dd */
+  date: string
+  fromPlace: string
+  fromCountry: string
+  toPlace: string
+  toCountry: string
+  role: Role
+  boat: string
+  skipperName?: string
+  coSkipperName?: string
+  /** Tekst, bijvoorbeeld "2-3". */
+  windBft?: string
+  nmInland: number
+  nmSea: number
+  nmTidal: number
+  nightHours: number
+  notes?: string
+  dateEstimated: boolean
+  source: 'import' | 'manual'
+}
+
+export type TransactionKind = 'fooi' | 'loon' | 'kosten' | 'investering'
+export type TransactionSource = 'yacht-week' | 'sailing-virgins' | 'delivery' | 'overig'
+export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | 'NOK'
+
+export const CURRENCIES: readonly Currency[] = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'DKK', 'NOK', 'HRK']
+export const TRANSACTION_SOURCES: readonly TransactionSource[] = ['yacht-week', 'sailing-virgins', 'delivery', 'overig']
+export const SOURCE_LABELS: Record<TransactionSource, string> = {
+  'yacht-week': 'Yacht Week',
+  'sailing-virgins': 'Sailing Virgins',
+  delivery: 'Delivery',
+  overig: 'Overig',
+}
+export const KIND_LABELS: Record<TransactionKind, string> = {
+  fooi: 'Fooi',
+  loon: 'Loon',
+  kosten: 'Kosten',
+  investering: 'Investering',
+}
+
+export interface Transaction extends SyncRecord {
+  /** jjjj-mm-dd */
+  date: string
+  kind: TransactionKind
+  /** Altijd positief; de richting volgt uit kind. */
+  amount: number
+  currency: Currency
+  /** Bij EUR gelijk aan amount; bij andere valuta leeg tot de koersen-Action bestaat. */
+  amountEur?: number
+  source: TransactionSource
+  /** Automatisch gezet als de datum binnen een tocht valt. */
+  tripId?: string
+  note?: string
+}
+
+export interface Settings extends SyncRecord {
+  id: 'settings'
+  lastBoat: string
+  lastRole: Role
+  lastCurrency: Currency
+  lastSource: TransactionSource
+  lastTripId?: string
+}
+
+/** Versleutelde bestanden in logboek-data en hun recordtype. */
+export interface Collections {
+  'trips.json.enc': Trip
+  'legs.json.enc': Leg
+  'transactions.json.enc': Transaction
+  'settings.json.enc': Settings
+}
+
+export type CollectionPath = keyof Collections
+
+export const COLLECTION_PATHS: readonly CollectionPath[] = [
+  'trips.json.enc',
+  'legs.json.enc',
+  'transactions.json.enc',
+  'settings.json.enc',
+]
+
+export function newId(): string {
+  return crypto.randomUUID()
+}
+
+export function nowIso(): string {
+  return new Date().toISOString()
+}
+
+/** Datum van vandaag als jjjj-mm-dd in lokale tijd. */
+export function todayIso(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
