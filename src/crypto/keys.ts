@@ -175,6 +175,20 @@ export async function changePassphrase(meta: Meta, current: Secret, newPassphras
   }
 }
 
+/**
+ * Pakt de hoofdsleutel na controle van de wachtzin opnieuw in onder een andere KEK (bijvoorbeeld de vingerafdruk-KEK).
+ * De sleutel is alleen binnen deze aanroep tijdelijk exporteerbaar.
+ */
+export async function rewrapMasterKey(meta: Meta, passphrase: string, kek: CryptoKey, aad: string): Promise<string> {
+  const mk = await unwrap(meta.passphrase.wrappedKey, await passphraseKek(meta, passphrase), AAD_PASSPHRASE, true)
+  return wrap(mk, kek, aad)
+}
+
+/** Haalt de hoofdsleutel (niet exporteerbaar) uit een met rewrapMasterKey gemaakte verpakking. */
+export function unwrapMasterKey(wrapped: string, kek: CryptoKey, aad: string): Promise<CryptoKey> {
+  return unwrap(wrapped, kek, aad, false)
+}
+
 export async function revealRecoveryWords(
   meta: Meta,
   passphrase: string,

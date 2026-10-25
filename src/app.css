@@ -484,6 +484,19 @@ h2 {
   white-space: nowrap;
 }
 
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
 .toast {
   position: fixed;
   left: 50%;

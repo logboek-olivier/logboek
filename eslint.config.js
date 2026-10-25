@@ -10,4 +10,11 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
     },
   },
+  {
+    // Node-scripts (bijvoorbeeld iconen genereren).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { URL: 'readonly', Buffer: 'readonly', console: 'readonly', process: 'readonly' },
+    },
+  },
 )

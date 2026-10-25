@@ -22,8 +22,15 @@ export async function createNewLogbook(page: Page): Promise<string[]> {
     if (m) await page.getByLabel(`Woord ${m[1]}`, { exact: true }).fill(words[Number(m[1]) - 1] ?? '')
   }
   await page.getByRole('button', { name: 'Logboek aanmaken' }).click()
-  await expect(page.getByRole('button', { name: 'Vergrendelen' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
   return words
+}
+
+/** Vergrendelt via Instellingen. */
+export async function lock(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await page.getByRole('button', { name: 'Vergrendelen' }).click()
+  await expect(page.getByRole('button', { name: 'Ontgrendelen' })).toBeVisible()
 }
 
 /** Consolefouten, behalve de verwachte 404's van de nagebootste GitHub (bestand bestaat nog niet). */

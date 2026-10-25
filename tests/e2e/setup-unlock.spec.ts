@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub, type E2eGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE, TOKEN } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, lock, PASSPHRASE, TOKEN } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -20,8 +20,7 @@ test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrende
   expect(wire).not.toContain(PASSPHRASE)
   expect(wire).not.toContain('nep')
 
-  await page.getByRole('button', { name: 'Vergrendelen' }).click()
-  await expect(page.getByRole('button', { name: 'Ontgrendelen' })).toBeVisible()
+  await lock(page)
 
   await page.getByLabel('Wachtzin').fill('verkeerd verkeerd verkeerd')
   await page.getByRole('button', { name: 'Ontgrendelen' }).click()
@@ -29,7 +28,7 @@ test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrende
 
   await page.getByLabel('Wachtzin').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Ontgrendelen' }).click()
-  await expect(page.getByRole('button', { name: 'Vergrendelen' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
 
   // Herladen = nieuwe browsersessie: vergrendeld, geen eerste-keer-scherm meer.
   await page.reload()
@@ -55,7 +54,7 @@ test('bestaand logboek koppelen op een tweede apparaat met de herstelcode', asyn
   await pageB.getByRole('button', { name: 'Herstelcode gebruiken' }).click()
   await pageB.getByLabel(/Herstelcode/).fill(words.join(' '))
   await pageB.getByRole('button', { name: 'Koppelen' }).click()
-  await expect(pageB.getByRole('button', { name: 'Vergrendelen' })).toBeVisible({ timeout: 30_000 })
+  await expect(pageB.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
   await expect(pageB.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
   await second.close()
 })

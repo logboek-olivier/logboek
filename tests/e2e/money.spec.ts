@@ -15,7 +15,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await page.getByLabel('Bedrag').fill('120,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
 
   // Fooi in USD: apart tonen, nooit omrekenen
   await page.getByRole('button', { name: 'Toevoegen' }).click()
