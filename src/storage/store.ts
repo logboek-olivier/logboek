@@ -1,4 +1,5 @@
 import { utf8 } from '../crypto/encrypt'
+import { recordError } from '../errors'
 import { META_PATH, parseMeta, serializeMeta, type Meta } from '../crypto/keys'
 import { NewerSchemaError, UPDATE_APP_MESSAGE } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
@@ -207,6 +208,7 @@ export class Store {
 
   private reportFailure(failure: unknown): void {
     const count = this.pendingCount()
+    if (!(failure instanceof NetworkError)) recordError(failure)
     if (failure instanceof NetworkError) this.setStatus({ kind: 'offline', count })
     else if (failure instanceof AuthError) this.setStatus({ kind: 'error', message: TOKEN_INVALID_MESSAGE, count })
     else if (failure instanceof NewerSchemaError) this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count })

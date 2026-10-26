@@ -1,9 +1,10 @@
-import { ChevronDown, ChevronRight, Cloud, Download, Target, Fingerprint as FingerprintIcon, KeyRound, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud, Download, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
-import { formatNm } from '../format'
+import { APP_VERSION, BUILD_DATE, COMMIT } from '../build-info'
+import { formatDate, formatNm } from '../format'
 import { currentSettings, yearGoal } from '../model/settings'
 import type { Store } from '../storage/store'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
@@ -117,6 +118,25 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
             />,
           )}
           {row('backup', Download, 'Back-up maken', <Backup />)}
+        </ul>
+      </div>
+
+      <div className="section">
+        <h2>Over</h2>
+        <ul className="rows">
+          <li className="row-item">
+            <Icon icon={Info} />
+            <dl className="about">
+              <dt>Versie</dt>
+              <dd className="num">{APP_VERSION}</dd>
+              <dt>Gebouwd</dt>
+              <dd className="num">{BUILD_DATE ? formatDate(BUILD_DATE.slice(0, 10)) : 'onbekend'}</dd>
+              <dt>Commit</dt>
+              <dd className="num">
+                <code>{COMMIT}</code>
+              </dd>
+            </dl>
+          </li>
         </ul>
       </div>
     </section>

@@ -6,11 +6,13 @@ import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateRange, formatHours, formatMonth, formatMonthShort, formatNm, formatNumber } from '../format'
+import { recordError } from '../errors'
 import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
 import { nmPerMonth, summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
 import { ROLE_LABELS, ROLES, todayIso, type Leg, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
+import { ErrorLine } from './Setup'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
@@ -38,6 +40,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       // Inhoud bepaalt het formaat (CSV of .xlsx), niet de naam of het MIME-type van de bestandskiezer.
       setPending(parseMileageFile(new Uint8Array(await file.arrayBuffer())))
     } catch (e) {
+      recordError(e)
       setError(
         e instanceof ImportError
           ? e.message
@@ -125,11 +128,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       </header>
       {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
       <input ref={fileInput} type="file" hidden aria-label="Mijlenbestand" onChange={(e) => void onFile(e.target.files?.[0])} />
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      <ErrorLine error={error} />
       {summary.days === 0 && (
         <Empty icon={FileSpreadsheet} action={importButton(true)}>
           Nog geen dagen. Importeer de mijlenregistratie (Excel of CSV), of voeg een dag toe met +.

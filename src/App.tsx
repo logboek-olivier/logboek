@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { ErrorBoundary, installGlobalErrorHandlers, UnhandledErrorBar } from './components/ErrorBoundary'
 import { Loading } from './components/Loading'
+import { setScreen } from './errors'
 import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
@@ -14,6 +16,7 @@ export function App() {
   )
 
   useEffect(() => {
+    installGlobalErrorHandlers()
     void session.init()
   }, [session])
 
@@ -41,6 +44,7 @@ export function App() {
     }
   }, [session, state.phase])
 
+  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag' }[state.phase])
   let screen: React.ReactNode
   switch (state.phase) {
     case 'loading':
@@ -59,7 +63,8 @@ export function App() {
   return (
     <SessionContext.Provider value={session}>
       <UpdateBar />
-      {screen}
+      <UnhandledErrorBar />
+      <ErrorBoundary>{screen}</ErrorBoundary>
     </SessionContext.Provider>
   )
 }
