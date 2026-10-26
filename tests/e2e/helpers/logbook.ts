@@ -37,7 +37,7 @@ export async function createNewLogbook(page: Page, lang: Lang = 'nl'): Promise<s
 
 /** Vergrendelt via Instellingen. */
 export async function lock(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await openMore(page, 'Instellingen')
   await page.getByRole('button', { name: 'Vergrendelen' }).click()
   await expect(page.getByRole('button', { name: 'Ontgrendelen' })).toBeVisible()
 }
@@ -76,4 +76,10 @@ export async function storedLastUsed(page: Page): Promise<number | null> {
         }
       }),
   )
+}
+
+/** Geld en Instellingen zitten onder Meer in de onderbalk. */
+export async function openMore(page: Page, item: string, more = 'Meer'): Promise<void> {
+  await page.getByRole('navigation').getByRole('button', { name: more, exact: true }).click()
+  await page.getByRole('button', { name: new RegExp(`^${item}`) }).click()
 }

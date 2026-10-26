@@ -1511,3 +1511,9 @@ button.sync-status {
 .row-item > .icon:first-child {
   color: var(--accent);
 }
+
+/* Terug naar Meer boven Geld en Instellingen, op een eigen regel onder de sync-status. */
+.back-link {
+  display: flex;
+  margin-bottom: calc(-1 * var(--s-2));
+}

@@ -12,7 +12,7 @@ export const en: Messages = {
   'common.close': 'Close',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
-  'common.more': 'More',
+  'common.more': 'More fields',
   'common.next': 'Next',
   'common.opening': 'Opening logbook…',
   'common.save': 'Save',
@@ -153,8 +153,6 @@ export const en: Messages = {
   'today.goalReached': 'annual goal reached',
   'today.goalProgress': 'Annual goal progress',
   'today.nmTotal': 'nm total',
-  'today.tips30': 'Tips 30 days',
-  'today.moneyMonth': (p) => `Sailing money ${p.month}`,
   'today.lastTrip': 'Last trip',
   'today.noDays': 'No days yet. Add a day or import the mileage log under Sailing.',
   'today.addDay': 'Add day',
@@ -220,7 +218,7 @@ export const en: Messages = {
   'quick.newTripShort': 'new trip',
   'quick.tripShort': (p) => `trip ${p.name}`,
   'quick.newTripCheck': (p) => `New trip (otherwise with "${p.name}")`,
-  'quick.boatMissing': 'Boat missing: open "More" and fill in the boat.',
+  'quick.boatMissing': 'Boat missing: open "More fields" and fill in the boat.',
 
   'money.addTip': 'Add tip',
   'money.empty': 'No sailing money yet. Entering a tip or expense takes a few seconds.',
@@ -311,4 +309,16 @@ export const en: Messages = {
   'setup.recoveryField': (p) => `Recovery code (${p.n} words)`,
   'setup.useRecovery': 'Use recovery code',
   'setup.usePassphrase': 'Use passphrase',
+
+  'nav.training': 'Training',
+  'nav.more': 'More',
+  'more.moneyHint': 'Sailing money, tips and expenses',
+  'more.settingsHint': 'Lock, language, passphrase, token',
+
+  'today.nextExpiry': 'Next expiry date',
+  'expiry.token': 'GitHub token',
+  'expiry.expired': 'expired',
+  'expiry.today': 'today',
+  'expiry.inDays': (p) => `in ${p.n} ${plural(p.n, 'day', 'days')}`,
+  'more.back': 'Back to More',
 }

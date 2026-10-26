@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE, openMore } from './helpers/logbook'
 
 // Alle schermen op 360 px breed, zonder horizontale overloop; offline openen na het eerste bezoek.
 
@@ -20,20 +20,20 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
   await expect(page.locator('.grid')).toContainText('nm totaal0 nm')
   await expectNoHorizontalOverflow(page)
 
-  for (const tab of ['Zeilen', 'Toevoegen', 'Geld']) {
-    await page.getByRole('button', { name: tab }).click()
+  for (const tab of ['Zeilen', 'Toevoegen', 'Meer']) {
+    await page.getByRole('button', { name: tab, exact: true }).click()
     await expectNoHorizontalOverflow(page)
   }
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   for (const sub of ['Kosten', 'Dag']) {
     await page.getByRole('tab', { name: sub }).click()
-    await page.getByRole('button', { name: 'Meer' }).click()
+    await page.getByRole('button', { name: 'Meer velden' }).click()
     await expectNoHorizontalOverflow(page)
   }
 
   // Instellingen: herstelcode tonen na wachtzin; wachtzin wijzigen; vingerafdruk alleen als de browser een platform-authenticator meldt.
   await page.getByRole('button', { name: 'Vandaag' }).click()
-  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await openMore(page, 'Instellingen')
   await expect(page.getByRole('heading', { name: 'Instellingen' })).toBeVisible()
   const platformAuth = await page.evaluate(() => PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
   await expect(page.getByRole('button', { name: /Vingerafdruk of schermvergrendeling/ })).toHaveCount(platformAuth ? 1 : 0)
@@ -79,7 +79,7 @@ test('vingerafdruk aanzetten en ermee ontgrendelen (virtuele authenticator met p
   await createNewLogbook(page)
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await openMore(page, 'Instellingen')
   await page.getByRole('button', { name: 'Vingerafdruk of schermvergrendeling aanzetten' }).click()
   await page.getByLabel('Wachtzin').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Aanzetten', exact: true }).click()
@@ -97,7 +97,7 @@ test('vingerafdruk aanzetten en ermee ontgrendelen (virtuele authenticator met p
   expect(wire).not.toContain('prf')
 
   // Uitzetten: daarna alleen de wachtzin.
-  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await openMore(page, 'Instellingen')
   await page.getByRole('button', { name: 'Vingerafdruk of schermvergrendeling uitzetten' }).click()
   await page.getByRole('button', { name: 'Uitzetten', exact: true }).click()
   await expect(page.getByText('Vingerafdruk of schermvergrendeling uit', { exact: true })).toBeVisible()

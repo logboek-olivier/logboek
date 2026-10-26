@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -29,7 +29,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await page.getByRole('tab', { name: 'Kosten' }).click()
   await page.getByLabel('Bedrag').fill('35')
   await page.getByLabel('Omschrijving').fill('Taxi haven')
-  await page.getByRole('button', { name: 'Meer' }).click()
+  await page.getByRole('button', { name: 'Meer velden' }).click()
   await page.getByLabel('Valuta').selectOption('EUR')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Kosten opgeslagen')).toBeVisible()
@@ -40,7 +40,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await page.getByLabel('Naar (plaats)').fill('Nephaven')
   await page.getByLabel('Zeemijlen').fill('42')
   await page.getByRole('radio', { name: 'Getij' }).click()
-  await page.getByRole('button', { name: 'Meer' }).click()
+  await page.getByRole('button', { name: 'Meer velden' }).click()
   await page.getByLabel('Boot').fill('Nepboot')
   await page.getByLabel('Naam tocht').fill('Testtocht')
   await expectNoHorizontalOverflow(page)
@@ -64,7 +64,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(page.locator('.grid')).toContainText('Getijdenwater50 nm')
 
   // Geld
-  await page.getByRole('button', { name: 'Geld' }).click()
+  await openMore(page, 'Geld')
   await expect(page.getByRole('heading', { name: 'Geld' })).toBeVisible()
   const grid = page.locator('.grid')
   await expect(grid).toContainText('Inkomsten€ 120,50')

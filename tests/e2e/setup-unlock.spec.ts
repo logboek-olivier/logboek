@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, storedLastUsed, TOKEN } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, storedLastUsed, TOKEN, openMore } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -158,13 +158,13 @@ test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en h
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('status').first()).toHaveText('Geen verbinding', { timeout: 15_000 })
-  await page.getByRole('button', { name: 'Geld' }).click()
+  await openMore(page, 'Geld')
   await expect(page.locator('.tx')).toHaveCount(1)
 
   // Verbinding terug: de wachtende wijziging gaat alsnog mee.
   github.offline = false
   await page.getByRole('button', { name: 'Vandaag' }).click()
-  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await openMore(page, 'Instellingen')
   await page.getByRole('button', { name: 'Vergrendelen' }).click()
   await page.getByLabel('Wachtzin').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Ontgrendelen' }).click()

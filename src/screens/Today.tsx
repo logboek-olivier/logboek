@@ -1,4 +1,4 @@
-import { Anchor, CalendarDays, Coins, LoaderCircle, Sailboat, Wallet, Waves } from 'lucide-react'
+import { Anchor, CalendarClock, CalendarDays, LoaderCircle, Sailboat, Waves } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import { BarChart } from '../components/BarChart'
@@ -7,17 +7,17 @@ import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
-import { formatDate, formatDateRange, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
+import { formatDate, formatDateRange, formatMonth, formatNm, formatNumber } from '../format'
 import { lastTrip, nmInYear, nmPerMonth, summarize } from '../model/derive'
-import { monthSeries, recentTips, tipsPerWeek } from '../model/money'
+import { nextExpiry } from '../model/expiry'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
 import { t } from '../i18n'
 
-// Vandaag: nm dit jaar met voortgang naar het jaardoel, nm totaal, fooi afgelopen 30 dagen, zeilgeld deze maand,
-// laatste tocht. Kaarten met kleine grafieken. Omlaag trekken synchroniseert.
+// Vandaag: nm dit jaar met voortgang naar het jaardoel, nm totaal, dagen tot de volgende vervaldatum, laatste tocht.
+// Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
 
 const TOKEN_WARNING_DAYS = 30
 /** Zo ver omlaag trekken (px) start een sync. */
@@ -37,7 +37,6 @@ export function Today({
   const session = useSession()
   const legs = useCollection(store, 'legs.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
-  const transactions = useCollection(store, 'transactions.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const status = useSyncStatus(store)
   const [goalOpen, setGoalOpen] = useState(false)
@@ -45,17 +44,15 @@ export function Today({
   const today = todayIso()
   const year = Number(today.slice(0, 4))
   const total = summarize(legs)
-  const tips = recentTips(transactions, today)
-  const weeks = tipsPerWeek(transactions, today)
   const months = nmPerMonth(legs, today)
-  const money = monthSeries(transactions, today, 6)
-  const thisMonth = money[money.length - 1]!
   const last = lastTrip(trips, legs)
   const nmYear = nmInYear(legs, year)
   const goal = yearGoal(settings)
   const share = Math.min(1, nmYear / goal)
   const tokenDays = daysUntil(session.tokenExpiresAt, today)
   const tokenInvalid = status.kind === 'error' && status.code === 'token'
+  // Vervaldatums die de app kent; de kluis voegt later documenten toe.
+  const expiry = nextExpiry([{ label: t('expiry.token'), date: session.tokenExpiresAt }], today)
 
   return (
     <section className="stack" onTouchStart={pull.onTouchStart} onTouchMove={pull.onTouchMove} onTouchEnd={pull.onTouchEnd}>
@@ -119,7 +116,7 @@ export function Today({
         </span>
       </button>
       <dl className="grid">
-        <Card icon={Waves} label={t('today.nmTotal')} value={formatNm(total.nm)}>
+        <Card icon={Waves} label={t('today.nmTotal')} value={formatNm(total.nm)} wide={!expiry}>
           <BarChart
             compact
             height={40}
@@ -128,35 +125,20 @@ export function Today({
             format={formatNm}
           />
         </Card>
-        <Card
-          icon={Coins}
-          label={t('today.tips30')}
-          value={formatMoney(tips.eur, 'EUR')}
-          extra={Object.entries(tips.other).map(([c, v]) => `+ ${formatMoney(v, c)}`)}
-        >
-          <BarChart
-            compact
-            height={40}
-            label={`${t('chart.tipsPerWeek')}: ${weeks.map((w) => formatMoney(w.eur, 'EUR')).join(', ')}`}
-            groups={weeks.map((w) => ({ key: w.weekStart, label: '', values: [w.eur] }))}
-            format={(n) => formatMoney(n, 'EUR')}
+        {expiry && (
+          <Card
+            icon={CalendarClock}
+            label={t('today.nextExpiry')}
+            value={
+              expiry.days < 0
+                ? t('expiry.expired')
+                : expiry.days === 0
+                  ? t('expiry.today')
+                  : t('expiry.inDays', { n: expiry.days })
+            }
+            extra={[`${expiry.label} · ${formatDate(expiry.date)}`]}
           />
-        </Card>
-        <Card
-          icon={Wallet}
-          label={t('today.moneyMonth', { month: formatMonth(thisMonth.month) })}
-          value={formatMoney(thisMonth.balanceEur, 'EUR')}
-          extra={[`+${formatMoney(thisMonth.incomeEur, 'EUR')} · −${formatMoney(thisMonth.costsEur, 'EUR')}`]}
-          wide
-        >
-          <BarChart
-            compact
-            height={40}
-            label={`${t('chart.incomeCosts')}: ${money.map((m) => `${formatMonth(m.month)} +${formatMoney(m.incomeEur, 'EUR')}, −${formatMoney(m.costsEur, 'EUR')}`).join('; ')}`}
-            groups={money.map((m) => ({ key: m.month, label: '', values: [m.incomeEur, m.costsEur] }))}
-            format={(n) => formatMoney(n, 'EUR')}
-          />
-        </Card>
+        )}
         {last ? (
           <Card
             icon={Sailboat}
