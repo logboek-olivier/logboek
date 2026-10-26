@@ -54,6 +54,8 @@ export class Store {
   private locked = false
   /** logboek-data bevat een bestand van een nieuwere schemaversie: niets meer naar GitHub schrijven. */
   private outdated = false
+  /** Minstens één sync is in deze sessie zonder fouten afgerond (de lokale kopie is bijgewerkt). */
+  private syncedOnce = false
 
   private constructor(
     private readonly db: Db,
@@ -86,6 +88,11 @@ export class Store {
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  /** True zodra een sync in deze sessie geslaagd is; daarna zijn beslissingen op basis van alle apparaten veilig. */
+  hasSynced(): boolean {
+    return this.syncedOnce
   }
 
   getStatus(): SyncStatus {
@@ -206,6 +213,7 @@ export class Store {
     }
     if (this.locked) return
     if (failure === null) {
+      this.syncedOnce = true
       this.setStatus(this.idleStatus())
       return
     }

@@ -5,6 +5,7 @@ import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
 import { useCollection } from '../components/useCollection'
+import { useSyncStatus } from '../components/SyncStatusLine'
 import { formatDate, formatDateShort, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import { allTopics, courseLabel, localized } from '../model/curricula'
@@ -47,21 +48,23 @@ export function StudentsView({ store, notify, curricula }: { store: Store; notif
   const archived = archivedStudents(all)
   const courseOf = (s: Student) => curricula.find((c) => c.id === s.curriculumId)
 
-  // Automatisch archiveren na 12 maanden zonder activiteit (één keer per opening van Training).
+  // Automatisch archiveren na 12 maanden zonder activiteit (één keer per opening van Training), pas na een
+  // geslaagde sync: anders kan een lang offline apparaat voortgang van een ander apparaat overschrijven.
+  const status = useSyncStatus(store)
   useEffect(() => {
-    if (archivedOnce.current) return
+    if (archivedOnce.current || !store.hasSynced()) return
     archivedOnce.current = true
     const today = todayIso()
     const due = dueForArchive(store.get('students.json.enc'), today)
     if (due.length > 0) {
       void setArchived(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
     }
-  }, [store, notify])
+  }, [store, notify, status])
 
   if (view.kind === 'student') {
     const student = all.find((s) => s.id === view.id && s.deletedAt === null)
     const course = student ? courseOf(student) : undefined
-    if (student && course) {
+    if (student) {
       return <StudentDetail store={store} notify={notify} student={student} course={course} curricula={curricula} onBack={() => setView({ kind: 'list' })} />
     }
   }
@@ -207,25 +210,29 @@ function StudentDetail({
   store: Store
   notify: Notify
   student: Student
-  course: Curriculum
+  /** Ontbreekt als de cursus verwijderd is: dan alleen naam en bewerken (verwijderen blijft mogelijk). */
+  course: Curriculum | undefined
   curricula: Curriculum[]
   onBack: () => void
 }) {
   const lang = useLang()
   const [editing, setEditing] = useState(false)
-  const critical = criticalOpen(student, course)
-  const total = progressFor(student, allTopics(course))
+  const critical = course ? criticalOpen(student, course) : []
+  const total = progressFor(student, course ? allTopics(course) : [])
+  // Altijd de nieuwste versie uit de Store: twee snelle tikken mogen elkaar niet overschrijven.
+  const current = () => store.get('students.json.enc').find((s) => s.id === student.id) ?? student
 
   const tick = (topicId: string) => {
-    const next = nextStatus(statusOf(student, topicId))
-    void saveStudents(store, [withStatus(student, topicId, next, new Date().toISOString())])
+    const latest = current()
+    const next = nextStatus(statusOf(latest, topicId))
+    void saveStudents(store, [withStatus(latest, topicId, next, new Date().toISOString())])
   }
 
   /** Hele onderwerpgroep in één tik: alles naar minstens geoefend, en als dat al zo is naar beheerst. */
   const tickGroup = (topics: readonly Topic[], status: TopicStatus) => {
     const now = new Date().toISOString()
-    const before = student
-    const next = topics.reduce((s, tp) => raiseStatus(s, tp.id, status, now), student)
+    const before = current()
+    const next = topics.reduce((s, tp) => raiseStatus(s, tp.id, status, now), before)
     void saveStudents(store, [next]).then(() => notify(t('students.groupDone', { status: t(`status.${status}`) }), () => saveStudents(store, [before])))
   }
 
@@ -260,14 +267,16 @@ function StudentDetail({
         </button>
       </header>
       <p className="muted">
-        {courseLabel(course, lang)} · {t(`level.${student.level}`)}
+        {course ? courseLabel(course, lang) : t('students.unknownCourse')} · {t(`level.${student.level}`)}
         {student.exam ? ` · ${t(student.exam.passed ? 'students.examPassed' : 'students.examFailed', { date: formatDate(student.exam.date) })}` : ''}
       </p>
-      <div className="stat">
-        <span className="stat-label">{t('students.overall')}</span>
-        <span className="small">{t('students.counts', { mastered: total.mastered, practised: total.practised, total: total.total })}</span>
-        <ProgressBar progress={total} label={t('students.overall')} />
-      </div>
+      {course && (
+        <div className="stat">
+          <span className="stat-label">{t('students.overall')}</span>
+          <span className="small">{t('students.counts', { mastered: total.mastered, practised: total.practised, total: total.total })}</span>
+          <ProgressBar progress={total} label={t('students.overall')} />
+        </div>
+      )}
       {critical.length > 0 && (
         <div className="section">
           <h2 className="critical-head">
@@ -277,7 +286,7 @@ function StudentDetail({
           <ul className="rows">{critical.map((tp) => box(tp.id, localized(tp.title, lang)))}</ul>
         </div>
       )}
-      {course.groups.map((g) => {
+      {course?.groups.map((g) => {
         const p = progressFor(student, g.topics)
         return (
           <div key={g.id} className="section">
@@ -531,10 +540,17 @@ function GroupTickSheet({
   const apply = (e: FormEvent) => {
     e.preventDefault()
     const now = new Date().toISOString()
-    const changed = inCourse.filter((s) => selected.has(s.id)).map((s) => raiseStatus(s, topicId, status, now))
+    const latest = store.get('students.json.enc')
+    const changed = inCourse
+      .filter((s) => selected.has(s.id))
+      .map((s) => latest.find((l) => l.id === s.id) ?? s)
+      .flatMap((s) => {
+        const raised = raiseStatus(s, topicId, status, now)
+        return raised === s ? [] : [raised]
+      })
     void saveStudents(store, changed).then(() => {
       onClose()
-      notify(t('students.groupTicked', { n: changed.length }))
+      notify(changed.length === 0 ? t('students.alreadyTicked') : t('students.groupTicked', { n: changed.length }))
     })
   }
 

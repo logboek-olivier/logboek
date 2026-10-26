@@ -119,11 +119,16 @@ describe('regel 14: alleen toegestane gegevens', () => {
 describe('archiveren', () => {
   it('na 12 maanden zonder activiteit te archiveren; recente voortgang houdt de student actief', () => {
     const old = student({ id: 'oud', startedAt: '2025-09-01', updatedAt: '2025-09-01T00:00:00.000Z' })
-    const recent = withStatus(student({ id: 'recent', startedAt: '2025-09-01' }), topics[0]!.id, 'geoefend', '2026-01-10T00:00:00.000Z')
+    const recent = withStatus(student({ id: 'recent', startedAt: '2025-09-01', updatedAt: '2026-01-10T00:00:00.000Z' }), topics[0]!.id, 'geoefend', '2026-01-10T00:00:00.000Z')
     expect(lastActivity(recent)).toBe('2026-01-10')
     expect(dueForArchive([old, recent], '2026-10-26').map((s) => s.id)).toEqual(['oud'])
     expect(dueForArchive([old], '2026-08-31')).toEqual([])
     expect(dueForArchive([student({ id: 'gearch', startedAt: '2020-01-01', archivedAt: '2021-01-01' })], '2026-10-26')).toEqual([])
+  })
+
+  it('terugzetten uit het archief telt als activiteit: de student wordt niet direct opnieuw gearchiveerd', () => {
+    const restored = student({ startedAt: '2024-01-01', archivedAt: null, updatedAt: '2026-10-26T09:00:00.000Z' })
+    expect(dueForArchive([restored], '2026-10-26')).toEqual([])
   })
 })
 
@@ -131,10 +136,12 @@ describe('opslag', () => {
   it('versleuteld naar GitHub; geen namen in verkeer of logs; archief en wissen met ongedaan maken', async () => {
     const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'error'), vi.spyOn(console, 'info')]
     const { github, store } = await device()
+    expect(store.hasSynced()).toBe(false)
     const s = await addStudent(store, { ...input, note: 'Notitievlak' })
     await saveStudents(store, [withStatus(s, topics[0]!.id, 'beheerst', NOW)])
     await store.sync()
     expect(github.files.has('students.json.enc')).toBe(true)
+    expect(store.hasSynced()).toBe(true)
     const wire = github.requests.map((r) => `${r.url} ${r.body ?? ''}`).join('\n')
     expect(wire).not.toContain('Fictiva')
     expect(wire).not.toContain('Notitievlak')

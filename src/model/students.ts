@@ -6,8 +6,8 @@ import { newId, type Curriculum, type Student, type StudentExam, type StudentLev
 
 // Studenten en hun voortgang per onderwerp. Beveiligingsregel 14: alleen voornaam, cursus, niveau, voortgang en
 // examenuitslag; geen contact-, gezondheids- of identiteitsgegevens; nooit in logs of foutdetails. Na 12 maanden
-// zonder activiteit automatisch gearchiveerd; het archief is te wissen. Wissen laat geen gegevens achter: de
-// tombstone bevat alleen id en tijden.
+// zonder activiteit automatisch gearchiveerd; het archief is te wissen. Na wissen bevat het huidige bestand alleen
+// id en tijden; oudere versies blijven versleuteld in de geschiedenis van logboek-data tot die opnieuw wordt aangemaakt.
 
 export const ARCHIVE_AFTER_MONTHS = 12
 export const MAX_FIRST_NAME = 40
@@ -71,11 +71,10 @@ export function archivedStudents(list: readonly Student[]): Student[] {
   return list.filter((s) => s.deletedAt === null && isArchived(s))
 }
 
-/** Laatste activiteit (jjjj-mm-dd): begin, examen of laatste wijziging in de voortgang. */
+/** Laatste activiteit (jjjj-mm-dd): begin, examen, voortgang of een andere wijziging (ook terugzetten uit het archief). */
 export function lastActivity(s: Student): string {
-  const dates = [s.startedAt ?? '', s.exam?.date ?? '', ...Object.values(s.progress).map((p) => p.updatedAt.slice(0, 10))]
-  const latest = dates.filter(Boolean).sort().at(-1)
-  return latest ?? s.updatedAt.slice(0, 10)
+  const dates = [s.updatedAt.slice(0, 10), s.startedAt ?? '', s.exam?.date ?? '', ...Object.values(s.progress).map((p) => p.updatedAt.slice(0, 10))]
+  return dates.filter(Boolean).sort().at(-1)!
 }
 
 /** Studenten die 12 maanden niets gedaan hebben: te archiveren op `today`. */
@@ -152,7 +151,7 @@ export async function setArchived(store: Store, students: readonly Student[], ar
   await saveStudents(store, students.map((s) => ({ ...s, archivedAt })))
 }
 
-/** Tombstone zonder persoonsgegevens: alleen id en tijden blijven in logboek-data staan. */
+/** Tombstone zonder persoonsgegevens: alleen id en tijden blijven in het huidige bestand staan. */
 export function scrubbed(student: Student, now: string): Student {
   return { id: student.id, firstName: '', curriculumId: '', level: 'beginner', progress: {}, archivedAt: null, updatedAt: now, deletedAt: now }
 }

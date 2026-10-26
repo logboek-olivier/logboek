@@ -419,7 +419,7 @@ export const nl = {
   'students.examFailed': (p: { date: string }) => `examen niet gehaald op ${p.date}`,
   'students.archive': (p: { n: number }) => `Archief (${p.n})`,
   'students.archiveTitle': 'Archief',
-  'students.archiveHint': 'Studenten zonder activiteit in de laatste 12 maanden worden hier automatisch neergezet. Wissen verwijdert alle gegevens van deze studenten.',
+  'students.archiveHint': 'Studenten zonder activiteit in de laatste 12 maanden worden hier automatisch neergezet. Wissen haalt hun gegevens uit het logboek; oudere versies blijven versleuteld in de geschiedenis van logboek-data.',
   'students.archiveEmpty': 'Het archief is leeg.',
   'students.archivedOn': (p: { date: string }) => `gearchiveerd op ${p.date}`,
   'students.restore': (p: { name: string }) => `${p.name} terugzetten`,
@@ -428,7 +428,7 @@ export const nl = {
   'students.archiveOne': 'Archiveren',
   'students.archived': 'Gearchiveerd',
   'students.autoArchived': (p: { n: number }) => `${p.n} ${plural(p.n, 'student', 'studenten')} na 12 maanden gearchiveerd`,
-  'students.privacyHint': 'Alleen voornaam, cursus, niveau en voortgang. Geen contactgegevens.',
+  'students.privacyHint': 'Alleen voornaam, cursus, niveau, voortgang en examen. Geen contact-, gezondheids- of identiteitsgegevens, ook niet in een opmerking.',
   'students.firstName': 'Voornaam',
   'students.course': 'Cursus',
   'students.level': 'Niveau',
@@ -436,7 +436,7 @@ export const nl = {
   'students.examDate': 'Examendatum',
   'students.passed': 'Geslaagd',
   'students.examNote': 'Opmerking bij het examen',
-  'students.note': 'Opmerking',
+  'students.note': 'Opmerking over de training',
   'students.groupTick': 'Groep afvinken',
   'students.status': 'Status',
   'students.who': 'Wie',
@@ -453,6 +453,7 @@ export const nl = {
   'students.allMastered': 'Alles beheerst',
   'students.groupDone': (p: { status: string }) => `Groep op ${p.status.toLowerCase()} gezet`,
   'students.added': 'Student toegevoegd',
+  'students.alreadyTicked': 'Iedereen had deze status al',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
