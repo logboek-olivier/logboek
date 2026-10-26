@@ -21,11 +21,12 @@ export type SyncStatus =
   /**
    * token: verlopen of ingetrokken; update: nieuwere schemaversie; github: andere GitHub-fout; failed: overig;
    * unreadable: één of meer bestanden op GitHub zijn niet te ontsleutelen of te lezen (`paths`), de andere zijn gesynct;
-   * otherKey: logboek-data hoort bij een andere hoofdsleutel dan dit apparaat; er is niets geschreven.
+   * otherKey: logboek-data hoort bij een andere hoofdsleutel dan dit apparaat; noMeta: meta.json.enc ontbreekt op
+   * GitHub (repo leeg of opnieuw aangemaakt). In beide gevallen is er niets geschreven.
    */
   | { kind: 'error'; code: SyncErrorCode; count: number; github?: GithubErrorCode; paths?: CollectionPath[] }
 
-export type SyncErrorCode = 'token' | 'update' | 'github' | 'failed' | 'unreadable' | 'otherKey'
+export type SyncErrorCode = 'token' | 'update' | 'github' | 'failed' | 'unreadable' | 'otherKey' | 'noMeta'
 
 /** Een bestand op GitHub is niet te ontsleutelen of te lezen. De melding noemt alleen paden en de soort fout. */
 export class UnreadableFileError extends Error {
@@ -35,6 +36,14 @@ export class UnreadableFileError extends Error {
   ) {
     super(`Onleesbaar op GitHub (${reason}): ${paths.join(', ')}`)
     this.name = 'UnreadableFileError'
+  }
+}
+
+/** logboek-data heeft geen meta.json.enc terwijl dit apparaat een logboek heeft: dit apparaat schrijft niets. */
+export class MissingMetaError extends Error {
+  constructor() {
+    super('meta.json.enc ontbreekt op GitHub')
+    this.name = 'MissingMetaError'
   }
 }
 
@@ -62,12 +71,13 @@ export function describeStatus(status: SyncStatus): string {
       if (status.code === 'github') return t(`github.${status.github ?? 'unexpected'}`)
       if (status.code === 'unreadable') return t('sync.unreadable', { paths: (status.paths ?? []).join(', ') })
       if (status.code === 'otherKey') return t('sync.otherKey')
+      if (status.code === 'noMeta') return t('sync.noMeta')
       return t('sync.failed')
   }
 }
 
 type Listener = () => void
-type MetaCheck = 'match' | 'mismatch' | 'unknown'
+type MetaCheck = 'match' | 'mismatch' | 'missing' | 'unknown'
 
 export class Store {
   private readonly collections = new Map<CollectionPath, SyncRecord[]>()
@@ -82,8 +92,10 @@ export class Store {
   private outdated = false
   /** Minstens één sync is in deze sessie zonder fouten afgerond (de lokale kopie is bijgewerkt). */
   private syncedOnce = false
-  /** Bestanden die op GitHub onleesbaar waren bij de laatste sync. */
-  private unreadable: CollectionPath[] = []
+  /** Bestanden die op GitHub onleesbaar waren bij de laatste sync, met de soort fout. */
+  private unreadable = new Map<CollectionPath, string>()
+  /** Uitkomst van de laatste meta-controle; herstellen mag alleen na een bevestigde 'match'. */
+  private metaVerdict: MetaCheck = 'unknown'
 
   private constructor(
     private readonly db: Db,
@@ -203,21 +215,23 @@ export class Store {
     let meta: MetaCheck
     try {
       meta = await this.checkMeta()
-      if (meta === 'mismatch') {
-        this.unreadable = []
-        this.reportFailure(new OtherKeyError())
+      this.metaVerdict = meta
+      if (meta === 'mismatch' || meta === 'missing') {
+        this.unreadable = new Map()
+        this.reportFailure(meta === 'missing' ? new MissingMetaError() : new OtherKeyError())
         return
       }
     } catch (error) {
       if (this.locked) return
+      if (error instanceof NewerSchemaError) this.outdated = true
       this.reportFailure(error)
       return
     }
     // Leespas: alle bestanden ophalen en controleren vóór er iets geschreven wordt. Een bestand van een
     // nieuwere schemaversie (geschreven door een nieuwere app) betekent: niets naar GitHub schrijven.
     const prefetched = new Map<CollectionPath, RemoteFile | null>()
-    const unreadable: CollectionPath[] = []
-    let reason = ''
+    const unreadable = new Map<CollectionPath, string>()
+    let decryptFailures = 0
     let readable = 0
     for (const path of COLLECTION_PATHS) {
       if (this.locked) return
@@ -241,16 +255,16 @@ export class Store {
         }
         if (error instanceof DecryptError || error instanceof InvalidDataError) {
           // Onleesbaar bestand: dit pad wordt overgeslagen (geen PUT), de andere gaan door; het pad wordt gemeld.
-          unreadable.push(path)
-          reason = reason || error.name
+          unreadable.set(path, error.name)
+          if (error instanceof DecryptError) decryptFailures++
         } else failure = error
       }
     }
     if (this.locked) return
     // Zonder bruikbare meta-controle: geen enkel bestand leesbaar en meerdere niet te ontsleutelen is vrijwel zeker
     // een andere hoofdsleutel. Dan ook geen nieuwe bestanden aanmaken.
-    if (meta === 'unknown' && readable === 0 && unreadable.length >= 2 && reason === 'DecryptError') {
-      this.unreadable = []
+    if (meta === 'unknown' && readable === 0 && decryptFailures >= 2) {
+      this.unreadable = new Map()
       this.reportFailure(new OtherKeyError())
       return
     }
@@ -273,7 +287,7 @@ export class Store {
       }
     }
     if (this.locked) return
-    if (failure === null && unreadable.length > 0) failure = new UnreadableFileError(unreadable, reason)
+    if (failure === null && unreadable.size > 0) failure = new UnreadableFileError([...unreadable.keys()], [...new Set(unreadable.values())].join(', '))
     if (failure === null) {
       this.syncedOnce = true
       this.setStatus(this.idleStatus())
@@ -283,29 +297,35 @@ export class Store {
   }
 
   /**
-   * Hoort meta.json.enc op GitHub bij deze hoofdsleutel? match: gelijk aan de lokale meta of gebonden via het
-   * check-veld; mismatch: het check-veld hoort bij een andere sleutel; unknown: geen meta, onleesbaar of een oudere
-   * meta zonder check-veld.
+   * Hoort meta.json.enc op GitHub bij deze hoofdsleutel? match: gebonden via het check-veld; mismatch: het check-veld
+   * hoort bij een andere sleutel; missing: geen meta op GitHub terwijl dit apparaat een logboek heeft (repo leeg of
+   * opnieuw aangemaakt); unknown: onleesbaar, een oudere meta zonder check-veld, of een apparaat zonder lokale meta.
+   * De lokale meta zegt niets over de sleutel in het geheugen; alleen het check-veld telt.
    */
   private async checkMeta(): Promise<MetaCheck> {
     const remote = await this.client.getFile(META_PATH)
-    if (!remote) return 'unknown'
+    if (!remote) return (await Store.loadMeta(this.db).catch(() => null)) ? 'missing' : 'unknown'
     let meta: Meta
     try {
       meta = parseMeta(new TextDecoder().decode(remote.content))
-    } catch {
+    } catch (error) {
+      if (error instanceof NewerSchemaError) throw error
       return 'unknown'
     }
-    const local = await Store.loadMeta(this.db).catch(() => null)
-    if (local && serializeMeta(local) === serializeMeta(meta)) return 'match'
     if (await verifyMetaCheck(meta, this.masterKey)) return 'match'
     return meta.check ? 'mismatch' : 'unknown'
   }
 
-  /** Paden die op GitHub onleesbaar waren én hier een lokale kopie hebben (die te herstellen zijn). */
+  /**
+   * Paden die te herstellen zijn: op GitHub niet te ontsleutelen (DecryptError), meta.json.enc bevestigd bij deze
+   * sleutel, en hier een lokale kopie. Een bestand dat wel ontsleutelt maar ongeldig is, wordt nooit overschreven.
+   */
   async repairable(): Promise<CollectionPath[]> {
+    if (this.outdated || this.metaVerdict !== 'match') return []
     const result: CollectionPath[] = []
-    for (const path of this.unreadable) if (await getObject(this.db, path)) result.push(path)
+    for (const [path, reason] of this.unreadable) {
+      if (reason === 'DecryptError' && (await getObject(this.db, path))) result.push(path)
+    }
     return result
   }
 
@@ -315,18 +335,31 @@ export class Store {
    */
   async repair(path: CollectionPath): Promise<void> {
     this.assertUnlocked()
-    if (!this.unreadable.includes(path) || !(await getObject(this.db, path))) return
-    const records = this.collections.get(path) ?? []
+    if (!(await this.repairable()).includes(path)) return
     for (let attempt = 0; attempt < 2; attempt++) {
+      // Vlak voor het schrijven opnieuw kijken: misschien heeft een ander apparaat het bestand al hersteld.
       const remote = await this.client.getFile(path)
+      if (remote) {
+        try {
+          await decryptRecords(this.masterKey, path, remote.content)
+          break
+        } catch (error) {
+          if (error instanceof NewerSchemaError) {
+            this.outdated = true
+            throw error
+          }
+          if (!(error instanceof DecryptError)) throw error
+        }
+      }
       try {
+        const records = this.collections.get(path) ?? []
         await this.client.putFile(path, await encryptRecords(this.masterKey, path, records), remote?.sha ?? null)
         break
       } catch (error) {
         if (!(error instanceof ConflictError) || attempt === 1) throw error
       }
     }
-    this.unreadable = this.unreadable.filter((p) => p !== path)
+    this.unreadable.delete(path)
     await this.sync()
   }
 
@@ -339,6 +372,7 @@ export class Store {
     else if (failure instanceof GithubError) this.setStatus({ kind: 'error', code: 'github', github: failure.code, count })
     else if (failure instanceof UnreadableFileError) this.setStatus({ kind: 'error', code: 'unreadable', count, paths: failure.paths })
     else if (failure instanceof OtherKeyError) this.setStatus({ kind: 'error', code: 'otherKey', count })
+    else if (failure instanceof MissingMetaError) this.setStatus({ kind: 'error', code: 'noMeta', count })
     else this.setStatus({ kind: 'error', code: 'failed', count })
   }
 

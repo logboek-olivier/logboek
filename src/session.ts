@@ -23,6 +23,7 @@ import { ConflictError, GithubClient, GithubError } from './storage/github'
 import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKey, type Db } from './storage/idb'
 import { Store } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
+import { COLLECTION_PATHS } from './model/types'
 
 // Levenscyclus van een sessie: eerste keer (nieuw of koppelen), ontgrendelen, vergrendelen.
 // Beveiligingsregel 10: vergrendelen na 5 minuten zonder gebruik. Binnen die 5 minuten staat de niet-exporteerbare
@@ -181,7 +182,7 @@ export class Session {
   /** Alleen zinvol als de huidige wachtzin klopt; de nieuwe meta gaat naar GitHub en naar IndexedDB. */
   async changePassphrase(current: string, next: string): Promise<void> {
     const db = this.requireDb()
-    const { client } = this.requireUnlocked()
+    const { client, masterKey } = this.requireUnlocked()
     const generation = this.generation
     for (let attempt = 0; attempt < 2; attempt++) {
       const stored = await getObject(db, META_PATH)
@@ -200,7 +201,10 @@ export class Session {
         if (!(error instanceof ConflictError) || attempt === 1) throw error
         const remote = await client.getFile(META_PATH)
         if (!remote) throw error
-        await Store.storeMeta(db, parseMeta(new TextDecoder().decode(remote.content)), remote.sha)
+        // Alleen een meta overnemen die aan deze hoofdsleutel gebonden is (zie refreshMeta).
+        const theirs = parseMeta(new TextDecoder().decode(remote.content))
+        if (!(await verifyMetaCheck(theirs, masterKey))) throw error
+        await Store.storeMeta(db, theirs, remote.sha)
       }
     }
   }
@@ -319,6 +323,11 @@ export class Session {
     const access = await client.checkAccess()
     if ((await client.getFile(META_PATH)) !== null) {
       throw new SetupError('error.repoHasLogbook')
+    }
+    // Databestanden zonder meta.json.enc (bijvoorbeeld van een apparaat met een oude sleutel): niet opnieuw beginnen
+    // in dezelfde repo, anders staan er bestanden onder twee sleutels door elkaar.
+    for (const path of COLLECTION_PATHS) {
+      if ((await client.getFile(path)) !== null) throw new SetupError('error.repoHasFiles')
     }
     return access
   }

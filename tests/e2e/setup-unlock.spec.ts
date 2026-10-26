@@ -74,6 +74,17 @@ test('nieuw logboek weigert een repo die al een logboek bevat', async ({ page })
   await expect(page.getByRole('alert')).toContainText('bevat al een logboek')
 })
 
+test('nieuw logboek weigert een repo met databestanden zonder meta.json.enc (bijvoorbeeld van een oude sleutel)', async ({ page }) => {
+  const github = await mockGithub(page)
+  github.files.set('legs.json.enc', { sha: 'sha-oud', content: 'AQID' })
+  await page.goto('./')
+  await page.getByRole('button', { name: 'Nieuw logboek' }).click()
+  await page.getByLabel('GitHub-token').fill(TOKEN)
+  await page.getByRole('button', { name: 'Controleren', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('databestanden zonder meta.json.enc')
+  expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
+})
+
 test('nieuw logboek in een repo zonder commits (409) en met alleen een README', async ({ browser }) => {
   for (const variant of ['leeg', 'readme'] as const) {
     const context = await browser.newContext({ viewport: { width: 360, height: 740 } })

@@ -528,6 +528,9 @@ export const nl = {
   'sync.noLocalCopy': (p: { path: string }) => `${p.path} op GitHub is niet te ontsleutelen en dit apparaat heeft geen eigen kopie. Er wordt niets gewist; een ander apparaat met een leesbare kopie kan het bestand herstellen.`,
   'sync.repaired': 'Lokale versie opgeslagen op GitHub',
   'sync.repairFailed': 'Opnieuw opslaan lukte niet',
+  'sync.noMeta': 'meta.json.enc ontbreekt op GitHub; er is niets geschreven',
+  'sync.noMetaHint': 'logboek-data bevat geen meta.json.enc, bijvoorbeeld omdat de repo opnieuw is aangemaakt. Dit apparaat schrijft niets naar GitHub en wist niets. Wis de sitegegevens en maak een nieuw logboek of koppel een bestaand logboek.',
+  'error.repoHasFiles': 'Deze repo bevat al databestanden zonder meta.json.enc. Maak logboek-data eerst helemaal leeg.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -102,7 +102,66 @@ describe('onleesbaar bestand op GitHub', () => {
   })
 })
 
+describe('herstellen is voorzichtig', () => {
+  it('overschrijft niet als een ander apparaat het bestand ondertussen al herstelde', async () => {
+    const github = new FakeGithub()
+    github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
+    const a = await device(github)
+    await a.store.put('plans.json.enc', plan('p1'))
+    await a.store.sync()
+    const b = await device(github)
+    await b.store.sync()
+    await b.store.put('plans.json.enc', plan('p2'))
+    await pollute(github, 'plans.json.enc')
+    await a.store.sync()
+    await b.store.sync()
+    expect(await a.store.repairable()).toEqual(['plans.json.enc'])
+    await b.store.repair('plans.json.enc')
+    const repairedSha = github.files.get('plans.json.enc')!.sha
+    // A tikt later op de (nog zichtbare) knop: het bestand is weer leesbaar, dus A schrijft zijn oudere kopie niet.
+    await a.store.repair('plans.json.enc')
+    const c = await device(github)
+    await c.store.sync()
+    expect(c.store.list('plans.json.enc').map((p) => p.id).sort()).toEqual(['p1', 'p2'])
+    expect(github.files.get('plans.json.enc')!.sha).toBe(repairedSha)
+  })
+
+  it('een bestand dat wel ontsleutelt maar ongeldig is, wordt nooit overschreven', async () => {
+    const github = new FakeGithub()
+    github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
+    const a = await device(github)
+    await a.store.put('plans.json.enc', plan('p1'))
+    await a.store.sync()
+    const { encryptObject } = await import('../src/crypto/encrypt')
+    github.write('plans.json.enc', toBase64(await encryptObject(ours.masterKey, 'plans.json.enc', utf8('{"geen":"logboek"}'))))
+    await a.store.sync()
+    expect(a.store.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable', paths: ['plans.json.enc'] })
+    expect(await a.store.repairable()).toEqual([])
+  })
+
+  it('geen herstel zonder bevestigde meta (geen meta-controle mogelijk)', async () => {
+    const github = new FakeGithub()
+    const a = await device(github, ours, false)
+    await a.store.put('plans.json.enc', plan('p1'))
+    await a.store.put('trips.json.enc', trip('t1', 'Echt'))
+    await a.store.sync()
+    await pollute(github, 'plans.json.enc')
+    await a.store.sync()
+    expect(a.store.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable' })
+    expect(await a.store.repairable()).toEqual([])
+  })
+})
+
 describe('apparaat met een andere hoofdsleutel', () => {
+  it('schrijft niets als meta.json.enc op GitHub ontbreekt terwijl dit apparaat een logboek heeft (repo opnieuw aangemaakt)', async () => {
+    const github = new FakeGithub()
+    const stale = await device(github)
+    await stale.store.put('trips.json.enc', trip('t1', 'Oud'))
+    await stale.store.sync()
+    expect(stale.store.getStatus()).toEqual({ kind: 'error', code: 'noMeta', count: 1 })
+    expect(puts(github)).toEqual([])
+  })
+
   it('schrijft niets naar GitHub als meta.json.enc bij een andere sleutel hoort', async () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))

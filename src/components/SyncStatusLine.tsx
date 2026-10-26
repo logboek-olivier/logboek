@@ -28,7 +28,9 @@ export function SyncStatusLine({ store }: { store: Store }) {
   return (
     <>
       <StatusButton store={store} status={status} />
-      {status.kind === 'error' && (status.code === 'unreadable' || status.code === 'otherKey') && <SyncProblem store={store} status={status} />}
+      {status.kind === 'error' && (status.code === 'unreadable' || status.code === 'otherKey' || status.code === 'noMeta') && (
+        <SyncProblem store={store} status={status} />
+      )}
     </>
   )
 }
@@ -85,8 +87,8 @@ function SyncProblem({ store, status }: { store: Store; status: Extract<SyncStat
 
   return (
     <div className="notice sync-problem" role="alert">
-      {status.code === 'otherKey' ? (
-        <p>{t('sync.otherKeyHint')}</p>
+      {status.code === 'otherKey' || status.code === 'noMeta' ? (
+        <p>{t(status.code === 'otherKey' ? 'sync.otherKeyHint' : 'sync.noMetaHint')}</p>
       ) : (
         paths.map((path) =>
           repairable?.includes(path) ? (
