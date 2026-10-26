@@ -1,6 +1,6 @@
 # Logboek
 
-Persoonlijke app van Olivier voor zijn zeiljaar: zeillogboek, zeilgeld, documentenkluis, later skills, doelen en overige financiën.
+Persoonlijke app van Olivier voor zijn zeiljaar: zeillogboek, zeilgeld, trainingsapp als zeilinstructeur (cursussen, studenten, weekplanning), later documentenkluis, skills, doelen en overige financiën.
 Eén gebruiker. Gratis. Alleen GitHub. Alles versleuteld. Werkt offline op zee.
 
 Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code af van dit bestand, dan is de code fout, tenzij Olivier dit bestand aanpast.
@@ -28,7 +28,7 @@ Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code
 | Automatisering | GitHub Actions: `deploy.yml`, `test.yml`. Later in `logboek-data`: koersen, vervaldatum, back-up |
 | Tests | Vitest + Playwright |
 | Ontwikkelomgeving | Windows, VS Code, Claude Code. Scripts moeten werken in PowerShell (geen bash-only scripts in `package.json`) |
-| Taal | Nederlands in de UI. Engelse vaktermen (skipper, Yacht Week, tide) en Engelstalige reviews blijven Engels |
+| Taal | Nederlands en Engels. Eigen vertaalsysteem in `src/i18n/` (`nl.ts` is de bron met getypeerde sleutels; `en.ts` moet elke sleutel hebben, anders faalt `tsc`; een test controleert beide talen). Getallen en datums volgen de taal (nl-NL / en-GB). Standaard de taal van de telefoon; keuze per apparaat in Instellingen → Taal (`localStorage`, niet gesynct). Engelse vaktermen (skipper, Yacht Week, tide) blijven ook in het Nederlands Engels |
 
 Geen Supabase, geen Vercel, geen Cloudflare, geen externe API's in de app, geen analytics, geen fonts van buiten.
 
@@ -81,8 +81,11 @@ logboek-data/
   legs.json.enc
   transactions.json.enc
   settings.json.enc
-  documents/index.json.enc   # volgende sessie
-  documents/<uuid>.bin       # volgende sessie
+  curricula.json.enc     # alleen eigen en bewerkte cursussen; meegeleverde staan in de code
+  students.json.enc
+  plans.json.enc
+  documents/index.json.enc   # release 3
+  documents/<uuid>.bin       # release 3
 ```
 
 - **Bron van waarheid:** `logboek-data` op GitHub. Elk apparaat heeft een versleutelde kopie in IndexedDB plus een outbox.
@@ -117,11 +120,31 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 `id, date, kind (fooi|loon|kosten|investering), amount (positief getal), currency (EUR|USD|GBP|…), amountEur? , source (yacht-week|sailing-virgins|delivery|overig), tripId?, note?, updatedAt, deletedAt`
 - `fooi` en `loon` zijn inkomsten; `kosten` en `investering` uitgaven. Richting volgt uit `kind`, niet uit het teken.
 - `investering` = uitgaven die het zeiljaar mogelijk maken (cursussen, examens, uitrusting).
-- `amountEur`: bij EUR gelijk aan `amount`. Bij andere valuta leeg tot de koersen-Action bestaat (release 3); het overzicht toont die bedragen dan apart per valuta, nooit omgerekend met een verzonnen koers.
+- `amountEur`: bij EUR gelijk aan `amount`. Bij andere valuta leeg tot de koersen-Action bestaat (release 4); het overzicht toont die bedragen dan apart per valuta, nooit omgerekend met een verzonnen koers.
 - `tripId` wordt automatisch gezet als de datum binnen een tocht valt; Olivier kiest dit niet zelf.
-- Later toe te voegen (release 3): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
+- Later toe te voegen (release 4): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
 
-### Kluis (volgende sessie)
+### Training
+
+**Curriculum** (`curricula.json.enc`, met `schemaVersion` zoals elk bestand)
+`id, body (ASA|RYA|CWO|eigen), courseCode, name {nl,en}, groups: [{id, title {nl,en}, topics: [{id, title {nl,en}, kind (theorie|praktijk), examCritical}]}], source (seed|eigen), updatedAt, deletedAt`
+- Meegeleverd in `src/model/seed-curricula.ts` met vaste id's (`seed-asa-101` …): ASA 101, 103, 104 en 114 met onderwerpen in eigen woorden (nl+en, geen officiële teksten) en de notitie "Controleer tegen de officiële ASA-standaard"; RYA (Competent Crew, Day Skipper, Coastal Skipper, Yachtmaster Offshore) en CWO (Kajuitzeilen I–III) alleen als lege structuur.
+- Een meegeleverde cursus wordt pas opgeslagen als Olivier hem bewerkt (zelfde id, `source: seed`); een tombstone verbergt hem. Alles is bewerkbaar.
+- Import en export als JSON (`format: logboek-curriculum`, delen via `navigator.share` of download). Een export bevat alleen de cursusopbouw, geen studenten; een import krijgt altijd nieuwe id's.
+
+**Student** (`students.json.enc`, regel 14)
+`id, firstName, curriculumId, level (beginner|gemiddeld|gevorderd), progress: {[topicId]: {status (nieuw|geoefend|beheerst), updatedAt}}, exam?: {date, passed, note?}, note?, startedAt?, archivedAt?, updatedAt, deletedAt`
+- `startedAt` bepaalt de week in het overzicht en telt mee als activiteit.
+- Na 12 maanden zonder activiteit (begin, examen, voortgang of wijziging) automatisch gearchiveerd, pas na een geslaagde sync. Het archief is te wissen.
+- Wissen maakt een tombstone met alleen `id` en tijden. Oudere versies blijven versleuteld in de git-geschiedenis van `logboek-data` tot die repo opnieuw wordt aangemaakt.
+- Groepsafvinken verlaagt nooit een status.
+
+**WeekPlan** (`plans.json.enc`)
+`id, title, startDate, dayCount, tripId?, groups: [{id, name, curriculumId, level, studentIds}], days: [{date, blocks: [{id, slot (ochtend|middag|avond), groupIds, topicIds, location?, note?}]}], updatedAt, deletedAt`
+- Concept (`src/model/plans.ts`, zonder netwerk): theorie 's ochtends, praktijk 's middags, examenkritisch eerst, beginners gelijk verdeeld over alle lesdagen, gemiddeld/gevorderd minstens 3/4 onderwerpen per blok, laatste dag herhaling van de examenkritische onderwerpen en examen.
+- Groepen verwijzen naar studenten via id; gedeelde tekst, printweergave en "Toon aan studenten" tonen groepsnamen, nooit studentnamen of voortgang.
+
+### Kluis (release 3)
 
 **Document**
 `id, title, category (identiteit|certificaten|verzekering|reis-visa|werk-contracten|financieel|overig), issuedAt?, expiresAt?, notes?, mime, size, offline, updatedAt, deletedAt`
@@ -129,7 +152,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ### Instellingen
 
-`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort en watertype; jaardoel in nm; afstudeerdatum (later); vingerafdruk aan/uit (alleen lokaal relevant, niet gesynct).
+`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort en watertype; jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
 
 ## Import mijlenregistratie
 
@@ -151,19 +174,23 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk vandaag: **Vandaag · Zeilen · + · Geld · Instellingen**, vijf gelijke vakken met het + in het midden als ronde knop. Kluis komt erbij zodra die gebouwd is (dan schuift Instellingen naar het tandwiel op Vandaag).
+Onderste balk: **Vandaag · Training · + · Zeilen · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
-3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Kaarten met kleine grafieken: nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`), nm totaal (nm per maand), fooi afgelopen 30 dagen (EUR, plus andere valuta apart; fooi per week), zeilgeld deze maand (inkomsten en kosten per maand), laatste tocht (naam, datum, nm). Later meer kaarten (vervaldatum, skills, maanden te gaan); die komen pas als de data bestaat.
+3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Kaarten: planning van vandaag uit de lopende weekplanning (alleen als er vandaag iets gepland is; tik op een onderwerp = geoefend voor de hele groep), nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`), nm totaal (nm per maand), dagen tot de volgende vervaldatum (nu de token; de kluis voegt documenten toe), laatste tocht (naam, datum, nm).
 4. **Snel toevoegen (+):** tabs **Fooi · Kosten · Dag**.
    - Fooi: bedrag (groot numeriek toetsenbord), bron, valuta. Datum vandaag, aanpasbaar via een klein datumveld.
    - Kosten: bedrag, omschrijving, soort (kosten/investering). Bron en valuta laatst gebruikt.
-   - Dag: naar (plaats), nm, watertype (zee/getij/binnen). Van = vorige "naar", boot/rol/tocht = laatst gebruikt, datum vandaag. "Meer" klapt de overige velden open (nachturen, wind, nieuwe tocht).
-   - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging. Soort (fooi/loon, kosten/investering), watertype, bron, valuta, boot en rol onthouden de laatste waarde. Het bedragveld opent direct met het numerieke toetsenbord.
-5. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). Daaronder tochten per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (Excel of CSV).
-6. **Geld:** saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (release 3).
-7. **Instellingen** (vijfde vak van de onderste balk): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, Over (versie uit `package.json`, bouwdatum, korte commit-hash).
+   - Dag: naar (plaats), nm, watertype (zee/getij/binnen). Van = vorige "naar", boot/rol/tocht = laatst gebruikt, datum vandaag. "Meer velden" klapt de overige velden open (nachturen, wind, nieuwe tocht).
+   - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging. De bevestiging na fooi of kosten noemt geen bedrag. Soort (fooi/loon, kosten/investering), watertype, bron, valuta, boot en rol onthouden de laatste waarde. Het bedragveld opent direct met het numerieke toetsenbord.
+5. **Training:** drie tabbladen; opent op Planning als er een lopende of komende planning is, anders op Studenten.
+   - **Planning:** lijst van planningen (lopend en komend, daarna afgelopen). Nieuwe planning in drie schermen: eerste dag, aantal dagen (1–14), titel en tocht (optioneel, automatisch de tocht waar de startdatum in valt) → groepen (naam, cursus, niveau, studenten optioneel) → concept, dan opslaan. Bewerken met tikken: blok openen, onderwerpen erbij of eraf, blok naar een andere dag of ander dagdeel, plaats en notitie; blok toevoegen per dag. "Toon aan studenten": alleen de planning volledig scherm, zonder onderbalk of andere gegevens, terug met één knop. "Delen": exporttaal los van de app-taal; tekst via `navigator.share` (WhatsApp, anders klembord) en PDF via de printfunctie met eigen printopmaak.
+   - **Studenten:** per week of per cursus, met voortgangsbalk en het aantal examenkritische onderwerpen dat nog op "nieuw" staat. Checklist per student met grote vinkvakken (één tik = volgende status), examenkritische onderwerpen op "nieuw" bovenaan, voortgangsbalk per groep, "Alles geoefend/beheerst" per groep. "Groep afvinken": één onderwerp voor meerdere studenten tegelijk. Archief met terugzetten en wissen.
+   - **Cursussen:** per bond, met import (JSON) en per cursus bewerken (groepen en onderwerpen toevoegen, wijzigen, verplaatsen, examenkritisch) en delen.
+6. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). Daaronder tochten per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (Excel of CSV).
+7. **Geld** (onder Meer): saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).
+8. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum, korte commit-hash).
 
 Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
 
@@ -180,16 +207,19 @@ logboek/
   public/            manifest-iconen, bip39-nl/en woordenlijst
   src/
     crypto/          keys.ts, encrypt.ts, passphrase.ts, recovery.ts, webauthn.ts
+    i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
-    model/           types.ts, derive.ts, money.ts, settings.ts, schema.ts, edit.ts
+    model/           types.ts, derive.ts, money.ts, settings.ts, schema.ts, edit.ts, expiry.ts,
+                     curricula.ts, seed-curricula.ts, students.ts, plans.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
-    screens/         Unlock, Setup, Home, Today, Sailing, Money, QuickAdd, Settings
-    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, Sheet, EditSheets, Icon, Toast, …)
+    screens/         Unlock, Setup, Home, Today, Training, Planning, Students, Sailing, Money, QuickAdd, More, Settings
+    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, Sheet, EditSheets, CurriculumSheets, Icon, Toast, …)
     session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10)
     errors.ts        foutdetails zonder inhoud
     app.css          ontwerpsysteem
-  tests/             vitest (crypto, sync, session, derive, import, xlsx, edit, errors) + playwright (setup, unlock, sessie,
-                     import, bewerken, schermafbeeldingen 360/412 px licht/donker)
+  tests/             vitest (crypto, sync, session, derive, import, xlsx, edit, errors, i18n, curricula, students, plans)
+                     + playwright (setup, unlock, sessie, import, bewerken, taal, navigatie, training, studenten,
+                     planning, schermafbeeldingen 360/412 px licht/donker en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
   .github/workflows/ deploy.yml (alleen vanaf main), test.yml (bij elke PR en push; uploadt schermafbeeldingen)
   scripts/           generate-fake-data.ts, fake-xlsx.ts, generate-icons.mjs
@@ -215,16 +245,17 @@ logboek/
 
 Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt niet gebouwd.
 
-1. **Bruikbaar (nu).** Basis afgerond op 25 oktober 2026 (skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag, Instellingen, vingerafdruk, PWA op telefoon; in gebruik voor mijlen en zeilgeld). Daarbovenop: import van Excel en CSV ook op Android, sessie die verversen en wisselen van app overleeft, vast ontwerpsysteem met iconen en grafieken, bewerken met ongedaan maken, onderhoud vanaf de telefoon (versie, foutdetails).
-2. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
-3. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, koersen-Action, aandelenkoersen, scenario's.
-4. **Doelen en skills.** Doelen, metingen, ademtrainer, skills, voortgang Yachtmaster/ASA.
-5. **Carrière.** Sollicitaties en netwerk, status andere projecten.
-6. **Wow.** Zeiljaar Wrapped, weekreview, zeil-CV, routekaart (GPS-logboek), horloge (Samsung Galaxy Watch 7) en Health Connect. Een zeil-CV als publieke pagina mag niet als tweede Pages-site in organisatie `logboek-olivier` (regel 13); die komt dan buiten deze organisatie, of als export die Olivier zelf deelt.
+1. **Bruikbaar (gedaan).** Basis afgerond op 25 oktober 2026 (skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag, Instellingen, vingerafdruk, PWA op telefoon; in gebruik voor mijlen en zeilgeld). Daarbovenop: import van Excel en CSV ook op Android, sessie die verversen en wisselen van app overleeft, vast ontwerpsysteem met iconen en grafieken, bewerken met ongedaan maken, onderhoud vanaf de telefoon (versie, foutdetails).
+2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), onderbalk met Training en Meer en Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen.
+3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
+4. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, koersen-Action, aandelenkoersen, scenario's.
+5. **Doelen en skills.** Doelen, metingen, ademtrainer, skills, voortgang Yachtmaster/ASA.
+6. **Carrière.** Sollicitaties en netwerk, status andere projecten.
+7. **Wow.** Zeiljaar Wrapped, weekreview, zeil-CV, routekaart (GPS-logboek), horloge (Samsung Galaxy Watch 7) en Health Connect. Een zeil-CV als publieke pagina mag niet als tweede Pages-site in organisatie `logboek-olivier` (regel 13); die komt dan buiten deze organisatie, of als export die Olivier zelf deelt.
 
 ## Schrijfstijl in de app
 
-- Nederlands, zakelijk, kort. Geen uitroeptekens, geen "Gefeliciteerd!", geen AI-achtige volzinnen.
+- Nederlands, zakelijk, kort. Geen uitroeptekens, geen "Gefeliciteerd!", geen AI-achtige volzinnen. Engels in dezelfde stijl (British English).
 - Knoppen: werkwoord eerst ("Opslaan", "Importeren").
 - Geen vage verwijzingen ("dit", "hier"); benoem wat bedoeld wordt.
-- Getallen: Nederlandse notatie (1.240 nm, € 1.250,50). Zeemijlen als `nm`.
+- Getallen: Nederlandse notatie (1.240 nm, € 1.250,50); in het Engels Britse notatie (1,240 nm, €1,250.50). Zeemijlen als `nm`.
