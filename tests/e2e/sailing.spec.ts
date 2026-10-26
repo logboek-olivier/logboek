@@ -13,8 +13,8 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   await createNewLogbook(page)
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Zeilen' }).click()
-  await expect(page.getByRole('heading', { name: 'Zeilen' })).toBeVisible()
+  await page.getByRole('button', { name: 'Logboek' }).click()
+  await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture.pathname)
 
   await expect(page.getByRole('heading', { name: 'Controle import' })).toBeVisible()
@@ -28,7 +28,7 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   await expectNoHorizontalOverflow(page)
 
   await page.getByRole('button', { name: 'Importeren' }).click()
-  await expect(page.getByRole('heading', { name: 'Zeilen' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   const trips = page.locator('.trip')
   await expect(trips).toHaveCount(3)
   await expect(trips.first()).toContainText('Cursus binnenwater')
@@ -62,7 +62,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Zeilen' }).click()
+  await page.getByRole('button', { name: 'Logboek' }).click()
 
   // Geen accept-filter: Android en Google Drive grijzen anders bestanden uit.
   await expect(page.getByLabel('Mijlenbestand')).not.toHaveAttribute('accept')
@@ -93,7 +93,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
 test('een onleesbaar bestand geeft een melding in gewone taal', async ({ page }) => {
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Zeilen' }).click()
+  await page.getByRole('button', { name: 'Logboek' }).click()
   await page.getByLabel('Mijlenbestand').setInputFiles({ name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]) })
   await expect(page.getByRole('alert')).toHaveText('Dit is geen CSV- of Excel-bestand.')
   await page

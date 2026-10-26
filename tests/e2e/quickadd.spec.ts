@@ -27,7 +27,7 @@ test('Toevoegen: tabs Dag · Fooi · Kosten, opent op Dag; zonder boot geen blok
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Dag opgeslagen')
 
-  await page.getByRole('navigation').getByRole('button', { name: 'Zeilen', exact: true }).click()
+  await page.getByRole('navigation').getByRole('button', { name: 'Logboek', exact: true }).click()
   await page.locator('.trip').first().getByRole('button').first().click()
   await page.locator('.leg-button').first().click()
   await expect(page.getByRole('dialog')).toBeVisible()

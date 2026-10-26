@@ -11,21 +11,25 @@ import { BackToMore, More, type MoreScreen } from './More'
 import { QuickAdd } from './QuickAdd'
 import { Sailing } from './Sailing'
 import { Settings } from './Settings'
+import { StudentArchive } from './StudentArchive'
+import { ThisWeek } from './ThisWeek'
 import { Today } from './Today'
-import { Training } from './Training'
+import { Courses } from './Courses'
 
-// Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Training · + · Zeilen · Meer.
-// Geld en Instellingen zitten onder Meer.
+// Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze week · + · Logboek · Meer.
+// Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
 
 type Screen = Tab | MoreScreen
 
 const SCREEN_NAMES: Record<Screen, string> = {
   vandaag: 'Vandaag',
-  training: 'Training',
+  week: 'Deze week',
   toevoegen: 'Toevoegen',
-  zeilen: 'Zeilen',
+  logboek: 'Logboek',
   meer: 'Meer',
   geld: 'Geld',
+  cursussen: 'Cursussen',
+  archief: 'Studentenarchief',
   instellingen: 'Instellingen',
 }
 
@@ -57,7 +61,7 @@ export function Home({ store }: { store: Store }) {
     select('vandaag')
   }
 
-  const activeTab: Tab = screen === 'geld' || screen === 'instellingen' ? 'meer' : screen
+  const activeTab: Tab = screen === 'geld' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
 
   return (
     <main className="app with-bar">
@@ -65,14 +69,26 @@ export function Home({ store }: { store: Store }) {
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={() => select('toevoegen')} />
       )}
-      {screen === 'training' && <Training store={store} notify={notify} />}
-      {screen === 'zeilen' && <Sailing store={store} notify={notify} />}
+      {screen === 'week' && <ThisWeek store={store} notify={notify} />}
+      {screen === 'logboek' && <Sailing store={store} notify={notify} />}
       {screen === 'toevoegen' && <QuickAdd store={store} onDone={done} />}
       {screen === 'meer' && <More onOpen={select} />}
       {screen === 'geld' && (
         <>
           <BackToMore onBack={() => select('meer')} />
           <Money store={store} notify={notify} onAdd={() => select('toevoegen')} />
+        </>
+      )}
+      {screen === 'cursussen' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Courses store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'archief' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <StudentArchive store={store} notify={notify} />
         </>
       )}
       {screen === 'instellingen' && (

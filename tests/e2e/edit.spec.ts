@@ -7,7 +7,7 @@ test.use({ viewport: { width: 360, height: 740 } })
 const fixture = new URL('../fixtures/mijlen-nep.xlsx', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
 async function importFixture(page: Page) {
-  await page.getByRole('button', { name: 'Zeilen' }).click()
+  await page.getByRole('button', { name: 'Logboek' }).click()
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture)
   await page.getByRole('button', { name: 'Importeren' }).click()
   await expect(page.locator('.trip')).toHaveCount(3)

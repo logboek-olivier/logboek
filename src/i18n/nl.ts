@@ -21,7 +21,6 @@ export const nl = {
 
   // Navigatie
   'nav.today': 'Vandaag',
-  'nav.sailing': 'Zeilen',
   'nav.add': 'Toevoegen',
   'nav.money': 'Geld',
   'nav.settings': 'Instellingen',
@@ -330,7 +329,6 @@ export const nl = {
   'setup.usePassphrase': 'Wachtzin gebruiken',
 
   // Navigatie (release 2)
-  'nav.training': 'Training',
   'nav.more': 'Meer',
   'more.moneyHint': 'Zeilgeld, fooi en kosten',
   'more.settingsHint': 'Vergrendelen, taal, wachtzin, token',
@@ -387,7 +385,7 @@ export const nl = {
   'curriculum.noTopicsShort': 'nog geen onderwerpen',
   'curriculum.topicCount': (p: { n: number; critical: number }) =>
     `${p.n} ${plural(p.n, 'onderwerp', 'onderwerpen')}${p.critical > 0 ? ` · ${p.critical} examenkritisch` : ''}`,
-  'curriculum.backToTraining': 'Terug naar Training',
+  'curriculum.backToCourses': 'Terug naar Cursussen',
 
   // Studenten
   'curriculum.courses': 'Cursussen',
@@ -575,6 +573,28 @@ export const nl = {
   'organisation.yacht-week': 'Yacht Week',
   'organisation.eigen': 'Eigen',
   'organisation.overig': 'Overig',
+
+  // Deze week en navigatie
+  'nav.week': 'Deze week',
+  'nav.logbook': 'Logboek',
+  'nav.studentArchive': 'Studentenarchief',
+  'more.coursesHint': 'ASA, RYA, CWO en eigen cursussen beheren',
+  'more.archiveHint': 'Studenten zonder week en gearchiveerde studenten',
+  'today.logDay': 'Dag van vandaag loggen',
+  'plan.emptyWeek': 'Nog geen planning voor deze week.',
+  'students.emptyWeek': 'Nog geen studenten in deze week. Voeg deelnemers met een cursus toe, of een student.',
+  'students.noneWithoutWeek': 'Geen studenten zonder week.',
+  'students.withoutWeek': 'Zonder week',
+  'week.noParticipants': 'Nog geen deelnemers.',
+  'week.addParticipants': 'Deelnemers toevoegen',
+  'week.checklists': 'Checklists',
+  'week.noDays': 'Nog geen dagen in deze week.',
+  'week.money': 'Fooien en kosten',
+  'week.showAmounts': 'Toon bedragen',
+  'week.hideAmounts': 'Verberg bedragen',
+  'week.amountsHidden': (p: { n: number }) => `${p.n} ${plural(p.n, 'transactie', 'transacties')} in deze week; bedragen verborgen.`,
+  'week.income': 'Inkomsten',
+  'week.costs': 'Kosten',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

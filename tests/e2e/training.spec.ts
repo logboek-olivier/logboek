@@ -1,17 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
-test('Training: ASA-cursussen met notitie, onderwerp toevoegen en examenkritisch maken, RYA vullen, eigen cursus, delen en importeren', async ({ page }) => {
+test('Cursussen (onder Meer): ASA-cursussen met notitie, onderwerp toevoegen en examenkritisch maken, RYA vullen, eigen cursus, delen en importeren', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('navigation').getByRole('button', { name: 'Training', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Training', exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: 'Cursussen' }).click()
+  await openMore(page, 'Cursussen')
+  await expect(page.getByRole('heading', { name: 'Cursussen', exact: true })).toBeVisible()
   for (const name of ['ASA 101 Basic Keelboat Sailing', 'ASA 103 Basic Coastal Cruising', 'ASA 104 Bareboat Cruising', 'ASA 114 Cruising Catamaran', 'RYA Day Skipper']) {
     await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
   }
@@ -48,7 +47,7 @@ test('Training: ASA-cursussen met notitie, onderwerp toevoegen en examenkritisch
   expect(json).toContain('Nepknoop leggen')
 
   // RYA Day Skipper: leeg, zelf een groep en onderwerp toevoegen.
-  await page.getByRole('button', { name: 'Terug naar Training' }).click()
+  await page.getByRole('button', { name: 'Terug naar Cursussen' }).click()
   await page.getByRole('button', { name: /RYA Day Skipper/ }).click()
   await page.getByRole('button', { name: 'Groep toevoegen' }).click()
   await page.getByLabel('Groep (Nederlands)').fill('Navigatie')
@@ -57,14 +56,14 @@ test('Training: ASA-cursussen met notitie, onderwerp toevoegen en examenkritisch
   await page.getByLabel('Onderwerp (Nederlands)').fill('Koers met stroom')
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Koers met stroom')).toBeVisible()
-  await page.getByRole('button', { name: 'Terug naar Training' }).click()
+  await page.getByRole('button', { name: 'Terug naar Cursussen' }).click()
   await expect(page.getByRole('button', { name: /RYA Day Skipper/ })).toContainText('1 onderwerp')
 
   // Import van het gedeelde bestand: een nieuwe eigen cursus naast het origineel.
   await page.getByLabel('Curriculum-bestand').setInputFiles({ name: 'asa-101.json', mimeType: 'application/json', buffer: Buffer.from(json) })
   await expect(page.locator('.toast')).toHaveText('Cursus geïmporteerd')
   await expect(page.getByText('Nepknoop leggen')).toBeVisible()
-  await page.getByRole('button', { name: 'Terug naar Training' }).click()
+  await page.getByRole('button', { name: 'Terug naar Cursussen' }).click()
   await expect(page.getByRole('button', { name: /ASA 101/ })).toHaveCount(2)
 
   // Ongeldig bestand: melding in gewone taal.

@@ -28,19 +28,20 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   const github = await mockGithub(page)
   await createNewLogbook(page)
   const nav = page.getByRole('navigation')
-  await nav.getByRole('button', { name: 'Training', exact: true }).click()
+  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
 
-  // Eén student, zodat afvinken iets vastlegt.
-  await page.getByRole('button', { name: 'Student toevoegen' }).click()
-  await page.getByLabel('Voornaam').fill('Nepanna')
-  await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  // Een week (training geven) met één deelnemer met cursus, zodat afvinken iets vastlegt.
+  await page.getByRole('button', { name: 'Nieuwe week starten' }).click()
+  await page.getByRole('dialog').getByLabel('Deelnemer 1', { exact: true }).fill('Nepanna')
+  await page.getByRole('dialog').getByRole('combobox', { name: 'Cursus deelnemer 1' }).selectOption('seed-asa-101')
+  await page.getByRole('dialog').getByRole('button', { name: 'Week starten' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
-  // Stap 1: dagen.
-  await page.getByRole('tab', { name: 'Planning' }).click()
-  await expect(page.getByText('Nog geen planning.', { exact: false })).toBeVisible()
+  // Stap 1: dagen (voorgevuld met de week).
+  await expect(page.getByText('Nog geen planning voor deze week.')).toBeVisible()
   await page.getByRole('button', { name: 'Nieuwe planning' }).click()
   await expect(page.getByText('Stap 1 van 3')).toBeVisible()
+  await expect(page.getByLabel('Aantal dagen')).toHaveValue('7')
   await page.getByLabel('Aantal dagen').fill('3')
   await page.getByLabel('Titel').fill('Nepweek zeilschool')
   await expectNoHorizontalOverflow(page)
@@ -49,7 +50,7 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   // Stap 2: groepen.
   await expect(page.getByText('Stap 2 van 3')).toBeVisible()
   await expect(page.getByLabel('Naam van de groep')).toHaveValue('Groep A')
-  await page.getByLabel('Nepanna').check()
+  await expect(page.getByLabel('Nepanna')).toBeChecked()
   await page.getByRole('button', { name: 'Groep toevoegen' }).click()
   const second = page.locator('.plan-group').nth(1)
   await expect(second.getByLabel('Naam van de groep')).toHaveValue('Groep B')
@@ -136,9 +137,9 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   await page.locator('.toast').getByRole('button', { name: 'Ongedaan maken' }).click()
   await expect(card.getByRole('button', { name: /tik om af te vinken/ }).first()).toBeVisible()
 
-  // Training opent nu op Planning.
-  await nav.getByRole('button', { name: 'Training', exact: true }).click()
-  await expect(page.getByRole('tab', { name: 'Planning' })).toHaveAttribute('aria-selected', 'true')
+  // Deze week toont de planning bij de week.
+  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Nepweek zeilschool/ })).toBeVisible()
 
   await nav.getByRole('button', { name: 'Vandaag', exact: true }).click()
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })

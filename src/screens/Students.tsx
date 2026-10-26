@@ -28,7 +28,8 @@ import {
   withStatus,
   type StudentInput,
 } from '../model/students'
-import { STUDENT_LEVELS, todayIso, type Curriculum, type Student, type StudentLevel, type Topic, type TopicStatus } from '../model/types'
+import { STUDENT_LEVELS, todayIso, type Curriculum, type Student, type StudentLevel, type Topic, type TopicStatus, type Trip } from '../model/types'
+import { addParticipant, studentWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
 
 // Studenten en voortgang. Eén tik op een vinkvak = volgende status. Examenkritische onderwerpen die nog op
@@ -36,19 +37,45 @@ import type { Store } from '../storage/store'
 
 type View = { kind: 'list' } | { kind: 'student'; id: string } | { kind: 'archive' }
 
-export function StudentsView({ store, notify, curricula }: { store: Store; notify: Notify; curricula: Curriculum[] }) {
+/**
+ * Studenten van één week (Deze week: checklists per deelnemer) of het studentenarchief onder Meer (studenten zonder
+ * week, plus gearchiveerde). `onDetail` meldt dat een student of het archief open staat, zodat Deze week de andere
+ * onderdelen kan verbergen.
+ */
+export type StudentScope = { kind: 'week'; week: Trip } | { kind: 'noWeek' }
+
+export function StudentsView({
+  store,
+  notify,
+  curricula,
+  scope,
+  onDetail,
+}: {
+  store: Store
+  notify: Notify
+  curricula: Curriculum[]
+  scope: StudentScope
+  onDetail?: (open: boolean) => void
+}) {
   const all = useCollection(store, 'students.json.enc')
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
   const [view, setView] = useState<View>({ kind: 'list' })
   const [grouping, setGrouping] = useState<'week' | 'course'>('week')
   const [adding, setAdding] = useState(false)
   const [ticking, setTicking] = useState(false)
   const lang = useLang()
   const archivedOnce = useRef(false)
-  const students = activeStudents(all)
+  const weekId = scope.kind === 'week' ? scope.week.id : null
+  const students = activeStudents(all).filter((s) => studentWeek(s, trips, legs) === weekId)
   const archived = archivedStudents(all)
   const courseOf = (s: Student) => curricula.find((c) => c.id === s.curriculumId)
 
-  // Automatisch archiveren na 12 maanden zonder activiteit (één keer per opening van Training), pas na een
+  useEffect(() => {
+    onDetail?.(view.kind !== 'list')
+  }, [view.kind, onDetail])
+
+  // Automatisch archiveren na 12 maanden zonder activiteit (één keer per opening van het scherm), pas na een
   // geslaagde sync: anders kan een lang offline apparaat voortgang van een ander apparaat overschrijven.
   const status = useSyncStatus(store)
   useEffect(() => {
@@ -76,12 +103,12 @@ export function StudentsView({ store, notify, curricula }: { store: Store; notif
   const groups: { key: string; title: string; students: Student[] }[] = []
   const sorted = [...students].sort((a, b) => (weekOf(b) !== weekOf(a) ? (weekOf(b) < weekOf(a) ? -1 : 1) : a.firstName.localeCompare(b.firstName)))
   for (const s of sorted) {
-    const key = grouping === 'week' ? weekOf(s) : s.curriculumId
+    const key = grouping === 'week' && scope.kind === 'noWeek' ? weekOf(s) : s.curriculumId
     let group = groups.find((g) => g.key === key)
     if (!group) {
       const course = courseOf(s)
       const title =
-        grouping === 'week'
+        grouping === 'week' && scope.kind === 'noWeek'
           ? t('students.week', { from: formatDateShort(key), to: formatDateShort(weekEnd(key)) })
           : course
             ? courseLabel(course, lang)
@@ -95,10 +122,12 @@ export function StudentsView({ store, notify, curricula }: { store: Store; notif
   return (
     <div className="stack-lg">
       <div className="row wrap">
-        <button className="btn small primary" onClick={() => setAdding(true)}>
-          <Icon icon={Plus} />
-          {t('students.add')}
-        </button>
+        {scope.kind === 'week' && (
+          <button className="btn small primary" onClick={() => setAdding(true)}>
+            <Icon icon={Plus} />
+            {t('students.add')}
+          </button>
+        )}
         {students.length > 0 && (
           <button className="btn small quiet" onClick={() => setTicking(true)}>
             <Icon icon={ListChecks} />
@@ -107,16 +136,17 @@ export function StudentsView({ store, notify, curricula }: { store: Store; notif
         )}
       </div>
       {students.length === 0 ? (
-        <Empty icon={Users}>{t('students.empty')}</Empty>
+        <Empty icon={Users}>{t(scope.kind === 'week' ? 'students.emptyWeek' : 'students.noneWithoutWeek')}</Empty>
       ) : (
         <>
-          <div className="segments small" role="radiogroup" aria-label={t('students.groupBy')}>
+          {scope.kind === 'noWeek' && <h2>{t('students.withoutWeek')}</h2>}
+          {scope.kind === 'noWeek' && <div className="segments small" role="radiogroup" aria-label={t('students.groupBy')}>
             {(['week', 'course'] as const).map((g) => (
               <button key={g} role="radio" aria-checked={grouping === g} className={`segment${grouping === g ? ' active' : ''}`} onClick={() => setGrouping(g)}>
                 {t(g === 'week' ? 'students.byWeek' : 'students.byCourse')}
               </button>
             ))}
-          </div>
+          </div>}
           {groups.map((g) => (
             <div key={g.key} className="group">
               <h3 className="group-head plain">
@@ -157,7 +187,7 @@ export function StudentsView({ store, notify, curricula }: { store: Store; notif
           ))}
         </>
       )}
-      {archived.length > 0 && (
+      {scope.kind === 'noWeek' && archived.length > 0 && (
         <button className="btn link" onClick={() => setView({ kind: 'archive' })}>
           <Icon icon={Archive} />
           {t('students.archive', { n: archived.length })}
@@ -167,9 +197,12 @@ export function StudentsView({ store, notify, curricula }: { store: Store; notif
         <StudentSheet
           student={null}
           curricula={curricula}
+          defaultStartedAt={scope.kind === 'week' ? scope.week.startDate : undefined}
           onClose={() => setAdding(false)}
           onSave={(input) =>
-            void addStudent(store, input).then(() => {
+            void addStudent(store, input, weekId ?? undefined).then(async (student) => {
+              const week = scope.kind === 'week' ? store.get('trips.json.enc').find((tr) => tr.id === scope.week.id) : undefined
+              if (week) await addParticipant(store, week, student)
               setAdding(false)
               notify(t('students.added'))
             })
@@ -400,6 +433,7 @@ function ArchiveView({
 function StudentSheet({
   student,
   curricula,
+  defaultStartedAt,
   onSave,
   onArchive,
   onDelete,
@@ -407,6 +441,7 @@ function StudentSheet({
 }: {
   student: Student | null
   curricula: Curriculum[]
+  defaultStartedAt?: string
   onSave: (input: StudentInput) => void
   onArchive?: () => void
   onDelete?: () => void
@@ -418,7 +453,7 @@ function StudentSheet({
   const [firstName, setFirstName] = useState(student?.firstName ?? '')
   const [curriculumId, setCurriculumId] = useState(student?.curriculumId ?? options[0]?.id ?? '')
   const [level, setLevel] = useState<StudentLevel>(student?.level ?? 'beginner')
-  const [startedAt, setStartedAt] = useState(student?.startedAt ?? todayIso())
+  const [startedAt, setStartedAt] = useState(student?.startedAt ?? defaultStartedAt ?? todayIso())
   const [note, setNote] = useState(student?.note ?? '')
   const [examDate, setExamDate] = useState(student?.exam?.date ?? '')
   const [passed, setPassed] = useState(student?.exam?.passed ?? true)

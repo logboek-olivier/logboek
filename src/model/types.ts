@@ -182,6 +182,8 @@ export interface Student extends SyncRecord {
   startedAt?: string
   /** jjjj-mm-dd; gearchiveerde studenten staan apart en zijn te wissen. */
   archivedAt?: string | null
+  /** De week (tocht) waar de student bij hoort. Ontbreekt bij oudere studenten: dan de week waarin startedAt valt. */
+  weekId?: string
 }
 
 // Weekplanning (release 2). Groepen verwijzen naar studenten via id; namen staan alleen in students.json.enc.

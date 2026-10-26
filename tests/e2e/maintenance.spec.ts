@@ -18,7 +18,7 @@ test('Kopieer foutdetails: versie, scherm en foutcode, zonder inhoud; niet bij e
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Zeilen' }).click()
+  await page.getByRole('button', { name: 'Logboek' }).click()
   await page
     .getByLabel('Mijlenbestand')
     .setInputFiles({ name: 'mijlen.csv', mimeType: 'text/csv', buffer: Buffer.from('Datum;Van (plaats)\n1-1-2024;Geheimhaven') })

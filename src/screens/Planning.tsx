@@ -2,14 +2,12 @@ import { CalendarPlus, Check, ChevronLeft, ChevronRight, MapPin, Pencil, Plus, P
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Notify } from '../components/EditSheets'
-import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
 import { useCollection } from '../components/useCollection'
 import { formatDateRange, formatWeekday } from '../format'
 import { getLang, LANGS, t, translate, useLang, type Lang } from '../i18n'
 import { allTopics, courseLabel, effectiveCurricula, localized } from '../model/curricula'
-import { tripForDate } from '../model/derive'
 import {
   activePlan,
   addBlock,
@@ -41,6 +39,7 @@ import {
   type BlockPatch,
 } from '../model/plans'
 import { activeStudents, saveStudents } from '../model/students'
+import { dayCountOf, planWeek, weekView } from '../model/weeks'
 import { DAY_SLOTS, STUDENT_LEVELS, todayIso, type Curriculum, type DaySlot, type PlanBlock, type PlanGroup, type Student, type Trip, type WeekPlan } from '../model/types'
 import type { Store } from '../storage/store'
 
@@ -49,18 +48,38 @@ import type { Store } from '../storage/store'
 
 type View = { kind: 'list' } | { kind: 'plan'; id: string } | { kind: 'wizard' }
 
-export function PlansView({ store, notify, curricula }: { store: Store; notify: Notify; curricula: Curriculum[] }) {
-  const plans = useCollection(store, 'plans.json.enc')
+/** Planningen van één week (Deze week). `onDetail` meldt dat de wizard of een planning open staat. */
+export function PlansView({
+  store,
+  notify,
+  curricula,
+  week,
+  onDetail,
+}: {
+  store: Store
+  notify: Notify
+  curricula: Curriculum[]
+  week: Trip
+  onDetail?: (open: boolean) => void
+}) {
+  const allPlans = useCollection(store, 'plans.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const plans = allPlans.filter((p) => planWeek(p, trips, legs) === week.id)
   const [view, setView] = useState<View>({ kind: 'list' })
   const lang = useLang()
   const today = todayIso()
+
+  useEffect(() => {
+    onDetail?.(view.kind !== 'list')
+  }, [view.kind, onDetail])
 
   if (view.kind === 'wizard') {
     return (
       <PlanWizard
         store={store}
         curricula={curricula}
+        week={week}
         onCancel={() => setView({ kind: 'list' })}
         onSaved={(id) => {
           notify(t('plan.saved'))
@@ -104,7 +123,7 @@ export function PlansView({ store, notify, curricula }: { store: Store; notify: 
           {t('plan.new')}
         </button>
       </div>
-      {current.length === 0 && past.length === 0 && <Empty icon={CalendarPlus}>{t('plan.empty')}</Empty>}
+      {current.length === 0 && past.length === 0 && <p className="muted">{t('plan.emptyWeek')}</p>}
       {current.length > 0 && <ul className="rows">{current.map(row)}</ul>}
       {past.length > 0 && (
         <div className="section">
@@ -118,20 +137,41 @@ export function PlansView({ store, notify, curricula }: { store: Store; notify: 
 
 // ---------- Wizard ----------
 
-function PlanWizard({ store, curricula, onCancel, onSaved }: { store: Store; curricula: Curriculum[]; onCancel: () => void; onSaved: (id: string) => void }) {
+/** Eén groep per cursus van de deelnemers (met hun studenten); zonder deelnemers met cursus één lege groep. */
+function groupsFromParticipants(week: Trip, courses: Curriculum[], lang: Lang): PlanGroup[] {
+  const byCourse = new Map<string, string[]>()
+  for (const p of week.participants ?? []) {
+    if (p.curriculumId && courses.some((c) => c.id === p.curriculumId)) byCourse.set(p.curriculumId, [...(byCourse.get(p.curriculumId) ?? []), p.id])
+  }
+  if (byCourse.size === 0) return [newGroup(groupName(0, lang), courses[0]?.id ?? '')]
+  return [...byCourse.entries()].map(([courseId, ids], i) => ({ ...newGroup(groupName(i, lang), courseId), studentIds: ids }))
+}
+
+/** Wizard vanuit Deze week: startdatum, aantal dagen en de week staan vast voorgevuld; groepen uit de deelnemers. */
+function PlanWizard({
+  store,
+  curricula,
+  week,
+  onCancel,
+  onSaved,
+}: {
+  store: Store
+  curricula: Curriculum[]
+  week: Trip
+  onCancel: () => void
+  onSaved: (id: string) => void
+}) {
   const lang = useLang()
-  const trips = store.list('trips.json.enc')
   const legs = store.list('legs.json.enc')
+  const view = weekView(week, legs)
   const students = activeStudents(store.get('students.json.enc'))
   const courses = curricula.filter((c) => allTopics(c).length > 0)
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [startDate, setStartDate] = useState(todayIso())
-  const [dayCount, setDayCount] = useState(5)
+  const [startDate, setStartDate] = useState(view.startDate || todayIso())
+  const [dayCount, setDayCount] = useState(view.startDate ? Math.min(MAX_DAYS, dayCountOf(view)) : 5)
   const [title, setTitle] = useState('')
-  const autoTrip = tripForDate(trips, legs, startDate)
-  const [tripId, setTripId] = useState<string | null>(null)
-  const chosenTrip = tripId === null ? (autoTrip?.id ?? '') : tripId
-  const [groups, setGroups] = useState<PlanGroup[]>(() => [newGroup(groupName(0, getLang()), courses[0]?.id ?? '')])
+  const chosenTrip = week.id
+  const [groups, setGroups] = useState<PlanGroup[]>(() => groupsFromParticipants(week, courses, getLang()))
 
   const days = Math.max(1, Math.min(MAX_DAYS, dayCount || 1))
   const finalTitle = title.trim() || t('plan.defaultTitle', { date: formatDateRange(startDate, planEnd({ startDate, dayCount: days }), lang) })
@@ -157,7 +197,7 @@ function PlanWizard({ store, curricula, onCancel, onSaved }: { store: Store; cur
     <div className="stack-lg">
       <button className="btn link back-link" onClick={step === 1 ? onCancel : () => setStep((step - 1) as 1 | 2)}>
         <Icon icon={ChevronLeft} />
-        {step === 1 ? t('nav.training') : t('common.back')}
+        {step === 1 ? t('nav.week') : t('common.back')}
       </button>
       <header className="page-header">
         <h1>{t('plan.new')}</h1>
@@ -180,7 +220,6 @@ function PlanWizard({ store, curricula, onCancel, onSaved }: { store: Store; cur
             {t('plan.title')}
             <input type="text" autoComplete="off" maxLength={120} placeholder={finalTitle} value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          {trips.length > 0 && <TripSelect trips={trips} value={chosenTrip} onChange={setTripId} />}
           <button className="btn primary" type="submit">
             {t('plan.next')}
           </button>

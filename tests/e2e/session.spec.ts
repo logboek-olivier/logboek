@@ -23,8 +23,8 @@ test('wisselen van app en verversen vergrendelen niet; de opgeslagen sleutel is 
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
-  await page.getByRole('button', { name: 'Zeilen' }).click()
-  await expect(page.getByRole('heading', { name: 'Zeilen' })).toBeVisible()
+  await page.getByRole('button', { name: 'Logboek' }).click()
+  await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   expect(errors).toEqual([])
 })
 

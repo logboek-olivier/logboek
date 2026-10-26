@@ -10,13 +10,13 @@ function isoInDays(days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-test('onderbalk met Meer; Vandaag toont geen bedragen; bevestiging zonder bedrag; volgende vervaldatum', async ({ page }) => {
+test('onderbalk Vandaag · Deze week · + · Logboek · Meer; onder Meer Geld, Cursussen, Studentenarchief, Instellingen; Vandaag toont geen bedragen; bevestiging zonder bedrag; volgende vervaldatum', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page, newGithub({ tokenExpiration: `${isoInDays(40)} 12:00:00 UTC` }))
   await createNewLogbook(page)
 
   const bar = page.getByRole('navigation', { name: 'Hoofdnavigatie' })
-  for (const name of ['Vandaag', 'Toevoegen', 'Zeilen', 'Meer']) {
+  for (const name of ['Vandaag', 'Deze week', 'Toevoegen', 'Logboek', 'Meer']) {
     await expect(bar.getByRole('button', { name, exact: true })).toBeVisible()
   }
   await expect(bar.getByRole('button', { name: 'Geld' })).toHaveCount(0)
@@ -43,6 +43,7 @@ test('onderbalk met Meer; Vandaag toont geen bedragen; bevestiging zonder bedrag
   // Meer: Geld en Instellingen, met terug naar Meer.
   await bar.getByRole('button', { name: 'Meer', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Meer' })).toBeVisible()
+  for (const item of [/^Geld/, /^Cursussen/, /^Studentenarchief/, /^Instellingen/]) await expect(page.getByRole('button', { name: item })).toBeVisible()
   await page.getByRole('button', { name: /^Geld/ }).click()
   await expect(page.getByRole('heading', { name: 'Geld' })).toBeVisible()
   await expect(page.locator('.grid').first()).toContainText('€ 85,50')
