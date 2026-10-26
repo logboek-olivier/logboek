@@ -36,7 +36,7 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
   await page.getByRole('button', { name: 'Instellingen' }).click()
   await expect(page.getByRole('heading', { name: 'Instellingen' })).toBeVisible()
   const platformAuth = await page.evaluate(() => PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
-  await expect(page.getByRole('button', { name: /Vingerafdruk/ })).toHaveCount(platformAuth ? 1 : 0)
+  await expect(page.getByRole('button', { name: /Vingerafdruk of schermvergrendeling/ })).toHaveCount(platformAuth ? 1 : 0)
   await expectNoHorizontalOverflow(page)
 
   await page.getByRole('button', { name: 'Herstelcode tonen' }).click()
@@ -80,12 +80,12 @@ test('vingerafdruk aanzetten en ermee ontgrendelen (virtuele authenticator met p
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
   await page.getByRole('button', { name: 'Instellingen' }).click()
-  await page.getByRole('button', { name: 'Vingerafdruk aanzetten' }).click()
+  await page.getByRole('button', { name: 'Vingerafdruk of schermvergrendeling aanzetten' }).click()
   await page.getByLabel('Wachtzin').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Aanzetten', exact: true }).click()
-  // exact: de knop "Vingerafdruk aanzetten" bevat dezelfde tekst.
-  await expect(page.getByText('Vingerafdruk aan', { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByRole('button', { name: 'Vingerafdruk uitzetten' })).toBeVisible()
+  // exact: de knop "… aanzetten" bevat dezelfde tekst.
+  await expect(page.getByText('Vingerafdruk of schermvergrendeling aan', { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('button', { name: 'Vingerafdruk of schermvergrendeling uitzetten' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Vergrendelen' }).click()
   // Bij openen vraagt de app direct om de vingerafdruk; de virtuele authenticator keurt goed.
@@ -98,11 +98,11 @@ test('vingerafdruk aanzetten en ermee ontgrendelen (virtuele authenticator met p
 
   // Uitzetten: daarna alleen de wachtzin.
   await page.getByRole('button', { name: 'Instellingen' }).click()
-  await page.getByRole('button', { name: 'Vingerafdruk uitzetten' }).click()
+  await page.getByRole('button', { name: 'Vingerafdruk of schermvergrendeling uitzetten' }).click()
   await page.getByRole('button', { name: 'Uitzetten', exact: true }).click()
-  await expect(page.getByText('Vingerafdruk uit', { exact: true })).toBeVisible()
+  await expect(page.getByText('Vingerafdruk of schermvergrendeling uit', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Vergrendelen' }).click()
-  await expect(page.getByRole('button', { name: 'Vingerafdruk' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Vingerafdruk of schermvergrendeling', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Wachtzin')).toBeVisible()
 })
 
