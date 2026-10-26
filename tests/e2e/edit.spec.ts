@@ -52,11 +52,9 @@ test('Vandaag: jaardoel instellen met voortgang, en omlaag trekken synchroniseer
   await createNewLogbook(page)
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Dag' }).click()
-  await page.getByLabel('Naar (plaats)').fill('Nephaven')
+  await page.getByLabel('Naar', { exact: true }).fill('Nephaven')
   await page.getByLabel('Zeemijlen').fill('250')
-  await page.getByRole('button', { name: 'Meer velden' }).click()
-  await page.getByLabel('Boot').fill('Nepboot')
+  await page.getByLabel('Boot', { exact: true }).fill('Nepboot')
   await page.getByRole('button', { name: 'Opslaan' }).click()
 
   await expect(page.getByRole('progressbar', { name: 'Voortgang jaardoel' })).toHaveAttribute('aria-valuemax', '2500')

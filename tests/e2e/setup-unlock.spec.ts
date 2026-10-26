@@ -157,6 +157,7 @@ test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en h
   // Token ingetrokken: GitHub antwoordt 401. Een fooi toevoegen blijft gewoon werken.
   github.forceStatus = 401
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
+  await page.getByRole('tab', { name: 'Fooi' }).click()
   await page.getByLabel('Bedrag').fill('12')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()

@@ -25,11 +25,13 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
     await expectNoHorizontalOverflow(page)
   }
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  for (const sub of ['Kosten', 'Dag']) {
-    await page.getByRole('tab', { name: sub }).click()
-    await page.getByRole('button', { name: 'Meer velden' }).click()
-    await expectNoHorizontalOverflow(page)
-  }
+  // Opent op Dag, met alle velden in beeld.
+  await expect(page.getByRole('tab', { name: 'Dag' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('button', { name: 'Meer velden' })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.getByRole('tab', { name: 'Kosten' }).click()
+  await page.getByRole('button', { name: 'Meer velden' }).click()
+  await expectNoHorizontalOverflow(page)
 
   // Instellingen: herstelcode tonen na wachtzin; wachtzin wijzigen; vingerafdruk alleen als de browser een platform-authenticator meldt.
   await page.getByRole('button', { name: 'Vandaag' }).click()

@@ -232,12 +232,6 @@ export const nl = {
   'quick.tabDay': 'Dag',
   'quick.amountPlaceholder': '0,00',
   'quick.today': 'vandaag',
-  'quick.from': (p: { place: string }) => `Van ${p.place}`,
-  'quick.noBoat': 'geen boot',
-  'quick.newTripShort': 'nieuwe tocht',
-  'quick.tripShort': (p: { name: string }) => `tocht ${p.name}`,
-  'quick.newTripCheck': (p: { name: string }) => `Nieuwe tocht (anders bij "${p.name}")`,
-  'quick.boatMissing': 'Boot ontbreekt: open "Meer velden" en vul de boot in.',
 
   // Geld
   'money.addTip': 'Fooi toevoegen',
@@ -531,6 +525,12 @@ export const nl = {
   'sync.noMeta': 'meta.json.enc ontbreekt op GitHub; er is niets geschreven',
   'sync.noMetaHint': 'logboek-data bevat geen meta.json.enc, bijvoorbeeld omdat de repo opnieuw is aangemaakt. Dit apparaat schrijft niets naar GitHub en wist niets. Wis de sitegegevens en maak een nieuw logboek of koppel een bestaand logboek.',
   'error.repoHasFiles': 'Deze repo bevat al databestanden zonder meta.json.enc. Maak logboek-data eerst helemaal leeg.',
+  'field.from': 'Van',
+  'field.to': 'Naar',
+  'field.week': 'Week',
+  'field.weekName': 'Naam van de week',
+  'field.note': 'Notitie',
+  'quick.newWeek': 'Nieuwe week',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

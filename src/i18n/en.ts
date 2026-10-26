@@ -213,12 +213,6 @@ export const en: Messages = {
   'quick.tabDay': 'Day',
   'quick.amountPlaceholder': '0.00',
   'quick.today': 'today',
-  'quick.from': (p) => `From ${p.place}`,
-  'quick.noBoat': 'no boat',
-  'quick.newTripShort': 'new trip',
-  'quick.tripShort': (p) => `trip ${p.name}`,
-  'quick.newTripCheck': (p) => `New trip (otherwise with "${p.name}")`,
-  'quick.boatMissing': 'Boat missing: open "More fields" and fill in the boat.',
 
   'money.addTip': 'Add tip',
   'money.empty': 'No sailing money yet. Entering a tip or expense takes a few seconds.',
@@ -497,4 +491,10 @@ export const en: Messages = {
   'sync.noMeta': 'meta.json.enc is missing on GitHub; nothing was written',
   'sync.noMetaHint': 'logboek-data has no meta.json.enc, for example because the repository was recreated. This device writes nothing to GitHub and deletes nothing. Clear the site data and create a new logbook or link an existing one.',
   'error.repoHasFiles': 'This repository already contains data files without meta.json.enc. Empty logboek-data completely first.',
+  'field.from': 'From',
+  'field.to': 'To',
+  'field.week': 'Week',
+  'field.weekName': 'Name of the week',
+  'field.note': 'Note',
+  'quick.newWeek': 'New week',
 }
