@@ -58,6 +58,10 @@ export async function putObject(db: Db, object: StoredObject): Promise<void> {
   await db.put('objects', object)
 }
 
+export async function deleteObject(db: Db, path: string): Promise<void> {
+  await db.delete('objects', path)
+}
+
 export async function getLocal(db: Db, name: string): Promise<Bytes | undefined> {
   return (await db.get('local', name))?.blob
 }

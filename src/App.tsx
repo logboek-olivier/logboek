@@ -6,6 +6,7 @@ import { useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
+import { KeyMismatch, KeyRecover } from './screens/KeyProblem'
 import { Unlock } from './screens/Unlock'
 import { Session, SessionContext } from './session'
 
@@ -51,7 +52,7 @@ export function App() {
     }
   }, [session, state.phase])
 
-  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag' }[state.phase])
+  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag', mismatch: 'Sleutel past niet', recover: 'Herstel' }[state.phase])
   let screen: React.ReactNode
   switch (state.phase) {
     case 'loading':
@@ -65,6 +66,12 @@ export function App() {
       break
     case 'unlocked':
       screen = <Home store={state.store} />
+      break
+    case 'mismatch':
+      screen = <KeyMismatch />
+      break
+    case 'recover':
+      screen = <KeyRecover report={state.report} />
       break
   }
   return (

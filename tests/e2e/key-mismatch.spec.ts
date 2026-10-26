@@ -1,0 +1,124 @@
+import { expect, test, type Page } from '@playwright/test'
+import { translate, type Lang } from '../../src/i18n'
+import { mockGithub } from './helpers/fake-github'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE } from './helpers/logbook'
+
+// Sleutel-invariant: "Sleutel past niet bij je logboek" (niets geschreven) en het herstelpad na ontgrendelen met de
+// wachtzin als lokale gegevens onder een andere sleutel staan. Alle gegevens zijn verzonnen.
+
+/** Geldige vorm (versie 1, iv, tag) maar onder geen enkele bekende sleutel versleuteld: ontsleutelen faalt. */
+function foreignBytes(): number[] {
+  const bytes = [1]
+  for (let i = 1; i < 1 + 12 + 64 + 16; i++) bytes.push((i * 37) % 256)
+  return bytes
+}
+
+async function shots(page: Page, name: string, lang: Lang) {
+  for (const width of [360, 412]) {
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height: 800 })
+      await page.emulateMedia({ colorScheme: scheme })
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({ path: `screenshots/sleutel/${name}-${width}-${scheme}-${lang}.png`, fullPage: true })
+    }
+  }
+  await page.setViewportSize({ width: 360, height: 800 })
+  await page.emulateMedia({ colorScheme: 'light' })
+}
+
+for (const lang of ['nl', 'en'] as Lang[]) {
+  test.describe(lang, () => {
+    test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB', viewport: { width: 360, height: 800 } })
+    const L = (key: Parameters<typeof translate>[1]) => translate(lang, key as 'common.next')
+
+    test(`meta.json.enc op GitHub hoort bij een andere sleutel: scherm "Sleutel past niet", niets geschreven (${lang})`, async ({ page }) => {
+      const errors = collectConsoleErrors(page)
+      const github = await mockGithub(page)
+      await createNewLogbook(page, lang)
+      const status = page.getByRole('status').first()
+      await expect(status).toHaveText(L('sync.synced'), { timeout: 15_000 })
+
+      // Zelfde meta, maar het check-veld hoort bij een andere sleutel.
+      const meta = github.files.get('meta.json.enc')!
+      const parsed = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')) as Record<string, unknown>
+      parsed.check = Buffer.from(foreignBytes()).toString('base64')
+      github.files.set('meta.json.enc', { sha: `${meta.sha}-ander`, content: Buffer.from(JSON.stringify(parsed)).toString('base64') })
+      const puts = github.requests.filter((r) => r.method === 'PUT').length
+
+      await page.getByRole('button', { name: new RegExp(L('sync.now')) }).click()
+      await expect(page.getByRole('heading', { name: L('key.mismatchTitle') })).toBeVisible()
+      await expect(page.getByRole('button', { name: L('error.copyDetails') })).toBeVisible()
+      await expect(page.getByRole('navigation')).toHaveCount(0)
+      expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts)
+      expect(await page.evaluate(() => sessionKeyStored())).toBe(false)
+      await shots(page, 'past-niet', lang)
+
+      // Verversen hervat niet: de sessiesleutel is gewist.
+      await page.reload()
+      await expect(page.getByRole('button', { name: L('unlock.unlock') })).toBeVisible()
+      expect(errors).toEqual([])
+    })
+
+    test(`lokale gegevens onder een andere sleutel: per bestand tonen, pas na een tik opnieuw beginnen vanaf GitHub (${lang})`, async ({ page }) => {
+      const errors = collectConsoleErrors(page)
+      const github = await mockGithub(page)
+      await createNewLogbook(page, lang)
+      await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
+
+      // Lokale kopie van transactions.json.enc onder een andere sleutel, zoals op de telefoon.
+      await page.evaluate((bytes) => putForeignObject('transactions.json.enc', bytes), foreignBytes())
+      const puts = github.requests.filter((r) => r.method === 'PUT').length
+      await page.reload()
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await page.getByRole('button', { name: L('unlock.unlock') }).click()
+
+      await expect(page.getByRole('heading', { name: L('key.recoverTitle') })).toBeVisible({ timeout: 30_000 })
+      await expect(page.locator('.loss-list')).toContainText(L('key.file.transactions'))
+      await expect(page.locator('.loss-list')).toContainText('transactions.json.enc')
+      await expect(page.locator('.loss-list li')).toHaveCount(1)
+      expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts)
+      await shots(page, 'herstel', lang)
+
+      await page.getByRole('button', { name: L('key.restart') }).click()
+      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
+      expect(errors).toEqual([])
+    })
+  })
+}
+
+declare global {
+  function sessionKeyStored(): Promise<boolean>
+  function putForeignObject(path: string, bytes: number[]): Promise<void>
+}
+
+test.beforeEach(async ({ page }) => {
+  // Hulpfuncties in de pagina (via addInitScript; de CSP van de app blokkeert dit niet).
+  await page.addInitScript(() => {
+    const open = () =>
+      new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('logboek')
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    globalThis.sessionKeyStored = async () => {
+      const db = await open()
+      const found = await new Promise<boolean>((resolve) => {
+        const request = db.transaction('session').objectStore('session').get('masterKey')
+        request.onsuccess = () => resolve(request.result !== undefined)
+      })
+      db.close()
+      return found
+    }
+    globalThis.putForeignObject = async (path, bytes) => {
+      const db = await open()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('objects', 'readwrite')
+        tx.objectStore('objects').put({ path, blob: new Uint8Array(bytes), sha: 'oud' })
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+      db.close()
+    }
+  })
+})
