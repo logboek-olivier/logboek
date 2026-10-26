@@ -23,6 +23,7 @@ test('onderbalk met Meer; Vandaag toont geen bedragen; bevestiging zonder bedrag
 
   // Fooi toevoegen: de bevestiging noemt geen bedrag, en Vandaag toont geen geld.
   await bar.getByRole('button', { name: 'Toevoegen', exact: true }).click()
+  await page.getByRole('tab', { name: 'Fooi' }).click()
   await page.getByLabel('Bedrag').fill('85,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Fooi opgeslagen')

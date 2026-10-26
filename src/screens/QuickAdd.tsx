@@ -4,7 +4,7 @@ import { Icon } from '../components/Icon'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
-import { active, compareLegs, tripForDate } from '../model/derive'
+import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings, saveSettings } from '../model/settings'
 import {
@@ -28,7 +28,8 @@ import {
 import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
-// Snel toevoegen: Fooi · Kosten · Dag. Maximaal drie velden, de rest laatst gebruikt. Opslaan = één tik.
+// Snel toevoegen: Dag · Fooi · Kosten, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
+// bestemming en de laatst gebruikte boot, rol en week; alleen naar en nm zijn nodig. Opslaan = één tik.
 
 /** Korte trilling als bevestiging van opslaan; stil als het apparaat het niet kan. */
 function confirmVibration() {
@@ -40,7 +41,7 @@ function confirmVibration() {
 }
 
 export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
-  const [tab, setTab] = useState<AddTab>('fooi')
+  const [tab, setTab] = useState<AddTab>('dag')
   const choose = (next: AddTab) => setTab(next)
   return (
     <section className="stack">
@@ -48,7 +49,7 @@ export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: st
         <h1>{t('nav.add')}</h1>
       </header>
       <div className="segments" role="tablist">
-        {(['fooi', 'kosten', 'dag'] as AddTab[]).map((id) => (
+        {(['dag', 'fooi', 'kosten'] as AddTab[]).map((id) => (
           <button
             key={id}
             role="tab"
@@ -61,9 +62,9 @@ export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: st
           </button>
         ))}
       </div>
+      {tab === 'dag' && <DayForm store={store} onDone={onDone} />}
       {tab === 'fooi' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'kosten' && <CostForm store={store} onDone={onDone} />}
-      {tab === 'dag' && <DayForm store={store} onDone={onDone} />}
     </section>
   )
 }
@@ -291,32 +292,37 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
   const { settings, trips, legs } = useDefaults(store)
   const today = todayIso()
   const lastLeg = useMemo(() => [...active(legs)].sort(compareLegs).at(-1), [legs])
+  // Weken om uit te kiezen: nieuwste eerst (op laatste dag), daarna weken zonder dagen.
+  const weeks = useMemo(() => {
+    const withDays = summarizeTrips(trips, legs).map((s) => s.trip)
+    const empty = active(trips).filter((trip) => !withDays.some((w) => w.id === trip.id))
+    return [...empty, ...withDays].slice(0, 12)
+  }, [trips, legs])
   const lastTrip = useMemo(() => {
     const id = lastLeg?.tripId ?? settings.lastTripId
     return active(trips).find((trip) => trip.id === id)
   }, [trips, lastLeg, settings.lastTripId])
-  // Dezelfde tocht als de vorige dag kort geleden was; anders begint een nieuwe tocht.
+  // Dezelfde week als de vorige dag kort geleden was; anders begint een nieuwe week.
   const sameTripDefault = !!lastTrip && !!lastLeg && lastLeg.date >= addDays(today, -3)
 
+  const [date, setDate] = useState(today)
+  const [fromPlace, setFromPlace] = useState(lastLeg?.toPlace ?? '')
   const [toPlace, setToPlace] = useState('')
   const [nm, setNm] = useState('')
   const [water, setWater] = useState<Water>(settings.lastWater ?? waterOf(lastLeg))
-  const [more, setMore] = useState(false)
-  const [date, setDate] = useState(today)
-  const [fromPlace, setFromPlace] = useState(lastLeg?.toPlace ?? '')
-  const [fromCountry, setFromCountry] = useState(lastLeg?.toCountry ?? '')
-  const [toCountry, setToCountry] = useState(lastLeg?.toCountry ?? '')
-  const [boat, setBoat] = useState(settings.lastBoat || lastLeg?.boat || '')
-  const [role, setRole] = useState<Role>(settings.lastRole)
   const [nightHours, setNightHours] = useState('')
   const [wind, setWind] = useState('')
-  const [newTrip, setNewTrip] = useState(!sameTripDefault)
+  const [boat, setBoat] = useState(settings.lastBoat || lastLeg?.boat || '')
+  const [role, setRole] = useState<Role>(settings.lastRole)
+  const [tripId, setTripId] = useState<string>(sameTripDefault && lastTrip ? lastTrip.id : NEW_WEEK)
   const [tripName, setTripName] = useState('')
+  const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
 
   const nmValue = parseAmount(nm)
   const night = nightHours.trim() === '' ? 0 : parseAmount(nightHours)
-  const ok = toPlace.trim() !== '' && nmValue !== null && boat.trim() !== '' && night !== null && !!date
+  // Alleen "naar" en nm zijn nodig; boot, rol en week zijn altijd voorgevuld en blokkeren nooit.
+  const ok = toPlace.trim() !== '' && nmValue !== null && night !== null && !!date
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -324,8 +330,8 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
     setBusy(true)
     try {
       const now = nowIso()
-      let tripId = lastTrip?.id
-      if (newTrip || !tripId) {
+      let id = tripId === NEW_WEEK ? undefined : tripId
+      if (!id) {
         const trip: Trip = {
           id: newId(),
           name: tripName.trim() || defaultTripName(boat.trim(), date),
@@ -333,16 +339,18 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
           deletedAt: null,
         }
         await store.put('trips.json.enc', trip)
-        tripId = trip.id
+        id = trip.id
       }
+      // Landen: niet in beeld; van = land van de vorige bestemming, naar = hetzelfde land.
+      const country = lastLeg?.toCountry ?? ''
       const leg: Leg = {
         id: newId(),
-        tripId,
+        tripId: id,
         date,
         fromPlace: fromPlace.trim(),
-        fromCountry: fromCountry.trim(),
+        fromCountry: country,
         toPlace: toPlace.trim(),
-        toCountry: toCountry.trim(),
+        toCountry: country,
         role,
         boat: boat.trim(),
         nmInland: water === 'binnen' ? nmValue : 0,
@@ -355,8 +363,9 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
         deletedAt: null,
       }
       if (wind.trim()) leg.windBft = wind.trim()
+      if (notes.trim()) leg.notes = notes.trim()
       await store.put('legs.json.enc', leg)
-      await saveSettings(store, { lastBoat: boat.trim(), lastRole: role, lastTripId: tripId, lastWater: water })
+      await saveSettings(store, { ...(boat.trim() ? { lastBoat: boat.trim() } : {}), lastRole: role, lastTripId: id, lastWater: water })
       confirmVibration()
       void store.sync()
       onDone(t('toast.daySaved'))
@@ -366,15 +375,27 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
   }
 
   return (
-    <form className="stack" onSubmit={(e) => void submit(e)}>
-      <label>
-        {t('field.toPlace')}
-        <input type="text" autoFocus autoComplete="off" value={toPlace} onChange={(e) => setToPlace(e.target.value)} />
-      </label>
-      <label>
-        {t('field.nm')}
-        <input className="amount" inputMode="decimal" autoComplete="off" placeholder="0" value={nm} onChange={(e) => setNm(e.target.value)} />
-      </label>
+    <form className="stack day-form" onSubmit={(e) => void submit(e)}>
+      <div className="two">
+        <label>
+          {t('field.date')}
+          <input type="date" value={date} max={addDays(today, 1)} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label>
+          {t('field.from')}
+          <input type="text" autoComplete="off" value={fromPlace} onChange={(e) => setFromPlace(e.target.value)} />
+        </label>
+      </div>
+      <div className="two">
+        <label>
+          {t('field.to')}
+          <input type="text" autoFocus autoComplete="off" value={toPlace} onChange={(e) => setToPlace(e.target.value)} />
+        </label>
+        <label>
+          {t('field.nm')}
+          <input inputMode="decimal" autoComplete="off" placeholder="0" value={nm} onChange={(e) => setNm(e.target.value)} />
+        </label>
+      </div>
       <div className="segments small" role="radiogroup" aria-label={t('field.water')}>
         {(['zee', 'getij', 'binnen'] as Water[]).map((w) => (
           <button
@@ -389,86 +410,64 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
           </button>
         ))}
       </div>
-      {!more && (
-        <p className="muted">
-          {fromPlace ? `${t('quick.from', { place: fromPlace })} · ` : ''}
-          {boat || t('quick.noBoat')} · {roleLabel(role)} ·{' '}
-          {newTrip ? t('quick.newTripShort') : t('quick.tripShort', { name: lastTrip?.name ?? '' })}{' '}
-          <button type="button" className="btn link inline" onClick={() => setMore(true)}>
-            {t('common.more')}
-          </button>
-        </p>
+      <div className="two">
+        <label>
+          {t('field.nightHours')}
+          <input inputMode="decimal" autoComplete="off" placeholder="0" value={nightHours} onChange={(e) => setNightHours(e.target.value)} />
+        </label>
+        <label>
+          {t('field.wind')}
+          <input type="text" autoComplete="off" placeholder="3-4" value={wind} onChange={(e) => setWind(e.target.value)} />
+        </label>
+      </div>
+      <div className="two">
+        <label>
+          {t('field.boat')}
+          <input type="text" autoComplete="off" value={boat} onChange={(e) => setBoat(e.target.value)} />
+        </label>
+        <label>
+          {t('field.role')}
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {roleLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label>
+        {t('field.week')}
+        <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+          <option value={NEW_WEEK}>{t('quick.newWeek')}</option>
+          {weeks.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {tripId === NEW_WEEK && (
+        <label>
+          {t('field.weekName')}
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder={defaultTripName(boat.trim() || t('field.boat'), date)}
+            value={tripName}
+            onChange={(e) => setTripName(e.target.value)}
+          />
+        </label>
       )}
-      {more && (
-        <>
-          <label>
-            {t('field.date')}
-            <input type="date" value={date} max={addDays(today, 1)} onChange={(e) => setDate(e.target.value)} />
-          </label>
-          <div className="two">
-            <label>
-              {t('field.fromPlace')}
-              <input type="text" autoComplete="off" value={fromPlace} onChange={(e) => setFromPlace(e.target.value)} />
-            </label>
-            <label>
-              {t('field.fromCountry')}
-              <input type="text" autoComplete="off" value={fromCountry} onChange={(e) => setFromCountry(e.target.value)} />
-            </label>
-          </div>
-          <label>
-            {t('field.toCountry')}
-            <input type="text" autoComplete="off" value={toCountry} onChange={(e) => setToCountry(e.target.value)} />
-          </label>
-          <div className="two">
-            <label>
-              {t('field.boat')}
-              <input type="text" autoComplete="off" value={boat} onChange={(e) => setBoat(e.target.value)} />
-            </label>
-            <label>
-              {t('field.role')}
-              <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {roleLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="two">
-            <label>
-              {t('field.nightHours')}
-              <input inputMode="decimal" autoComplete="off" value={nightHours} onChange={(e) => setNightHours(e.target.value)} />
-            </label>
-            <label>
-              {t('field.wind')}
-              <input type="text" autoComplete="off" placeholder="3-4" value={wind} onChange={(e) => setWind(e.target.value)} />
-            </label>
-          </div>
-          {lastTrip && (
-            <label className="check">
-              <input type="checkbox" checked={newTrip} onChange={(e) => setNewTrip(e.target.checked)} />
-              {t('quick.newTripCheck', { name: lastTrip.name })}
-            </label>
-          )}
-          {(newTrip || !lastTrip) && (
-            <label>
-              {t('field.tripName')}
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder={defaultTripName(boat.trim() || t('field.boat'), date)}
-                value={tripName}
-                onChange={(e) => setTripName(e.target.value)}
-              />
-            </label>
-          )}
-        </>
-      )}
-      {!boat && !more && <p className="error">{t('quick.boatMissing')}</p>}
+      <label>
+        {t('field.note')}
+        <input type="text" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
       <button className="btn primary" type="submit" disabled={!ok || busy}>
         {t('common.save')}
       </button>
     </form>
   )
 }
+
+const NEW_WEEK = '__nieuw__'

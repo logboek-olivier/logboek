@@ -59,6 +59,7 @@ for (const { width, scheme, lang } of RUNS) {
       }
       const addTip = async (amount: string, daysAgo: number) => {
         await button('nav.add').click()
+        await page.getByRole('tab', { name: L('quick.tabTip') }).click()
         await page.getByLabel(L('field.amount')).fill(amount)
         await page.getByLabel(L('field.date')).fill(isoDaysAgo(daysAgo))
         await button('common.save').click()
@@ -103,14 +104,15 @@ for (const { width, scheme, lang } of RUNS) {
       await page.getByLabel(L('field.description')).fill('Havengeld Nephaven')
       await button('common.save').click()
       await button('nav.add').click()
+      await page.getByRole('tab', { name: L('quick.tabTip') }).click()
       await shot('toevoegen-fooi')
       await page.getByRole('tab', { name: L('quick.tabDay') }).click()
-      await button('common.more').click()
-      await shot('toevoegen-dag-meer')
-      await page.getByLabel(L('field.toPlace')).fill('Nepbaai')
+      await page.getByLabel(L('field.to'), { exact: true }).fill('Nepbaai')
       await page.getByLabel(L('field.nm')).fill('23,5')
-      await page.getByLabel(L('field.boat')).fill('Nepboot Vijf')
-      await page.getByLabel(L('field.tripName')).fill('Overtocht naar de Nepbaai met een lange naam')
+      await page.getByLabel(L('field.boat'), { exact: true }).fill('Nepboot Vijf')
+      await page.getByRole('combobox', { name: L('field.week'), exact: true }).selectOption({ label: L('quick.newWeek') })
+      await page.getByLabel(L('field.weekName')).fill('Overtocht naar de Nepbaai met een lange naam')
+      await shot('toevoegen-dag')
       await button('common.save').click()
 
       await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()

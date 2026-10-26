@@ -21,6 +21,7 @@ test('Instellingen → Taal: Engels voor de hele app, met Engelse notatie, en bl
   await mockGithub(page)
   await createNewLogbook(page)
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
+  await page.getByRole('tab', { name: 'Fooi' }).click()
   await page.getByLabel('Bedrag').fill('1250,5')
   await page.getByRole('button', { name: 'Opslaan' }).click()
 

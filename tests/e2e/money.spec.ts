@@ -12,6 +12,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
 
   // Fooi in EUR
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
+  await page.getByRole('tab', { name: 'Fooi' }).click()
   await page.getByLabel('Bedrag').fill('120,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
@@ -19,6 +20,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
 
   // Fooi in USD: apart tonen, nooit omrekenen
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
+  await page.getByRole('tab', { name: 'Fooi' }).click()
   await page.getByLabel('Bedrag').fill('200')
   await page.getByLabel('Valuta').selectOption('USD')
   await page.getByRole('button', { name: 'Opslaan' }).click()
@@ -34,24 +36,29 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Kosten opgeslagen')).toBeVisible()
 
-  // Dag
+  // Dag: opent op Dag, alle velden in beeld.
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Dag' }).click()
-  await page.getByLabel('Naar (plaats)').fill('Nephaven')
+  await expect(page.getByRole('tab', { name: 'Dag' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByLabel('Naar', { exact: true }).fill('Nephaven')
   await page.getByLabel('Zeemijlen').fill('42')
   await page.getByRole('radio', { name: 'Getij' }).click()
-  await page.getByRole('button', { name: 'Meer velden' }).click()
-  await page.getByLabel('Boot').fill('Nepboot')
-  await page.getByLabel('Naam tocht').fill('Testtocht')
+  await page.getByLabel('Nachturen').fill('2')
+  await page.getByLabel('Wind (bft)').fill('3-4')
+  await page.getByLabel('Boot', { exact: true }).fill('Nepboot')
+  await expect(page.getByRole('combobox', { name: 'Week', exact: true })).toHaveValue('__nieuw__')
+  await page.getByLabel('Naam van de week').fill('Testtocht')
+  await page.getByLabel('Notitie').fill('Nepnotitie')
   await expectNoHorizontalOverflow(page)
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
 
-  // Tweede dag: standaardwaarden uit de vorige dag, dezelfde tocht
+  // Tweede dag: van = vorige bestemming, boot en rol laatst gebruikt, dezelfde week.
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Dag' }).click()
-  await expect(page.getByText('Van Nephaven · Nepboot · Schipper · tocht Testtocht')).toBeVisible()
-  await page.getByLabel('Naar (plaats)').fill('Nepbaai')
+  await expect(page.getByLabel('Van', { exact: true })).toHaveValue('Nephaven')
+  await expect(page.getByLabel('Boot', { exact: true })).toHaveValue('Nepboot')
+  await expect(page.getByRole('combobox', { name: 'Rol' })).toHaveValue('schipper')
+  await expect(page.getByRole('combobox', { name: 'Week', exact: true }).locator('option:checked')).toHaveText('Testtocht')
+  await page.getByLabel('Naar', { exact: true }).fill('Nepbaai')
   await page.getByLabel('Zeemijlen').fill('8')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
