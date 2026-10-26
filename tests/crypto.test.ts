@@ -9,6 +9,7 @@ import {
   revealRecoveryWords,
   serializeMeta,
   unlock,
+  verifyMetaCheck,
   WrongSecretError,
   type Meta,
 } from '../src/crypto/keys'
@@ -199,6 +200,28 @@ describe('hoofdsleutel en meta.json.enc', () => {
       expect(decoder.decode(await decryptObject(key, OBJECT_PATH, blob))).toBe('nepdata')
     }
     expect(await revealRecoveryWords(meta, 'nieuwe testwachtzin', wordlist)).toEqual(vault.recoveryWords)
+  })
+
+  // Een ontgrendeld apparaat neemt een gewijzigde meta van GitHub alleen over als ze aan de hoofdsleutel gebonden is.
+  it('bindt de meta aan de hoofdsleutel en herkent een vervangen of vreemde meta', async () => {
+    const vault = await createVault('nieuwe testwachtzin', wordlist)
+    expect(vault.meta.check).toBeDefined()
+    const meta = parseMeta(serializeMeta(vault.meta))
+    expect(meta.check).toBe(vault.meta.check)
+    expect(await verifyMetaCheck(meta, vault.masterKey)).toBe(true)
+
+    const changed = await changePassphrase(meta, { passphrase: 'nieuwe testwachtzin' }, 'tweede wachtzin')
+    expect(changed.check).not.toBe(meta.check)
+    expect(await verifyMetaCheck(changed, vault.masterKey)).toBe(true)
+
+    // Aanvaller met schrijfrechten: eigen meta (andere sleutel), of Oliviers meta met een vervangen wachtzinblok.
+    const foreign = await createVault('aanvaller', wordlist)
+    expect(await verifyMetaCheck(foreign.meta, vault.masterKey)).toBe(false)
+    const spliced: Meta = { ...meta, passphrase: foreign.meta.passphrase }
+    expect(await verifyMetaCheck(spliced, vault.masterKey)).toBe(false)
+    expect(await verifyMetaCheck(FIXED_META, vault.masterKey)).toBe(false)
+    expect(await verifyMetaCheck({ ...meta, check: undefined }, vault.masterKey)).toBe(false)
+    expect(() => parseMeta(JSON.stringify({ ...meta, check: 'geen base64!' }))).toThrow(InvalidMetaError)
   })
 
   it('wijzigt de wachtzin zonder data opnieuw te versleutelen', async () => {

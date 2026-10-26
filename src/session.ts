@@ -1,8 +1,24 @@
 import { createContext, useContext } from 'react'
-import { META_PATH, createVault, parseMeta, unlock, type Meta, type Secret } from './crypto/keys'
+import { fromBase64, randomBytes, toBase64 } from './crypto/encrypt'
+import {
+  META_PATH,
+  changePassphrase,
+  createVault,
+  parseMeta,
+  revealRecoveryWords,
+  rewrapMasterKey,
+  serializeMeta,
+  unlock,
+  unwrapMasterKey,
+  verifyMetaCheck,
+  type Meta,
+  type Secret,
+} from './crypto/keys'
 import { loadWordlist } from './crypto/recovery'
-import { GithubClient, GithubError } from './storage/github'
-import { clearAll, openLogboekDb, type Db } from './storage/idb'
+import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFingerprint } from './crypto/webauthn'
+import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
+import { ConflictError, GithubClient, GithubError } from './storage/github'
+import { clearAll, getObject, openLogboekDb, type Db } from './storage/idb'
 import { Store } from './storage/store'
 import { loadToken, storeToken } from './storage/token'
 
@@ -15,7 +31,7 @@ export const MIN_PASSPHRASE_LENGTH = 12
 export type SessionState =
   | { phase: 'loading' }
   | { phase: 'setup' }
-  | { phase: 'locked'; meta: Meta }
+  | { phase: 'locked'; meta: Meta; fingerprint: boolean }
   | { phase: 'unlocked'; store: Store }
 
 export class SetupError extends Error {
@@ -48,8 +64,159 @@ export class Session {
 
   async init(): Promise<void> {
     this.db = await openLogboekDb()
-    const meta = await Store.loadMeta(this.db).catch(() => null)
-    this.setState(meta ? { phase: 'locked', meta } : { phase: 'setup' })
+    await this.toLocked()
+  }
+
+  private async toLocked(): Promise<void> {
+    const db = this.requireDb()
+    const meta = await Store.loadMeta(db).catch(() => null)
+    if (!meta) {
+      this.lastMeta = null
+      this.setState({ phase: 'setup' })
+      return
+    }
+    const fingerprint = (await loadFingerprint(db)) !== null
+    this.lastMeta = meta
+    this.lastFingerprint = fingerprint
+    this.setState({ phase: 'locked', meta, fingerprint })
+  }
+
+  /** Laatst bekende meta en vingerafdrukvlag, zodat lock() direct en synchroon naar 'locked' kan. */
+  private lastMeta: Meta | null = null
+  private lastFingerprint = false
+  /** Telt op bij elke lock() en open(); lopende bewerkingen controleren hiermee dat de sessie nog dezelfde is. */
+  private generation = 0
+
+  private assertSameSession(generation: number): void {
+    if (generation !== this.generation) throw new Error('Vergrendeld')
+  }
+
+  /**
+   * Haalt meta.json.enc op en neemt een nieuwere versie (wachtzin gewijzigd op een ander apparaat) lokaal over,
+   * maar alleen als de meta aan deze hoofdsleutel gebonden is. Zo kan iemand met alleen schrijfrechten op
+   * logboek-data de wachtzin niet op afstand ongeldig maken.
+   */
+  private async refreshMeta(client: GithubClient, db: Db, masterKey: CryptoKey, generation: number): Promise<void> {
+    try {
+      const stored = await getObject(db, META_PATH)
+      const remote = await client.getFile(META_PATH)
+      if (!remote || remote.sha === stored?.sha || generation !== this.generation) return
+      const meta = parseMeta(new TextDecoder().decode(remote.content))
+      if (!(await verifyMetaCheck(meta, masterKey))) return
+      if (generation !== this.generation) return
+      await Store.storeMeta(db, meta, remote.sha)
+      this.lastMeta = meta
+    } catch {
+      // Geen verbinding of ongeldige meta: de lokale meta blijft gelden.
+    }
+  }
+
+  /** Alleen zinvol als de huidige wachtzin klopt; de nieuwe meta gaat naar GitHub en naar IndexedDB. */
+  async changePassphrase(current: string, next: string): Promise<void> {
+    const db = this.requireDb()
+    const { client } = this.requireUnlocked()
+    const generation = this.generation
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const stored = await getObject(db, META_PATH)
+      const meta = await Store.loadMeta(db)
+      if (!meta) throw new SetupError('meta.json.enc ontbreekt op dit apparaat')
+      const changed = await changePassphrase(meta, { passphrase: current }, next)
+      this.assertSameSession(generation)
+      try {
+        const sha = await client.putFile(META_PATH, new TextEncoder().encode(serializeMeta(changed)), stored?.sha ?? null)
+        this.assertSameSession(generation)
+        await Store.storeMeta(db, changed, sha)
+        this.lastMeta = changed
+        // De vingerafdruk-verpakking blijft geldig: de hoofdsleutel is niet veranderd.
+        return
+      } catch (error) {
+        if (!(error instanceof ConflictError) || attempt === 1) throw error
+        const remote = await client.getFile(META_PATH)
+        if (!remote) throw error
+        await Store.storeMeta(db, parseMeta(new TextDecoder().decode(remote.content)), remote.sha)
+      }
+    }
+  }
+
+  async revealRecovery(passphrase: string): Promise<string[]> {
+    const meta = await Store.loadMeta(this.requireDb())
+    if (!meta) throw new SetupError('meta.json.enc ontbreekt op dit apparaat')
+    return revealRecoveryWords(meta, passphrase, await loadWordlist())
+  }
+
+  async replaceToken(token: string): Promise<void> {
+    const db = this.requireDb()
+    const { masterKey, store: previous } = this.requireUnlocked()
+    const generation = this.generation
+    const client = new GithubClient(token.trim())
+    await client.checkAccess()
+    this.assertSameSession(generation)
+    await storeToken(db, masterKey, token.trim())
+    this.assertSameSession(generation)
+    // De Store houdt de oude client; een nieuwe Store openen zorgt dat sync de nieuwe token gebruikt.
+    const store = await Store.open(db, masterKey, client)
+    if (generation !== this.generation) {
+      store.lock()
+      throw new Error('Vergrendeld')
+    }
+    this.unlockedClient = client
+    this.setState({ phase: 'unlocked', store })
+    previous.lock()
+    this.touch()
+    void store.sync()
+  }
+
+  fingerprintPossible(): Promise<boolean> {
+    return fingerprintAvailable()
+  }
+
+  async enableFingerprint(passphrase: string): Promise<void> {
+    const db = this.requireDb()
+    const meta = await Store.loadMeta(db)
+    if (!meta) throw new SetupError('meta.json.enc ontbreekt op dit apparaat')
+    // Eerst de wachtzin controleren, dan pas om de vingerafdruk vragen.
+    await unlock(meta, { passphrase })
+    const registration = await registerFingerprint()
+    const hkdfSalt = randomBytes(16)
+    let kek: CryptoKey
+    try {
+      kek = await deriveKekFromPrf(registration.prfOutput, hkdfSalt)
+    } finally {
+      registration.prfOutput.fill(0)
+    }
+    const wrappedKey = await rewrapMasterKey(meta, passphrase, kek, FINGERPRINT_AAD)
+    await saveFingerprint(db, {
+      credentialId: toBase64(registration.credentialId),
+      prfSalt: toBase64(registration.prfSalt),
+      hkdfSalt: toBase64(hkdfSalt),
+      wrappedKey,
+    })
+    this.lastFingerprint = true
+  }
+
+  async disableFingerprint(): Promise<void> {
+    await deleteFingerprint(this.requireDb())
+    this.lastFingerprint = false
+    if (this.state.phase === 'locked') this.setState({ ...this.state, fingerprint: false })
+  }
+
+  async hasFingerprint(): Promise<boolean> {
+    return (await loadFingerprint(this.requireDb())) !== null
+  }
+
+  async unlockWithFingerprint(signal?: AbortSignal): Promise<void> {
+    const db = this.requireDb()
+    const record = await loadFingerprint(db)
+    if (!record) throw new SetupError('Vingerafdruk is niet ingesteld op dit apparaat')
+    const prf = await evaluateFingerprint(fromBase64(record.credentialId), fromBase64(record.prfSalt), signal)
+    let kek: CryptoKey
+    try {
+      kek = await deriveKekFromPrf(prf, fromBase64(record.hkdfSalt))
+    } finally {
+      prf.fill(0)
+    }
+    const masterKey = await unwrapMasterKey(record.wrappedKey, kek, FINGERPRINT_AAD)
+    await this.openWithStoredToken(masterKey)
   }
 
   /** Nieuw logboek, stap 1: token controleren en nagaan dat logboek-data leeg is. */
@@ -92,9 +259,13 @@ export class Session {
 
   /** Ontgrendelen op een apparaat dat al gekoppeld is. */
   async unlockLocal(secret: { passphrase: string } | { recoveryCode: string }): Promise<void> {
-    const db = this.requireDb()
     if (this.state.phase !== 'locked') throw new Error('Niet vergrendeld')
     const masterKey = await unlock(this.state.meta, await withWordlist(secret))
+    await this.openWithStoredToken(masterKey)
+  }
+
+  private async openWithStoredToken(masterKey: CryptoKey): Promise<void> {
+    const db = this.requireDb()
     const token = await loadToken(db, masterKey)
     if (token === null) {
       // Kan alleen na een onvolledige koppeling; opnieuw koppelen is de veilige weg.
@@ -107,13 +278,24 @@ export class Session {
 
   lock(): void {
     this.clearLockTimer()
-    if (this.state.phase === 'unlocked') {
-      const store = this.state.store
-      store.lock()
-      void Store.loadMeta(this.requireDb())
-        .then((meta) => this.setState(meta ? { phase: 'locked', meta } : { phase: 'setup' }))
-        .catch(() => this.setState({ phase: 'setup' }))
-    }
+    if (this.state.phase !== 'unlocked') return
+    const store = this.state.store
+    this.generation++
+    this.unlockedClient = null
+    this.unlockedKey = null
+    // Eerst synchroon weg van het ontgrendelde scherm, dan pas het geheugen wissen: geen render met een gewiste Store.
+    if (this.lastMeta) this.setState({ phase: 'locked', meta: this.lastMeta, fingerprint: this.lastFingerprint })
+    else this.setState({ phase: 'loading' })
+    store.lock()
+    void this.toLocked().catch(() => this.setState({ phase: 'setup' }))
+  }
+
+  private unlockedClient: GithubClient | null = null
+  private unlockedKey: CryptoKey | null = null
+
+  private requireUnlocked(): { client: GithubClient; masterKey: CryptoKey; store: Store } {
+    if (this.state.phase !== 'unlocked' || !this.unlockedClient || !this.unlockedKey) throw new Error('Vergrendeld')
+    return { client: this.unlockedClient, masterKey: this.unlockedKey, store: this.state.store }
   }
 
   /** Reset de vergrendeltimer; aanroepen bij elke interactie. */
@@ -127,9 +309,15 @@ export class Session {
     const db = this.requireDb()
     if (tokenToStore !== null) await storeToken(db, masterKey, tokenToStore)
     const store = await Store.open(db, masterKey, client)
+    this.generation++
+    this.unlockedClient = client
+    this.unlockedKey = masterKey
+    if (!this.lastMeta) this.lastMeta = await Store.loadMeta(db).catch(() => null)
+    this.lastFingerprint = (await loadFingerprint(db)) !== null
     this.setState({ phase: 'unlocked', store })
     this.touch()
     void store.sync()
+    void this.refreshMeta(client, db, masterKey, this.generation)
   }
 
   private requireDb(): Db {
@@ -169,6 +357,8 @@ export function describeError(error: unknown): string {
         return 'meta.json.enc is ongeldig'
       case 'DecryptError':
         return 'Ontsleutelen mislukt'
+      case 'WebAuthnError':
+        return error.message
     }
   }
   return 'Er ging iets mis'

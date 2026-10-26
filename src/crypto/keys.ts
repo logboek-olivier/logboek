@@ -1,4 +1,16 @@
-import { fromBase64, IV_LENGTH, pack, randomBytes, TAG_LENGTH, toBase64, unpack, utf8, type Bytes } from './encrypt'
+import {
+  decryptObject,
+  encryptObject,
+  fromBase64,
+  IV_LENGTH,
+  pack,
+  randomBytes,
+  TAG_LENGTH,
+  toBase64,
+  unpack,
+  utf8,
+  type Bytes,
+} from './encrypt'
 import { deriveKekFromPassphrase, PBKDF2_ITERATIONS, SALT_LENGTH } from './passphrase'
 import {
   deriveKekFromRecovery,
@@ -15,6 +27,7 @@ export const META_PATH = 'meta.json.enc'
 const AAD_PASSPHRASE = `${META_PATH}#passphrase`
 const AAD_RECOVERY = `${META_PATH}#recovery`
 const AAD_RECOVERY_CODE = `${META_PATH}#recoveryCode`
+const AAD_CHECK = `${META_PATH}#check`
 const MAX_PBKDF2_ITERATIONS = 10_000_000
 const KEY_LENGTH = 32
 const WRAPPED_LENGTH = 1 + IV_LENGTH + KEY_LENGTH + TAG_LENGTH
@@ -29,6 +42,12 @@ export interface Meta {
   recovery: { kdf: 'HKDF-SHA256'; salt: string; wrappedKey: string }
   /** Herstelcode-entropie onder de wachtzin-KEK, voor "herstelcode tonen". */
   recoveryCode: string
+  /**
+   * Binding aan de hoofdsleutel: de drie verpakkingen, versleuteld onder MK. Een apparaat dat al ontgrendeld is
+   * neemt een gewijzigde meta van GitHub alleen over als deze controle slaagt, zodat iemand met alleen
+   * schrijfrechten op logboek-data de wachtzin niet op afstand ongeldig kan maken. Ontbreekt bij oudere meta.
+   */
+  check?: string
 }
 
 export type Secret = { passphrase: string } | { recoveryCode: string; wordlist: readonly string[] }
@@ -89,6 +108,26 @@ function passphraseKek(meta: Meta, passphrase: string): Promise<CryptoKey> {
   return deriveKekFromPassphrase(passphrase, fromBase64(meta.passphrase.salt), meta.passphrase.iterations)
 }
 
+function checkPayload(meta: Meta): Bytes {
+  return utf8(`${meta.passphrase.wrappedKey}|${meta.recovery.wrappedKey}|${meta.recoveryCode}`)
+}
+
+async function sealCheck(masterKey: CryptoKey, meta: Meta): Promise<string> {
+  return toBase64(await encryptObject(masterKey, AAD_CHECK, checkPayload(meta)))
+}
+
+/** Klopt de binding van deze meta aan de hoofdsleutel? Zonder `check`-veld: nee. */
+export async function verifyMetaCheck(meta: Meta, masterKey: CryptoKey): Promise<boolean> {
+  if (!meta.check) return false
+  try {
+    const plain = await decryptObject(masterKey, AAD_CHECK, fromBase64(meta.check))
+    const expected = checkPayload(meta)
+    return plain.length === expected.length && plain.every((b, i) => b === expected[i])
+  } catch {
+    return false
+  }
+}
+
 export interface NewVault {
   meta: Meta
   masterKey: CryptoKey
@@ -121,6 +160,7 @@ export async function createVault(passphrase: string, wordlist: readonly string[
       },
       recoveryCode: await wrap(await entropyAsKey(entropy), pKek, AAD_RECOVERY_CODE),
     }
+    meta.check = await sealCheck(exportable, meta)
     const recoveryWords = await entropyToWords(entropy, wordlist)
     const masterKey = await unwrap(meta.passphrase.wrappedKey, pKek, AAD_PASSPHRASE, false)
     return { meta, masterKey, recoveryWords }
@@ -163,7 +203,7 @@ export async function changePassphrase(meta: Meta, current: Secret, newPassphras
   }
   const salt = randomBytes(SALT_LENGTH)
   const kek = await deriveKekFromPassphrase(newPassphrase, salt)
-  return {
+  const changed: Meta = {
     ...meta,
     passphrase: {
       kdf: 'PBKDF2-SHA256',
@@ -173,6 +213,22 @@ export async function changePassphrase(meta: Meta, current: Secret, newPassphras
     },
     recoveryCode: await wrap(entropyKey, kek, AAD_RECOVERY_CODE),
   }
+  changed.check = await sealCheck(mk, changed)
+  return changed
+}
+
+/**
+ * Pakt de hoofdsleutel na controle van de wachtzin opnieuw in onder een andere KEK (bijvoorbeeld de vingerafdruk-KEK).
+ * De sleutel is alleen binnen deze aanroep tijdelijk exporteerbaar.
+ */
+export async function rewrapMasterKey(meta: Meta, passphrase: string, kek: CryptoKey, aad: string): Promise<string> {
+  const mk = await unwrap(meta.passphrase.wrappedKey, await passphraseKek(meta, passphrase), AAD_PASSPHRASE, true)
+  return wrap(mk, kek, aad)
+}
+
+/** Haalt de hoofdsleutel (niet exporteerbaar) uit een met rewrapMasterKey gemaakte verpakking. */
+export function unwrapMasterKey(wrapped: string, kek: CryptoKey, aad: string): Promise<CryptoKey> {
+  return unwrap(wrapped, kek, aad, false)
 }
 
 export async function revealRecoveryWords(
@@ -218,7 +274,8 @@ export function parseMeta(json: string): Meta {
     throw new InvalidMetaError()
   }
   if (!isRecord(raw) || raw.format !== 'logboek-meta' || raw.version !== 1) throw new InvalidMetaError()
-  const { passphrase: p, recovery: r, recoveryCode } = raw
+  const { passphrase: p, recovery: r, recoveryCode, check } = raw
+  if (check !== undefined && !isBase64Blob(check)) throw new InvalidMetaError()
   if (
     !isRecord(p) ||
     p.kdf !== 'PBKDF2-SHA256' ||
@@ -236,11 +293,24 @@ export function parseMeta(json: string): Meta {
   ) {
     throw new InvalidMetaError()
   }
-  return {
+  const meta: Meta = {
     format: 'logboek-meta',
     version: 1,
     passphrase: { kdf: 'PBKDF2-SHA256', iterations: p.iterations, salt: p.salt, wrappedKey: p.wrappedKey },
     recovery: { kdf: 'HKDF-SHA256', salt: r.salt, wrappedKey: r.wrappedKey },
     recoveryCode,
+  }
+  if (typeof check === 'string') meta.check = check
+  return meta
+}
+
+/** Canonieke base64 van een AES-GCM-object (minimaal versie, IV en tag). */
+function isBase64Blob(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    const bytes = fromBase64(value)
+    return bytes.length >= 1 + IV_LENGTH + TAG_LENGTH && toBase64(bytes) === value
+  } catch {
+    return false
   }
 }

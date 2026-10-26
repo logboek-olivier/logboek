@@ -40,7 +40,7 @@ export function App() {
       screen = <Setup />
       break
     case 'locked':
-      screen = <Unlock />
+      screen = <Unlock fingerprint={state.fingerprint} />
       break
     case 'unlocked':
       screen = <Home store={state.store} />
