@@ -116,9 +116,9 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 `id, date, kind (fooi|loon|kosten|investering), amount (positief getal), currency (EUR|USD|GBP|…), amountEur? , source (yacht-week|sailing-virgins|delivery|overig), tripId?, note?, updatedAt, deletedAt`
 - `fooi` en `loon` zijn inkomsten; `kosten` en `investering` uitgaven. Richting volgt uit `kind`, niet uit het teken.
 - `investering` = uitgaven die het zeiljaar mogelijk maken (cursussen, examens, uitrusting).
-- `amountEur`: bij EUR gelijk aan `amount`. Bij andere valuta leeg tot de koersen-Action bestaat (fase 3); het overzicht toont die bedragen dan apart per valuta, nooit omgerekend met een verzonnen koers.
+- `amountEur`: bij EUR gelijk aan `amount`. Bij andere valuta leeg tot de koersen-Action bestaat (release 3); het overzicht toont die bedragen dan apart per valuta, nooit omgerekend met een verzonnen koers.
 - `tripId` wordt automatisch gezet als de datum binnen een tocht valt; Olivier kiest dit niet zelf.
-- Later toe te voegen (fase 3): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
+- Later toe te voegen (release 3): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
 
 ### Kluis (volgende sessie)
 
@@ -161,7 +161,7 @@ Onderste balk vandaag: **Vandaag · Zeilen · + · Geld · Instellingen**, vijf 
    - Dag: naar (plaats), nm, watertype (zee/getij/binnen). Van = vorige "naar", boot/rol/tocht = laatst gebruikt, datum vandaag. "Meer" klapt de overige velden open (nachturen, wind, nieuwe tocht).
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging. Soort (fooi/loon, kosten/investering), watertype, bron, valuta, boot en rol onthouden de laatste waarde. Het bedragveld opent direct met het numerieke toetsenbord.
 5. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). Daaronder tochten per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (Excel of CSV).
-6. **Geld:** saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (fase 3).
+6. **Geld:** saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (release 3).
 7. **Instellingen** (vijfde vak van de onderste balk): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, Over (versie uit `package.json`, bouwdatum, korte commit-hash).
 
 Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
@@ -179,16 +179,19 @@ logboek/
   public/            manifest-iconen, bip39-nl/en woordenlijst
   src/
     crypto/          keys.ts, encrypt.ts, passphrase.ts, recovery.ts, webauthn.ts
-    storage/         idb.ts, outbox.ts, github.ts, sync.ts
-    model/           types.ts, derive.ts
-    import/          mileage-csv.ts
-    screens/         Unlock, Setup, Today, Sailing, Money, QuickAdd, Settings
-    components/      kleine herbruikbare onderdelen
-    app.css
-  tests/             vitest (crypto, sync, derive, import) + playwright (setup, unlock, quickadd)
-    fixtures/        alleen gegenereerde nepdata
-  .github/workflows/ deploy.yml (alleen vanaf main), test.yml (bij elke PR en push)
-  scripts/           generate-fake-data.ts
+    storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
+    model/           types.ts, derive.ts, money.ts, settings.ts, schema.ts, edit.ts
+    import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
+    screens/         Unlock, Setup, Home, Today, Sailing, Money, QuickAdd, Settings
+    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, Sheet, EditSheets, Icon, Toast, …)
+    session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10)
+    errors.ts        foutdetails zonder inhoud
+    app.css          ontwerpsysteem
+  tests/             vitest (crypto, sync, session, derive, import, xlsx, edit, errors) + playwright (setup, unlock, sessie,
+                     import, bewerken, schermafbeeldingen 360/412 px licht/donker)
+    fixtures/        alleen gegenereerde nepdata (npm run fixtures)
+  .github/workflows/ deploy.yml (alleen vanaf main), test.yml (bij elke PR en push; uploadt schermafbeeldingen)
+  scripts/           generate-fake-data.ts, fake-xlsx.ts, generate-icons.mjs
 ```
 
 ## Werkwijze
@@ -200,21 +203,23 @@ logboek/
 - **Testfase (vóór live):** de echte app op `logboek-olivier.github.io/logboek/`, met testwachtzin. Olivier test op laptop en telefoon.
 - **Live-gang (na review en handtest):** (1) repo `logboek-data` verwijderen en leeg opnieuw aanmaken; (2) nieuwe fine-grained token, oude intrekken; (3) op elk apparaat de sitegegevens van `logboek-olivier.github.io` wissen en de app opnieuw installeren; (4) nieuw logboek met de echte wachtzin, nieuwe herstelcode op papier; (5) mijlen opnieuw importeren, zeilgeld opnieuw invoeren of exporteren/importeren.
 - **Cloud-sessies (vanaf de boot):** werken alleen in `logboek`, nooit in `logboek-data`. Elke taak eindigt in een PR.
+- Olivier werkt alleen vanaf zijn telefoon via cloud-sessies. Elke release in losse PR's; schermafbeeldingen uit CI bekijken vóór mergen.
 - **Reviews en wachten:** reviews met hoogstens één review-agent tegelijk, op de voorgrond. Bij werk zonder Olivier nooit wachten op achtergrondmeldingen; CI volgen met `gh pr checks --watch` en deploys met `gh run watch`.
 - **Definition of done:** tests groen, werkt offline, werkt op 360 px breed, geen nieuwe netwerkbestemmingen, geen nieuwe afhankelijkheden zonder reden in de PR.
 - **Dataformaat:** wijzigingen altijd achterwaarts compatibel. Een nieuwe `schemaVersion` alleen met migratie en een test die data van de vorige versie inleest. Ziet de app een hogere `schemaVersion` dan hij kent, dan schrijft hij niets naar GitHub en toont hij "Werk de app bij".
-- **Afhankelijkheden:** toegestaan zonder overleg: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa`, `idb`, `typescript`, `vitest`, `@playwright/test`, `fake-indexeddb`, eslint. Al het andere: eerst vragen.
+- **Afhankelijkheden:** toegestaan zonder overleg: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa`, `idb`, `typescript`, `vitest`, `@playwright/test`, `fake-indexeddb`, eslint, `lucide-react` (iconen), `fflate` (uitpakken van .xlsx). Al het andere: eerst vragen.
 - **Beveiligingsreview (verplicht vóór live):** een aparte sessie die de code niet geschreven heeft, krijgt de code en deze scenario's: gestolen ontgrendelde telefoon, gestolen vergrendelde telefoon, gelekte GitHub-token, gelekte `logboek-data`, gecompromitteerde `logboek`-repo, kwaadaardige npm-afhankelijkheid. Per scenario: wat kan een aanvaller wel, wat niet, en welke regel dat garandeert. Daarna Oliviers handtest: `logboek-data` clonen op een andere computer en proberen data te lezen zonder wachtzin.
 
-## Fasen
+## Releases
 
-1. **Afgerond (25 oktober 2026):** skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag-scherm, Instellingen, vingerafdruk, PWA op telefoon. In gebruik voor mijlen en zeilgeld.
-2. **Nu:** kluis met nepdocumenten, scannen met camera, vervaldatums. Daarna de volledige beveiligingsreview en de handtest; pas dan documenten erin.
-3. **Daarna (week 1–2):** volledige geldmodule (rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan), skills, koersen-Action, vervaldatum-Action, back-up-Action.
-4. **Week 3–4:** doelen, metingen, ademtrainer, sollicitaties en netwerk, status andere projecten, voortgang Yachtmaster/ASA.
-5. **Later:** aandelenkoersen, scenario's, weekreview, Health Connect, Samsung Galaxy Watch 7, GPS-logboek, zeil-CV, Zeiljaar Wrapped.
+Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt niet gebouwd.
 
-Niet bouwen wat niet in de huidige fase staat.
+1. **Bruikbaar (nu).** Basis afgerond op 25 oktober 2026 (skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag, Instellingen, vingerafdruk, PWA op telefoon; in gebruik voor mijlen en zeilgeld). Daarbovenop: import van Excel en CSV ook op Android, sessie die verversen en wisselen van app overleeft, vast ontwerpsysteem met iconen en grafieken, bewerken met ongedaan maken, onderhoud vanaf de telefoon (versie, foutdetails).
+2. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
+3. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, koersen-Action, aandelenkoersen, scenario's.
+4. **Doelen en skills.** Doelen, metingen, ademtrainer, skills, voortgang Yachtmaster/ASA.
+5. **Carrière.** Sollicitaties en netwerk, status andere projecten.
+6. **Wow.** Zeiljaar Wrapped, weekreview, zeil-CV, routekaart (GPS-logboek), horloge (Samsung Galaxy Watch 7) en Health Connect. Een zeil-CV als publieke pagina mag niet als tweede Pages-site in organisatie `logboek-olivier` (regel 13); die komt dan buiten deze organisatie, of als export die Olivier zelf deelt.
 
 ## Schrijfstijl in de app
 
