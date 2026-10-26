@@ -132,7 +132,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ## Import mijlenregistratie
 
-Bron: Oliviers Excel, door hem opgeslagen als **CSV UTF-8**. De importer leest CSV zonder externe bibliotheek en moet zowel `;` als `,` als scheidingsteken aankunnen, en datums als `dd-mm-jjjj` en `jjjj-mm-dd`.
+Bron: Oliviers Excel, direct als **.xlsx** of opgeslagen als **CSV**. Het formaat wordt herkend aan de inhoud, niet aan naam of MIME-type; de bestandskiezer heeft geen `accept`-filter (Android en Google Drive grijzen anders bestanden uit). CSV zonder externe bibliotheek: `;`, `,` of tab, UTF-8 (met of zonder BOM), UTF-16 of Windows-1252, CRLF of LF, aanhalingstekens. Datums als `d-m-jjjj`, `dd-mm-jjjj` en `jjjj-mm-dd`. Excel: fflate pakt uit, een eigen kleine XML-lezer leest workbook, sharedStrings, styles en het werkblad; datums zijn serienummers (let op `date1904`); formulecellen gebruiken de opgeslagen waarde, en ontbreekt die, dan geldt de datum van de vorige rij met `dateEstimated` en een waarschuwing. Een rij zonder dag-inhoud (alleen een datum- of Totaal-formule) scheidt tochten. Meldingen noemen rijnummer en kolom, nooit celinhoud.
 
 Opbouw van het bestand:
 - Rijen 1–4: samenvattingsregels (totalen per rol). Overslaan.
@@ -146,7 +146,7 @@ Opbouw van het bestand:
 Controle na import (scherm toont deze getallen; Olivier vergelijkt met zijn Excel): aantal dagen, aantal tochten, totaal nm, nm per rol, nm per watertype, nachturen.
 Opnieuw importeren mag niet dubbelen: legs krijgen `source = import` en een import vervangt alle eerdere `import`-legs (handmatige legs blijven).
 
-Testfixture `tests/fixtures/mijlen-nep.csv`: gegenereerd, zelfde opbouw (samenvattingsregels, kopregel, lege rijen tussen tochten, lege datums, `;` als scheidingsteken), verzonnen plaatsen en getallen.
+Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures`, zelfde opbouw als het origineel: Sheet1 met samenvattingsformules in J1:O4 en kopregel op rij 6, Blad1 met de rollenlijst, data-validatie-extensie) en `tests/fixtures/mijlen-nep.csv`: gegenereerd, zelfde opbouw (samenvattingsregels, kopregel, lege rijen tussen tochten, lege datums, `;` als scheidingsteken), verzonnen plaatsen en getallen.
 
 ## Schermen
 

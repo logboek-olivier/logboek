@@ -75,15 +75,17 @@ describe('import mijlenregistratie', () => {
   it('stopt bij een onbekende rol met het rijnummer', () => {
     const broken = fixture('mijlen-nep.csv').replace('Co-schipper;Nepboot Twee;Kapitein Nep;;5', 'Kapitein;Nepboot Twee;Kapitein Nep;;5')
     expect(() => parseMileageCsv(broken, NOW)).toThrow(ImportError)
-    expect(() => parseMileageCsv(broken, NOW)).toThrow('Rij 11: Onbekende rol "Kapitein"')
+    expect(() => parseMileageCsv(broken, NOW)).toThrow('Rij 11: rol niet herkend (kolom Rol). Toegestaan: Schipper, Co-schipper, Bemanningslid, Trainee, Instructeur.')
+    // Geen celinhoud in meldingen (beveiligingsregel 9).
+    expect(() => parseMileageCsv(broken, NOW)).not.toThrow('Kapitein')
   })
 
   it('weigert een bestand zonder kopregel, zonder dagen of met een onleesbaar getal', () => {
-    expect(() => parseMileageCsv('a;b;c\n1;2;3', NOW)).toThrow('Kopregel met "Datum" niet gevonden')
+    expect(() => parseMileageCsv('a;b;c\n1;2;3', NOW)).toThrow('Kopregel niet gevonden: geen rij die begint met "Datum"')
     const header = fixture('mijlen-nep.csv').split('\n').slice(0, 6).join('\n')
     expect(() => parseMileageCsv(header, NOW)).toThrow('Geen dagen gevonden')
     const badNumber = fixture('mijlen-nep.csv').replace(';3-4;12;;;12;;Oefentocht', ';3-4;twaalf;;;12;;Oefentocht')
-    expect(() => parseMileageCsv(badNumber, NOW)).toThrow('Rij 7: Getal "twaalf" niet herkend')
+    expect(() => parseMileageCsv(badNumber, NOW)).toThrow('Rij 7: getal niet herkend in kolom Binnenwater.')
   })
 
   it('leest datums en getallen in alle toegestane vormen', () => {

@@ -336,6 +336,28 @@ export class Session {
     return { client: this.unlockedClient, masterKey: this.unlockedKey, store: this.state.store }
   }
 
+  /** Tijdstip waarop de bestandskiezer geopend werd, of null. */
+  private filePickSince: number | null = null
+
+  /**
+   * De bestandskiezer van Android opent als aparte app en verbergt het logboek. Zolang die openstaat (hoogstens
+   * 5 minuten) vergrendelt verbergen niet; de 5-minutentimer zonder interactie blijft gewoon lopen.
+   */
+  beginFilePick(): void {
+    this.filePickSince = Date.now()
+  }
+
+  endFilePick(): void {
+    this.filePickSince = null
+  }
+
+  /** Aangeroepen als de app verborgen wordt (beveiligingsregel 10), behalve tijdens het kiezen van een bestand. */
+  lockOnHide(): void {
+    if (this.filePickSince !== null && Date.now() - this.filePickSince < LOCK_AFTER_MS) return
+    this.filePickSince = null
+    this.lock()
+  }
+
   /** Reset de vergrendeltimer; aanroepen bij elke interactie. */
   touch(): void {
     if (this.state.phase !== 'unlocked') return

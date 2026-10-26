@@ -21,7 +21,9 @@ export function App() {
     if (state.phase !== 'unlocked') return
     const touch = () => session.touch()
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') session.lock()
+      if (document.visibilityState === 'hidden') session.lockOnHide()
+      // Terug in de app: een bestandskiezer die zonder keuze werd gesloten, telt niet meer.
+      else session.endFilePick()
     }
     const events = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
     for (const ev of events) window.addEventListener(ev, touch, { passive: true })
