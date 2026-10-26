@@ -112,3 +112,26 @@ export function compareLegs(a: Leg, b: Leg): number {
 export function round1(n: number): number {
   return Math.round(n * 10) / 10
 }
+
+/** De laatste `count` kalendermaanden tot en met de maand van `today` (jjjj-mm), oudste eerst. */
+export function lastMonths(today: string, count = 12): string[] {
+  const y = Number(today.slice(0, 4))
+  const m = Number(today.slice(5, 7)) - 1
+  const months: string[] = []
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - i, 1))
+    months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`)
+  }
+  return months
+}
+
+/** nm per kalendermaand voor de laatste `count` maanden, oudste eerst. */
+export function nmPerMonth(legs: readonly Leg[], today: string, count = 12): { month: string; nm: number }[] {
+  const totals = new Map(lastMonths(today, count).map((m) => [m, 0]))
+  for (const leg of active(legs)) {
+    const key = leg.date.slice(0, 7)
+    const current = totals.get(key)
+    if (current !== undefined) totals.set(key, current + totalNm(leg))
+  }
+  return [...totals.entries()].map(([month, nm]) => ({ month, nm: round1(nm) }))
+}

@@ -147,3 +147,20 @@ describe('afgeleiden', () => {
     expect(nmInYear(result.legs, 2023)).toBe(0)
   })
 })
+
+describe('nm per maand', () => {
+  it('telt nm per kalendermaand voor de laatste 12 maanden en negeert oudere en verwijderde dagen', async () => {
+    const { nmPerMonth } = await import('../src/model/derive')
+    const base = parseMileageCsv(fixture('mijlen-nep.csv'), NOW).legs
+    const months = nmPerMonth(base, '2024-07-31')
+    expect(months).toHaveLength(12)
+    expect(months[0]?.month).toBe('2023-08')
+    expect(months.slice(-3)).toEqual([
+      { month: '2024-05', nm: 70 },
+      { month: '2024-06', nm: 110 },
+      { month: '2024-07', nm: 60 },
+    ])
+    const deleted = base.map((l) => (l.date.startsWith('2024-07') ? { ...l, deletedAt: NOW } : l))
+    expect(nmPerMonth(deleted, '2024-07-31').at(-1)).toEqual({ month: '2024-07', nm: 0 })
+  })
+})

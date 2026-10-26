@@ -1,4 +1,6 @@
+import { Anchor, ChevronLeft } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { Icon } from '../components/Icon'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } from '../session'
 
@@ -150,15 +152,23 @@ export function Screen({
 }) {
   return (
     <main className="app">
-      <header className="screen-header">
-        {onBack && (
+      {onBack ? (
+        <header className="screen-header">
           <button className="btn link" onClick={onBack} aria-label="Terug">
-            ‹ Terug
+            <Icon icon={ChevronLeft} />
+            Terug
           </button>
-        )}
-        <h1>{title}</h1>
-      </header>
-      {children}
+          <h1>{title}</h1>
+        </header>
+      ) : (
+        <header className="brand">
+          <span className="brand-mark">
+            <Icon icon={Anchor} />
+          </span>
+          <h1>{title}</h1>
+        </header>
+      )}
+      <div className="stack">{children}</div>
     </main>
   )
 }

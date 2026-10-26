@@ -11,21 +11,21 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
 
   // Fooi in EUR
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByLabel('Bedrag').fill('120,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
 
   // Fooi in USD: apart tonen, nooit omrekenen
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByLabel('Bedrag').fill('200')
   await page.getByLabel('Valuta').selectOption('USD')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
 
   // Kosten; valuta is nu laatst gebruikt (USD) → via Meer terug naar EUR
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Kosten' }).click()
   await page.getByLabel('Bedrag').fill('35')
   await page.getByLabel('Omschrijving').fill('Taxi haven')
@@ -35,7 +35,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(page.getByText('Kosten opgeslagen')).toBeVisible()
 
   // Dag
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Dag' }).click()
   await page.getByLabel('Naar (plaats)').fill('Nephaven')
   await page.getByLabel('Zeemijlen').fill('42')
@@ -48,7 +48,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
 
   // Tweede dag: standaardwaarden uit de vorige dag, dezelfde tocht
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Dag' }).click()
   await expect(page.getByText('Van Nephaven · Nepboot · Schipper · tocht Testtocht')).toBeVisible()
   await page.getByLabel('Naar (plaats)').fill('Nepbaai')
@@ -57,9 +57,9 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
 
   await page.getByRole('button', { name: 'Zeilen' }).click()
-  await expect(page.locator('.card')).toHaveCount(1)
-  await expect(page.locator('.card').first()).toContainText('Testtocht')
-  await expect(page.locator('.card').first()).toContainText('50 nm')
+  await expect(page.locator('.trip')).toHaveCount(1)
+  await expect(page.locator('.trip').first()).toContainText('Testtocht')
+  await expect(page.locator('.trip').first()).toContainText('50 nm')
   // De tweede dag erft het watertype van de vorige dag (getij).
   await expect(page.locator('.grid')).toContainText('Getijdenwater50 nm')
 
@@ -71,13 +71,13 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(grid).toContainText('Kosten€ 35,00')
   await expect(grid).toContainText('Saldo€ 85,50')
   await expect(grid).toContainText('Andere valuta+$ 200,00')
-  await expect(page.locator('.card')).toHaveCount(3)
+  await expect(page.locator('.tx')).toHaveCount(3)
   await expectNoHorizontalOverflow(page)
 
   // Fooi van vandaag is aan de tocht van vandaag gekoppeld (via sync-bestanden niet zichtbaar; controle via lijst volstaat)
   page.once('dialog', (d) => void d.accept())
   await page.getByRole('button', { name: /Verwijder Kosten/ }).click()
-  await expect(page.locator('.card')).toHaveCount(2)
+  await expect(page.locator('.tx')).toHaveCount(2)
   await expect(grid).toContainText('Kosten€ 0,00')
 
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })

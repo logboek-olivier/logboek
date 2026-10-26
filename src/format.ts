@@ -44,3 +44,22 @@ export function parseIsoDate(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1)
 }
+
+const nlMonthShort = new Intl.DateTimeFormat('nl-NL', { month: 'short' })
+const nlMonthLong = new Intl.DateTimeFormat('nl-NL', { month: 'long', year: 'numeric' })
+
+/** jjjj-mm → "okt" (zonder punt). */
+export function formatMonthShort(month: string): string {
+  return nlMonthShort.format(parseIsoDate(`${month}-01`)).replace('.', '')
+}
+
+/** jjjj-mm → "oktober 2026". */
+export function formatMonth(month: string): string {
+  return nlMonthLong.format(parseIsoDate(`${month}-01`))
+}
+
+/** Bedrag zonder centen voor as-teksten: € 1.250. */
+export function formatMoneyShort(amount: number, currency = 'EUR'): string {
+  const whole = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 }).format(amount)
+  return currency === 'EUR' ? `€ ${whole}` : `${whole} ${currency}`
+}

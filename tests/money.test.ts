@@ -98,3 +98,28 @@ describe('zeilgeld', () => {
     expect(addDays('2024-02-28', 1)).toBe('2024-02-29')
   })
 })
+
+describe('reeksen voor de grafieken', () => {
+  it('geeft 12 maanden inkomsten en kosten, oudste eerst, ook lege maanden en over een jaargrens', async () => {
+    const { monthSeries } = await import('../src/model/money')
+    const { lastMonths } = await import('../src/model/derive')
+    expect(lastMonths('2026-02-15', 4)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+    const tx = (date: string, kind: 'fooi' | 'kosten', amount: number) => ({
+      id: `${date}-${kind}`,
+      date,
+      kind,
+      amount,
+      currency: 'EUR' as const,
+      amountEur: amount,
+      source: 'overig' as const,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+    })
+    const series = monthSeries([tx('2026-02-01', 'fooi', 50), tx('2026-02-03', 'kosten', 20), tx('2025-12-24', 'fooi', 10), tx('2024-01-01', 'fooi', 99)], '2026-02-15', 3)
+    expect(series.map((m) => [m.month, m.incomeEur, m.costsEur])).toEqual([
+      ['2025-12', 10, 0],
+      ['2026-01', 0, 0],
+      ['2026-02', 50, 20],
+    ])
+  })
+})

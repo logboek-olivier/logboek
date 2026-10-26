@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { ChevronDown, Cloud, Download, Fingerprint as FingerprintIcon, KeyRound, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { Icon } from '../components/Icon'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
 import { ErrorLine, TokenForm } from './Setup'
 import { FINGERPRINT_LABEL } from './Unlock'
@@ -7,7 +9,7 @@ import { FINGERPRINT_LABEL } from './Unlock'
 
 type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'backup'
 
-export function Settings({ onBack, onDone }: { onBack: () => void; onDone: (message: string) => void }) {
+export function Settings({ onDone }: { onDone: (message: string) => void }) {
   const session = useSession()
   const [panel, setPanel] = useState<Panel>('none')
   const [fingerprintPossible, setFingerprintPossible] = useState(false)
@@ -19,71 +21,81 @@ export function Settings({ onBack, onDone }: { onBack: () => void; onDone: (mess
   }, [session])
 
   const toggle = (p: Panel) => setPanel(panel === p ? 'none' : p)
+  const row = (p: Exclude<Panel, 'none'>, icon: LucideIcon, label: string, content: ReactNode) => (
+    <li>
+      <button className="settings-row" aria-expanded={panel === p} onClick={() => toggle(p)}>
+        <Icon icon={icon} />
+        <span className="row-main">{label}</span>
+        <Icon icon={ChevronDown} className="chevron" />
+      </button>
+      {panel === p && <div className="settings-panel">{content}</div>}
+    </li>
+  )
 
   return (
-    <section className="stack">
-      <header className="screen-header">
-        <button className="btn link" onClick={onBack}>
-          ‹ Vandaag
-        </button>
+    <section className="stack-lg">
+      <header className="page-header">
         <h1>Instellingen</h1>
       </header>
 
-      <button className="btn" onClick={() => session.lock()}>
-        Vergrendelen
-      </button>
-
-      <button className="btn" aria-expanded={panel === 'passphrase'} onClick={() => toggle('passphrase')}>
-        Wachtzin wijzigen
-      </button>
-      {panel === 'passphrase' && (
-        <ChangePassphrase
-          onDone={() => {
-            setPanel('none')
-            onDone('Wachtzin gewijzigd')
-          }}
-        />
-      )}
-
-      <button className="btn" aria-expanded={panel === 'recovery'} onClick={() => toggle('recovery')}>
-        Herstelcode tonen
-      </button>
-      {panel === 'recovery' && <RevealRecovery />}
-
-      {(fingerprintPossible || fingerprintOn) && (
-        <>
-          <button className="btn" aria-expanded={panel === 'fingerprint'} onClick={() => toggle('fingerprint')}>
-            {FINGERPRINT_LABEL} {fingerprintOn ? 'uitzetten' : 'aanzetten'}
+      <ul className="rows">
+        <li>
+          <button className="settings-row" onClick={() => session.lock()}>
+            <Icon icon={Lock} />
+            <span className="row-main">Vergrendelen</span>
           </button>
-          {panel === 'fingerprint' && (
-            <Fingerprint
-              enabled={fingerprintOn}
-              onDone={(on) => {
-                setFingerprintOn(on)
+        </li>
+      </ul>
+
+      <div className="section">
+        <h2>Beveiliging</h2>
+        <ul className="rows">
+          {row(
+            'passphrase',
+            KeyRound,
+            'Wachtzin wijzigen',
+            <ChangePassphrase
+              onDone={() => {
                 setPanel('none')
-                onDone(on ? `${FINGERPRINT_LABEL} aan` : `${FINGERPRINT_LABEL} uit`)
+                onDone('Wachtzin gewijzigd')
               }}
-            />
+            />,
           )}
-        </>
-      )}
+          {row('recovery', ShieldCheck, 'Herstelcode tonen', <RevealRecovery />)}
+          {(fingerprintPossible || fingerprintOn) &&
+            row(
+              'fingerprint',
+              FingerprintIcon,
+              `${FINGERPRINT_LABEL} ${fingerprintOn ? 'uitzetten' : 'aanzetten'}`,
+              <Fingerprint
+                enabled={fingerprintOn}
+                onDone={(on) => {
+                  setFingerprintOn(on)
+                  setPanel('none')
+                  onDone(on ? `${FINGERPRINT_LABEL} aan` : `${FINGERPRINT_LABEL} uit`)
+                }}
+              />,
+            )}
+        </ul>
+      </div>
 
-      <button className="btn" aria-expanded={panel === 'token'} onClick={() => toggle('token')}>
-        Token vervangen
-      </button>
-      {panel === 'token' && (
-        <ReplaceToken
-          onDone={() => {
-            setPanel('none')
-            onDone('Token vervangen')
-          }}
-        />
-      )}
-
-      <button className="btn" aria-expanded={panel === 'backup'} onClick={() => toggle('backup')}>
-        Back-up maken
-      </button>
-      {panel === 'backup' && <Backup />}
+      <div className="section">
+        <h2>Opslag</h2>
+        <ul className="rows">
+          {row(
+            'token',
+            Cloud,
+            'Token vervangen',
+            <ReplaceToken
+              onDone={() => {
+                setPanel('none')
+                onDone('Token vervangen')
+              }}
+            />,
+          )}
+          {row('backup', Download, 'Back-up maken', <Backup />)}
+        </ul>
+      </div>
     </section>
   )
 }
@@ -120,7 +132,7 @@ function ChangePassphrase({ onDone }: { onDone: () => void }) {
     })
   }
   return (
-    <form className="stack panel" onSubmit={submit}>
+    <form className="stack" onSubmit={submit}>
       <label>
         Huidige wachtzin
         <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
@@ -154,7 +166,7 @@ function RevealRecovery() {
   }
   if (words) {
     return (
-      <div className="panel">
+      <div className="stack">
         <ol className="words">
           {words.map((w, i) => (
             <li key={i}>{w}</li>
@@ -167,7 +179,7 @@ function RevealRecovery() {
     )
   }
   return (
-    <form className="stack panel" onSubmit={submit}>
+    <form className="stack" onSubmit={submit}>
       <label>
         Wachtzin
         <input type="password" autoComplete="current-password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
@@ -186,7 +198,7 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
   const [passphrase, setPassphrase] = useState('')
   if (enabled) {
     return (
-      <div className="stack panel">
+      <div className="stack">
         <p className="muted">Daarna is alleen de wachtzin nog mogelijk op dit apparaat.</p>
         <ErrorLine error={error} />
         <button
@@ -212,7 +224,7 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
     })
   }
   return (
-    <form className="stack panel" onSubmit={submit}>
+    <form className="stack" onSubmit={submit}>
       <p className="muted">
         Bevestig met de wachtzin; daarna vraagt het apparaat om de vingerafdruk. Android accepteert ook de pincode of
         het patroon van de schermvergrendeling.
@@ -233,7 +245,7 @@ function ReplaceToken({ onDone }: { onDone: () => void }) {
   const session = useSession()
   const { busy, error, run } = useAction()
   return (
-    <div className="stack panel">
+    <div className="stack">
       <TokenForm
         check={(token) => session.checkToken(token)}
         submitLabel={busy ? 'Vervangen…' : 'Vervangen'}
@@ -253,7 +265,7 @@ function ReplaceToken({ onDone }: { onDone: () => void }) {
 /** Back-up van logboek-data op een eigen computer. De app doet hiervoor geen netwerkverkeer; dit is alleen tekst. */
 function Backup() {
   return (
-    <div className="stack panel">
+    <div className="stack">
       <p className="muted">
         De versleutelde data staat in de GitHub-repo <code>logboek-data</code>. Een kopie op de laptop maak en ververs je
         in PowerShell (eenmalig clonen, daarna bijwerken):

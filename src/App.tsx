@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { Loading } from './components/Loading'
 import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
@@ -43,7 +44,7 @@ export function App() {
   let screen: React.ReactNode
   switch (state.phase) {
     case 'loading':
-      screen = <main className="app" />
+      screen = <Loading />
       break
     case 'setup':
       screen = <Setup />

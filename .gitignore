@@ -24,3 +24,6 @@ secrets/
 # Editor en OS
 .DS_Store
 Thumbs.db
+
+# Schermafbeeldingen uit tests/e2e/screenshots.spec.ts (artifact in CI)
+screenshots/

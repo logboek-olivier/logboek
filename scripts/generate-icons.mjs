@@ -14,14 +14,15 @@ const targets = [
   { file: 'icon-maskable-512.png', size: 512, maskable: true },
 ]
 
-const browser = await chromium.launch()
+// PW_CHROMIUM: pad naar een eigen Chromium als de meegeleverde versie ontbreekt.
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {})
 const page = await browser.newPage()
 for (const t of targets) {
   await page.setViewportSize({ width: t.size, height: t.size })
   const inner = t.maskable ? Math.round(t.size * 0.8) : t.size
   const offset = Math.round((t.size - inner) / 2)
   await page.setContent(
-    `<html><body style="margin:0;background:${t.maskable ? '#1d4e89' : 'transparent'}">` +
+    `<html><body style="margin:0;background:${t.maskable ? '#12263f' : 'transparent'}">` +
       `<img src="${dataUrl}" style="position:absolute;left:${offset}px;top:${offset}px;width:${inner}px;height:${inner}px"></body></html>`,
   )
   const png = await page.screenshot({ type: 'png', omitBackground: !t.maskable, clip: { x: 0, y: 0, width: t.size, height: t.size } })
