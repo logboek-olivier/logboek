@@ -28,7 +28,7 @@ test('Kopieer foutdetails: versie, scherm en foutcode, zonder inhoud; niet bij e
   const report = await page.evaluate(() => navigator.clipboard.readText())
   expect(report).toContain('Logboek-foutdetails')
   expect(report).toContain('Versie: 1.0.0')
-  expect(report).toContain('Scherm: Zeilen')
+  expect(report).toContain('Scherm: Logboek')
   expect(report).toContain('Foutcode: ImportError')
   expect(report).not.toContain('Geheimhaven')
 
