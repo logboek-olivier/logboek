@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { daysUntil, Session } from '../src/session'
+import { getSessionKey, openLogboekDb, putSessionKey } from '../src/storage/idb'
 import { TOKEN_INVALID_MESSAGE } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
@@ -51,6 +52,125 @@ function store(session: Session) {
 async function settled(session: Session): Promise<void> {
   await store(session).sync()
 }
+
+describe('sessie: hoofdsleutel 5 minuten in IndexedDB (beveiligingsregel 10)', () => {
+  async function reopen(name: string, now: () => number): Promise<Session> {
+    const next = new Session(name, now)
+    sessions.push(next)
+    await next.init()
+    return next
+  }
+
+  async function freshSession(now: () => number): Promise<{ session: Session; name: string }> {
+    const name = `logboek-sessie-${++dbCounter}`
+    const session = new Session(name, now)
+    sessions.push(session)
+    await session.init()
+    await session.finishNewVault(TOKEN_A, null, await createVault(PASSPHRASE, wordlist))
+    await store(session).put('trips.json.enc', { id: 't1', name: 'nep', updatedAt: new Date().toISOString(), deletedAt: null })
+    await settled(session)
+    session.flushActivity()
+    // De opslag gebeurt op de achtergrond; even laten afronden.
+    await new Promise((r) => setTimeout(r, 50))
+    return { session, name }
+  }
+
+  it('verversen binnen 5 minuten: direct ontgrendeld met dezelfde data', async () => {
+    let t = 1_000_000
+    const { name } = await freshSession(() => t)
+    t += 4 * 60 * 1000
+    const next = await reopen(name, () => t)
+    expect(next.getState().phase).toBe('unlocked')
+    expect(store(next).list('trips.json.enc').map((r) => r.name)).toEqual(['nep'])
+  })
+
+  it('na 5 minuten: vergrendeld en de sleutel is gewist (ook als de klok daarna terug wordt gezet)', async () => {
+    let t = 1_000_000
+    const { name } = await freshSession(() => t)
+    t += 5 * 60 * 1000
+    expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+    t -= 5 * 60 * 1000
+    expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+  })
+
+  it('een klok die achteruit staat telt als verlopen', async () => {
+    let t = 1_000_000
+    const { name } = await freshSession(() => t)
+    t -= 60 * 1000
+    expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+  })
+
+  it('handmatig vergrendelen wist de opgeslagen sleutel', async () => {
+    const t = 1_000_000
+    const { session, name } = await freshSession(() => t)
+    session.lock()
+    await new Promise((r) => setTimeout(r, 50))
+    expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+  })
+
+  it('openen telt niet als gebruik: na hervatten loopt alleen de resterende tijd', async () => {
+    let t = 1_000_000
+    const { name } = await freshSession(() => t)
+    t += 4 * 60 * 1000
+    const next = await reopen(name, () => t)
+    expect(next.getState().phase).toBe('unlocked')
+    t += 61 * 1000
+    expect(next.checkExpiry()).toBe(true)
+    expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+  })
+
+  it('vergrendelen in één tabblad vergrendelt de andere en schrijft de sleutel niet terug', async () => {
+    let t = 1_000_000
+    const { session: a, name } = await freshSession(() => t)
+    const b = await reopen(name, () => t)
+    expect(b.getState().phase).toBe('unlocked')
+    a.lock()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(b.getState().phase).toBe('locked')
+    t += 30 * 1000
+    b.touch()
+    b.flushActivity()
+    await new Promise((r) => setTimeout(r, 50))
+    expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+  })
+
+  it('een sleutel waarvan het wissen bij vergrendelen niet afkwam, wordt toch niet gebruikt', async () => {
+    const storage = new Map<string, string>()
+    const fake = {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+    }
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true })
+    try {
+      let t = 1_000_000
+      const { session, name } = await freshSession(() => t)
+      const db = await openLogboekDb(name)
+      const kept = await getSessionKey(db)
+      expect(kept).toBeDefined()
+      t += 1000
+      session.lock()
+      await new Promise((r) => setTimeout(r, 50))
+      // Alsof het wissen in IndexedDB niet doorkwam (app direct gesloten).
+      await putSessionKey(db, kept!)
+      db.close()
+      expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+    } finally {
+      Reflect.deleteProperty(globalThis, 'localStorage')
+    }
+  })
+
+  it('touch en checkExpiry vergrendelen na 5 minuten zonder gebruik, ook als de timer niet liep', async () => {
+    let t = 1_000_000
+    const { session } = await freshSession(() => t)
+    t += 3 * 60 * 1000
+    session.touch()
+    t += 4 * 60 * 1000
+    expect(session.checkExpiry()).toBe(false)
+    t += 61 * 1000
+    expect(session.checkExpiry()).toBe(true)
+    expect(session.getState().phase).toBe('locked')
+  })
+})
 
 describe('sessie en token', () => {
   it('bewaart de vervaldatum versleuteld, wist hem bij vergrendelen en zet hem terug na ontgrendelen', async () => {

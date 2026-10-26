@@ -5,7 +5,6 @@ import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
 import { summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
 import { ROLE_LABELS, ROLES, type Leg } from '../model/types'
-import { useSession } from '../session'
 import type { Store } from '../storage/store'
 
 // Zeilen: totalen bovenaan, tochten nieuwste eerst (uitklapbaar naar dagen), knop Importeren.
@@ -18,19 +17,11 @@ export function Sailing({ store }: { store: Store }) {
   const [busy, setBusy] = useState(false)
   const [reading, setReading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  const session = useSession()
 
   const summary = summarize(legs)
   const tripSummaries = summarizeTrips(trips, legs)
 
-  function chooseFile() {
-    // De bestandskiezer van Android verbergt de app; zonder dit zou de app vergrendelen en het bestand kwijtraken.
-    session.beginFilePick()
-    fileInput.current?.click()
-  }
-
   async function onFile(file: File | undefined) {
-    session.endFilePick()
     if (!file) return
     setError(null)
     setReading(true)
@@ -103,7 +94,7 @@ export function Sailing({ store }: { store: Store }) {
         aria-label="Mijlenbestand"
         onChange={(e) => void onFile(e.target.files?.[0])}
       />
-      <button className="btn" onClick={chooseFile} disabled={reading}>
+      <button className="btn" onClick={() => fileInput.current?.click()} disabled={reading}>
         {reading ? 'Bestand lezen…' : 'Importeren'}
       </button>
       <p className="muted small">Excel (.xlsx) of CSV van de mijlenregistratie.</p>

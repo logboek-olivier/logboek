@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, TOKEN } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, storedLastUsed, TOKEN } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -30,7 +30,13 @@ test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrende
   await page.getByRole('button', { name: 'Ontgrendelen' }).click()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
 
-  // Herladen = nieuwe browsersessie: vergrendeld, geen eerste-keer-scherm meer.
+  // Herladen binnen 5 minuten: niet vergrendeld (de niet-exporteerbare hoofdsleutel staat in IndexedDB).
+  // Het opslaan na ontgrendelen is asynchroon; eerst afwachten, anders vraagt de app (terecht) weer de wachtzin.
+  await expect.poll(() => storedLastUsed(page)).not.toBeNull()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  // Na handmatig vergrendelen blijft herladen vergrendeld, geen eerste-keer-scherm.
+  await lock(page)
   await page.reload()
   await expect(page.getByRole('button', { name: 'Ontgrendelen' })).toBeVisible()
   expect(errors).toEqual([])
@@ -150,8 +156,6 @@ test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en h
   github.forceStatus = null
   github.offline = true
   await page.reload()
-  await page.getByLabel('Wachtzin').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Ontgrendelen' }).click()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('status').first()).toHaveText('Geen verbinding', { timeout: 15_000 })
   await page.getByRole('button', { name: 'Geld' }).click()

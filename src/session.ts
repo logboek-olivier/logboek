@@ -19,14 +19,19 @@ import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFi
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
 import { UPDATE_APP_MESSAGE } from './model/schema'
 import { ConflictError, GithubClient, GithubError } from './storage/github'
-import { clearAll, getObject, openLogboekDb, type Db } from './storage/idb'
+import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKey, type Db } from './storage/idb'
 import { Store } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
 
 // Levenscyclus van een sessie: eerste keer (nieuw of koppelen), ontgrendelen, vergrendelen.
-// De hoofdsleutel leeft alleen in de Store; vergrendelen laat die vallen (beveiligingsregel 10).
+// Beveiligingsregel 10: vergrendelen na 5 minuten zonder gebruik. Binnen die 5 minuten staat de niet-exporteerbare
+// hoofdsleutel (CryptoKey) met het tijdstip van laatste gebruik in IndexedDB, zodat verversen of wisselen van app
+// niet vergrendelt. Bij openen: jonger dan 5 minuten → gebruiken, anders direct wissen. Vergrendelen wist geheugen
+// en de opgeslagen sleutel.
 
 export const LOCK_AFTER_MS = 5 * 60 * 1000
+/** Laatste gebruik hoogstens zo vaak naar IndexedDB schrijven; bij verbergen altijd direct. */
+const ACTIVITY_WRITE_MS = 15 * 1000
 export const MIN_PASSPHRASE_LENGTH = 12
 
 export type SessionState =
@@ -63,12 +68,68 @@ export class Session {
     return () => this.listeners.delete(listener)
   }
 
-  /** `dbName` alleen voor tests; de app gebruikt de standaardnaam. */
-  constructor(private readonly dbName?: string) {}
+  /** Andere tabbladen van de app: vergrendelen in één tabblad vergrendelt ze allemaal. Blijft in de browser. */
+  private readonly channel: BroadcastChannel | null
+  /** Monotone klok voor een draaiende pagina; verzetten van de systeemklok verlengt de 5 minuten daar niet. */
+  private readonly monotonic: () => number
+
+  /** `dbName` en `clock` alleen voor tests; de app gebruikt de standaardnaam en de systeemklok. */
+  private readonly clock: () => number
+
+  constructor(
+    private readonly dbName?: string,
+    clock?: () => number,
+  ) {
+    // Met een testklok zijn systeemklok en monotone klok dezelfde.
+    this.clock = clock ?? (() => Date.now())
+    this.monotonic = clock ?? (() => performance.now())
+    this.channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`logboek-session:${dbName ?? 'logboek'}`)
+    if (this.channel) {
+      this.channel.onmessage = (event: MessageEvent) => {
+        if (event.data === 'lock') this.lock(false)
+      }
+      // Node (tests): het kanaal mag het proces niet openhouden.
+      ;(this.channel as unknown as { unref?: () => void }).unref?.()
+    }
+  }
 
   async init(): Promise<void> {
     this.db = await openLogboekDb(this.dbName)
+    if (await this.resume()) return
     await this.toLocked()
+  }
+
+  /** Verder met de opgeslagen hoofdsleutel als die jonger is dan 5 minuten; anders wissen. */
+  private async resume(): Promise<boolean> {
+    const db = this.requireDb()
+    let record: Awaited<ReturnType<typeof getSessionKey>>
+    try {
+      record = await getSessionKey(db)
+    } catch {
+      return false
+    }
+    if (!record) return false
+    const age = this.clock() - record.lastUsed
+    // Ook een klok die achteruit staat (negatieve leeftijd) telt als verlopen. Een sleutel die niet jonger is dan het
+    // laatste vergrendelen telt ook niet: het wissen in IndexedDB is asynchroon en kan bij direct sluiten wegvallen.
+    const lockedAt = readLockedAt(this.dbName)
+    if (
+      !(record.key instanceof CryptoKey) ||
+      record.key.extractable ||
+      age < 0 ||
+      age >= LOCK_AFTER_MS ||
+      (lockedAt !== null && record.lastUsed <= lockedAt)
+    ) {
+      await deleteSessionKey(db).catch(() => undefined)
+      return false
+    }
+    try {
+      await this.openWithStoredToken(record.key, record.lastUsed)
+      return true
+    } catch {
+      await deleteSessionKey(db).catch(() => undefined)
+      return false
+    }
   }
 
   private async toLocked(): Promise<void> {
@@ -300,7 +361,8 @@ export class Session {
     await this.openWithStoredToken(masterKey)
   }
 
-  private async openWithStoredToken(masterKey: CryptoKey): Promise<void> {
+  /** `resumedLastUsed`: hervat met de opgeslagen sleutel; openen telt dan niet als gebruik. */
+  private async openWithStoredToken(masterKey: CryptoKey, resumedLastUsed?: number): Promise<void> {
     const db = this.requireDb()
     const stored = await loadToken(db, masterKey)
     if (stored === null) {
@@ -310,11 +372,17 @@ export class Session {
       throw new SetupError('Token ontbreekt op dit apparaat. Koppel het logboek opnieuw.')
     }
     this.tokenExpiresAt = stored.expiresAt
-    await this.open(new GithubClient(stored.token), null, masterKey)
+    await this.open(new GithubClient(stored.token), null, masterKey, resumedLastUsed)
   }
 
-  lock(): void {
+  /** `broadcast`: ook de andere tabbladen vergrendelen (niet als dit tabblad zelf door een ander werd vergrendeld). */
+  lock(broadcast = true): void {
     this.clearLockTimer()
+    // Altijd de opgeslagen sleutel wissen, ook als het geheugen al leeg is. Het tijdstip gaat eerst synchroon naar
+    // localStorage, zodat een sleutel waarvan het wissen nog niet klaar was, toch nooit meer gebruikt wordt.
+    writeLockedAt(this.dbName, this.clock())
+    if (this.db) void deleteSessionKey(this.db).catch(() => undefined)
+    if (broadcast) this.channel?.postMessage('lock')
     if (this.state.phase !== 'unlocked') return
     const store = this.state.store
     this.generation++
@@ -336,36 +404,67 @@ export class Session {
     return { client: this.unlockedClient, masterKey: this.unlockedKey, store: this.state.store }
   }
 
-  /** Tijdstip waarop de bestandskiezer geopend werd, of null. */
-  private filePickSince: number | null = null
+  /** Laatste gebruik (systeemklok, voor IndexedDB) en wanneer dat het laatst naar IndexedDB ging. */
+  private lastUsed = 0
+  private lastWritten = 0
+  /** Moment (monotone klok) waarop vergrendeld moet worden. */
+  private deadline = 0
 
-  /**
-   * De bestandskiezer van Android opent als aparte app en verbergt het logboek. Zolang die openstaat (hoogstens
-   * 5 minuten) vergrendelt verbergen niet; de 5-minutentimer zonder interactie blijft gewoon lopen.
-   */
-  beginFilePick(): void {
-    this.filePickSince = Date.now()
-  }
-
-  endFilePick(): void {
-    this.filePickSince = null
-  }
-
-  /** Aangeroepen als de app verborgen wordt (beveiligingsregel 10), behalve tijdens het kiezen van een bestand. */
-  lockOnHide(): void {
-    if (this.filePickSince !== null && Date.now() - this.filePickSince < LOCK_AFTER_MS) return
-    this.filePickSince = null
-    this.lock()
-  }
-
-  /** Reset de vergrendeltimer; aanroepen bij elke interactie. */
+  /** Gebruik = tikken, typen of scrollen in de app. Reset de vergrendeltimer. */
   touch(): void {
     if (this.state.phase !== 'unlocked') return
-    this.clearLockTimer()
-    this.lockTimer = setTimeout(() => this.lock(), LOCK_AFTER_MS)
+    // Een timer die op de achtergrond niet liep: eerst controleren of de 5 minuten al om zijn.
+    if (this.checkExpiry()) return
+    this.lastUsed = this.clock()
+    this.scheduleLock(LOCK_AFTER_MS)
+    if (this.lastUsed - this.lastWritten >= ACTIVITY_WRITE_MS) this.saveActivity()
   }
 
-  private async open(client: GithubClient, tokenToStore: StoredToken | null, masterKey: CryptoKey): Promise<void> {
+  private scheduleLock(remaining: number): void {
+    this.deadline = this.monotonic() + remaining
+    this.clearLockTimer()
+    this.lockTimer = setTimeout(() => this.lock(), remaining)
+  }
+
+  /** Vergrendelt als het laatste gebruik 5 minuten of langer geleden is. Geeft true als er vergrendeld werd. */
+  checkExpiry(): boolean {
+    if (this.state.phase !== 'unlocked') return false
+    const age = this.clock() - this.lastUsed
+    if (age >= LOCK_AFTER_MS || age < 0 || this.monotonic() >= this.deadline) {
+      this.lock()
+      return true
+    }
+    return false
+  }
+
+  /** Bij verbergen van de app: laatste gebruik direct opslaan, zodat terugkomen binnen 5 minuten niet vergrendelt. */
+  flushActivity(): void {
+    if (this.state.phase !== 'unlocked') return
+    if (this.checkExpiry()) return
+    this.saveActivity()
+  }
+
+  private saveActivity(): void {
+    const db = this.db
+    const key = this.unlockedKey
+    if (!db || !key) return
+    const generation = this.generation
+    const lastUsed = this.lastUsed
+    this.lastWritten = lastUsed
+    void (async () => {
+      // Na vergrendelen niets meer terugschrijven.
+      if (generation !== this.generation) return
+      await putSessionKey(db, { name: 'masterKey', key, lastUsed })
+      if (generation !== this.generation) await deleteSessionKey(db)
+    })().catch(() => undefined)
+  }
+
+  private async open(
+    client: GithubClient,
+    tokenToStore: StoredToken | null,
+    masterKey: CryptoKey,
+    resumedLastUsed?: number,
+  ): Promise<void> {
     const db = this.requireDb()
     if (tokenToStore !== null) {
       await storeToken(db, masterKey, tokenToStore.token, tokenToStore.expiresAt)
@@ -380,7 +479,17 @@ export class Session {
     if (!this.lastMeta) this.lastMeta = await Store.loadMeta(db).catch(() => null)
     this.lastFingerprint = (await loadFingerprint(db)) !== null
     this.setState({ phase: 'unlocked', store })
-    this.touch()
+    if (resumedLastUsed === undefined) {
+      this.lastUsed = this.clock()
+      this.lastWritten = 0
+      this.scheduleLock(LOCK_AFTER_MS)
+      this.saveActivity()
+    } else {
+      // Hervat: alleen de resterende tijd, en niets opnieuw opslaan tot er echt gebruik is.
+      this.lastUsed = resumedLastUsed
+      this.lastWritten = resumedLastUsed
+      this.scheduleLock(Math.max(0, LOCK_AFTER_MS - (this.clock() - resumedLastUsed)))
+    }
     void store.sync()
     void this.refreshMeta(client, db, masterKey, this.generation)
   }
@@ -398,6 +507,28 @@ export class Session {
   private setState(state: SessionState): void {
     this.state = state
     for (const listener of this.listeners) listener()
+  }
+}
+
+/** Tijdstip van het laatste vergrendelen (geen geheim). localStorage is synchroon en blijft staan na sluiten. */
+function lockedAtKey(dbName: string | undefined): string {
+  return `logboek-vergrendeld:${dbName ?? 'logboek'}`
+}
+
+function readLockedAt(dbName: string | undefined): number | null {
+  try {
+    const value = Number(globalThis.localStorage?.getItem(lockedAtKey(dbName)))
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeLockedAt(dbName: string | undefined, at: number): void {
+  try {
+    globalThis.localStorage?.setItem(lockedAtKey(dbName), String(at))
+  } catch {
+    // Geen localStorage: het wissen in IndexedDB blijft de gewone weg.
   }
 }
 
