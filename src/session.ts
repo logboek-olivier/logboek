@@ -18,9 +18,9 @@ import { loadWordlist } from './crypto/recovery'
 import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFingerprint } from './crypto/webauthn'
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
 import { UPDATE_APP_MESSAGE } from './model/schema'
-import { AuthError, ConflictError, GithubClient, GithubError } from './storage/github'
+import { ConflictError, GithubClient, GithubError } from './storage/github'
 import { clearAll, getObject, openLogboekDb, type Db } from './storage/idb'
-import { Store, TOKEN_INVALID_MESSAGE } from './storage/store'
+import { Store } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
 
 // Levenscyclus van een sessie: eerste keer (nieuw of koppelen), ontgrendelen, vergrendelen.
@@ -63,8 +63,11 @@ export class Session {
     return () => this.listeners.delete(listener)
   }
 
+  /** `dbName` alleen voor tests; de app gebruikt de standaardnaam. */
+  constructor(private readonly dbName?: string) {}
+
   async init(): Promise<void> {
-    this.db = await openLogboekDb()
+    this.db = await openLogboekDb(this.dbName)
     await this.toLocked()
   }
 
@@ -156,16 +159,27 @@ export class Session {
     return new GithubClient(token.trim()).checkAccess()
   }
 
-  async replaceToken(token: string, expiresAt: string | null): Promise<void> {
+  /** Lopende vervanging; een tweede aanroep krijgt dezelfde promise, zodat er nooit twee Stores ontstaan. */
+  private replacing: Promise<void> | null = null
+
+  replaceToken(token: string, expiresAt: string | null): Promise<void> {
+    if (this.replacing) return this.replacing
+    this.replacing = this.doReplaceToken(token, expiresAt).finally(() => {
+      this.replacing = null
+    })
+    return this.replacing
+  }
+
+  /** `expiresAt` komt uit het formulier en is leidend, ook als het leeg is; de header is alleen voorvulling. */
+  private async doReplaceToken(token: string, expiresAt: string | null): Promise<void> {
     const db = this.requireDb()
     const { masterKey, store: previous } = this.requireUnlocked()
     const generation = this.generation
     const client = new GithubClient(token.trim())
-    const access = await client.checkAccess()
+    await client.checkAccess()
     this.assertSameSession(generation)
-    const expiry = expiresAt ?? access.expiresAt
-    await storeToken(db, masterKey, token.trim(), expiry)
-    this.tokenExpiresAt = expiry
+    await storeToken(db, masterKey, token.trim(), expiresAt)
+    this.tokenExpiresAt = expiresAt
     this.assertSameSession(generation)
     // De Store houdt de oude client; een nieuwe Store openen zorgt dat sync de nieuwe token gebruikt.
     const store = await Store.open(db, masterKey, client)
@@ -276,7 +290,7 @@ export class Session {
     const masterKey = await unlock(meta, await withWordlist(secret))
     await clearAll(db)
     await Store.storeMeta(db, meta, file.sha)
-    await this.open(client, { token: token.trim(), expiresAt: expiresAt ?? client.tokenExpiresAt }, masterKey)
+    await this.open(client, { token: token.trim(), expiresAt }, masterKey)
   }
 
   /** Ontgrendelen op een apparaat dat al gekoppeld is. */
@@ -389,7 +403,7 @@ export function daysUntil(date: string | null, today: string): number | null {
 /** Nederlandse melding voor fouten uit opslag en sleutels; nooit inhoud of sleutels. */
 export function describeError(error: unknown): string {
   if (error instanceof SetupError) return error.message
-  if (error instanceof AuthError) return TOKEN_INVALID_MESSAGE
+  // Bij invoeren of vervangen is een 401/403 een token die nooit werkte: eigen melding, niet "verlopen".
   if (error instanceof GithubError) return error.message
   if (error instanceof Error) {
     switch (error.name) {

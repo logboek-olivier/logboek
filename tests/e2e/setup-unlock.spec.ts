@@ -114,6 +114,22 @@ test('vervaldatum van de token: vooraf ingevuld uit de header, waarschuwing op V
   await expect(page.getByRole('alert')).toContainText('over 10 dagen')
   await page.getByRole('alert').getByRole('button', { name: 'Token vervangen' }).click()
   await expect(page.getByRole('heading', { name: 'Instellingen' })).toBeVisible()
+
+  // Token vervangen: nieuwe token met een vervaldatum ver weg; de waarschuwing verdwijnt.
+  github.tokenExpiration = null
+  await page.getByRole('button', { name: 'Token vervangen' }).click()
+  await page.getByLabel('GitHub-token').fill('github_pat_E2E_NIEUW_0123456789abcdefghijklmnopqrstuvwxyz')
+  await page.getByRole('button', { name: 'Controleren', exact: true }).click()
+  await expect(page.getByText('Niet leesbaar van GitHub')).toBeVisible()
+  await page.getByLabel('Vervaldatum van de token').fill('2030-01-01')
+  await page.getByRole('button', { name: 'Vervangen', exact: true }).click()
+  await expect(page.getByText('Token vervangen', { exact: true })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '‹ Vandaag' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  const wire = github.requests.map((r) => `${r.url}\n${r.body ?? ''}`).join('\n')
+  expect(wire).not.toContain('github_pat_E2E_NIEUW')
 })
 
 test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en herladen bewaart de outbox', async ({ page }) => {

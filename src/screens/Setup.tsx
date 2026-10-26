@@ -83,8 +83,9 @@ export function Setup() {
   }
 
   if (step.kind === 'words') {
+    // Terug = andere token kiezen; er is nog niets opgeslagen, de sleutels worden dan opnieuw gemaakt.
     return (
-      <Screen title="Herstelcode">
+      <Screen title="Herstelcode" onBack={() => setStep({ kind: 'token', mode: 'new' })}>
         <p>
           Schrijf deze {RECOVERY_WORD_COUNT} woorden op papier, in deze volgorde. Zonder wachtzin en zonder deze
           woorden is het logboek niet te openen.
@@ -178,10 +179,13 @@ export function TokenForm({
   check,
   onDone,
   submitLabel = 'Verder',
+  disabled = false,
 }: {
   check: (token: string) => Promise<{ expiresAt: string | null }>
   onDone: (token: TokenInfo) => void
   submitLabel?: string
+  /** Bijvoorbeeld zolang de aanroeper nog bezig is met opslaan; voorkomt dubbel tikken. */
+  disabled?: boolean
 }) {
   const [token, setToken] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
@@ -189,11 +193,13 @@ export function TokenForm({
   const [fromHeader, setFromHeader] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const blocked = busy || disabled
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (token.trim().length === 0 || busy) return
+    if (token.trim().length === 0 || blocked) return
     if (checked) {
+      // De waarde in het veld is leidend, ook als Olivier hem bewust leegmaakt.
       onDone({ token: token.trim(), expiresAt: expiresAt || null })
       return
     }
@@ -201,10 +207,8 @@ export function TokenForm({
     setError(null)
     try {
       const result = await check(token)
-      if (result.expiresAt) {
-        setExpiresAt(result.expiresAt)
-        setFromHeader(true)
-      }
+      setExpiresAt(result.expiresAt ?? '')
+      setFromHeader(result.expiresAt !== null)
       setChecked(true)
     } catch (err) {
       setError(describeError(err))
@@ -222,8 +226,11 @@ export function TokenForm({
           autoComplete="off"
           value={token}
           onChange={(e) => {
+            // Andere token: alles van de vorige controle vergeten.
             setToken(e.target.value)
             setChecked(false)
+            setExpiresAt('')
+            setFromHeader(false)
           }}
           placeholder="github_pat_…"
           required
@@ -244,7 +251,7 @@ export function TokenForm({
         </>
       )}
       <ErrorLine error={error} />
-      <button className="btn primary" type="submit" disabled={busy || token.trim().length === 0}>
+      <button className="btn primary" type="submit" disabled={blocked || token.trim().length === 0}>
         {busy ? 'Controleren…' : checked ? submitLabel : 'Controleren'}
       </button>
     </form>

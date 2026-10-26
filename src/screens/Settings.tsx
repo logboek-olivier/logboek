@@ -233,6 +233,7 @@ function ReplaceToken({ onDone }: { onDone: () => void }) {
       <TokenForm
         check={(token) => session.checkToken(token)}
         submitLabel={busy ? 'Vervangen…' : 'Vervangen'}
+        disabled={busy}
         onDone={({ token, expiresAt }) =>
           void run(async () => {
             await session.replaceToken(token, expiresAt)
