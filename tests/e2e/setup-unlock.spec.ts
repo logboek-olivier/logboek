@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, TOKEN } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, storedLastUsed, TOKEN } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -31,6 +31,8 @@ test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrende
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
 
   // Herladen binnen 5 minuten: niet vergrendeld (de niet-exporteerbare hoofdsleutel staat in IndexedDB).
+  // Het opslaan na ontgrendelen is asynchroon; eerst afwachten, anders vraagt de app (terecht) weer de wachtzin.
+  await expect.poll(() => storedLastUsed(page)).not.toBeNull()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   // Na handmatig vergrendelen blijft herladen vergrendeld, geen eerste-keer-scherm.

@@ -55,3 +55,23 @@ export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 }
+
+/** Tijdstip van laatste gebruik van de opgeslagen hoofdsleutel in IndexedDB, of null als er geen staat. */
+export async function storedLastUsed(page: Page): Promise<number | null> {
+  return page.evaluate(
+    () =>
+      new Promise<number | null>((resolve, reject) => {
+        const open = indexedDB.open('logboek')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const get = open.result.transaction('session').objectStore('session').get('masterKey')
+          get.onsuccess = () => {
+            const record = get.result as { key: CryptoKey; lastUsed: number } | undefined
+            if (record && record.key.extractable) reject(new Error('sleutel is exporteerbaar'))
+            resolve(record ? record.lastUsed : null)
+            open.result.close()
+          }
+        }
+      }),
+  )
+}

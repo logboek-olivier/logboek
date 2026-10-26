@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { daysUntil, Session } from '../src/session'
+import { getSessionKey, openLogboekDb, putSessionKey } from '../src/storage/idb'
 import { TOKEN_INVALID_MESSAGE } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
@@ -131,6 +132,31 @@ describe('sessie: hoofdsleutel 5 minuten in IndexedDB (beveiligingsregel 10)', (
     b.flushActivity()
     await new Promise((r) => setTimeout(r, 50))
     expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+  })
+
+  it('een sleutel waarvan het wissen bij vergrendelen niet afkwam, wordt toch niet gebruikt', async () => {
+    const storage = new Map<string, string>()
+    const fake = {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+    }
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true })
+    try {
+      let t = 1_000_000
+      const { session, name } = await freshSession(() => t)
+      const db = await openLogboekDb(name)
+      const kept = await getSessionKey(db)
+      expect(kept).toBeDefined()
+      t += 1000
+      session.lock()
+      await new Promise((r) => setTimeout(r, 50))
+      // Alsof het wissen in IndexedDB niet doorkwam (app direct gesloten).
+      await putSessionKey(db, kept!)
+      db.close()
+      expect((await reopen(name, () => t)).getState().phase).toBe('locked')
+    } finally {
+      Reflect.deleteProperty(globalThis, 'localStorage')
+    }
   })
 
   it('touch en checkExpiry vergrendelen na 5 minuten zonder gebruik, ook als de timer niet liep', async () => {

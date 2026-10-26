@@ -110,8 +110,16 @@ export class Session {
     }
     if (!record) return false
     const age = this.clock() - record.lastUsed
-    // Ook een klok die achteruit staat (negatieve leeftijd) telt als verlopen.
-    if (!(record.key instanceof CryptoKey) || record.key.extractable || age < 0 || age >= LOCK_AFTER_MS) {
+    // Ook een klok die achteruit staat (negatieve leeftijd) telt als verlopen. Een sleutel die niet jonger is dan het
+    // laatste vergrendelen telt ook niet: het wissen in IndexedDB is asynchroon en kan bij direct sluiten wegvallen.
+    const lockedAt = readLockedAt(this.dbName)
+    if (
+      !(record.key instanceof CryptoKey) ||
+      record.key.extractable ||
+      age < 0 ||
+      age >= LOCK_AFTER_MS ||
+      (lockedAt !== null && record.lastUsed <= lockedAt)
+    ) {
       await deleteSessionKey(db).catch(() => undefined)
       return false
     }
@@ -370,7 +378,9 @@ export class Session {
   /** `broadcast`: ook de andere tabbladen vergrendelen (niet als dit tabblad zelf door een ander werd vergrendeld). */
   lock(broadcast = true): void {
     this.clearLockTimer()
-    // Altijd de opgeslagen sleutel wissen, ook als het geheugen al leeg is.
+    // Altijd de opgeslagen sleutel wissen, ook als het geheugen al leeg is. Het tijdstip gaat eerst synchroon naar
+    // localStorage, zodat een sleutel waarvan het wissen nog niet klaar was, toch nooit meer gebruikt wordt.
+    writeLockedAt(this.dbName, this.clock())
     if (this.db) void deleteSessionKey(this.db).catch(() => undefined)
     if (broadcast) this.channel?.postMessage('lock')
     if (this.state.phase !== 'unlocked') return
@@ -497,6 +507,28 @@ export class Session {
   private setState(state: SessionState): void {
     this.state = state
     for (const listener of this.listeners) listener()
+  }
+}
+
+/** Tijdstip van het laatste vergrendelen (geen geheim). localStorage is synchroon en blijft staan na sluiten. */
+function lockedAtKey(dbName: string | undefined): string {
+  return `logboek-vergrendeld:${dbName ?? 'logboek'}`
+}
+
+function readLockedAt(dbName: string | undefined): number | null {
+  try {
+    const value = Number(globalThis.localStorage?.getItem(lockedAtKey(dbName)))
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeLockedAt(dbName: string | undefined, at: number): void {
+  try {
+    globalThis.localStorage?.setItem(lockedAtKey(dbName), String(at))
+  } catch {
+    // Geen localStorage: het wissen in IndexedDB blijft de gewone weg.
   }
 }
 

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, storedLastUsed } from './helpers/logbook'
 
 // Beveiligingsregel 10: verversen of kort naar een andere app gaan vergrendelt niet; 5 minuten zonder gebruik wel.
 
@@ -9,26 +9,6 @@ async function setVisibility(page: Page, state: 'hidden' | 'visible') {
     Object.defineProperty(document, 'visibilityState', { value: s, configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
   }, state)
-}
-
-/** Het tijdstip van laatste gebruik in IndexedDB, of null als er geen sleutel staat. */
-async function storedLastUsed(page: Page): Promise<number | null> {
-  return page.evaluate(
-    () =>
-      new Promise<number | null>((resolve, reject) => {
-        const open = indexedDB.open('logboek')
-        open.onerror = () => reject(open.error)
-        open.onsuccess = () => {
-          const get = open.result.transaction('session').objectStore('session').get('masterKey')
-          get.onsuccess = () => {
-            const record = get.result as { key: CryptoKey; lastUsed: number } | undefined
-            if (record && record.key.extractable) reject(new Error('sleutel is exporteerbaar'))
-            resolve(record ? record.lastUsed : null)
-            open.result.close()
-          }
-        }
-      }),
-  )
 }
 
 test('wisselen van app en verversen vergrendelen niet; de opgeslagen sleutel is niet exporteerbaar', async ({ page }) => {
