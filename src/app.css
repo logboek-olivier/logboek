@@ -1557,3 +1557,116 @@ button.sync-status {
 .add-row .icon {
   color: var(--accent);
 }
+
+/* ---------- Studenten en checklist ---------- */
+
+.student .row-main {
+  min-width: 0;
+}
+
+.student .progress {
+  margin-top: var(--s-1);
+}
+
+.avatar {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: var(--fw-bold);
+}
+
+.progress.dual {
+  display: flex;
+}
+
+.progress.dual .progress-fill {
+  flex: none;
+  border-radius: 0;
+}
+
+.progress-fill.soft {
+  background: var(--chart-2);
+}
+
+.check-row {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.check-row .row-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.check-box {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.check-box .icon {
+  --icon: 22px;
+}
+
+.status-geoefend .check-box {
+  border-color: var(--chart-2);
+  background: var(--warning-soft);
+  color: var(--chart-2);
+}
+
+.status-beheerst .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.status-beheerst .row-main > span:first-child {
+  color: var(--text-muted);
+}
+
+.critical-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--negative);
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.group-head.plain {
+  text-transform: none;
+}
+
+.btn.link.group-all {
+  align-self: flex-end;
+}

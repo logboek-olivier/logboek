@@ -1,4 +1,4 @@
-import { BookOpen, ChevronLeft, ChevronRight, FileUp, Flag, Pencil, Plus, Share2 } from 'lucide-react'
+import { BookOpen, ChevronLeft, ChevronRight, FileUp, Flag, Pencil, Plus, Share2, Users } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { CourseSheet, GroupSheet, TopicSheet } from '../components/CurriculumSheets'
 import type { Notify } from '../components/EditSheets'
@@ -32,6 +32,7 @@ import {
 import type { Curriculum } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
+import { StudentsView } from './Students'
 
 // Training: cursussen per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
 // te delen als JSON en te importeren.
@@ -39,6 +40,7 @@ import { ErrorLine } from './Setup'
 export function Training({ store, notify }: { store: Store; notify: Notify }) {
   const stored = useCollection(store, 'curricula.json.enc')
   const curricula = effectiveCurricula(stored)
+  const [tab, setTab] = useState<'students' | 'courses'>('students')
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +65,29 @@ export function Training({ store, notify }: { store: Store; notify: Notify }) {
     }
   }
 
+  const tabs = (
+    <div className="segments" role="tablist">
+      {(['students', 'courses'] as const).map((id) => (
+        <button key={id} role="tab" aria-selected={tab === id} className={`segment${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
+          <Icon icon={id === 'students' ? Users : BookOpen} />
+          {t(id === 'students' ? 'students.title' : 'curriculum.courses')}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (tab === 'students') {
+    return (
+      <section className="stack-lg">
+        <header className="page-header">
+          <h1>{t('nav.training')}</h1>
+        </header>
+        {tabs}
+        <StudentsView store={store} notify={notify} curricula={curricula} />
+      </section>
+    )
+  }
+
   return (
     <section className="stack-lg">
       <header className="page-header">
@@ -72,6 +97,7 @@ export function Training({ store, notify }: { store: Store; notify: Notify }) {
           {t('curriculum.newCourse')}
         </button>
       </header>
+      {tabs}
       <ErrorLine error={error} />
       {byBody(curricula).map((group) => (
         <div key={group.body} className="section">

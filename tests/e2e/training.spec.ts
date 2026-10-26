@@ -11,6 +11,7 @@ test('Training: ASA-cursussen met notitie, onderwerp toevoegen en examenkritisch
   await createNewLogbook(page)
   await page.getByRole('navigation').getByRole('button', { name: 'Training', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Training', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'Cursussen' }).click()
   for (const name of ['ASA 101 Basic Keelboat Sailing', 'ASA 103 Basic Coastal Cruising', 'ASA 104 Bareboat Cruising', 'ASA 114 Cruising Catamaran', 'RYA Day Skipper']) {
     await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
   }
