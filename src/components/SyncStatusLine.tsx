@@ -18,12 +18,19 @@ const ICONS = {
   error: TriangleAlert,
 } as const
 
+/** Sync-status bovenaan; tikken synchroniseert (handmatig verversen). */
 export function SyncStatusLine({ store }: { store: Store }) {
   const status: SyncStatus = useSyncStatus(store)
   return (
-    <p className={`sync-status sync-${status.kind}`} role="status">
+    <button
+      type="button"
+      className={`sync-status sync-${status.kind}`}
+      aria-label={`${describeStatus(status)} · Synchroniseren`}
+      onClick={() => void store.sync()}
+      disabled={status.kind === 'syncing'}
+    >
       <Icon icon={ICONS[status.kind]} className={status.kind === 'syncing' ? 'spin' : ''} />
-      <span>{describeStatus(status)}</span>
-    </p>
+      <span role="status">{describeStatus(status)}</span>
+    </button>
   )
 }

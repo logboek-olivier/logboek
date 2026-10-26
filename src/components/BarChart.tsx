@@ -9,8 +9,6 @@ export interface ChartGroup {
 }
 
 const WIDTH = 320
-const TOP = 16
-const BOTTOM = 18
 
 export function BarChart({
   groups,
@@ -18,6 +16,7 @@ export function BarChart({
   format,
   height = 132,
   labelEvery = 1,
+  compact = false,
 }: {
   groups: ChartGroup[]
   /** Beschrijving voor schermlezers. */
@@ -27,7 +26,11 @@ export function BarChart({
   height?: number
   /** Toon elke n-de as-tekst, zodat smalle groepen niet overlappen. De laatste staat er altijd. */
   labelEvery?: number
+  /** Klein grafiekje op een kaart: geen as-teksten, alleen de staven. */
+  compact?: boolean
 }) {
+  const TOP = compact ? 2 : 16
+  const BOTTOM = compact ? 2 : 18
   const series = Math.max(1, ...groups.map((g) => g.values.length))
   const max = Math.max(0, ...groups.flatMap((g) => g.values))
   const plot = height - TOP - BOTTOM
@@ -39,7 +42,7 @@ export function BarChart({
 
   return (
     <svg className="chart" viewBox={`0 0 ${WIDTH} ${height}`} role="img" aria-label={label}>
-      {max > 0 && (
+      {max > 0 && !compact && (
         <>
           <line className="grid-line" x1={0} x2={WIDTH} y1={TOP} y2={TOP} />
           <text x={0} y={TOP - 5}>
@@ -47,7 +50,7 @@ export function BarChart({
           </text>
         </>
       )}
-      <line className="axis" x1={0} x2={WIDTH} y1={baseline} y2={baseline} />
+      {!compact && <line className="axis" x1={0} x2={WIDTH} y1={baseline} y2={baseline} />}
       {groups.map((g, i) => {
         const x0 = i * groupWidth + gap
         const showLabel = (groups.length - 1 - i) % labelEvery === 0
@@ -67,7 +70,7 @@ export function BarChart({
                 />
               )
             })}
-            {showLabel && (
+            {showLabel && !compact && (
               <text x={i * groupWidth + groupWidth / 2} y={height - 4} textAnchor="middle">
                 {g.label}
               </text>

@@ -74,11 +74,35 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await expect(page.locator('.tx')).toHaveCount(3)
   await expectNoHorizontalOverflow(page)
 
-  // Fooi van vandaag is aan de tocht van vandaag gekoppeld (via sync-bestanden niet zichtbaar; controle via lijst volstaat)
-  page.once('dialog', (d) => void d.accept())
-  await page.getByRole('button', { name: /Verwijder Kosten/ }).click()
+  // Verwijderen zonder bevestigingsvraag, met "Verwijderd · Ongedaan maken".
+  let dialogs = 0
+  page.on('dialog', (d) => {
+    dialogs++
+    void d.dismiss()
+  })
+  await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Kosten bewerken' })).toBeVisible()
+  await page.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.tx')).toHaveCount(2)
   await expect(grid).toContainText('Kosten€ 0,00')
+  await expect(page.locator('.toast')).toContainText('Verwijderd')
+  await page.getByRole('button', { name: 'Ongedaan maken' }).click()
+  await expect(page.locator('.tx')).toHaveCount(3)
+  await expect(grid).toContainText('Kosten€ 35,00')
+
+  // Bewerken: bedrag van de kosten aanpassen.
+  await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
+  await page.getByRole('dialog').getByLabel('Bedrag').fill('40')
+  await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(grid).toContainText('Kosten€ 40,00')
+
+  // En definitief verwijderen; de melding verdwijnt na 5 seconden.
+  await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
+  await page.getByRole('button', { name: 'Verwijderen' }).click()
+  await expect(page.locator('.tx')).toHaveCount(2)
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 7_000 })
+  expect(dialogs).toBe(0)
 
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   const wire = github.requests.map((r) => `${r.url}\n${r.body ?? ''}`).join('\n')

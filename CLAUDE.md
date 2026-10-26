@@ -128,7 +128,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ### Instellingen
 
-`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron; afstudeerdatum (later); vingerafdruk aan/uit (alleen lokaal relevant, niet gesynct).
+`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort en watertype; jaardoel in nm; afstudeerdatum (later); vingerafdruk aan/uit (alleen lokaal relevant, niet gesynct).
 
 ## Import mijlenregistratie
 
@@ -154,17 +154,17 @@ Onderste balk vandaag: **Vandaag · Zeilen · + · Geld · Instellingen**, vijf 
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
-3. **Vandaag:** sync-status bovenaan. Kaarten: nm dit jaar, nm totaal, fooi afgelopen 30 dagen (EUR, plus andere valuta apart), laatste tocht (naam, datum, nm). Later meer kaarten (vervaldatum, skills, maanden te gaan); die komen pas als de data bestaat.
+3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Kaarten met kleine grafieken: nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`), nm totaal (nm per maand), fooi afgelopen 30 dagen (EUR, plus andere valuta apart; fooi per week), zeilgeld deze maand (inkomsten en kosten per maand), laatste tocht (naam, datum, nm). Later meer kaarten (vervaldatum, skills, maanden te gaan); die komen pas als de data bestaat.
 4. **Snel toevoegen (+):** tabs **Fooi · Kosten · Dag**.
    - Fooi: bedrag (groot numeriek toetsenbord), bron, valuta. Datum vandaag, aanpasbaar via een klein datumveld.
    - Kosten: bedrag, omschrijving, soort (kosten/investering). Bron en valuta laatst gebruikt.
    - Dag: naar (plaats), nm, watertype (zee/getij/binnen). Van = vorige "naar", boot/rol/tocht = laatst gebruikt, datum vandaag. "Meer" klapt de overige velden open (nachturen, wind, nieuwe tocht).
-   - Opslaan = één tik, daarna terug naar Vandaag met een korte bevestiging.
+   - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging. Soort (fooi/loon, kosten/investering), watertype, bron, valuta, boot en rol onthouden de laatste waarde. Het bedragveld opent direct met het numerieke toetsenbord.
 5. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). Daaronder tochten per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (Excel of CSV).
 6. **Geld:** saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (fase 3).
 7. **Instellingen** (vijfde vak van de onderste balk): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld).
 
-Geen onboarding, geen tutorial, geen bevestigingsdialogen behalve bij verwijderen en exporteren. Alles werkt op 360 px breed, bedienbaar met één duim.
+Geen onboarding, geen tutorial, geen bevestigingsdialogen behalve bij exporteren. Verwijderen gebeurt zonder bevestigingsvraag, met de melding "Verwijderd · Ongedaan maken" (5 seconden). Elke dag, tocht en transactie is aan te tikken en te bewerken in een onderblad; een tocht kan hernoemd worden en een dag kan naar een andere tocht. Alles werkt op 360 px breed, bedienbaar met één duim.
 
 ## Mapstructuur app-repo
 

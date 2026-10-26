@@ -1,6 +1,11 @@
-import { ChevronDown, Cloud, Download, Fingerprint as FingerprintIcon, KeyRound, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud, Download, Target, Fingerprint as FingerprintIcon, KeyRound, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { GoalSheet, type Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
+import { useCollection } from '../components/useCollection'
+import { formatNm } from '../format'
+import { currentSettings, yearGoal } from '../model/settings'
+import type { Store } from '../storage/store'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
 import { ErrorLine, TokenForm } from './Setup'
 import { FINGERPRINT_LABEL } from './Unlock'
@@ -9,7 +14,10 @@ import { FINGERPRINT_LABEL } from './Unlock'
 
 type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'backup'
 
-export function Settings({ onDone }: { onDone: (message: string) => void }) {
+export function Settings({ store, notify }: { store: Store; notify: Notify }) {
+  const onDone = (message: string) => notify(message)
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const [goalOpen, setGoalOpen] = useState(false)
   const session = useSession()
   const [panel, setPanel] = useState<Panel>('none')
   const [fingerprintPossible, setFingerprintPossible] = useState(false)
@@ -46,6 +54,21 @@ export function Settings({ onDone }: { onDone: (message: string) => void }) {
           </button>
         </li>
       </ul>
+
+      <div className="section">
+        <h2>Logboek</h2>
+        <ul className="rows">
+          <li>
+            <button className="settings-row" onClick={() => setGoalOpen(true)}>
+              <Icon icon={Target} />
+              <span className="row-main">Jaardoel</span>
+              <span className="muted">{formatNm(yearGoal(settings))}</span>
+              <Icon icon={ChevronRight} className="chevron" />
+            </button>
+          </li>
+        </ul>
+      </div>
+      {goalOpen && <GoalSheet store={store} current={yearGoal(settings)} onClose={() => setGoalOpen(false)} notify={notify} />}
 
       <div className="section">
         <h2>Beveiliging</h2>

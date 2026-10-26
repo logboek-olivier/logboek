@@ -16,7 +16,10 @@ import {
   SOURCE_LABELS,
   todayIso,
   TRANSACTION_SOURCES,
+  type AddTab,
   type Currency,
+  type Settings,
+  type Water,
   type Leg,
   type Role,
   type Transaction,
@@ -28,11 +31,18 @@ import type { Store } from '../storage/store'
 
 // Snel toevoegen: Fooi · Kosten · Dag. Maximaal drie velden, de rest laatst gebruikt. Opslaan = één tik.
 
-type AddTab = 'fooi' | 'kosten' | 'dag'
-type Water = 'zee' | 'getij' | 'binnen'
+/** Korte trilling als bevestiging van opslaan; stil als het apparaat het niet kan. */
+function confirmVibration() {
+  try {
+    navigator.vibrate?.(30)
+  } catch {
+    // Niet beschikbaar.
+  }
+}
 
 export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
   const [tab, setTab] = useState<AddTab>('fooi')
+  const choose = (t: AddTab) => setTab(t)
   return (
     <section className="stack">
       <header className="page-header">
@@ -45,7 +55,7 @@ export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: st
             role="tab"
             aria-selected={tab === t}
             className={`segment${tab === t ? ' active' : ''}`}
-            onClick={() => setTab(t)}
+            onClick={() => choose(t)}
           >
             <Icon icon={t === 'fooi' ? Coins : t === 'kosten' ? Receipt : Sailboat} />
             {t === 'fooi' ? 'Fooi' : t === 'kosten' ? 'Kosten' : 'Dag'}
@@ -66,20 +76,25 @@ function useDefaults(store: Store) {
   return { settings, trips, legs }
 }
 
-async function saveTransaction(store: Store, tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>) {
+async function saveTransaction(
+  store: Store,
+  tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>,
+  remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind'>>,
+) {
   const trip = tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), tx.date)
   const record: Transaction = { ...tx, id: newId(), updatedAt: nowIso(), deletedAt: null }
   if (trip) record.tripId = trip.id
   if (tx.currency === 'EUR') record.amountEur = tx.amount
   await store.put('transactions.json.enc', record)
-  await saveSettings(store, { lastCurrency: tx.currency, lastSource: tx.source })
+  await saveSettings(store, { lastCurrency: tx.currency, lastSource: tx.source, ...remember })
+  confirmVibration()
   void store.sync()
 }
 
 function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
-  const [kind, setKind] = useState<TransactionKind>('fooi')
+  const [kind, setKind] = useState<TransactionKind>(settings.lastIncomeKind ?? 'fooi')
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [date, setDate] = useState(todayIso())
@@ -91,7 +106,7 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
     if (parsed === null || busy) return
     setBusy(true)
     try {
-      await saveTransaction(store, { date, kind, amount: parsed, currency, source })
+      await saveTransaction(store, { date, kind, amount: parsed, currency, source }, { lastIncomeKind: kind === 'loon' ? 'loon' : 'fooi' })
       onDone(`${KIND_LABELS[kind]} opgeslagen`)
     } finally {
       setBusy(false)
@@ -106,6 +121,7 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
           className="amount"
           inputMode="decimal"
           autoFocus
+          enterKeyHint="done"
           autoComplete="off"
           placeholder="0,00"
           value={amount}
@@ -163,7 +179,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
-  const [kind, setKind] = useState<TransactionKind>('kosten')
+  const [kind, setKind] = useState<TransactionKind>(settings.lastCostKind ?? 'kosten')
   const [more, setMore] = useState(false)
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
@@ -176,7 +192,11 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
     if (parsed === null || busy) return
     setBusy(true)
     try {
-      await saveTransaction(store, { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}) })
+      await saveTransaction(
+        store,
+        { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}) },
+        { lastCostKind: kind === 'investering' ? 'investering' : 'kosten' },
+      )
       onDone(`${KIND_LABELS[kind]} opgeslagen`)
     } finally {
       setBusy(false)
@@ -191,6 +211,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
           className="amount"
           inputMode="decimal"
           autoFocus
+          enterKeyHint="done"
           autoComplete="off"
           placeholder="0,00"
           value={amount}
@@ -280,7 +301,7 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
 
   const [toPlace, setToPlace] = useState('')
   const [nm, setNm] = useState('')
-  const [water, setWater] = useState<Water>(waterOf(lastLeg))
+  const [water, setWater] = useState<Water>(settings.lastWater ?? waterOf(lastLeg))
   const [more, setMore] = useState(false)
   const [date, setDate] = useState(today)
   const [fromPlace, setFromPlace] = useState(lastLeg?.toPlace ?? '')
@@ -336,7 +357,8 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
       }
       if (wind.trim()) leg.windBft = wind.trim()
       await store.put('legs.json.enc', leg)
-      await saveSettings(store, { lastBoat: boat.trim(), lastRole: role, lastTripId: tripId })
+      await saveSettings(store, { lastBoat: boat.trim(), lastRole: role, lastTripId: tripId, lastWater: water })
+      confirmVibration()
       void store.sync()
       onDone('Dag opgeslagen')
     } finally {
