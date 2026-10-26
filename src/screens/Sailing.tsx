@@ -2,9 +2,10 @@ import { useRef, useState } from 'react'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateRange, formatHours, formatNm, formatNumber } from '../format'
 import { applyImport } from '../import/apply'
-import { ImportError, parseMileageCsv, type ImportResult } from '../import/mileage-csv'
+import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
 import { summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
 import { ROLE_LABELS, ROLES, type Leg } from '../model/types'
+import { useSession } from '../session'
 import type { Store } from '../storage/store'
 
 // Zeilen: totalen bovenaan, tochten nieuwste eerst (uitklapbaar naar dagen), knop Importeren.
@@ -15,20 +16,33 @@ export function Sailing({ store }: { store: Store }) {
   const [pending, setPending] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [reading, setReading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const session = useSession()
 
   const summary = summarize(legs)
   const tripSummaries = summarizeTrips(trips, legs)
 
+  function chooseFile() {
+    // De bestandskiezer van Android verbergt de app; zonder dit zou de app vergrendelen en het bestand kwijtraken.
+    session.beginFilePick()
+    fileInput.current?.click()
+  }
+
   async function onFile(file: File | undefined) {
+    session.endFilePick()
     if (!file) return
     setError(null)
+    setReading(true)
     try {
-      setPending(parseMileageCsv(await file.text()))
+      // Inhoud bepaalt het formaat (CSV of .xlsx), niet de naam of het MIME-type van de bestandskiezer.
+      setPending(parseMileageFile(new Uint8Array(await file.arrayBuffer())))
     } catch (e) {
-      setError(e instanceof ImportError ? e.message : 'Bestand niet leesbaar')
+      setError(e instanceof ImportError ? e.message : 'Bestand niet leesbaar. Kies het bestand opnieuw, of sla het eerst op het apparaat op.')
+    } finally {
+      setReading(false)
+      if (fileInput.current) fileInput.current.value = ''
     }
-    if (fileInput.current) fileInput.current.value = ''
   }
 
   async function confirmImport() {
@@ -44,21 +58,30 @@ export function Sailing({ store }: { store: Store }) {
   }
 
   if (pending) {
+    const previous = legs.filter((l) => l.deletedAt === null && l.source === 'import').length
+    const manual = legs.filter((l) => l.deletedAt === null && l.source === 'manual').length
     return (
       <section className="stack">
         <h1>Controle import</h1>
-        <p className="muted">Vergelijk met de samenvatting in Excel. Opslaan vervangt alle eerder geïmporteerde dagen.</p>
+        <p className="muted">
+          Vergelijk met de samenvatting in Excel.{' '}
+          {previous > 0 ? `Importeren vervangt de ${formatNumber(previous)} eerder geïmporteerde dagen.` : ''}
+          {manual > 0 ? ` Zelf toegevoegde dagen (${formatNumber(manual)}) blijven staan.` : ''}
+        </p>
         <SummaryGrid summary={pending.summary} />
         {pending.warnings.length > 0 && (
-          <ul className="warnings" role="alert">
-            {pending.warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
+          <>
+            <h2>{pending.warnings.length === 1 ? '1 waarschuwing' : `${pending.warnings.length} waarschuwingen`}</h2>
+            <ul className="warnings">
+              {pending.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </>
         )}
         <div className="stack">
           <button className="btn primary" onClick={() => void confirmImport()} disabled={busy}>
-            {busy ? 'Opslaan…' : 'Opslaan'}
+            {busy ? 'Importeren…' : 'Importeren'}
           </button>
           <button className="btn" onClick={() => setPending(null)} disabled={busy}>
             Annuleren
@@ -72,17 +95,18 @@ export function Sailing({ store }: { store: Store }) {
     <section className="stack">
       <h1>Zeilen</h1>
       {summary.days > 0 && <SummaryGrid summary={summary} />}
+      {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
       <input
         ref={fileInput}
         type="file"
-        accept=".csv,text/csv"
         hidden
-        aria-label="CSV-bestand"
+        aria-label="Mijlenbestand"
         onChange={(e) => void onFile(e.target.files?.[0])}
       />
-      <button className="btn" onClick={() => fileInput.current?.click()}>
-        Importeren
+      <button className="btn" onClick={chooseFile} disabled={reading}>
+        {reading ? 'Bestand lezen…' : 'Importeren'}
       </button>
+      <p className="muted small">Excel (.xlsx) of CSV van de mijlenregistratie.</p>
       {error && (
         <p className="error" role="alert">
           {error}

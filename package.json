@@ -10,9 +10,11 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "fixtures": "node scripts/generate-fake-data.ts"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "idb": "^8.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
