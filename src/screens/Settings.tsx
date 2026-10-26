@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
 import { ErrorLine, TokenForm } from './Setup'
+import { FINGERPRINT_LABEL } from './Unlock'
 
 // Instellingen: vergrendelen, wachtzin wijzigen, herstelcode tonen, vingerafdruk aan/uit, token vervangen, back-up.
 
@@ -52,7 +53,7 @@ export function Settings({ onBack, onDone }: { onBack: () => void; onDone: (mess
       {(fingerprintPossible || fingerprintOn) && (
         <>
           <button className="btn" aria-expanded={panel === 'fingerprint'} onClick={() => toggle('fingerprint')}>
-            Vingerafdruk {fingerprintOn ? 'uitzetten' : 'aanzetten'}
+            {FINGERPRINT_LABEL} {fingerprintOn ? 'uitzetten' : 'aanzetten'}
           </button>
           {panel === 'fingerprint' && (
             <Fingerprint
@@ -60,7 +61,7 @@ export function Settings({ onBack, onDone }: { onBack: () => void; onDone: (mess
               onDone={(on) => {
                 setFingerprintOn(on)
                 setPanel('none')
-                onDone(on ? 'Vingerafdruk aan' : 'Vingerafdruk uit')
+                onDone(on ? `${FINGERPRINT_LABEL} aan` : `${FINGERPRINT_LABEL} uit`)
               }}
             />
           )}
@@ -212,7 +213,10 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
   }
   return (
     <form className="stack panel" onSubmit={submit}>
-      <p className="muted">Bevestig met de wachtzin; daarna vraagt het apparaat om de vingerafdruk.</p>
+      <p className="muted">
+        Bevestig met de wachtzin; daarna vraagt het apparaat om de vingerafdruk. Android accepteert ook de pincode of
+        het patroon van de schermvergrendeling.
+      </p>
       <label>
         Wachtzin
         <input type="password" autoComplete="current-password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />

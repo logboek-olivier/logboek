@@ -48,6 +48,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 10. **Vergrendelen na 5 minuten** zonder interactie, bij verbergen van de app en bij een nieuwe browsersessie. Vergrendelen = sleutels en ontsleutelde data uit het geheugen wissen.
 11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
 12. **Identiteitsdocumenten (paspoort, rijbewijs, ID) alleen als het nodig is.** De categorie `identiteit` bestaat, maar blijft standaard leeg. De app vraagt er nooit om.
+13. **Nooit een tweede GitHub Pages-site in organisatie logboek-olivier: die deelt opslag en vingerafdruk met Logboek.**
 
 ## Cryptografisch ontwerp
 

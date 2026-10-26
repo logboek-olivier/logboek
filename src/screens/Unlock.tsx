@@ -4,6 +4,9 @@ import { ErrorLine, Screen, SecretForm } from './Setup'
 
 // Ontgrendelen: wachtzin of herstelcode; vingerafdruk als die op dit apparaat is ingesteld. Niets anders zichtbaar.
 
+/** WebAuthn met userVerification 'required' accepteert op Android ook de pincode of het patroon van het toestel. */
+export const FINGERPRINT_LABEL = 'Vingerafdruk of schermvergrendeling'
+
 export function Unlock({ fingerprint }: { fingerprint: boolean }) {
   const session = useSession()
   const [busy, setBusy] = useState(false)
@@ -66,12 +69,12 @@ export function Unlock({ fingerprint }: { fingerprint: boolean }) {
       {fingerprint && (
         <div className="stack">
           <button className="btn primary" disabled={busy} onClick={askFingerprint}>
-            Vingerafdruk
+            {FINGERPRINT_LABEL}
           </button>
           <ErrorLine error={error} />
           {fingerprintFailed && (
             <button className="btn link" type="button" onClick={() => void session.disableFingerprint()}>
-              Vingerafdruk op dit apparaat uitzetten (daarna alleen wachtzin)
+              {FINGERPRINT_LABEL} op dit apparaat uitzetten (daarna alleen wachtzin)
             </button>
           )}
           <p className="muted">Of met de wachtzin:</p>
