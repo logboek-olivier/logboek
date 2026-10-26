@@ -87,10 +87,6 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
   await page.getByLabel('Mijlenbestand').setInputFiles(fixturePath('mijlen-nep.xlsx'))
   await page.getByRole('button', { name: 'Importeren' }).click()
   await expect(page.locator('.card')).toHaveCount(3)
-
-  // Buiten de bestandskiezer vergrendelt verbergen nog steeds.
-  await setVisibility(page, 'hidden')
-  await expect(page.getByRole('button', { name: 'Ontgrendelen' })).toBeVisible()
   expect(errors).toEqual([])
 })
 

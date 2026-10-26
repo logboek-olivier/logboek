@@ -45,8 +45,8 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 7. **Oliviers echte importbestanden** (`C:\Users\<naam>\logboek-invoer\`) mag Claude Code alleen lezen om kolommen en opbouw te begrijpen. Nooit kopiëren naar de repo, nooit inhoud in code, tests, commits of PR-teksten.
 8. **Bestandsnamen in de kluis zijn willekeurige UUID's.** Echte namen staan alleen in de versleutelde index.
 9. **Logs bevatten nooit inhoud.** Geen bedragen, plaatsnamen, documentnamen of sleutels in `console.log`, foutmeldingen of commitberichten. Commitberichten in `logboek-data` zijn altijd `sync <ISO-tijd>`.
-10. **Vergrendelen na 5 minuten** zonder interactie, bij verbergen van de app en bij een nieuwe browsersessie. Vergrendelen = sleutels en ontsleutelde data uit het geheugen wissen.
-11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
+10. **Vergrendelen na 5 minuten zonder gebruik.** Binnen die 5 minuten blijft de niet-exporteerbare hoofdsleutel in IndexedDB staan, zodat verversen of wisselen van app niet vergrendelt; daarna wordt hij gewist. Toelichting: gebruik = tikken, typen of scrollen in de app; openen of hervatten telt niet. Wissen gebeurt door de timer zolang de app draait, anders uiterlijk bij het volgende openen (een opgeslagen sleutel ouder dan 5 minuten, of met een tijdstip in de toekomst, wordt nooit gebruikt). Ook de browser sluiten of de telefoon herstarten binnen 5 minuten hervat dus. Niet-exporteerbaar betekent dat JavaScript de bytes niet kan uitlezen; de browser bewaart ze wel op de schijf van het apparaat, beschermd door de apparaatversleuteling. Vergrendelen (na 5 minuten of handmatig, in elk tabblad) = sleutels en ontsleutelde data uit het geheugen wissen én de opgeslagen hoofdsleutel uit IndexedDB verwijderen.
+11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6; de opgeslagen sessiesleutel (regel 10) door een review-agent in release 1. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
 12. **Identiteitsdocumenten (paspoort, rijbewijs, ID) alleen als het nodig is.** De categorie `identiteit` bestaat, maar blijft standaard leeg. De app vraagt er nooit om.
 13. **Nooit een tweede GitHub Pages-site in organisatie logboek-olivier: die deelt opslag en vingerafdruk met Logboek.**
 
@@ -59,7 +59,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 - **Per object:** AES-GCM-256, 12-byte willekeurige IV, nooit hergebruikt. Formaat: `versie(1) | iv(12) | ciphertext | tag(16)`.
 - **Associated data (AAD):** het objectpad, zodat een bestand niet onder een andere naam kan worden teruggezet.
 - **Vingerafdruk:** WebAuthn met `prf`-extensie als beschikbaar; de PRF-uitkomst leidt een derde KEK af voor MK. Niet beschikbaar? Knop verborgen, alleen wachtzin. Nooit een zwakkere fallback.
-- **In het geheugen:** MK als `CryptoKey` met `extractable: false`. Nooit als bytes in een variabele langer dan nodig.
+- **In het geheugen:** MK als `CryptoKey` met `extractable: false`. Nooit als bytes in een variabele langer dan nodig. Dezelfde niet-exporteerbare `CryptoKey` staat hoogstens 5 minuten na het laatste gebruik in IndexedDB (regel 10); zolang hij daar staat, zijn ook de lokaal versleutelde token en data te ontsleutelen.
 - **Testvectoren:** vaste bekende sleutel/IV/plaintext-paren in `tests/crypto.test.ts`; een test die één byte in de ciphertext wijzigt en controleert dat ontsleutelen faalt; een test dat een object met verkeerde AAD (ander pad) niet ontsleutelt.
 
 ## Eerste keer op een apparaat
@@ -152,7 +152,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 Onderste balk vandaag: **Vandaag · Zeilen · + · Geld**. Kluis komt erbij zodra die gebouwd is.
 
-1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar.
+1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
 3. **Vandaag:** sync-status bovenaan. Kaarten: nm dit jaar, nm totaal, fooi afgelopen 30 dagen (EUR, plus andere valuta apart), laatste tocht (naam, datum, nm). Later meer kaarten (vervaldatum, skills, maanden te gaan); die komen pas als de data bestaat.
 4. **Snel toevoegen (+):** tabs **Fooi · Kosten · Dag**.

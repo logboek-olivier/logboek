@@ -12,7 +12,8 @@ import {
   parseExpirationHeader,
   type FetchLike,
 } from '../src/storage/github'
-import { openLogboekDb, putLocal, type Db } from '../src/storage/idb'
+import { openDB } from 'idb'
+import { getObject, getSessionKey, openLogboekDb, putLocal, type Db } from '../src/storage/idb'
 import { clearSynced, markPending, pendingCount } from '../src/storage/outbox'
 import { Store, TOKEN_INVALID_MESSAGE } from '../src/storage/store'
 import { decodeRecords, encodeRecords, encryptRecords, mergeRecords, SyncFailedError, syncCollection } from '../src/storage/sync'
@@ -515,5 +516,21 @@ describe('token en meta lokaal', () => {
     const vault = await createVault('testwachtzin', parseWordlistForTests())
     await Store.storeMeta(db, vault.meta, 'sha-x')
     expect(await Store.loadMeta(db)).toEqual(vault.meta)
+  })
+
+  it('database van de vorige versie (1) gaat over naar versie 2 zonder dataverlies', async () => {
+    const name = `logboek-test-${++dbCounter}`
+    const v1 = await openDB(name, 1, {
+      upgrade(db) {
+        db.createObjectStore('objects', { keyPath: 'path' })
+        db.createObjectStore('local', { keyPath: 'name' })
+      },
+    })
+    await v1.put('objects', { path: 'trips.json.enc', blob: new Uint8Array([1, 2, 3]), sha: 'sha-oud' })
+    await v1.put('local', { name: 'outbox', blob: new Uint8Array([4]) })
+    v1.close()
+    const db = await openLogboekDb(name)
+    expect(await getObject(db, 'trips.json.enc')).toEqual({ path: 'trips.json.enc', blob: new Uint8Array([1, 2, 3]), sha: 'sha-oud' })
+    expect(await getSessionKey(db)).toBeUndefined()
   })
 })
