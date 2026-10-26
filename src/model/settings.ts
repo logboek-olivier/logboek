@@ -13,6 +13,13 @@ export const DEFAULT_SETTINGS: Settings = {
   lastSource: 'yacht-week',
 }
 
+export const DEFAULT_YEAR_GOAL_NM = 2500
+
+export function yearGoal(settings: Settings): number {
+  const goal = settings.yearGoalNm
+  return typeof goal === 'number' && Number.isFinite(goal) && goal > 0 ? goal : DEFAULT_YEAR_GOAL_NM
+}
+
 export function currentSettings(records: readonly Settings[]): Settings {
   return records.find((s) => s.id === 'settings' && s.deletedAt === null) ?? DEFAULT_SETTINGS
 }

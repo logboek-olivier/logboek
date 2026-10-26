@@ -1207,3 +1207,235 @@ code {
 .settings-panel > .stack {
   padding-top: var(--s-1);
 }
+
+/* ---------- Onderblad ---------- */
+
+body.sheet-open {
+  overflow: hidden;
+}
+
+.sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: fade-in 0.15s ease-out;
+}
+
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--page-max);
+  max-height: 92dvh;
+  margin: 0 auto;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--bg);
+  box-shadow: var(--shadow-2);
+  animation: slide-up 0.2s ease-out;
+  outline: none;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet-header h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-4) var(--s-4) calc(var(--s-6) + env(safe-area-inset-bottom, 0px));
+}
+
+.sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .sheet-scrim {
+    animation: none;
+  }
+}
+
+.toast-action {
+  min-height: 40px;
+  margin-left: var(--s-1);
+  padding: 0 var(--s-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: #7fdcc4;
+  font: inherit;
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .toast-action {
+    color: var(--sea-600);
+  }
+}
+
+/* Rijen die een onderblad openen. */
+button.row-item {
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding-right: var(--s-4);
+}
+
+.leg-button {
+  display: flex;
+  width: 100%;
+  gap: var(--s-3);
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: var(--s-3) 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.legs .leg {
+  padding: 0;
+}
+
+.legs-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Voortgang en kaarten op Vandaag ---------- */
+
+.progress {
+  position: relative;
+  height: 8px;
+  margin-top: var(--s-2);
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--chart-track);
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.stat .chart {
+  margin-top: var(--s-2);
+}
+
+/* ---------- Omlaag trekken om te synchroniseren ---------- */
+
+html {
+  overscroll-behavior-y: contain;
+}
+
+.pull-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--s-2);
+  height: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+button.sync-status {
+  border: none;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+/* Kaart "nm dit jaar" is een knop (jaardoel wijzigen) met dezelfde opbouw als een stat. */
+.goal {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stat-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+
+.stat-label .icon {
+  --icon: 16px;
+  color: var(--accent);
+}
+
+.stat-value {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  overflow-wrap: anywhere;
+}
+
+.stat.hero .stat-value {
+  font-size: var(--fs-2xl);
+  letter-spacing: -0.02em;
+}
+
+.progress {
+  display: block;
+}

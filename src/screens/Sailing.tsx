@@ -1,6 +1,7 @@
-import { ChevronDown, FileSpreadsheet, LoaderCircle, Sailboat, Upload } from 'lucide-react'
+import { ChevronDown, FileSpreadsheet, LoaderCircle, Pencil, Sailboat, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { BarChart } from '../components/BarChart'
+import { LegSheet, TripSheet, type Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -8,12 +9,15 @@ import { formatDate, formatDateRange, formatHours, formatMonth, formatMonthShort
 import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
 import { nmPerMonth, summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
-import { ROLE_LABELS, ROLES, todayIso, type Leg } from '../model/types'
+import { ROLE_LABELS, ROLES, todayIso, type Leg, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
-export function Sailing({ store }: { store: Store }) {
+type Editing = { kind: 'leg'; leg: Leg } | { kind: 'trip'; trip: Trip } | null
+
+export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
+  const [editing, setEditing] = useState<Editing>(null)
   const legs = useCollection(store, 'legs.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const [pending, setPending] = useState<ImportResult | null>(null)
@@ -34,7 +38,11 @@ export function Sailing({ store }: { store: Store }) {
       // Inhoud bepaalt het formaat (CSV of .xlsx), niet de naam of het MIME-type van de bestandskiezer.
       setPending(parseMileageFile(new Uint8Array(await file.arrayBuffer())))
     } catch (e) {
-      setError(e instanceof ImportError ? e.message : 'Bestand niet leesbaar. Kies het bestand opnieuw, of sla het eerst op het apparaat op.')
+      setError(
+        e instanceof ImportError
+          ? e.message
+          : 'Bestand niet leesbaar. Kies het bestand opnieuw, of sla het eerst op het apparaat op.',
+      )
     } finally {
       setReading(false)
       if (fileInput.current) fileInput.current.value = ''
@@ -90,7 +98,11 @@ export function Sailing({ store }: { store: Store }) {
   }
 
   const importButton = (primary: boolean) => (
-    <button className={`btn${primary ? ' primary' : ' small quiet'}`} onClick={() => fileInput.current?.click()} disabled={reading}>
+    <button
+      className={`btn${primary ? ' primary' : ' small quiet'}`}
+      onClick={() => fileInput.current?.click()}
+      disabled={reading}
+    >
       <Icon icon={reading ? LoaderCircle : Upload} className={reading ? 'spin' : ''} />
       {reading ? 'Bestand lezen…' : 'Importeren'}
     </button>
@@ -148,13 +160,22 @@ export function Sailing({ store }: { store: Store }) {
                 </h3>
                 <ul className="rows">
                   {g.trips.map((t) => (
-                    <TripRow key={t.trip.id} summary={t} />
+                    <TripRow
+                      key={t.trip.id}
+                      summary={t}
+                      onEditTrip={() => setEditing({ kind: 'trip', trip: t.trip })}
+                      onEditLeg={(leg) => setEditing({ kind: 'leg', leg })}
+                    />
                   ))}
                 </ul>
               </div>
             ))}
           </div>
         </>
+      )}
+      {editing?.kind === 'leg' && <LegSheet store={store} leg={editing.leg} onClose={() => setEditing(null)} notify={notify} />}
+      {editing?.kind === 'trip' && (
+        <TripSheet store={store} trip={editing.trip} onClose={() => setEditing(null)} notify={notify} />
       )}
     </section>
   )
@@ -187,7 +208,15 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TripRow({ summary }: { summary: TripSummary }) {
+function TripRow({
+  summary,
+  onEditTrip,
+  onEditLeg,
+}: {
+  summary: TripSummary
+  onEditTrip: () => void
+  onEditLeg: (leg: Leg) => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <li className="trip">
@@ -198,7 +227,8 @@ function TripRow({ summary }: { summary: TripSummary }) {
         <span className="row-main">
           <span className="row-title">{summary.trip.name}</span>
           <span className="muted">
-            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {summary.days} {summary.days === 1 ? 'dag' : 'dagen'}
+            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {summary.days}{' '}
+            {summary.days === 1 ? 'dag' : 'dagen'}
           </span>
         </span>
         <span className="row-value">{formatNm(summary.nm)}</span>
@@ -207,39 +237,51 @@ function TripRow({ summary }: { summary: TripSummary }) {
       {open && (
         <ul className="legs">
           {summary.legs.map((leg) => (
-            <LegRow key={leg.id} leg={leg} />
+            <LegRow key={leg.id} leg={leg} onEdit={() => onEditLeg(leg)} />
           ))}
+          <li className="legs-actions">
+            <button className="btn small quiet" onClick={onEditTrip}>
+              <Icon icon={Pencil} />
+              Tocht bewerken
+            </button>
+          </li>
         </ul>
       )}
     </li>
   )
 }
 
-function LegRow({ leg }: { leg: Leg }) {
+function LegRow({ leg, onEdit }: { leg: Leg; onEdit: () => void }) {
   const water = [leg.nmInland > 0 && 'binnen', leg.nmSea > 0 && 'zee', leg.nmTidal > 0 && 'getij'].filter(Boolean).join(', ')
   return (
     <li className="leg">
-      <div className="row-main">
-        <span className="row-title">
-          {leg.fromPlace} → {leg.toPlace}
-        </span>
-        <span className="muted">
-          {formatDate(leg.date)}
-          {leg.dateEstimated ? ' (geschat)' : ''} · {ROLE_LABELS[leg.role]}
-          {leg.windBft ? ` · ${leg.windBft} bft` : ''}
-          {leg.nightHours > 0 ? ` · ${formatHours(leg.nightHours)} nacht` : ''}
-        </span>
-        {leg.notes && <span className="muted">{leg.notes}</span>}
-      </div>
-      <span className="row-value">
-        {formatNm(totalNm(leg))}
-        {water && (
-          <span className="muted small">
-            <br />
-            {water}
+      <button
+        className="leg-button"
+        onClick={onEdit}
+        aria-label={`${leg.fromPlace} → ${leg.toPlace}, ${formatDate(leg.date)} · Bewerken`}
+      >
+        <div className="row-main">
+          <span className="row-title">
+            {leg.fromPlace} → {leg.toPlace}
           </span>
-        )}
-      </span>
+          <span className="muted">
+            {formatDate(leg.date)}
+            {leg.dateEstimated ? ' (geschat)' : ''} · {ROLE_LABELS[leg.role]}
+            {leg.windBft ? ` · ${leg.windBft} bft` : ''}
+            {leg.nightHours > 0 ? ` · ${formatHours(leg.nightHours)} nacht` : ''}
+          </span>
+          {leg.notes && <span className="muted">{leg.notes}</span>}
+        </div>
+        <span className="row-value">
+          {formatNm(totalNm(leg))}
+          {water && (
+            <span className="muted small">
+              <br />
+              {water}
+            </span>
+          )}
+        </span>
+      </button>
     </li>
   )
 }

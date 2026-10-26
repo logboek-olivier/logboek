@@ -1,5 +1,7 @@
-import { Coins, Receipt, Trash2, Wallet } from 'lucide-react'
+import { ChevronRight, Coins, Receipt, Wallet } from 'lucide-react'
+import { useState } from 'react'
 import { BarChart } from '../components/BarChart'
+import { TransactionSheet, type Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -11,9 +13,12 @@ import type { Store } from '../storage/store'
 
 // Geld: zeilgeld per maand, per bron, fooi per week (12 weken), lijst per maand met verwijderen. Geen netto waarde.
 
-export function Money({ store, onDone, onAdd }: { store: Store; onDone: (message: string) => void; onAdd: () => void }) {
+export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
+  const [editing, setEditing] = useState<Transaction | null>(null)
   const transactions = useCollection(store, 'transactions.json.enc')
-  const live = active(transactions).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.updatedAt < b.updatedAt ? 1 : -1))
+  const live = active(transactions).sort((a, b) =>
+    a.date < b.date ? 1 : a.date > b.date ? -1 : a.updatedAt < b.updatedAt ? 1 : -1,
+  )
   const today = todayIso()
   const all = totals(live)
   const months = perMonth(live)
@@ -21,14 +26,6 @@ export function Money({ store, onDone, onAdd }: { store: Store; onDone: (message
   const weeks = tipsPerWeek(live, today)
   const series = monthSeries(live, today)
   const weekOther = mergeOther(weeks.map((w) => w.other))
-
-  async function remove(tx: Transaction) {
-    const label = `${KIND_LABELS[tx.kind]} van ${formatMoney(tx.amount, tx.currency)} op ${formatDate(tx.date)} verwijderen?`
-    if (!window.confirm(label)) return
-    await store.remove('transactions.json.enc', tx.id)
-    void store.sync()
-    onDone('Verwijderd')
-  }
 
   return (
     <section className="stack-lg">
@@ -50,7 +47,12 @@ export function Money({ store, onDone, onAdd }: { store: Store; onDone: (message
       {live.length > 0 && (
         <>
           <dl className="grid">
-            <Stat label="Saldo" value={formatMoney(all.balanceEur, 'EUR')} tone={all.balanceEur >= 0 ? 'positive' : 'negative'} hero />
+            <Stat
+              label="Saldo"
+              value={formatMoney(all.balanceEur, 'EUR')}
+              tone={all.balanceEur >= 0 ? 'positive' : 'negative'}
+              hero
+            />
             <Stat label="Inkomsten" value={formatMoney(all.incomeEur, 'EUR')} />
             <Stat label="Kosten" value={formatMoney(all.costsEur, 'EUR')} />
             <OtherStat other={all.other} />
@@ -63,12 +65,21 @@ export function Money({ store, onDone, onAdd }: { store: Store; onDone: (message
             </div>
             <BarChart
               label={`Fooi per week, laatste 12 weken: ${weeks.map((w) => `${formatDateShort(w.weekStart)} ${formatMoney(w.eur, 'EUR')}`).join(', ')}`}
-              groups={weeks.map((w) => ({ key: w.weekStart, label: formatDateShort(w.weekStart).replace('.', ''), values: [w.eur] }))}
+              groups={weeks.map((w) => ({
+                key: w.weekStart,
+                label: formatDateShort(w.weekStart).replace('.', ''),
+                values: [w.eur],
+              }))}
               format={(n) => formatMoneyShort(n)}
               labelEvery={3}
             />
             {Object.keys(weekOther).length > 0 && (
-              <p className="muted small">Niet in de grafiek: {Object.entries(weekOther).map(([c, v]) => formatMoney(v, c)).join(', ')}</p>
+              <p className="muted small">
+                Niet in de grafiek:{' '}
+                {Object.entries(weekOther)
+                  .map(([c, v]) => formatMoney(v, c))
+                  .join(', ')}
+              </p>
             )}
           </div>
 
@@ -147,27 +158,27 @@ export function Money({ store, onDone, onAdd }: { store: Store; onDone: (message
                   {live
                     .filter((tx) => tx.date.startsWith(m.month))
                     .map((tx) => (
-                      <li key={tx.id} className="row-item tx">
-                        <span className={`row-icon${isIncome(tx.kind) ? '' : ' cost'}`}>
-                          <Icon icon={isIncome(tx.kind) ? Coins : Receipt} />
-                        </span>
-                        <div className="row-main">
-                          <span className="row-title">{tx.note ?? KIND_LABELS[tx.kind]}</span>
-                          <span className="muted">
-                            {formatDateShort(tx.date)}
-                            {tx.note ? ` · ${KIND_LABELS[tx.kind]}` : ''} · {SOURCE_LABELS[tx.source]}
-                          </span>
-                        </div>
-                        <span className={`row-value ${isIncome(tx.kind) ? 'positive' : ''}`}>
-                          {isIncome(tx.kind) ? '+' : '−'}
-                          {formatMoney(tx.amount, tx.currency)}
-                        </span>
+                      <li key={tx.id} className="tx">
                         <button
-                          className="btn icon"
-                          aria-label={`Verwijder ${KIND_LABELS[tx.kind]} ${formatDate(tx.date)}`}
-                          onClick={() => void remove(tx)}
+                          className="row-item"
+                          aria-label={`${tx.note ?? KIND_LABELS[tx.kind]}, ${formatDate(tx.date)}, ${formatMoney(tx.amount, tx.currency)} · Bewerken`}
+                          onClick={() => setEditing(tx)}
                         >
-                          <Icon icon={Trash2} />
+                          <span className={`row-icon${isIncome(tx.kind) ? '' : ' cost'}`}>
+                            <Icon icon={isIncome(tx.kind) ? Coins : Receipt} />
+                          </span>
+                          <div className="row-main">
+                            <span className="row-title">{tx.note ?? KIND_LABELS[tx.kind]}</span>
+                            <span className="muted">
+                              {formatDateShort(tx.date)}
+                              {tx.note ? ` · ${KIND_LABELS[tx.kind]}` : ''} · {SOURCE_LABELS[tx.source]}
+                            </span>
+                          </div>
+                          <span className={`row-value ${isIncome(tx.kind) ? 'positive' : ''}`}>
+                            {isIncome(tx.kind) ? '+' : '−'}
+                            {formatMoney(tx.amount, tx.currency)}
+                          </span>
+                          <Icon icon={ChevronRight} className="chevron" />
                         </button>
                       </li>
                     ))}
@@ -177,6 +188,7 @@ export function Money({ store, onDone, onAdd }: { store: Store; onDone: (message
           </div>
         </>
       )}
+      {editing && <TransactionSheet store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
     </section>
   )
 }
@@ -187,7 +199,17 @@ function mergeOther(list: Record<string, number>[]): Record<string, number> {
   return out
 }
 
-function Stat({ label, value, tone, hero = false }: { label: string; value: string; tone?: 'positive' | 'negative'; hero?: boolean }) {
+function Stat({
+  label,
+  value,
+  tone,
+  hero = false,
+}: {
+  label: string
+  value: string
+  tone?: 'positive' | 'negative'
+  hero?: boolean
+}) {
   return (
     <div className={`stat${hero ? ' hero wide' : ''}`}>
       <dt>{label}</dt>

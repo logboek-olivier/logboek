@@ -79,6 +79,9 @@ export interface Transaction extends SyncRecord {
   note?: string
 }
 
+export type AddTab = 'fooi' | 'kosten' | 'dag'
+export type Water = 'zee' | 'getij' | 'binnen'
+
 export interface Settings extends SyncRecord {
   id: 'settings'
   lastBoat: string
@@ -86,6 +89,12 @@ export interface Settings extends SyncRecord {
   lastCurrency: Currency
   lastSource: TransactionSource
   lastTripId?: string
+  // Optionele velden (release 1): oudere data zonder deze velden blijft geldig; oudere apps laten ze staan.
+  lastIncomeKind?: 'fooi' | 'loon'
+  lastCostKind?: 'kosten' | 'investering'
+  lastWater?: Water
+  /** Jaardoel in nm voor de kaart op Vandaag; standaard 2.500. */
+  yearGoalNm?: number
 }
 
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
