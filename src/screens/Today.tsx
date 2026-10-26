@@ -1,3 +1,6 @@
+import { Anchor, CalendarDays, Coins, Sailboat, Waves } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateRange, formatMoney, formatNm } from '../format'
@@ -11,7 +14,7 @@ import { TOKEN_INVALID_MESSAGE, type Store } from '../storage/store'
 
 const TOKEN_WARNING_DAYS = 30
 
-export function Today({ store, onSettings }: { store: Store; onSettings: () => void }) {
+export function Today({ store, onSettings, onAdd }: { store: Store; onSettings: () => void; onAdd: () => void }) {
   const session = useSession()
   const legs = useCollection(store, 'legs.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
@@ -27,11 +30,8 @@ export function Today({ store, onSettings }: { store: Store; onSettings: () => v
 
   return (
     <section className="stack">
-      <header className="title-row">
+      <header className="page-header">
         <h1>Vandaag</h1>
-        <button className="btn icon" aria-label="Instellingen" onClick={onSettings}>
-          ⚙
-        </button>
       </header>
       {tokenInvalid && (
         <Notice text="Token verlopen of ingetrokken. Wijzigingen blijven bewaard tot er een geldige token is." onSettings={onSettings} />
@@ -49,21 +49,35 @@ export function Today({ store, onSettings }: { store: Store; onSettings: () => v
         />
       )}
       <dl className="grid">
-        <Card label={`nm in ${year}`} value={formatNm(nmInYear(legs, year))} />
-        <Card label="nm totaal" value={formatNm(total.nm)} />
+        <Card icon={CalendarDays} label={`nm in ${year}`} value={formatNm(nmInYear(legs, year))} hero />
+        <Card icon={Waves} label="nm totaal" value={formatNm(total.nm)} />
         <Card
+          icon={Coins}
           label="Fooi afgelopen 30 dagen"
           value={formatMoney(tips.eur, 'EUR')}
           extra={Object.entries(tips.other).map(([c, v]) => `+ ${formatMoney(v, c)}`)}
         />
         {last ? (
           <Card
+            icon={Sailboat}
             label="Laatste tocht"
             value={last.trip.name}
             extra={[`${formatDateRange(last.startDate, last.endDate)} · ${formatNm(last.nm)}`]}
+            wide
           />
         ) : (
-          <Card label="Laatste tocht" value="–" extra={['Nog geen dagen']} />
+          <div className="stat wide">
+            <dt>
+              <Icon icon={Anchor} />
+              Laatste tocht
+            </dt>
+            <dd className="small muted">Nog geen dagen. Voeg een dag toe of importeer de mijlenregistratie bij Zeilen.</dd>
+            <dd className="small">
+              <button className="btn link" onClick={onAdd}>
+                Dag toevoegen
+              </button>
+            </dd>
+          </div>
         )}
       </dl>
     </section>
@@ -81,10 +95,27 @@ function Notice({ text, onSettings }: { text: string; onSettings: () => void }) 
   )
 }
 
-function Card({ label, value, extra = [] }: { label: string; value: string; extra?: string[] }) {
+function Card({
+  icon,
+  label,
+  value,
+  extra = [],
+  hero = false,
+  wide = false,
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+  extra?: string[]
+  hero?: boolean
+  wide?: boolean
+}) {
   return (
-    <div className="stat">
-      <dt>{label}</dt>
+    <div className={`stat${hero ? ' hero wide' : ''}${wide ? ' wide' : ''}`}>
+      <dt>
+        <Icon icon={icon} />
+        {label}
+      </dt>
       <dd>{value}</dd>
       {extra.map((e) => (
         <dd key={e} className="small muted">

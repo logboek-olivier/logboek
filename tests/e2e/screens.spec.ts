@@ -24,7 +24,7 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
     await page.getByRole('button', { name: tab }).click()
     await expectNoHorizontalOverflow(page)
   }
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   for (const sub of ['Kosten', 'Dag']) {
     await page.getByRole('tab', { name: sub }).click()
     await page.getByRole('button', { name: 'Meer' }).click()

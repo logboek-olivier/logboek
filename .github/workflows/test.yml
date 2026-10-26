@@ -28,5 +28,14 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Playwright
         run: npm run test:e2e
+      # Schermafbeeldingen van elk scherm (360 en 412 px, licht en donker) om vóór het mergen te bekijken.
+      - name: Schermafbeeldingen uploaden
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: schermafbeeldingen
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Build
         run: npm run build

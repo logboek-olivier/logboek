@@ -1,13 +1,17 @@
+import { ChevronDown, FileSpreadsheet, LoaderCircle, Sailboat, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { BarChart } from '../components/BarChart'
+import { Empty } from '../components/Empty'
+import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
-import { formatDate, formatDateRange, formatHours, formatNm, formatNumber } from '../format'
+import { formatDate, formatDateRange, formatHours, formatMonth, formatMonthShort, formatNm, formatNumber } from '../format'
 import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
-import { summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
-import { ROLE_LABELS, ROLES, type Leg } from '../model/types'
+import { nmPerMonth, summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
+import { ROLE_LABELS, ROLES, todayIso, type Leg } from '../model/types'
 import type { Store } from '../storage/store'
 
-// Zeilen: totalen bovenaan, tochten nieuwste eerst (uitklapbaar naar dagen), knop Importeren.
+// Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
 export function Sailing({ store }: { store: Store }) {
   const legs = useCollection(store, 'legs.json.enc')
@@ -20,6 +24,7 @@ export function Sailing({ store }: { store: Store }) {
 
   const summary = summarize(legs)
   const tripSummaries = summarizeTrips(trips, legs)
+  const months = nmPerMonth(legs, todayIso())
 
   async function onFile(file: File | undefined) {
     if (!file) return
@@ -53,7 +58,9 @@ export function Sailing({ store }: { store: Store }) {
     const manual = legs.filter((l) => l.deletedAt === null && l.source === 'manual').length
     return (
       <section className="stack">
-        <h1>Controle import</h1>
+        <header className="page-header">
+          <h1>Controle import</h1>
+        </header>
         <p className="muted">
           Vergelijk met de samenvatting in Excel.{' '}
           {previous > 0 ? `Importeren vervangt de ${formatNumber(previous)} eerder geïmporteerde dagen.` : ''}
@@ -82,35 +89,73 @@ export function Sailing({ store }: { store: Store }) {
     )
   }
 
+  const importButton = (primary: boolean) => (
+    <button className={`btn${primary ? ' primary' : ' small quiet'}`} onClick={() => fileInput.current?.click()} disabled={reading}>
+      <Icon icon={reading ? LoaderCircle : Upload} className={reading ? 'spin' : ''} />
+      {reading ? 'Bestand lezen…' : 'Importeren'}
+    </button>
+  )
+
+  // Tochten per maand van de laatste dag, nieuwste eerst.
+  const groups: { month: string; trips: TripSummary[] }[] = []
+  for (const t of tripSummaries) {
+    const month = t.endDate.slice(0, 7)
+    const last = groups[groups.length - 1]
+    if (last && last.month === month) last.trips.push(t)
+    else groups.push({ month, trips: [t] })
+  }
+
   return (
-    <section className="stack">
-      <h1>Zeilen</h1>
-      {summary.days > 0 && <SummaryGrid summary={summary} />}
+    <section className="stack-lg">
+      <header className="page-header">
+        <h1>Zeilen</h1>
+        {summary.days > 0 && importButton(false)}
+      </header>
       {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
-      <input
-        ref={fileInput}
-        type="file"
-        hidden
-        aria-label="Mijlenbestand"
-        onChange={(e) => void onFile(e.target.files?.[0])}
-      />
-      <button className="btn" onClick={() => fileInput.current?.click()} disabled={reading}>
-        {reading ? 'Bestand lezen…' : 'Importeren'}
-      </button>
-      <p className="muted small">Excel (.xlsx) of CSV van de mijlenregistratie.</p>
+      <input ref={fileInput} type="file" hidden aria-label="Mijlenbestand" onChange={(e) => void onFile(e.target.files?.[0])} />
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      {tripSummaries.length === 0 && summary.days === 0 && (
-        <p className="muted">Nog geen dagen. Importeer de mijlenregistratie of voeg een dag toe.</p>
+      {summary.days === 0 && (
+        <Empty icon={FileSpreadsheet} action={importButton(true)}>
+          Nog geen dagen. Importeer de mijlenregistratie (Excel of CSV), of voeg een dag toe met +.
+        </Empty>
       )}
-      <ul className="list">
-        {tripSummaries.map((t) => (
-          <TripRow key={t.trip.id} summary={t} />
-        ))}
-      </ul>
+      {summary.days > 0 && (
+        <>
+          <SummaryGrid summary={summary} />
+          <div className="section card card-body">
+            <div className="section-head">
+              <h2>nm per maand</h2>
+              <span className="muted">12 maanden</span>
+            </div>
+            <BarChart
+              label={`Zeemijlen per maand: ${months.map((m) => `${formatMonth(m.month)} ${formatNm(m.nm)}`).join(', ')}`}
+              groups={months.map((m) => ({ key: m.month, label: formatMonthShort(m.month), values: [m.nm] }))}
+              format={(n) => formatNm(Math.round(n))}
+              labelEvery={2}
+            />
+          </div>
+          <div className="section">
+            <h2>Tochten</h2>
+            {groups.map((g) => (
+              <div key={g.month} className="group">
+                <h3 className="group-head">
+                  <span>{formatMonth(g.month)}</span>
+                  <span className="num">{formatNm(g.trips.reduce((n, t) => n + t.nm, 0))}</span>
+                </h3>
+                <ul className="rows">
+                  {g.trips.map((t) => (
+                    <TripRow key={t.trip.id} summary={t} />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   )
 }
@@ -118,7 +163,7 @@ export function Sailing({ store }: { store: Store }) {
 export function SummaryGrid({ summary }: { summary: SailingSummary }) {
   const water = summary.nmByWater
   return (
-    <dl className="grid">
+    <dl className="grid grid-3">
       <Stat label="Totaal" value={formatNm(summary.nm)} />
       <Stat label="Dagen" value={formatNumber(summary.days)} />
       <Stat label="Tochten" value={formatNumber(summary.trips)} />
@@ -145,18 +190,19 @@ function Stat({ label, value }: { label: string; value: string }) {
 function TripRow({ summary }: { summary: TripSummary }) {
   const [open, setOpen] = useState(false)
   return (
-    <li className="card">
+    <li className="trip">
       <button className="row-button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="row-icon">
+          <Icon icon={Sailboat} />
+        </span>
         <span className="row-main">
           <span className="row-title">{summary.trip.name}</span>
           <span className="muted">
-            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat}
+            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {summary.days} {summary.days === 1 ? 'dag' : 'dagen'}
           </span>
         </span>
-        <span className="row-value">
-          {formatNm(summary.nm)}
-          <span className="muted"> · {summary.days} {summary.days === 1 ? 'dag' : 'dagen'}</span>
-        </span>
+        <span className="row-value">{formatNm(summary.nm)}</span>
+        <Icon icon={ChevronDown} className="chevron" />
       </button>
       {open && (
         <ul className="legs">
@@ -174,7 +220,7 @@ function LegRow({ leg }: { leg: Leg }) {
   return (
     <li className="leg">
       <div className="row-main">
-        <span>
+        <span className="row-title">
           {leg.fromPlace} → {leg.toPlace}
         </span>
         <span className="muted">
@@ -187,7 +233,12 @@ function LegRow({ leg }: { leg: Leg }) {
       </div>
       <span className="row-value">
         {formatNm(totalNm(leg))}
-        {water && <span className="muted"> · {water}</span>}
+        {water && (
+          <span className="muted small">
+            <br />
+            {water}
+          </span>
+        )}
       </span>
     </li>
   )

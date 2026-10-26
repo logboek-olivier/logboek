@@ -18,7 +18,7 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture.pathname)
 
   await expect(page.getByRole('heading', { name: 'Controle import' })).toBeVisible()
-  const grid = page.locator('.grid')
+  const grid = page.locator('.grid').first()
   await expect(grid).toContainText('240 nm')
   await expect(grid).toContainText('Dagen8')
   await expect(grid).toContainText('Tochten3')
@@ -29,7 +29,7 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
 
   await page.getByRole('button', { name: 'Importeren' }).click()
   await expect(page.getByRole('heading', { name: 'Zeilen' })).toBeVisible()
-  const trips = page.locator('.card')
+  const trips = page.locator('.trip')
   await expect(trips).toHaveCount(3)
   await expect(trips.first()).toContainText('Cursus binnenwater')
   await trips.first().getByRole('button').click()
@@ -45,8 +45,8 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   // Opnieuw importeren dubbelt niet.
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture.pathname)
   await page.getByRole('button', { name: 'Importeren' }).click()
-  await expect(page.locator('.card')).toHaveCount(3)
-  await expect(page.locator('.grid')).toContainText('Dagen8')
+  await expect(page.locator('.trip')).toHaveCount(3)
+  await expect(page.locator('.grid').first()).toContainText('Dagen8')
   expect(errors).toEqual([])
 })
 
@@ -74,7 +74,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
   await (await chooser).setFiles(fixturePath('mijlen-nep.xlsx'))
 
   await expect(page.getByRole('heading', { name: 'Controle import' })).toBeVisible()
-  const grid = page.locator('.grid')
+  const grid = page.locator('.grid').first()
   await expect(grid).toContainText('Dagen8')
   await expect(grid).toContainText('Tochten3')
   await expect(grid).toContainText('Co-schipper110 nm')
@@ -82,11 +82,11 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
   await expectNoHorizontalOverflow(page)
 
   await page.getByRole('button', { name: 'Annuleren' }).click()
-  await expect(page.locator('.card')).toHaveCount(0)
+  await expect(page.locator('.trip')).toHaveCount(0)
 
   await page.getByLabel('Mijlenbestand').setInputFiles(fixturePath('mijlen-nep.xlsx'))
   await page.getByRole('button', { name: 'Importeren' }).click()
-  await expect(page.locator('.card')).toHaveCount(3)
+  await expect(page.locator('.trip')).toHaveCount(3)
   expect(errors).toEqual([])
 })
 

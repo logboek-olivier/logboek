@@ -1,4 +1,4 @@
-import { active, round1 } from './derive'
+import { active, lastMonths, round1 } from './derive'
 import type { Currency, Transaction, TransactionKind, TransactionSource } from './types'
 
 // Afgeleiden voor zeilgeld. Alleen EUR wordt opgeteld; andere valuta apart per valuta, nooit omgerekend.
@@ -65,6 +65,12 @@ export function perMonth(transactions: readonly Transaction[]): MonthTotals[] {
   return [...groups.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
     .map(([month, txs]) => ({ month, ...totals(txs) }))
+}
+
+/** Inkomsten en kosten in EUR per kalendermaand voor de laatste `count` maanden, oudste eerst (voor de grafiek). */
+export function monthSeries(transactions: readonly Transaction[], today: string, count = 12): MonthTotals[] {
+  const byMonth = new Map(perMonth(transactions).map((m) => [m.month, m]))
+  return lastMonths(today, count).map((month) => byMonth.get(month) ?? { month, ...emptyTotals() })
 }
 
 export interface SourceTotals extends MoneyTotals {

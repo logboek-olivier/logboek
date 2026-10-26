@@ -1,4 +1,6 @@
+import { Check } from 'lucide-react'
 import { useEffect } from 'react'
+import { Icon } from './Icon'
 
 /** Korte bevestiging onderaan; verdwijnt vanzelf. */
 export function Toast({ message, onDone }: { message: string | null; onDone: () => void }) {
@@ -10,7 +12,8 @@ export function Toast({ message, onDone }: { message: string | null; onDone: () 
   if (!message) return null
   return (
     <div className="toast" role="status">
-      {message}
+      <Icon icon={Check} />
+      <span>{message}</span>
     </div>
   )
 }

@@ -129,8 +129,8 @@ test('vervaldatum van de token: vooraf ingevuld uit de header, waarschuwing op V
   await expect(page.getByText('Niet leesbaar van GitHub')).toBeVisible()
   await page.getByLabel('Vervaldatum van de token').fill('2030-01-01')
   await page.getByRole('button', { name: 'Vervangen', exact: true }).click()
-  await expect(page.getByText('Token vervangen', { exact: true })).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: '‹ Vandaag' }).click()
+  await expect(page.locator('.toast')).toHaveText('Token vervangen', { timeout: 15_000 })
+  await page.getByRole('button', { name: 'Vandaag' }).click()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   await expect(page.getByRole('alert')).toHaveCount(0)
@@ -145,7 +145,7 @@ test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en h
 
   // Token ingetrokken: GitHub antwoordt 401. Een fooi toevoegen blijft gewoon werken.
   github.forceStatus = 401
-  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByLabel('Bedrag').fill('12')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
@@ -159,7 +159,7 @@ test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en h
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('status').first()).toHaveText('Geen verbinding', { timeout: 15_000 })
   await page.getByRole('button', { name: 'Geld' }).click()
-  await expect(page.locator('.card')).toHaveCount(1)
+  await expect(page.locator('.tx')).toHaveCount(1)
 
   // Verbinding terug: de wachtende wijziging gaat alsnog mee.
   github.offline = false

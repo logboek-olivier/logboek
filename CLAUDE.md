@@ -19,7 +19,7 @@ Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code
 | Onderdeel | Keuze |
 |---|---|
 | App | React 18 + Vite + TypeScript, PWA (vite-plugin-pwa, Workbox) |
-| Styling | Eén klein CSS-bestand met variabelen; geen UI-framework. Licht/donker via `prefers-color-scheme` |
+| Styling | Eén CSS-bestand (`src/app.css`) met het ontwerpsysteem als variabelen: kleuren (marineblauw, zeegroen accent, warm lichte achtergrond), typografie (systeemlettertype, tabular-nums voor getallen), ruimtes, hoekradius, schaduwen. Geen UI-framework. Licht/donker via `prefers-color-scheme`. Iconen: lucide-react, één lijndikte (1,75) en maat via `--icon`. Grafieken in eigen SVG (`src/components/BarChart.tsx`) |
 | Opslag telefoon | IndexedDB via `idb` |
 | Opslag bron | Private GitHub-repo `logboek-olivier/logboek-data`, via GitHub REST API (`api.github.com`) |
 | Hosting | GitHub Pages vanuit publieke repo `logboek-olivier/logboek`. URL: `https://logboek-olivier.github.io/logboek/`. Vite `base: '/logboek/'`, PWA-scope en start_url `/logboek/`. Geen aparte testorganisatie |
@@ -150,7 +150,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk vandaag: **Vandaag · Zeilen · + · Geld**. Kluis komt erbij zodra die gebouwd is.
+Onderste balk vandaag: **Vandaag · Zeilen · + · Geld · Instellingen**, vijf gelijke vakken met het + in het midden als ronde knop. Kluis komt erbij zodra die gebouwd is (dan schuift Instellingen naar het tandwiel op Vandaag).
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -160,9 +160,9 @@ Onderste balk vandaag: **Vandaag · Zeilen · + · Geld**. Kluis komt erbij zodr
    - Kosten: bedrag, omschrijving, soort (kosten/investering). Bron en valuta laatst gebruikt.
    - Dag: naar (plaats), nm, watertype (zee/getij/binnen). Van = vorige "naar", boot/rol/tocht = laatst gebruikt, datum vandaag. "Meer" klapt de overige velden open (nachturen, wind, nieuwe tocht).
    - Opslaan = één tik, daarna terug naar Vandaag met een korte bevestiging.
-5. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Daaronder tochten, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (CSV).
-6. **Geld:** zeilgeld per maand (inkomsten, kosten, saldo), per bron, fooi per week voor de laatste 12 weken, lijst transacties met verwijderen. Geen netto waarde, geen bankrekeningen (fase 3).
-7. **Instellingen** (tandwiel rechtsboven op Vandaag): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld).
+5. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). Daaronder tochten per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (Excel of CSV).
+6. **Geld:** saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (fase 3).
+7. **Instellingen** (vijfde vak van de onderste balk): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld).
 
 Geen onboarding, geen tutorial, geen bevestigingsdialogen behalve bij verwijderen en exporteren. Alles werkt op 360 px breed, bedienbaar met één duim.
 

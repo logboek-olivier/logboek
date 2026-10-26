@@ -1,4 +1,6 @@
+import { Coins, Receipt, Sailboat } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
+import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
 import { active, compareLegs, tripForDate } from '../model/derive'
@@ -33,7 +35,9 @@ export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: st
   const [tab, setTab] = useState<AddTab>('fooi')
   return (
     <section className="stack">
-      <h1>Toevoegen</h1>
+      <header className="page-header">
+        <h1>Toevoegen</h1>
+      </header>
       <div className="segments" role="tablist">
         {(['fooi', 'kosten', 'dag'] as AddTab[]).map((t) => (
           <button
@@ -43,6 +47,7 @@ export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: st
             className={`segment${tab === t ? ' active' : ''}`}
             onClick={() => setTab(t)}
           >
+            <Icon icon={t === 'fooi' ? Coins : t === 'kosten' ? Receipt : Sailboat} />
             {t === 'fooi' ? 'Fooi' : t === 'kosten' ? 'Kosten' : 'Dag'}
           </button>
         ))}
