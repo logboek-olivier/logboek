@@ -484,6 +484,53 @@ h2 {
   white-space: nowrap;
 }
 
+.update-bar,
+.notice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.update-bar {
+  max-width: 640px;
+  margin: var(--space) auto 0;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.update-bar + .app {
+  padding-top: 8px;
+}
+
+.notice {
+  border-color: var(--negative);
+}
+
+.notice .btn.link,
+.update-bar .btn.link {
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+code {
+  font-size: 0.9em;
+}
+
 .title-row {
   display: flex;
   justify-content: space-between;

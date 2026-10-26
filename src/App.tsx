@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
 import { Unlock } from './screens/Unlock'
@@ -46,5 +47,10 @@ export function App() {
       screen = <Home store={state.store} />
       break
   }
-  return <SessionContext.Provider value={session}>{screen}</SessionContext.Provider>
+  return (
+    <SessionContext.Provider value={session}>
+      <UpdateBar />
+      {screen}
+    </SessionContext.Provider>
+  )
 }

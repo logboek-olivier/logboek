@@ -1,12 +1,21 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { fromBase64, toBase64, utf8 } from '../src/crypto/encrypt'
+import { encryptObject, fromBase64, toBase64, utf8 } from '../src/crypto/encrypt'
+import { NewerSchemaError, SCHEMA_VERSION, UPDATE_APP_MESSAGE } from '../src/model/schema'
 import { createVault, parseWordlistForTests } from './helpers/vault'
-import { AuthError, ConflictError, GithubClient, GithubError, NetworkError, type FetchLike } from '../src/storage/github'
-import { openLogboekDb, type Db } from '../src/storage/idb'
+import {
+  AuthError,
+  ConflictError,
+  GithubClient,
+  GithubError,
+  NetworkError,
+  parseExpirationHeader,
+  type FetchLike,
+} from '../src/storage/github'
+import { openLogboekDb, putLocal, type Db } from '../src/storage/idb'
 import { clearSynced, markPending, pendingCount } from '../src/storage/outbox'
-import { Store } from '../src/storage/store'
-import { encryptRecords, mergeRecords, SyncFailedError, syncCollection } from '../src/storage/sync'
+import { Store, TOKEN_INVALID_MESSAGE } from '../src/storage/store'
+import { decodeRecords, encodeRecords, encryptRecords, mergeRecords, SyncFailedError, syncCollection } from '../src/storage/sync'
 import { loadToken, storeToken } from '../src/storage/token'
 import type { Trip } from '../src/model/types'
 import { FakeGithub } from './helpers/fake-github'
@@ -66,6 +75,43 @@ beforeEach(async () => {
 })
 
 describe('GithubClient', () => {
+  it('ziet een repo zonder commits (409) en een repo met alleen een README als leeg en kan er een logboek in beginnen', async () => {
+    // Zonder commits: GET contents geeft 409 "Git Repository is empty." tot de eerste PUT.
+    const empty = new FakeGithub()
+    empty.emptyRepo = true
+    const client = new GithubClient(TOKEN, empty.fetch)
+    expect((await client.checkAccess()).expiresAt).toBeNull()
+    expect(await client.getFile('meta.json.enc')).toBeNull()
+    expect(empty.statuses.at(-1)).toBe(409)
+    const sha = await client.putFile('meta.json.enc', utf8('{}'), null)
+    expect(sha).toBe('sha-1')
+    expect(await client.getFile('meta.json.enc')).not.toBeNull()
+    // Daarna werkt de gewone sync: eerste schrijf zonder SHA, tweede met.
+    const a = await device(empty)
+    await a.store.put('trips.json.enc', trip('t1', 'eerste'))
+    await a.store.sync()
+    expect(a.store.getStatus()).toEqual({ kind: 'synced' })
+    expect(empty.files.size).toBe(5)
+
+    // Alleen een README: meta ontbreekt (404), nieuw logboek mag.
+    const readme = new FakeGithub()
+    readme.write('README.md', toBase64(utf8('# logboek-data')))
+    const client2 = new GithubClient(TOKEN, readme.fetch)
+    expect(await client2.getFile('meta.json.enc')).toBeNull()
+    expect(readme.statuses.at(-1)).toBe(404)
+    await client2.putFile('meta.json.enc', utf8('{}'), null)
+    expect(readme.files.has('README.md')).toBe(true)
+    expect(readme.files.has('meta.json.enc')).toBe(true)
+  })
+
+  it('geeft de vervaldatum van de token door als GitHub de header meestuurt', async () => {
+    const github = new FakeGithub()
+    github.forceHeaders = { 'github-authentication-token-expiration': '2026-11-24 12:00:00 UTC' }
+    const client = new GithubClient(TOKEN, github.fetch)
+    expect(await client.checkAccess()).toEqual({ expiresAt: '2026-11-24' })
+    expect(client.tokenExpiresAt).toBe('2026-11-24')
+  })
+
   it('leest, schrijft op SHA-voorwaarde en meldt een conflict', async () => {
     const github = new FakeGithub()
     const client = new GithubClient(TOKEN, github.fetch)
@@ -336,19 +382,75 @@ describe('sync tussen twee apparaten', () => {
     expect(b.store.list('trips.json.enc').map((t) => t.name).sort()).toEqual(['Offline een', 'Offline twee'])
   })
 
-  it('meldt een ongeldige token als fout en houdt de wijzigingen', async () => {
+  it('meldt een verlopen of ingetrokken token (401) zonder te crashen en houdt de outbox', async () => {
     const github = new FakeGithub()
     const a = await device(github)
     await a.store.put('trips.json.enc', trip('t1', 'x'))
     github.forceStatus = 401
     await a.store.sync()
-    expect(a.store.getStatus()).toEqual({ kind: 'error', message: 'Token ongeldig', count: 1 })
+    expect(a.store.getStatus()).toEqual({ kind: 'error', message: TOKEN_INVALID_MESSAGE, count: 1 })
+    expect(a.store.pendingCount()).toBe(1)
+    // Na een nieuwe token (hier: GitHub antwoordt weer gewoon) gaat de wijziging alsnog mee.
+    github.forceStatus = null
+    await a.store.sync()
+    expect(a.store.getStatus()).toEqual({ kind: 'synced' })
+    expect(github.files.has('trips.json.enc')).toBe(true)
+  })
+
+  it('schrijft niets naar GitHub als een bestand een hogere schemaVersion heeft en vraagt om een update', async () => {
+    const github = new FakeGithub()
+    const a = await device(github)
+    await a.store.put('trips.json.enc', trip('t1', 'lokaal'))
+    await a.store.put('legs.json.enc', {
+      id: 'l1',
+      tripId: 't1',
+      date: '2026-01-01',
+      fromPlace: 'A',
+      fromCountry: 'X',
+      toPlace: 'B',
+      toCountry: 'X',
+      role: 'schipper',
+      boat: 'Nep',
+      nmInland: 0,
+      nmSea: 1,
+      nmTidal: 0,
+      nightHours: 0,
+      dateEstimated: false,
+      source: 'manual',
+      updatedAt: new Date().toISOString(),
+      deletedAt: null,
+    })
+    // Een nieuwere app schreef transactions.json.enc met schemaVersion 2 (het laatste bestand in de volgorde).
+    const newer = JSON.stringify({ format: 'logboek-collection', schemaVersion: SCHEMA_VERSION + 1, records: [] })
+    github.write('transactions.json.enc', toBase64(await encryptObject(masterKey, 'transactions.json.enc', utf8(newer))))
+    await a.store.sync()
+    expect(a.store.getStatus()).toEqual({ kind: 'error', message: UPDATE_APP_MESSAGE, count: 2 })
+    // Geen enkele PUT, ook niet voor de bestanden die vóór het nieuwere bestand aan de beurt waren.
+    expect(github.requests.filter((r) => r.method === 'PUT')).toHaveLength(0)
+    // Ook een volgende sync schrijft niets en houdt de melding.
+    await a.store.sync()
+    expect(github.requests.filter((r) => r.method === 'PUT')).toHaveLength(0)
+    expect(a.store.getStatus()).toEqual({ kind: 'error', message: UPDATE_APP_MESSAGE, count: 2 })
+    // Lokaal blijft alles bewaard voor na de update.
+    const again = await Store.open(a.db, masterKey, new GithubClient(TOKEN, github.fetch))
+    expect(again.pendingCount()).toBe(2)
+  })
+
+  it('schrijft schemaVersion in elk bestand en leest de vorige vorm (version: 1) nog', () => {
+    const encoded = JSON.parse(new TextDecoder().decode(encodeRecords([trip('a', 'x')]))) as Record<string, unknown>
+    expect(encoded.schemaVersion).toBe(SCHEMA_VERSION)
+    const legacy = utf8(JSON.stringify({ format: 'logboek-collection', version: 1, records: [trip('a', 'x')] }))
+    expect(decodeRecords('trips.json.enc', legacy)).toHaveLength(1)
+    const newer = utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, records: [] }))
+    expect(() => decodeRecords('trips.json.enc', newer)).toThrow(NewerSchemaError)
+    const broken = utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 0, records: [] }))
+    expect(() => decodeRecords('trips.json.enc', broken)).toThrow('ongeldig')
   })
 
   it('stuurt nooit onversleutelde inhoud en bewaart niets leesbaar in IndexedDB', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await storeToken(a.db, masterKey, TOKEN)
+    await storeToken(a.db, masterKey, TOKEN, '2027-01-01')
     await a.store.put('trips.json.enc', trip('t1', `Tocht ${MARKER}`))
     await a.store.sync()
     const b = await device(github)
@@ -384,11 +486,27 @@ describe('token en meta lokaal', () => {
   it('bewaart de token versleuteld onder de hoofdsleutel', async () => {
     const db = await openLogboekDb(`logboek-test-${++dbCounter}`)
     expect(await loadToken(db, masterKey)).toBeNull()
-    await storeToken(db, masterKey, TOKEN)
-    expect(await loadToken(db, masterKey)).toBe(TOKEN)
+    await storeToken(db, masterKey, TOKEN, '2027-01-01')
+    expect(await loadToken(db, masterKey)).toEqual({ token: TOKEN, expiresAt: '2027-01-01' })
+    await storeToken(db, masterKey, TOKEN, null)
+    expect(await loadToken(db, masterKey)).toEqual({ token: TOKEN, expiresAt: null })
     const other = await crypto.subtle.importKey('raw', new Uint8Array(32), 'AES-GCM', false, ['encrypt', 'decrypt'])
     await expect(loadToken(db, other)).rejects.toThrow()
     expect(await idbText(db)).not.toContain(TOKEN)
+    expect(await idbText(db)).not.toContain('2027')
+  })
+
+  it('leest de oudere tokenopslag (alleen de token als tekst)', async () => {
+    const db = await openLogboekDb(`logboek-test-${++dbCounter}`)
+    await putLocal(db, 'token', await encryptObject(masterKey, 'local/token', utf8(TOKEN)))
+    expect(await loadToken(db, masterKey)).toEqual({ token: TOKEN, expiresAt: null })
+  })
+
+  it('leest de vervaldatum uit de GitHub-header', () => {
+    expect(parseExpirationHeader('2026-11-24 12:00:00 UTC')).toBe('2026-11-24')
+    expect(parseExpirationHeader('2026-11-24T12:00:00Z')).toBe('2026-11-24')
+    expect(parseExpirationHeader(null)).toBeNull()
+    expect(parseExpirationHeader('nooit')).toBeNull()
   })
 
   it('bewaart meta.json.enc lokaal voor ontgrendelen zonder verbinding', async () => {

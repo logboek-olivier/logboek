@@ -4,12 +4,19 @@ import { expect, type Page } from '@playwright/test'
 export const TOKEN = 'github_pat_E2E_TEST_0123456789abcdefghijklmnopqrstuvwxyz'
 export const PASSPHRASE = 'nep wachtzin voor e2e'
 
+/** Token invoeren in twee stappen: controleren bij GitHub, dan de vervaldatum bevestigen. */
+export async function enterToken(page: Page, submitLabel = 'Verder'): Promise<void> {
+  await page.getByLabel('GitHub-token').fill(TOKEN)
+  await page.getByRole('button', { name: 'Controleren', exact: true }).click()
+  await expect(page.getByLabel('Vervaldatum van de token')).toBeVisible()
+  await page.getByRole('button', { name: submitLabel, exact: true }).click()
+}
+
 /** Doorloopt "Nieuw logboek" tot en met het ontgrendelde hoofdscherm. Geeft de herstelwoorden terug. */
 export async function createNewLogbook(page: Page): Promise<string[]> {
   await page.goto('./')
   await page.getByRole('button', { name: 'Nieuw logboek' }).click()
-  await page.getByLabel('GitHub-token').fill(TOKEN)
-  await page.getByRole('button', { name: 'Verder' }).click()
+  await enterToken(page)
   await page.getByLabel('Wachtzin', { exact: true }).fill(PASSPHRASE)
   await page.getByLabel('Nog een keer').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Verder' }).click()

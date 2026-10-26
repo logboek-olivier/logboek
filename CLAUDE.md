@@ -46,7 +46,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 8. **Bestandsnamen in de kluis zijn willekeurige UUID's.** Echte namen staan alleen in de versleutelde index.
 9. **Logs bevatten nooit inhoud.** Geen bedragen, plaatsnamen, documentnamen of sleutels in `console.log`, foutmeldingen of commitberichten. Commitberichten in `logboek-data` zijn altijd `sync <ISO-tijd>`.
 10. **Vergrendelen na 5 minuten** zonder interactie, bij verbergen van de app en bij een nieuwe browsersessie. Vergrendelen = sleutels en ontsleutelde data uit het geheugen wissen.
-11. **Echte data pas na review en reset.** Tot de beveiligingsreview en de live-gang (zie Werkwijze) zijn afgerond, is dit een testfase met testwachtzin. Mijlen en zeilgeld mogen erin om de app te testen; die worden bij de live-gang opnieuw geïmporteerd.
+11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
 12. **Identiteitsdocumenten (paspoort, rijbewijs, ID) alleen als het nodig is.** De categorie `identiteit` bestaat, maar blijft standaard leeg. De app vraagt er nooit om.
 
 ## Cryptografisch ontwerp
@@ -198,13 +198,14 @@ logboek/
 - **Live-gang (na review en handtest):** (1) repo `logboek-data` verwijderen en leeg opnieuw aanmaken; (2) nieuwe fine-grained token, oude intrekken; (3) op elk apparaat de sitegegevens van `logboek-olivier.github.io` wissen en de app opnieuw installeren; (4) nieuw logboek met de echte wachtzin, nieuwe herstelcode op papier; (5) mijlen opnieuw importeren, zeilgeld opnieuw invoeren of exporteren/importeren.
 - **Cloud-sessies (vanaf de boot):** werken alleen in `logboek`, nooit in `logboek-data`. Elke taak eindigt in een PR.
 - **Definition of done:** tests groen, werkt offline, werkt op 360 px breed, geen nieuwe netwerkbestemmingen, geen nieuwe afhankelijkheden zonder reden in de PR.
+- **Dataformaat:** wijzigingen altijd achterwaarts compatibel. Een nieuwe `schemaVersion` alleen met migratie en een test die data van de vorige versie inleest. Ziet de app een hogere `schemaVersion` dan hij kent, dan schrijft hij niets naar GitHub en toont hij "Werk de app bij".
 - **Afhankelijkheden:** toegestaan zonder overleg: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa`, `idb`, `typescript`, `vitest`, `@playwright/test`, `fake-indexeddb`, eslint. Al het andere: eerst vragen.
 - **Beveiligingsreview (verplicht vóór live):** een aparte sessie die de code niet geschreven heeft, krijgt de code en deze scenario's: gestolen ontgrendelde telefoon, gestolen vergrendelde telefoon, gelekte GitHub-token, gelekte `logboek-data`, gecompromitteerde `logboek`-repo, kwaadaardige npm-afhankelijkheid. Per scenario: wat kan een aanvaller wel, wat niet, en welke regel dat garandeert. Daarna Oliviers handtest: `logboek-data` clonen op een andere computer en proberen data te lezen zonder wachtzin.
 
 ## Fasen
 
-1. **Vandaag (dag 1):** skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag-scherm, PWA op telefoon.
-2. **Volgende sessie:** kluis met nepdocumenten, scannen met camera, vervaldatums. Daarna beveiligingsreview, handtest, live-gang.
+1. **Afgerond (25 oktober 2026):** skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag-scherm, Instellingen, vingerafdruk, PWA op telefoon. In gebruik voor mijlen en zeilgeld.
+2. **Nu:** kluis met nepdocumenten, scannen met camera, vervaldatums. Daarna de volledige beveiligingsreview en de handtest; pas dan documenten erin.
 3. **Daarna (week 1–2):** volledige geldmodule (rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan), skills, koersen-Action, vervaldatum-Action, back-up-Action.
 4. **Week 3–4:** doelen, metingen, ademtrainer, sollicitaties en netwerk, status andere projecten, voortgang Yachtmaster/ASA.
 5. **Later:** aandelenkoersen, scenario's, weekreview, Health Connect, Samsung Galaxy Watch 7, GPS-logboek, zeil-CV, Zeiljaar Wrapped.

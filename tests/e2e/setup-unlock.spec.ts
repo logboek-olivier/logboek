@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { mockGithub, type E2eGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, lock, PASSPHRASE, TOKEN } from './helpers/logbook'
+import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
+import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, PASSPHRASE, TOKEN } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -49,8 +49,7 @@ test('bestaand logboek koppelen op een tweede apparaat met de herstelcode', asyn
   await mockGithub(pageB, github as E2eGithub)
   await pageB.goto('./')
   await pageB.getByRole('button', { name: 'Bestaand logboek koppelen' }).click()
-  await pageB.getByLabel('GitHub-token').fill(TOKEN)
-  await pageB.getByRole('button', { name: 'Verder' }).click()
+  await enterToken(pageB)
   await pageB.getByRole('button', { name: 'Herstelcode gebruiken' }).click()
   await pageB.getByLabel(/Herstelcode/).fill(words.join(' '))
   await pageB.getByRole('button', { name: 'Koppelen' }).click()
@@ -65,6 +64,91 @@ test('nieuw logboek weigert een repo die al een logboek bevat', async ({ page })
   await page.goto('./')
   await page.getByRole('button', { name: 'Nieuw logboek' }).click()
   await page.getByLabel('GitHub-token').fill(TOKEN)
-  await page.getByRole('button', { name: 'Verder' }).click()
+  await page.getByRole('button', { name: 'Controleren', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('bevat al een logboek')
+})
+
+test('nieuw logboek in een repo zonder commits (409) en met alleen een README', async ({ browser }) => {
+  for (const variant of ['leeg', 'readme'] as const) {
+    const context = await browser.newContext({ viewport: { width: 360, height: 740 } })
+    const page = await context.newPage()
+    const github = newGithub({ emptyRepo: variant === 'leeg' })
+    if (variant === 'readme') github.files.set('README.md', { sha: 'sha-readme', content: 'IyBsb2dib2VrLWRhdGE=' })
+    await mockGithub(page, github)
+    await createNewLogbook(page)
+    await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
+    expect(github.files.has('meta.json.enc')).toBe(true)
+    expect(github.files.has('trips.json.enc')).toBe(true)
+    if (variant === 'readme') expect(github.files.has('README.md')).toBe(true)
+    await context.close()
+  }
+})
+
+test('vervaldatum van de token: vooraf ingevuld uit de header, waarschuwing op Vandaag binnen 30 dagen', async ({ page }) => {
+  // Lokale datum, net als de app (todayIso): anders schuift de dag rond middernacht UTC.
+  const d = new Date()
+  d.setDate(d.getDate() + 10)
+  const soon = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const github = newGithub({ tokenExpiration: `${soon} 12:00:00 UTC` })
+  await mockGithub(page, github)
+  await page.goto('./')
+  await page.getByRole('button', { name: 'Nieuw logboek' }).click()
+  await page.getByLabel('GitHub-token').fill(TOKEN)
+  await page.getByRole('button', { name: 'Controleren', exact: true }).click()
+  await expect(page.getByLabel('Vervaldatum van de token')).toHaveValue(soon)
+  await expect(page.getByText('Overgenomen van GitHub')).toBeVisible()
+  await page.getByRole('button', { name: 'Verder', exact: true }).click()
+  await page.getByLabel('Wachtzin', { exact: true }).fill(PASSPHRASE)
+  await page.getByLabel('Nog een keer').fill(PASSPHRASE)
+  await page.getByRole('button', { name: 'Verder' }).click()
+  await expect(page.getByRole('heading', { name: 'Herstelcode' })).toBeVisible({ timeout: 30_000 })
+  const words = await page.locator('.words li').allTextContents()
+  await page.getByRole('button', { name: 'Ik heb ze opgeschreven' }).click()
+  for (const label of await page.locator('label').allTextContents()) {
+    const m = /Woord (\d+)/.exec(label)
+    if (m) await page.getByLabel(`Woord ${m[1]}`, { exact: true }).fill(words[Number(m[1]) - 1] ?? '')
+  }
+  await page.getByRole('button', { name: 'Logboek aanmaken' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('alert')).toContainText('Token verloopt op')
+  await expect(page.getByRole('alert')).toContainText('over 10 dagen')
+  await page.getByRole('alert').getByRole('button', { name: 'Token vervangen' }).click()
+  await expect(page.getByRole('heading', { name: 'Instellingen' })).toBeVisible()
+})
+
+test('een 401 toont "Token verlopen of ingetrokken", de outbox blijft staan en herladen bewaart de outbox', async ({ page }) => {
+  const github = await mockGithub(page)
+  await createNewLogbook(page)
+  await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
+
+  // Token ingetrokken: GitHub antwoordt 401. Een fooi toevoegen blijft gewoon werken.
+  github.forceStatus = 401
+  await page.getByRole('button', { name: 'Toevoegen' }).click()
+  await page.getByLabel('Bedrag').fill('12')
+  await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
+  await expect(page.getByRole('status').first()).toHaveText('Token verlopen of ingetrokken · Token vervangen', { timeout: 15_000 })
+  await expect(page.getByRole('alert')).toContainText('Token verlopen of ingetrokken')
+
+  // Herladen (zoals na "Nieuwe versie beschikbaar · Herladen"): de outbox staat in IndexedDB en overleeft dat.
+  github.forceStatus = null
+  github.offline = true
+  await page.reload()
+  await page.getByLabel('Wachtzin').fill(PASSPHRASE)
+  await page.getByRole('button', { name: 'Ontgrendelen' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('status').first()).toHaveText('Geen verbinding', { timeout: 15_000 })
+  await page.getByRole('button', { name: 'Geld' }).click()
+  await expect(page.locator('.card')).toHaveCount(1)
+
+  // Verbinding terug: de wachtende wijziging gaat alsnog mee.
+  github.offline = false
+  await page.getByRole('button', { name: 'Vandaag' }).click()
+  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await page.getByRole('button', { name: 'Vergrendelen' }).click()
+  await page.getByLabel('Wachtzin').fill(PASSPHRASE)
+  await page.getByRole('button', { name: 'Ontgrendelen' }).click()
+  await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 30_000 })
+  const puts = github.requests.filter((r) => r.method === 'PUT' && r.url.endsWith('transactions.json.enc'))
+  expect(puts.length).toBeGreaterThanOrEqual(1)
 })
