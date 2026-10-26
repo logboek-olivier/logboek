@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { BottomBar, type Tab } from '../components/BottomBar'
 import type { Notify } from '../components/EditSheets'
-import { SyncStatusLine } from '../components/SyncStatusLine'
+import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
+import { backfillRates, getRates, loadRates, subscribeRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { setScreen } from '../errors'
 import { t } from '../i18n'
@@ -50,6 +51,20 @@ export function Home({ store }: { store: Store }) {
   }, [])
 
   setScreen(SCREEN_NAMES[screen])
+
+  // Wisselkoersen (public/rates.json, zelfde origin) één keer per sessie laden; de gebruikte koers opslaan bij
+  // transacties zodra die definitief is, pas na een geslaagde sync.
+  const status = useSyncStatus(store)
+  const rates = useSyncExternalStore(subscribeRates, getRates)
+  const backfilled = useRef(false)
+  useEffect(() => {
+    if (!getRates()) void loadRates()
+  }, [])
+  useEffect(() => {
+    if (backfilled.current || !rates || !store.hasSynced()) return
+    backfilled.current = true
+    void backfillRates(store, rates)
+  }, [store, rates, status])
 
   function select(next: Screen) {
     setScreenState(next)

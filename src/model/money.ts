@@ -1,7 +1,9 @@
 import { active, lastMonths, round1 } from './derive'
+import { eurValue } from './rates'
 import type { Currency, Transaction, TransactionKind, TransactionSource } from './types'
 
-// Afgeleiden voor zeilgeld. Alleen EUR wordt opgeteld; andere valuta apart per valuta, nooit omgerekend.
+// Afgeleiden voor zeilgeld, alles in euro: EUR zelf, het ontvangen eurobedrag, de opgeslagen koers of de ECB-koers
+// van de transactiedatum (src/model/rates.ts). Alleen als er helemaal geen koers is, staat een bedrag apart per valuta.
 
 export const INCOME_KINDS: readonly TransactionKind[] = ['fooi', 'loon']
 
@@ -9,10 +11,9 @@ export function isIncome(kind: TransactionKind): boolean {
   return INCOME_KINDS.includes(kind)
 }
 
-/** Bedrag in EUR als dat bekend is (EUR zelf of een omgerekend bedrag), anders null. */
+/** Bedrag in EUR als dat bekend is (ook voorlopig omgerekend), anders null. */
 export function eurOf(t: Transaction): number | null {
-  if (t.currency === 'EUR') return t.amount
-  return t.amountEur ?? null
+  return eurValue(t)?.eur ?? null
 }
 
 export interface MoneyTotals {

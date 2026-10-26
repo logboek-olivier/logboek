@@ -1,6 +1,7 @@
 import type { Store } from '../storage/store'
 import { tripForDate } from './derive'
 import { round2 } from './money'
+import { finalRateFields } from './rates'
 import type { CollectionPath, Collections, Leg, Transaction, Trip } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
@@ -68,14 +69,25 @@ export async function renameTrip(store: Store, trip: Trip, name: string): Promis
   void store.sync()
 }
 
-export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'currency' | 'source'> & { note?: string }
+export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'currency' | 'source'> & { note?: string; receivedEur?: number }
 
 /** Werkt een transactie bij; amountEur en tripId volgen uit valuta en datum, net als bij toevoegen. */
 export async function updateTransaction(store: Store, tx: Transaction, patch: TransactionPatch): Promise<void> {
   const next: Transaction = { ...tx, ...patch, amount: round2(patch.amount), updatedAt: new Date().toISOString() }
   if (!patch.note) delete next.note
-  if (next.currency === 'EUR') next.amountEur = next.amount
-  else if (patch.currency !== tx.currency || patch.amount !== tx.amount) delete next.amountEur
+  if (!patch.receivedEur) delete next.receivedEur
+  if (next.currency === 'EUR') {
+    next.amountEur = next.amount
+    delete next.rate
+    delete next.rateDate
+    delete next.receivedEur
+  } else if (patch.currency !== tx.currency || patch.amount !== tx.amount || patch.date !== tx.date) {
+    // Andere valuta, bedrag of datum: de koers van de nieuwe datum, zodra die definitief is.
+    delete next.amountEur
+    delete next.rate
+    delete next.rateDate
+    Object.assign(next, finalRateFields(next) ?? {})
+  }
   const trip = tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)
   if (trip) next.tripId = trip.id
   else delete next.tripId

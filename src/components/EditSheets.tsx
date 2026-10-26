@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { formatDateRange, formatNm } from '../format'
+import { formatDate, formatDateRange, formatNm, formatNumber, formatRate } from '../format'
 import { summarizeTrips } from '../model/derive'
 import {
   deleteLeg,
@@ -13,6 +13,7 @@ import {
   type Undo,
 } from '../model/edit'
 import { parseAmount } from '../model/money'
+import { eurValue } from '../model/rates'
 import { saveSettings } from '../model/settings'
 import {
   CURRENCIES,
@@ -61,15 +62,26 @@ export function TransactionSheet({
   const [currency, setCurrency] = useState<Currency>(tx.currency)
   const [date, setDate] = useState(tx.date)
   const [note, setNote] = useState(tx.note ?? '')
+  const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
+  const parsedReceived = received.trim() === '' ? undefined : parseAmount(received)
+  const converted = currency === 'EUR' || parsed === null ? null : eurValue({ ...tx, currency, amount: parsed, date, receivedEur: undefined, amountEur: undefined })
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (parsed === null || !date || busy) return
+    if (parsed === null || parsedReceived === null || !date || busy) return
     setBusy(true)
     try {
-      await updateTransaction(store, tx, { amount: parsed, kind, source, currency, date, note: note.trim() || undefined })
+      await updateTransaction(store, tx, {
+        amount: parsed,
+        kind,
+        source,
+        currency,
+        date,
+        note: note.trim() || undefined,
+        receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
+      })
       onClose()
       notify(t('toast.saved'))
     } finally {
@@ -134,12 +146,26 @@ export function TransactionSheet({
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
+        {currency !== 'EUR' && (
+          <>
+            <label>
+              {t('money.receivedEur')}
+              <input inputMode="decimal" autoComplete="off" placeholder={converted ? formatNumber(converted.eur) : ''} value={received} onChange={(e) => setReceived(e.target.value)} />
+            </label>
+            <p className="muted small">
+              {converted?.rate
+                ? t(converted.provisional ? 'money.rateProvisional' : 'money.rateUsed', { rate: formatRate(converted.rate), currency, date: formatDate(converted.rateDate ?? date) })
+                : t('money.noRate')}{' '}
+              {t('money.receivedHint')}
+            </p>
+          </>
+        )}
         <label>
           {t('field.description')}
           <input type="text" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
         <div className="sheet-actions">
-          <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
+          <button className="btn primary" type="submit" disabled={parsed === null || parsedReceived === null || !date || busy}>
             {t('common.save')}
           </button>
           <button className="btn danger" type="button" onClick={() => void remove()}>

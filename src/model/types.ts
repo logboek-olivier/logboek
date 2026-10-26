@@ -76,9 +76,9 @@ export interface Leg extends SyncRecord {
 
 export type TransactionKind = 'fooi' | 'loon' | 'kosten' | 'investering'
 export type TransactionSource = 'yacht-week' | 'sailing-virgins' | 'delivery' | 'overig'
-export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | 'NOK'
+export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | 'NOK' | 'XCD'
 
-export const CURRENCIES: readonly Currency[] = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'DKK', 'NOK', 'HRK']
+export const CURRENCIES: readonly Currency[] = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'DKK', 'NOK', 'XCD', 'HRK']
 export const TRANSACTION_SOURCES: readonly TransactionSource[] = ['yacht-week', 'sailing-virgins', 'delivery', 'overig']
 
 export interface Transaction extends SyncRecord {
@@ -88,8 +88,13 @@ export interface Transaction extends SyncRecord {
   /** Altijd positief; de richting volgt uit kind. */
   amount: number
   currency: Currency
-  /** Bij EUR gelijk aan amount; bij andere valuta leeg tot de koersen-Action bestaat. */
+  /** Bij EUR gelijk aan amount; bij andere valuta amount / rate zodra de koers van de datum definitief bekend is. */
   amountEur?: number
+  /** Gebruikte ECB-koers (valuta per 1 EUR) en de datum daarvan (transactiedatum of de werkdag ervoor). */
+  rate?: number
+  rateDate?: string
+  /** Werkelijk ontvangen eurobedrag, optioneel; gaat voor de omrekening. */
+  receivedEur?: number
   source: TransactionSource
   /** Automatisch gezet als de datum binnen een tocht valt. */
   tripId?: string

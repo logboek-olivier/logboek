@@ -1,4 +1,6 @@
 # Afhankelijkheden en build
+# Gebouwd door deploy.yml uit de ECB-bron (npm run rates)
+public/rates.json
 node_modules/
 dist/
 dev-dist/

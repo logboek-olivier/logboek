@@ -1,5 +1,5 @@
 import { ChevronRight, Coins, Receipt, Wallet } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
 import { TransactionSheet, type Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
@@ -9,14 +9,18 @@ import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth
 import { active } from '../model/derive'
 import { isIncome, monthSeries, perMonth, perSource, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
 import { kindLabel, sourceLabel } from '../i18n/labels'
+import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { todayIso, type Transaction } from '../model/types'
 import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
-// Geld: zeilgeld per maand, per bron, fooi per week (12 weken), lijst per maand met verwijderen. Geen netto waarde.
+// Geld: alles in euro (ECB-koers van de transactiedatum, of het ontvangen eurobedrag), het originele bedrag klein
+// eronder. Zeilgeld per maand, per bron, fooi per week (12 weken), lijst per maand met verwijderen. Geen netto waarde.
 
 export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
   const [editing, setEditing] = useState<Transaction | null>(null)
+  // Opnieuw tekenen zodra de koersen geladen zijn.
+  useSyncExternalStore(subscribeRates, getRates)
   const transactions = useCollection(store, 'transactions.json.enc')
   const live = active(transactions).sort((a, b) =>
     a.date < b.date ? 1 : a.date > b.date ? -1 : a.updatedAt < b.updatedAt ? 1 : -1,
@@ -163,7 +167,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
                       <li key={tx.id} className="tx">
                         <button
                           className="row-item"
-                          aria-label={`${tx.note ?? kindLabel(tx.kind)}, ${formatDate(tx.date)}, ${formatMoney(tx.amount, tx.currency)} · ${t('common.edit')}`}
+                          aria-label={`${tx.note ?? kindLabel(tx.kind)}, ${formatDate(tx.date)}, ${amountLabel(tx)} · ${t('common.edit')}`}
                           onClick={() => setEditing(tx)}
                         >
                           <span className={`row-icon${isIncome(tx.kind) ? '' : ' cost'}`}>
@@ -176,10 +180,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
                               {tx.note ? ` · ${kindLabel(tx.kind)}` : ''} · {sourceLabel(tx.source)}
                             </span>
                           </div>
-                          <span className={`row-value ${isIncome(tx.kind) ? 'positive' : ''}`}>
-                            {isIncome(tx.kind) ? '+' : '−'}
-                            {formatMoney(tx.amount, tx.currency)}
-                          </span>
+                          <TxAmount tx={tx} />
                           <Icon icon={ChevronRight} className="chevron" />
                         </button>
                       </li>
@@ -193,6 +194,32 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
       {editing && <TransactionSheet store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
     </section>
   )
+}
+
+/** Bedrag in euro, het originele bedrag klein eronder (met "voorlopig" als de koers nog niet definitief is). */
+function TxAmount({ tx }: { tx: Transaction }) {
+  const value = eurValue(tx)
+  const sign = isIncome(tx.kind) ? '+' : '−'
+  return (
+    <span className={`row-value tx-amount ${isIncome(tx.kind) ? 'positive' : ''}`}>
+      <span>
+        {sign}
+        {value ? formatMoney(value.eur, 'EUR') : formatMoney(tx.amount, tx.currency)}
+      </span>
+      {tx.currency !== 'EUR' && (
+        <span className="muted small">
+          {value ? formatMoney(tx.amount, tx.currency) : t('money.noRateShort')}
+          {value?.provisional ? ` · ${t('money.provisional')}` : ''}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function amountLabel(tx: Transaction): string {
+  const value = eurValue(tx)
+  if (!value || tx.currency === 'EUR') return formatMoney(tx.amount, tx.currency)
+  return `${formatMoney(value.eur, 'EUR')} (${formatMoney(tx.amount, tx.currency)}${value.provisional ? `, ${t('money.provisional')}` : ''})`
 }
 
 function mergeOther(list: Record<string, number>[]): Record<string, number> {

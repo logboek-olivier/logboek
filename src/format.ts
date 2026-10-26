@@ -5,6 +5,7 @@ import { getLang, locale, t, type Lang } from './i18n'
 
 interface Formatters {
   number: Intl.NumberFormat
+  rate: Intl.NumberFormat
   money: Intl.NumberFormat
   whole: Intl.NumberFormat
   date: Intl.DateTimeFormat
@@ -23,6 +24,7 @@ function f(lang: Lang = getLang()): Formatters {
     const loc = locale(lang)
     found = {
       number: new Intl.NumberFormat(loc, { maximumFractionDigits: 1 }),
+      rate: new Intl.NumberFormat(loc, { maximumFractionDigits: 4 }),
       money: new Intl.NumberFormat(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       whole: new Intl.NumberFormat(loc, { maximumFractionDigits: 0 }),
       date: new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'long', year: 'numeric' }),
@@ -39,6 +41,11 @@ function f(lang: Lang = getLang()): Formatters {
 
 export function formatNumber(n: number, lang?: Lang): string {
   return f(lang).number.format(n)
+}
+
+/** Wisselkoers met tot vier decimalen (ECB-notatie): 1,0812. */
+export function formatRate(n: number, lang?: Lang): string {
+  return f(lang).rate.format(n)
 }
 
 export function formatNm(n: number, lang?: Lang): string {

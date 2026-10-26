@@ -1,5 +1,5 @@
 import { CalendarPlus, ChevronRight, Eye, EyeOff, Pencil, Users } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useSyncExternalStore } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
@@ -9,9 +9,10 @@ import { formatDate, formatDateRange, formatMoney, formatNm } from '../format'
 import { t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { totalNm } from '../model/derive'
-import { isIncome } from '../model/money'
+import { totals } from '../model/money'
+import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
-import { todayIso, type Transaction } from '../model/types'
+import { todayIso } from '../model/types'
 import { activeWeek, needsClosing, weekView } from '../model/weeks'
 import type { Store } from '../storage/store'
 import { PlansView } from './Planning'
@@ -163,12 +164,14 @@ function SailedDays({ legs, nm }: { legs: ReturnType<typeof weekView>['legs']; n
   )
 }
 
-/** Fooien en kosten van de week, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee). */
+/** Fooien en kosten van de week in euro, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee). */
 function WeekMoney({ store, weekId }: { store: Store; weekId: string }) {
   const transactions = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.tripId === weekId)
+  useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
   if (transactions.length === 0) return null
-  const sums = sumByCurrency(transactions)
+  const sum = totals(transactions)
+  const provisional = transactions.some((tx) => eurValue(tx)?.provisional)
   return (
     <div className="section">
       <div className="section-head">
@@ -178,21 +181,26 @@ function WeekMoney({ store, weekId }: { store: Store; weekId: string }) {
           {t(shown ? 'week.hideAmounts' : 'week.showAmounts')}
         </button>
       </div>
-      {shown && (
-        <dl className="grid">
-          {sums.map((s) => (
-            <div key={s.currency} className="stat">
-              <dt>{s.currency}</dt>
-              <dd className="small">
-                {t('week.income')}: {formatMoney(s.income, s.currency)}
-                <br />
-                {t('week.costs')}: {formatMoney(s.costs, s.currency)}
-              </dd>
+      {shown ? (
+        <>
+          <dl className="grid">
+            <div className="stat">
+              <dt>{t('week.income')}</dt>
+              <dd>{formatMoney(sum.incomeEur, 'EUR')}</dd>
             </div>
+            <div className="stat">
+              <dt>{t('week.costs')}</dt>
+              <dd>{formatMoney(sum.costsEur, 'EUR')}</dd>
+            </div>
+          </dl>
+          {Object.entries(sum.other).map(([c, v]) => (
+            <p key={c} className="muted small">
+              {t('money.noRateFor', { currency: c })}: +{formatMoney(v.income, c)} −{formatMoney(v.costs, c)}
+            </p>
           ))}
-        </dl>
-      )}
-      {!shown && (
+          {provisional && <p className="muted small">{t('money.provisionalHint')}</p>}
+        </>
+      ) : (
         <p className="muted small">
           <Icon icon={ChevronRight} />
           {t('week.amountsHidden', { n: transactions.length })}
@@ -200,15 +208,4 @@ function WeekMoney({ store, weekId }: { store: Store; weekId: string }) {
       )}
     </div>
   )
-}
-
-function sumByCurrency(transactions: readonly Transaction[]): { currency: string; income: number; costs: number }[] {
-  const map = new Map<string, { currency: string; income: number; costs: number }>()
-  for (const tx of transactions) {
-    const entry = map.get(tx.currency) ?? { currency: tx.currency, income: 0, costs: 0 }
-    if (isIncome(tx.kind)) entry.income += tx.amount
-    else entry.costs += tx.amount
-    map.set(tx.currency, entry)
-  }
-  return [...map.values()].sort((a, b) => (a.currency === 'EUR' ? -1 : b.currency === 'EUR' ? 1 : a.currency.localeCompare(b.currency)))
 }
