@@ -7,6 +7,15 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Bouwgegevens voor Instellingen → Over: versie uit package.json, bouwdatum en korte commit-hash.
 const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version
 
+/** Bouwdatum = datum van de commit, zodat de dagelijkse build (nieuwe koersen) dezelfde app oplevert en geen update meldt. */
+function commitDate(): string {
+  try {
+    return execSync('git log -1 --format=%cI', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || new Date().toISOString()
+  } catch {
+    return new Date().toISOString()
+  }
+}
+
 function commitHash(): string {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7)
   try {
@@ -20,7 +29,7 @@ export default defineConfig({
   base: '/logboek/',
   define: {
     __APP_VERSION__: JSON.stringify(version),
-    __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+    __BUILD_DATE__: JSON.stringify(commitDate()),
     __COMMIT__: JSON.stringify(commitHash()),
   },
   plugins: [
@@ -51,6 +60,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,txt,webmanifest}'],
         navigateFallback: '/logboek/index.html',
+        // Koersen niet in de precache (die verandert dagelijks): eerst het netwerk, offline de laatst opgehaalde.
+        runtimeCaching: [{ urlPattern: /\/logboek\/rates\.json$/, handler: 'NetworkFirst', options: { cacheName: 'koersen', networkTimeoutSeconds: 5 } }],
       },
     }),
   ],

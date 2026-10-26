@@ -595,6 +595,17 @@ export const nl = {
   'week.amountsHidden': (p: { n: number }) => `${p.n} ${plural(p.n, 'transactie', 'transacties')} in deze week; bedragen verborgen.`,
   'week.income': 'Inkomsten',
   'week.costs': 'Kosten',
+
+  // Geld in euro
+  'money.receivedEur': 'Werkelijk ontvangen in euro (optioneel)',
+  'money.receivedHint': 'Een ingevuld eurobedrag gaat voor de omrekening.',
+  'money.rateUsed': (p: { rate: string; currency: string; date: string }) => `Koers ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
+  'money.rateProvisional': (p: { rate: string; currency: string; date: string }) => `Voorlopig: laatst bekende koers ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
+  'money.noRate': 'Nog geen koers bekend voor deze valuta en datum.',
+  'money.noRateShort': 'geen koers',
+  'money.noRateFor': (p: { currency: string }) => `Zonder koers (${p.currency})`,
+  'money.provisional': 'voorlopig',
+  'money.provisionalHint': 'Sommige bedragen zijn voorlopig omgerekend met de laatst bekende koers.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -559,4 +559,14 @@ export const en: Messages = {
   'week.amountsHidden': (p) => `${p.n} ${plural(p.n, 'transaction', 'transactions')} in this week; amounts hidden.`,
   'week.income': 'Income',
   'week.costs': 'Costs',
+
+  'money.receivedEur': 'Actually received in euro (optional)',
+  'money.receivedHint': 'A euro amount filled in here takes precedence over the conversion.',
+  'money.rateUsed': (p) => `Rate ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
+  'money.rateProvisional': (p) => `Provisional: last known rate ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
+  'money.noRate': 'No rate known yet for this currency and date.',
+  'money.noRateShort': 'no rate',
+  'money.noRateFor': (p) => `Without a rate (${p.currency})`,
+  'money.provisional': 'provisional',
+  'money.provisionalHint': 'Some amounts are converted provisionally with the last known rate.',
 }

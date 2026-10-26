@@ -7,6 +7,7 @@ import { defaultTripName } from '../import/mileage-csv'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings, saveSettings } from '../model/settings'
+import { finalRateFields } from '../model/rates'
 import { activeWeek, roleForType } from '../model/weeks'
 import {
   CURRENCIES,
@@ -86,6 +87,7 @@ async function saveTransaction(
   const record: Transaction = { ...tx, id: newId(), updatedAt: nowIso(), deletedAt: null }
   if (trip) record.tripId = trip.id
   if (tx.currency === 'EUR') record.amountEur = tx.amount
+  else Object.assign(record, finalRateFields(tx) ?? {})
   await store.put('transactions.json.enc', record)
   await saveSettings(store, { lastCurrency: tx.currency, lastSource: tx.source, ...remember })
   confirmVibration()

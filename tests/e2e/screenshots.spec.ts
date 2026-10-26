@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
+import { mockRates } from './helpers/rates'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 // Schermafbeeldingen van elk scherm op 360 en 412 px, licht en donker, in het Nederlands en het Engels.
@@ -67,6 +68,7 @@ for (const { width, scheme, lang } of RUNS) {
       }
 
       await mockGithub(page)
+      await mockRates(page)
       await page.goto('./')
       await expect(page.getByRole('heading', { name: L('setup.title') })).toBeVisible()
       await shot('eerste-keer')

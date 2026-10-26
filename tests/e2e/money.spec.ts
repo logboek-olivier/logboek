@@ -1,12 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
+import { mockRates } from './helpers/rates'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
-test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart, verwijderen', async ({ page }) => {
+test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de ECB-koers), verwijderen', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
+  await mockRates(page)
   await createNewLogbook(page)
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
 
@@ -74,10 +76,12 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await openMore(page, 'Geld')
   await expect(page.getByRole('heading', { name: 'Geld' })).toBeVisible()
   const grid = page.locator('.grid')
-  await expect(grid).toContainText('Inkomsten€ 120,50')
+  // $ 200 tegen 1,25 USD per euro = € 160; het originele bedrag staat klein bij de transactie.
+  await expect(grid).toContainText('Inkomsten€ 280,50')
   await expect(grid).toContainText('Kosten€ 35,00')
-  await expect(grid).toContainText('Saldo€ 85,50')
-  await expect(grid).toContainText('Andere valuta+$ 200,00')
+  await expect(grid).toContainText('Saldo€ 245,50')
+  await expect(page.locator('main')).not.toContainText('Andere valuta')
+  await expect(page.locator('.tx').filter({ hasText: '$ 200,00' })).toContainText('€ 160,00')
   await expect(page.locator('.tx')).toHaveCount(3)
   await expectNoHorizontalOverflow(page)
 

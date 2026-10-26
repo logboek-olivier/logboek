@@ -14,7 +14,7 @@ export default tseslint.config(
     // Node-scripts (bijvoorbeeld iconen genereren).
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { URL: 'readonly', Buffer: 'readonly', console: 'readonly', process: 'readonly' },
+      globals: { URL: 'readonly', Buffer: 'readonly', console: 'readonly', process: 'readonly', fetch: 'readonly', AbortSignal: 'readonly' },
     },
   },
 )
