@@ -518,6 +518,19 @@ export const nl = {
   'plan.ticked': (p: { n: number }) => `Geoefend voor ${p.n} ${plural(p.n, 'student', 'studenten')}`,
   'plan.topicDone': (p: { topic: string }) => `${p.topic}: geoefend door de hele groep`,
   'plan.topicOpen': (p: { topic: string }) => `${p.topic}: tik om af te vinken voor de hele groep`,
+
+  // Onleesbare bestanden en herstel
+  'sync.unreadable': (p: { paths: string }) => `Onleesbaar op GitHub: ${p.paths}`,
+  'sync.otherKey': 'logboek-data hoort bij een andere sleutel; er is niets geschreven',
+  'sync.otherKeyHint': 'Dit apparaat is ontgrendeld met een andere hoofdsleutel dan waarmee logboek-data is versleuteld, bijvoorbeeld omdat logboek-data opnieuw is aangemaakt. Er wordt niets naar GitHub geschreven en er wordt niets gewist. Koppel dit apparaat opnieuw aan het logboek (sitegegevens wissen, dan Bestaand logboek koppelen); wijzigingen die alleen hier staan, gaan dan verloren.',
+  'sync.repairHint': (p: { path: string }) => `${p.path} op GitHub is niet te ontsleutelen. Dit apparaat heeft een leesbare kopie. Opnieuw opslaan zet die kopie op GitHub; de onleesbare versie blijft in de geschiedenis van logboek-data staan.`,
+  'sync.repair': 'Lokale versie opnieuw opslaan op GitHub',
+  'sync.noLocalCopy': (p: { path: string }) => `${p.path} op GitHub is niet te ontsleutelen en dit apparaat heeft geen eigen kopie. Er wordt niets gewist; een ander apparaat met een leesbare kopie kan het bestand herstellen.`,
+  'sync.repaired': 'Lokale versie opgeslagen op GitHub',
+  'sync.repairFailed': 'Opnieuw opslaan lukte niet',
+  'sync.noMeta': 'meta.json.enc ontbreekt op GitHub; er is niets geschreven',
+  'sync.noMetaHint': 'logboek-data bevat geen meta.json.enc, bijvoorbeeld omdat de repo opnieuw is aangemaakt. Dit apparaat schrijft niets naar GitHub en wist niets. Wis de sitegegevens en maak een nieuw logboek of koppel een bestaand logboek.',
+  'error.repoHasFiles': 'Deze repo bevat al databestanden zonder meta.json.enc. Maak logboek-data eerst helemaal leeg.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

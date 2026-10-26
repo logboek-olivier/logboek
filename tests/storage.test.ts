@@ -324,7 +324,7 @@ describe('sync tussen twee apparaten', () => {
       deletedAt: null,
     })
     await a.store.sync()
-    expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'failed', count: 0 })
+    expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'unreadable', count: 0, paths: ['trips.json.enc'] })
     expect(github.files.has('legs.json.enc')).toBe(true)
     const b = await device(github)
     await b.store.sync()

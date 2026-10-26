@@ -485,4 +485,16 @@ export const en: Messages = {
   'plan.ticked': (p) => `Practised for ${p.n} ${plural(p.n, 'student', 'students')}`,
   'plan.topicDone': (p) => `${p.topic}: practised by the whole group`,
   'plan.topicOpen': (p) => `${p.topic}: tap to tick off for the whole group`,
+
+  'sync.unreadable': (p) => `Unreadable on GitHub: ${p.paths}`,
+  'sync.otherKey': 'logboek-data belongs to a different key; nothing was written',
+  'sync.otherKeyHint': 'This device is unlocked with a different master key than the one logboek-data is encrypted with, for example because logboek-data was recreated. Nothing is written to GitHub and nothing is deleted. Link this device to the logbook again (clear site data, then Link existing logbook); changes that exist only here will be lost.',
+  'sync.repairHint': (p) => `${p.path} on GitHub cannot be decrypted. This device has a readable copy. Saving again puts that copy on GitHub; the unreadable version stays in the history of logboek-data.`,
+  'sync.repair': 'Save local version to GitHub again',
+  'sync.noLocalCopy': (p) => `${p.path} on GitHub cannot be decrypted and this device has no copy of its own. Nothing is deleted; another device with a readable copy can restore the file.`,
+  'sync.repaired': 'Local version saved to GitHub',
+  'sync.repairFailed': 'Saving again did not work',
+  'sync.noMeta': 'meta.json.enc is missing on GitHub; nothing was written',
+  'sync.noMetaHint': 'logboek-data has no meta.json.enc, for example because the repository was recreated. This device writes nothing to GitHub and deletes nothing. Clear the site data and create a new logbook or link an existing one.',
+  'error.repoHasFiles': 'This repository already contains data files without meta.json.enc. Empty logboek-data completely first.',
 }
