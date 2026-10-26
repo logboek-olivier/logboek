@@ -3,7 +3,7 @@ import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
-// Schermafbeeldingen van elk scherm op 360 en 412 px, licht en donker, in het Nederlands; plus Engels op 360 px.
+// Schermafbeeldingen van elk scherm op 360 en 412 px, licht en donker, in het Nederlands en het Engels.
 // CI uploadt de map screenshots/ als artifact. Elk scherm wordt ook op horizontale overloop gecontroleerd.
 // Knoppen en velden worden gevonden via de vertalingen zelf, zodat dezelfde stappen in beide talen werken.
 
@@ -22,6 +22,8 @@ const RUNS: { width: number; scheme: 'light' | 'dark'; lang: Lang }[] = [
   { width: 412, scheme: 'dark', lang: 'nl' },
   { width: 360, scheme: 'light', lang: 'en' },
   { width: 360, scheme: 'dark', lang: 'en' },
+  { width: 412, scheme: 'light', lang: 'en' },
+  { width: 412, scheme: 'dark', lang: 'en' },
 ]
 
 for (const { width, scheme, lang } of RUNS) {

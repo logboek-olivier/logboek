@@ -1922,3 +1922,19 @@ body.presenting .bottom-bar {
     background: #fff;
   }
 }
+
+/* Onleesbaar bestand of andere sleutel: uitleg en herstelknop onder de sync-status. */
+.sync-problem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+
+.sync-problem p {
+  margin: 0;
+}
+
+.sync-problem .btn {
+  align-self: flex-start;
+}

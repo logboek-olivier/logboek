@@ -70,7 +70,7 @@ export function Today({
           onSettings={onSettings}
         />
       )}
-      {status.kind === 'error' && !tokenInvalid && (
+      {status.kind === 'error' && !tokenInvalid && status.code !== 'unreadable' && status.code !== 'otherKey' && (
         <div className="notice error-block" role="alert">
           <span>
             {t('today.syncFailed', { message: describeStatus(status) })}
