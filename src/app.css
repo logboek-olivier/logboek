@@ -1517,3 +1517,43 @@ button.sync-status {
   display: flex;
   margin-bottom: calc(-1 * var(--s-2));
 }
+
+/* ---------- Training ---------- */
+
+.row.wrap {
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.notice-quiet {
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--r-sm);
+  background: var(--warning-soft);
+  font-size: var(--fs-sm);
+}
+
+.topic-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.tag .icon {
+  --icon: 12px;
+  margin-right: 2px;
+}
+
+.tag.critical {
+  background: var(--negative-soft);
+  color: var(--negative);
+}
+
+.add-row {
+  color: var(--accent);
+  font-weight: var(--fw-medium);
+}
+
+.add-row .icon {
+  color: var(--accent);
+}
