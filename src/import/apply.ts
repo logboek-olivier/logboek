@@ -22,8 +22,9 @@ export async function applyImport(store: Store, input: ImportResult): Promise<vo
     ...legs.filter((l) => l.deletedAt === null && !removedIds.has(l.id)).map((l) => l.tripId),
     ...result.legs.map((l) => l.tripId),
   ])
+  // Alleen gewone (geïmporteerde) tochten opruimen; een vastgelegde week blijft, ook zonder dagen.
   const removedTrips: Trip[] = trips
-    .filter((t) => t.deletedAt === null && !stillUsed.has(t.id))
+    .filter((t) => t.deletedAt === null && !stillUsed.has(t.id) && !t.type && !t.startDate)
     .map((t) => ({ ...t, updatedAt: now, deletedAt: now }))
 
   await store.putMany('trips.json.enc', [...removedTrips, ...result.trips])

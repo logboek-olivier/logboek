@@ -144,6 +144,9 @@ describe('achterwaarts compatibel', () => {
     expect(activeWeek(store.get('trips.json.enc'), currentSettings(store.get('settings.json.enc')))).toBeNull()
     expect(weekView(store.list('trips.json.enc')[0]!, store.get('legs.json.enc')).type).toBe('skipper-charter')
 
+    // Een net gestarte week zonder dagen overleeft een import ook.
+    const fresh = await startWeek(store, input, 'nl')
+
     // Olivier legt de week vast met deelnemers en review.
     const t1 = store.list('trips.json.enc').find((t) => t.id === 't1')!
     await store.put('trips.json.enc', { ...t1, type: 'skipper-charter', participants: [{ id: 'p1', firstName: 'Nepcees' }], review: { score: 9, quotes: [] } })
@@ -164,5 +167,6 @@ describe('achterwaarts compatibel', () => {
     expect(trips.some((t) => t.name === 'Andere nepweek')).toBe(true)
     // t2 houdt zijn handmatige dag en blijft bestaan.
     expect(trips.some((t) => t.id === 't2')).toBe(true)
+    expect(trips.some((t) => t.id === fresh.id)).toBe(true)
   })
 })
