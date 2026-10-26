@@ -49,6 +49,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6; de opgeslagen sessiesleutel (regel 10) door een review-agent in release 1. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
 12. **Identiteitsdocumenten (paspoort, rijbewijs, ID) alleen als het nodig is.** De categorie `identiteit` bestaat, maar blijft standaard leeg. De app vraagt er nooit om.
 13. **Nooit een tweede GitHub Pages-site in organisatie logboek-olivier: die deelt opslag en vingerafdruk met Logboek.**
+14. **Studentgegevens: alleen voornaam, cursus, niveau, voortgang en examenuitslag. Geen contactgegevens, geen gezondheids- of identiteitsgegevens. Nooit in logs of foutdetails. Na 12 maanden automatisch archiveren; archief is te wissen.**
 
 ## Cryptografisch ontwerp
 

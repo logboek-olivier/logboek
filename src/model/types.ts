@@ -114,6 +114,38 @@ export interface Curriculum extends SyncRecord {
   source: 'seed' | 'eigen'
 }
 
+// Studenten (release 2). Alleen voornaam, cursus, niveau, voortgang en examenuitslag (beveiligingsregel 14).
+
+export type StudentLevel = 'beginner' | 'gemiddeld' | 'gevorderd'
+export const STUDENT_LEVELS: readonly StudentLevel[] = ['beginner', 'gemiddeld', 'gevorderd']
+export type TopicStatus = 'nieuw' | 'geoefend' | 'beheerst'
+
+export interface TopicProgress {
+  status: TopicStatus
+  updatedAt: string
+}
+
+export interface StudentExam {
+  /** jjjj-mm-dd */
+  date: string
+  passed: boolean
+  note?: string
+}
+
+export interface Student extends SyncRecord {
+  firstName: string
+  curriculumId: string
+  level: StudentLevel
+  /** Per onderwerp-id; een onderwerp zonder regel staat op "nieuw". */
+  progress: Record<string, TopicProgress>
+  exam?: StudentExam
+  note?: string
+  /** jjjj-mm-dd waarop de student begon; bepaalt de week in het overzicht. */
+  startedAt?: string
+  /** jjjj-mm-dd; gearchiveerde studenten staan apart en zijn te wissen. */
+  archivedAt?: string | null
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -121,6 +153,7 @@ export interface Collections {
   'transactions.json.enc': Transaction
   'settings.json.enc': Settings
   'curricula.json.enc': Curriculum
+  'students.json.enc': Student
 }
 
 export type CollectionPath = keyof Collections
@@ -131,6 +164,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'transactions.json.enc',
   'settings.json.enc',
   'curricula.json.enc',
+  'students.json.enc',
 ]
 
 export function newId(): string {
