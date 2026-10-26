@@ -162,7 +162,9 @@ Onderste balk vandaag: **Vandaag · Zeilen · + · Geld · Instellingen**, vijf 
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging. Soort (fooi/loon, kosten/investering), watertype, bron, valuta, boot en rol onthouden de laatste waarde. Het bedragveld opent direct met het numerieke toetsenbord.
 5. **Zeilen:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). Daaronder tochten per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen. Knop "Importeren" (Excel of CSV).
 6. **Geld:** saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met vaste maandkoppen en verwijderen. Geen netto waarde, geen bankrekeningen (fase 3).
-7. **Instellingen** (vijfde vak van de onderste balk): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld).
+7. **Instellingen** (vijfde vak van de onderste balk): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, Over (versie uit `package.json`, bouwdatum, korte commit-hash).
+
+Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
 
 Geen onboarding, geen tutorial, geen bevestigingsdialogen behalve bij exporteren. Verwijderen gebeurt zonder bevestigingsvraag, met de melding "Verwijderd · Ongedaan maken" (5 seconden). Elke dag, tocht en transactie is aan te tikken en te bewerken in een onderblad; een tocht kan hernoemd worden en een dag kan naar een andere tocht. Alles werkt op 360 px breed, bedienbaar met één duim.
 

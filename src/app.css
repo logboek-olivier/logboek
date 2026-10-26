@@ -1439,3 +1439,75 @@ button.sync-status {
 .progress {
   display: block;
 }
+
+/* ---------- Foutdetails ---------- */
+
+.error-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.error-details .btn.link {
+  min-height: 40px;
+  font-size: var(--fs-sm);
+}
+
+.error-details .icon {
+  --icon: 16px;
+}
+
+.error-report {
+  min-height: 0;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: var(--fs-xs);
+}
+
+.crash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-top: var(--s-8);
+}
+
+.error-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  max-width: calc(var(--page-max) - 2 * var(--s-4));
+  margin: var(--s-4) var(--s-4) 0;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--negative-soft);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+@media (min-width: 672px) {
+  .error-bar {
+    margin: var(--s-4) auto 0;
+  }
+}
+
+.about {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-1) var(--s-4);
+  margin: 0;
+  padding: var(--s-2) 0;
+  font-size: var(--fs-sm);
+}
+
+.about dt {
+  color: var(--text-muted);
+}
+
+.about dd {
+  margin: 0;
+}
+
+.row-item > .icon:first-child {
+  color: var(--accent);
+}

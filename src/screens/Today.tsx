@@ -3,12 +3,14 @@ import type { LucideIcon } from 'lucide-react'
 import { useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import { BarChart } from '../components/BarChart'
 import { GoalSheet, type Notify } from '../components/EditSheets'
+import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateRange, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
 import { lastTrip, nmInYear, nmPerMonth, summarize } from '../model/derive'
 import { monthSeries, recentTips, tipsPerWeek } from '../model/money'
+import { UPDATE_APP_MESSAGE } from '../model/schema'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
@@ -69,6 +71,15 @@ export function Today({
           text="Token verlopen of ingetrokken. Wijzigingen blijven bewaard tot er een geldige token is."
           onSettings={onSettings}
         />
+      )}
+      {status.kind === 'error' && !tokenInvalid && (
+        <div className="notice error-block" role="alert">
+          <span>
+            {status.message.startsWith('Synchroniseren') ? status.message : `Synchroniseren mislukt: ${status.message}`}. Wijzigingen
+            blijven op dit apparaat bewaard.
+          </span>
+          {status.message !== UPDATE_APP_MESSAGE && <CopyErrorDetails />}
+        </div>
       )}
       {!tokenInvalid && tokenDays !== null && tokenDays <= TOKEN_WARNING_DAYS && session.tokenExpiresAt && (
         <Notice

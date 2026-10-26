@@ -3,6 +3,7 @@ import { BottomBar, type Tab } from '../components/BottomBar'
 import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine } from '../components/SyncStatusLine'
 import { Toast, type ToastMessage } from '../components/Toast'
+import { setScreen } from '../errors'
 import type { Store } from '../storage/store'
 import { Money } from './Money'
 import { QuickAdd } from './QuickAdd'
@@ -11,6 +12,14 @@ import { Settings } from './Settings'
 import { Today } from './Today'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Zeilen · + · Geld · Instellingen.
+
+const TAB_NAMES: Record<Tab, string> = {
+  vandaag: 'Vandaag',
+  zeilen: 'Zeilen',
+  toevoegen: 'Toevoegen',
+  geld: 'Geld',
+  instellingen: 'Instellingen',
+}
 
 export function Home({ store }: { store: Store }) {
   const [tab, setTab] = useState<Tab>('vandaag')
@@ -26,6 +35,8 @@ export function Home({ store }: { store: Store }) {
       action: undo ? { label: 'Ongedaan maken', run: () => void undo() } : undefined,
     })
   }, [])
+
+  setScreen(TAB_NAMES[tab])
 
   function select(next: Tab) {
     setTab(next)

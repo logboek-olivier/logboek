@@ -31,7 +31,7 @@ jobs:
       # Schermafbeeldingen van elk scherm (360 en 412 px, licht en donker) om vóór het mergen te bekijken.
       - name: Schermafbeeldingen uploaden
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: schermafbeeldingen
           path: screenshots/

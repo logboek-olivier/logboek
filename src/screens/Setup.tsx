@@ -1,6 +1,8 @@
 import { Anchor, ChevronLeft } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
+import { isUserMistake, lastError } from '../errors'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } from '../session'
 
@@ -173,12 +175,18 @@ export function Screen({
   )
 }
 
+/** Foutmelding in gewone taal, met "Kopieer foutdetails" (behalve bij een verkeerd getypte wachtzin of herstelcode). */
 export function ErrorLine({ error }: { error: string | null }) {
-  return error ? (
-    <p className="error" role="alert">
-      {error}
-    </p>
-  ) : null
+  if (!error) return null
+  const recorded = lastError()
+  return (
+    <div className="error-block">
+      <p className="error" role="alert">
+        {error}
+      </p>
+      {recorded && !isUserMistake(recorded.error) && <CopyErrorDetails />}
+    </div>
+  )
 }
 
 /**

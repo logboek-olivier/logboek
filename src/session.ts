@@ -17,6 +17,7 @@ import {
 import { loadWordlist } from './crypto/recovery'
 import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFingerprint } from './crypto/webauthn'
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
+import { recordError } from './errors'
 import { UPDATE_APP_MESSAGE } from './model/schema'
 import { ConflictError, GithubClient, GithubError } from './storage/github'
 import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKey, type Db } from './storage/idb'
@@ -553,8 +554,9 @@ export function daysUntil(date: string | null, today: string): number | null {
   return Math.round((ms - now) / 86_400_000)
 }
 
-/** Nederlandse melding voor fouten uit opslag en sleutels; nooit inhoud of sleutels. */
+/** Nederlandse melding voor fouten uit opslag en sleutels; nooit inhoud of sleutels. Legt de fout vast voor de foutdetails. */
 export function describeError(error: unknown): string {
+  recordError(error)
   if (error instanceof SetupError) return error.message
   // Bij invoeren of vervangen is een 401/403 een token die nooit werkte: eigen melding, niet "verlopen".
   if (error instanceof GithubError) return error.message
