@@ -32,7 +32,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const errors = collectConsoleErrors(page)
       const github = await mockGithub(page)
       await createNewLogbook(page, lang)
-      const card = page.getByRole('region', { name: L('week.current') })
+      const nav = page.getByRole('navigation')
+      await nav.getByRole('button', { name: L('nav.week'), exact: true }).click()
+      const card = page.locator('main')
       await expect(card).toContainText(L('week.noActive'))
 
       // Nieuwe week starten, in één scherm.
@@ -63,13 +65,15 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByLabel(L('field.nm')).fill('12')
       await page.getByRole('button', { name: L('common.save') }).click()
       await expect(page.locator('.toast')).toHaveText(L('toast.daySaved'))
+      await nav.getByRole('button', { name: L('nav.week'), exact: true }).click()
+      await expect(card).toContainText('Nephaven')
 
       // Week bewerken: tien dagen geleden begonnen, dus voorbij; Vandaag vraagt om afronden.
       await card.getByRole('button', { name: new RegExp(L('week.edit')) }).click()
       await sheet.getByLabel(L('week.startDate')).fill(isoDaysAgo(10))
       await sheet.getByRole('button', { name: L('common.save') }).click()
       await expect(card.getByRole('button', { name: L('week.close') })).toBeVisible()
-      await shots(page, 'vandaag-afronden', lang)
+      await shots(page, 'deze-week-afronden', lang)
       await card.getByRole('button', { name: L('week.close') }).click()
       await expect(sheet).toContainText('Nepanna')
       await expect(sheet).toContainText(L('level.beginner'))
@@ -79,6 +83,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await sheet.getByRole('button', { name: L('week.closeSave') }).click()
       await expect(page.locator('.toast')).toContainText(L('week.closed'))
       await expect(card).toContainText(L('week.noActive'))
+      // De afgeronde week staat in het logboek met zijn dag.
+      await nav.getByRole('button', { name: L('nav.logbook'), exact: true }).click()
+      await expect(page.locator('.trip').first()).toContainText(/Week \d+/)
 
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       const wire = github.requests.map((r) => r.body ?? '').join('\n')

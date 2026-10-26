@@ -126,8 +126,16 @@ export function cleanInput(input: StudentInput): StudentInput {
   return out
 }
 
-export async function addStudent(store: Store, input: StudentInput): Promise<Student> {
-  const student: Student = { id: newId(), ...cleanInput(input), progress: {}, archivedAt: null, updatedAt: new Date().toISOString(), deletedAt: null }
+export async function addStudent(store: Store, input: StudentInput, weekId?: string): Promise<Student> {
+  const student: Student = {
+    id: newId(),
+    ...cleanInput(input),
+    progress: {},
+    archivedAt: null,
+    ...(weekId ? { weekId } : {}),
+    updatedAt: new Date().toISOString(),
+    deletedAt: null,
+  }
   await store.put('students.json.enc', student)
   void store.sync()
   return student

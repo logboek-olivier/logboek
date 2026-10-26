@@ -1,31 +1,38 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
-test('Studenten: toevoegen, afvinken met één tik, examenkritisch bovenaan, groep afvinken, archiveren en wissen', async ({ page }) => {
+test('Studenten in Deze week: deelnemers met cursus krijgen een checklist, afvinken, groep afvinken, archiveren en wissen via Meer', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('navigation').getByRole('button', { name: 'Training', exact: true }).click()
-  await expect(page.getByRole('tab', { name: 'Studenten' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByText('Nog geen studenten.', { exact: false })).toBeVisible()
+  const nav = page.getByRole('navigation')
+  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
+  await expect(page.getByText('Geen lopende week.')).toBeVisible()
 
-  for (const name of ['Nepanna', 'Nepbram']) {
-    await page.getByRole('button', { name: 'Student toevoegen' }).click()
-    await expect(page.getByText('Geen contact-, gezondheids- of identiteitsgegevens', { exact: false })).toBeVisible()
-    await page.getByLabel('Voornaam').fill(name)
-    await expect(page.getByLabel('Cursus')).toHaveValue('seed-asa-101')
-    await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
-  }
+  // Week starten met één deelnemer met cursus; een tweede student komt via "Student toevoegen" erbij.
+  await page.getByRole('button', { name: 'Nieuwe week starten' }).click()
+  const sheet = page.getByRole('dialog')
+  await sheet.getByLabel('Deelnemer 1', { exact: true }).fill('Nepanna')
+  await sheet.getByRole('combobox', { name: 'Cursus deelnemer 1' }).selectOption('seed-asa-101')
+  await sheet.getByRole('button', { name: 'Week starten' }).click()
+  await expect(page.locator('.student')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Student toevoegen' }).click()
+  await expect(page.getByText('Geen contact-, gezondheids- of identiteitsgegevens', { exact: false })).toBeVisible()
+  await page.getByLabel('Voornaam').fill('Nepbram')
+  await expect(page.getByRole('combobox', { name: 'Cursus' })).toHaveValue('seed-asa-101')
+  await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.student')).toHaveCount(2)
+  await expect(page.locator('.participant-chips')).toContainText('Nepbram')
   await expectNoHorizontalOverflow(page)
 
   // Checklist: één tik = volgende status; examenkritisch en nieuw staat bovenaan.
   await page.locator('.student').filter({ hasText: 'Nepanna' }).getByRole('button').click()
   await expect(page.getByRole('heading', { name: 'Nepanna' })).toBeVisible()
-  const critical = page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Examenkritisch, nog nieuw' }) })
+  await expect(page.getByRole('heading', { name: 'Deze week' })).toHaveCount(0)
+  const critical = page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Examenkritisch, nog nieuw' }) }).last()
   await expect(critical.getByText('Overstag gaan')).toBeVisible()
   await critical.getByRole('button', { name: /^Overstag gaan: Nieuw/ }).click()
   await expect(critical.getByText('Overstag gaan')).toHaveCount(0)
@@ -49,7 +56,7 @@ test('Studenten: toevoegen, afvinken met één tik, examenkritisch bovenaan, gro
   await expectNoHorizontalOverflow(page)
 
   // Hele onderwerpgroep in één tik, met ongedaan maken.
-  const firstGroup = page.locator('.section').nth(1)
+  const firstGroup = page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Boot en begrippen' }) }).last()
   await firstGroup.getByRole('button', { name: 'Alles geoefend' }).click()
   await expect(firstGroup.getByRole('button', { name: 'Alles beheerst' })).toBeVisible()
   await page.locator('.toast').getByRole('button').click()
@@ -73,31 +80,31 @@ test('Studenten: toevoegen, afvinken met één tik, examenkritisch bovenaan, gro
   await page.getByRole('dialog').getByRole('button', { name: 'Archiveren' }).click()
   await expect(page.locator('.student')).toHaveCount(1)
 
-  // Archief: terugzetten en wissen.
+  // Studentenarchief onder Meer: terugzetten en wissen.
+  await openMore(page, 'Studentenarchief')
+  await expect(page.getByRole('heading', { name: 'Studentenarchief' })).toBeVisible()
+  await expect(page.getByText('Geen studenten zonder week.')).toBeVisible()
   await page.getByRole('button', { name: 'Archief (1)' }).click()
   await page.getByRole('button', { name: 'Nepbram terugzetten' }).click()
   await expect(page.getByText('Het archief is leeg.')).toBeVisible()
-  await page.getByRole('button', { name: 'Terug naar Studenten' }).click()
+  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
   await expect(page.locator('.student')).toHaveCount(2)
   await page.locator('.student').filter({ hasText: 'Nepbram' }).getByRole('button').click()
   await page.getByRole('button', { name: 'Student bewerken' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Archiveren' }).click()
+  await openMore(page, 'Studentenarchief')
   await page.getByRole('button', { name: 'Archief (1)' }).click()
   await page.getByRole('button', { name: 'Archief wissen' }).click()
   await expect(page.locator('.toast')).toContainText('Archief gewist')
   await expect(page.getByRole('button', { name: /^Archief/ })).toHaveCount(0)
 
-  // Per cursus groeperen.
-  await page.getByRole('radio', { name: 'Per cursus' }).click()
-  await expect(page.getByRole('heading', { name: /ASA 101/ })).toBeVisible()
-
-  // Cursus verwijderd: de student is nog te openen en te verwijderen.
-  await page.getByRole('tab', { name: 'Cursussen' }).click()
+  // Cursus verwijderd (Meer → Cursussen): de student is nog te openen en te verwijderen.
+  await openMore(page, 'Cursussen')
   await page.getByRole('button', { name: /ASA 101/ }).click()
   await page.getByRole('button', { name: 'Bewerken', exact: true }).click()
   await page.getByRole('button', { name: 'Naam en bond' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cursus verwijderen' }).click()
-  await page.getByRole('tab', { name: 'Studenten' }).click()
+  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
   await page.locator('.student').filter({ hasText: 'Nepanna' }).getByRole('button').click()
   await expect(page.getByText('Cursus verwijderd · Beginner')).toBeVisible()
   await page.getByRole('button', { name: 'Student bewerken' }).click()

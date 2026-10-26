@@ -126,7 +126,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   return (
     <section className="stack-lg">
       <header className="page-header">
-        <h1>{t('nav.sailing')}</h1>
+        <h1>{t('nav.logbook')}</h1>
         {summary.days > 0 && importButton(false)}
       </header>
       <button className="btn small quiet new-week" onClick={() => setEditing({ kind: 'new-week' })}>

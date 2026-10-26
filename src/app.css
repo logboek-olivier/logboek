@@ -2040,3 +2040,69 @@ body.presenting .bottom-bar {
 .small-value {
   font-size: var(--fs-xl);
 }
+
+/* ---------- Deze week ---------- */
+
+.week-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--s-4);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.week-head-title {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+}
+
+.week-head-title .icon {
+  color: var(--accent);
+}
+
+/* Deelnemers: naam met icoon, niveau en cursus op een tweede regel. */
+.participant-chips {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  list-style: none;
+}
+
+.chip-static {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--s-2);
+  align-items: center;
+  padding: var(--s-2) var(--s-4);
+}
+
+.chip-static + .chip-static {
+  border-top: 1px solid var(--border);
+}
+
+.chip-static .icon {
+  --icon: 16px;
+  color: var(--accent);
+}
+
+.chip-static > .muted {
+  grid-column: 2;
+}
+
+.log-day {
+  width: 100%;
+}

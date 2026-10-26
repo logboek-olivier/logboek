@@ -18,7 +18,7 @@ test('Kopieer foutdetails: versie, scherm en foutcode, zonder inhoud; niet bij e
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Zeilen' }).click()
+  await page.getByRole('button', { name: 'Logboek' }).click()
   await page
     .getByLabel('Mijlenbestand')
     .setInputFiles({ name: 'mijlen.csv', mimeType: 'text/csv', buffer: Buffer.from('Datum;Van (plaats)\n1-1-2024;Geheimhaven') })
@@ -28,7 +28,7 @@ test('Kopieer foutdetails: versie, scherm en foutcode, zonder inhoud; niet bij e
   const report = await page.evaluate(() => navigator.clipboard.readText())
   expect(report).toContain('Logboek-foutdetails')
   expect(report).toContain('Versie: 1.0.0')
-  expect(report).toContain('Scherm: Zeilen')
+  expect(report).toContain('Scherm: Logboek')
   expect(report).toContain('Foutcode: ImportError')
   expect(report).not.toContain('Geheimhaven')
 

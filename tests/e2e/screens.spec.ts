@@ -17,10 +17,13 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
-  await expect(page.locator('.grid')).toContainText('nm totaal0 nm')
+  // Vandaag: dag loggen en nm dit jaar; nm totaal en laatste tocht staan in het logboek.
+  await expect(page.getByRole('button', { name: 'Dag van vandaag loggen' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Jaardoel wijzigen/ })).toContainText('0 nm')
+  await expect(page.locator('main')).not.toContainText('nm totaal')
   await expectNoHorizontalOverflow(page)
 
-  for (const tab of ['Zeilen', 'Toevoegen', 'Meer']) {
+  for (const tab of ['Deze week', 'Logboek', 'Toevoegen', 'Meer']) {
     await page.getByRole('button', { name: tab, exact: true }).click()
     await expectNoHorizontalOverflow(page)
   }

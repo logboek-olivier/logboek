@@ -1,25 +1,23 @@
-import { Anchor, CalendarClock, CalendarDays, LoaderCircle, Sailboat, Waves } from 'lucide-react'
+import { CalendarClock, CalendarDays, LoaderCircle, NotebookPen } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useRef, useState, type ReactNode, type TouchEvent } from 'react'
-import { BarChart } from '../components/BarChart'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
-import { formatDate, formatDateRange, formatMonth, formatNm, formatNumber } from '../format'
-import { lastTrip, nmInYear, nmPerMonth, summarize } from '../model/derive'
+import { formatDate, formatNm, formatNumber } from '../format'
+import { nmInYear } from '../model/derive'
 import { nextExpiry } from '../model/expiry'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
 import { TodayPlan } from './Planning'
-import { CloseWeekSheet, WeekSheet, weekTypeLabel } from '../components/WeekSheet'
-import { activeWeek, needsClosing, weekView } from '../model/weeks'
 import { t } from '../i18n'
 
-// Vandaag: planning van vandaag (als er een lopende weekplanning is), nm dit jaar met voortgang naar het jaardoel, nm totaal, dagen tot de volgende vervaldatum, laatste tocht.
+// Vandaag: planning van vandaag (als er een lopende weekplanning is), "Dag van vandaag loggen", nm dit jaar met
+// voortgang naar het jaardoel en dagen tot de volgende vervaldatum. De week zelf staat onder Deze week.
 // Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
 
 const TOKEN_WARNING_DAYS = 30
@@ -39,16 +37,12 @@ export function Today({
 }) {
   const session = useSession()
   const legs = useCollection(store, 'legs.json.enc')
-  const trips = useCollection(store, 'trips.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const status = useSyncStatus(store)
   const [goalOpen, setGoalOpen] = useState(false)
   const pull = usePullToSync(() => void store.sync())
   const today = todayIso()
   const year = Number(today.slice(0, 4))
-  const total = summarize(legs)
-  const months = nmPerMonth(legs, today)
-  const last = lastTrip(trips, legs)
   const nmYear = nmInYear(legs, year)
   const goal = yearGoal(settings)
   const share = Math.min(1, nmYear / goal)
@@ -93,7 +87,10 @@ export function Today({
         />
       )}
       <TodayPlan store={store} notify={notify} />
-      <WeekCard store={store} notify={notify} />
+      <button className="btn primary log-day" onClick={onAdd}>
+        <Icon icon={NotebookPen} />
+        {t('today.logDay')}
+      </button>
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}
@@ -120,17 +117,8 @@ export function Today({
           <span className="progress-fill" ref={(el) => setWidth(el, share)} />
         </span>
       </button>
-      <dl className="grid">
-        <Card icon={Waves} label={t('today.nmTotal')} value={formatNm(total.nm)} wide={!expiry}>
-          <BarChart
-            compact
-            height={40}
-            label={`${t('chart.nmPerMonth')}: ${months.map((m) => `${formatMonth(m.month)} ${formatNm(m.nm)}`).join(', ')}`}
-            groups={months.map((m) => ({ key: m.month, label: '', values: [m.nm] }))}
-            format={formatNm}
-          />
-        </Card>
-        {expiry && (
+      {expiry && (
+        <dl className="grid">
           <Card
             icon={CalendarClock}
             label={t('today.nextExpiry')}
@@ -142,31 +130,10 @@ export function Today({
                   : t('expiry.inDays', { n: expiry.days })
             }
             extra={[`${expiry.label} · ${formatDate(expiry.date)}`]}
-          />
-        )}
-        {last ? (
-          <Card
-            icon={Sailboat}
-            label={t('today.lastTrip')}
-            value={last.trip.name}
-            extra={[`${formatDateRange(last.startDate, last.endDate)} · ${formatNm(last.nm)}`]}
             wide
           />
-        ) : (
-          <div className="stat wide">
-            <dt>
-              <Icon icon={Anchor} />
-              {t('today.lastTrip')}
-            </dt>
-            <dd className="small muted">{t('today.noDays')}</dd>
-            <dd className="small">
-              <button className="btn link" onClick={onAdd}>
-                {t('today.addDay')}
-              </button>
-            </dd>
-          </div>
-        )}
-      </dl>
+        </dl>
+      )}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}
     </section>
   )
@@ -252,51 +219,5 @@ function Card({
       ))}
       {children}
     </div>
-  )
-}
-
-/** Kaart "Deze week": de lopende week (tikken = bewerken), "Week afronden" na de einddatum, of een nieuwe week starten. */
-function WeekCard({ store, notify }: { store: Store; notify: Notify }) {
-  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
-  const trips = useCollection(store, 'trips.json.enc')
-  const legs = useCollection(store, 'legs.json.enc')
-  const [open, setOpen] = useState<'new' | 'edit' | 'close' | null>(null)
-  const week = activeWeek(trips, settings)
-  const view = week ? weekView(week, legs) : null
-  return (
-    <section className="stat wide week-card" aria-label={t('week.current')}>
-      <span className="stat-label">
-        <Icon icon={CalendarDays} />
-        {t('week.current')}
-      </span>
-      {view ? (
-        <>
-          <button className="week-card-main" onClick={() => setOpen('edit')} aria-label={`${t('week.edit')}: ${view.trip.name}`}>
-            <span className="stat-value small-value">{view.trip.name}</span>
-            <span className="small muted">
-              {[weekTypeLabel(view.type), view.startDate ? formatDateRange(view.startDate, view.endDate) : '', view.boat].filter(Boolean).join(' · ')}
-            </span>
-          </button>
-          {needsClosing(view, todayIso()) && (
-            <div className="notice">
-              <p className="small">{t('week.closePrompt', { name: view.trip.name })}</p>
-              <button className="btn small primary" onClick={() => setOpen('close')}>
-                {t('week.close')}
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <span className="small muted">{t('week.noActive')}</span>
-          <button className="btn small primary" onClick={() => setOpen('new')}>
-            {t('week.new')}
-          </button>
-        </>
-      )}
-      {open === 'new' && <WeekSheet store={store} trip={null} notify={notify} onClose={() => setOpen(null)} />}
-      {open === 'edit' && week && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setOpen(null)} />}
-      {open === 'close' && week && <CloseWeekSheet store={store} trip={week} notify={notify} onClose={() => setOpen(null)} />}
-    </section>
   )
 }

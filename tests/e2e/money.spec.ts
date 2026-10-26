@@ -63,7 +63,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont totalen, andere valuta apart
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Zeilen' }).click()
+  await page.getByRole('button', { name: 'Logboek' }).click()
   await expect(page.locator('.trip')).toHaveCount(1)
   await expect(page.locator('.trip').first()).toContainText('Testtocht')
   await expect(page.locator('.trip').first()).toContainText('50 nm')

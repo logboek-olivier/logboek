@@ -29,30 +29,15 @@ import {
   updateGroup,
   updateTopic,
 } from '../model/curricula'
-import { splitPlans } from '../model/plans'
-import { todayIso, type Curriculum } from '../model/types'
+import type { Curriculum } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
-import { PlansView } from './Planning'
-import { StudentsView } from './Students'
-
-// Training: cursussen per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
+// Cursussen (onder Meer): per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
 // te delen als JSON en te importeren.
 
-type Tab = 'planning' | 'students' | 'courses'
-
-// Drie tabbladen zonder iconen: met iconen past het niet op 360 px.
-const TABS = [
-  { id: 'planning', label: 'plan.list' },
-  { id: 'students', label: 'students.title' },
-  { id: 'courses', label: 'curriculum.courses' },
-] as const
-
-export function Training({ store, notify }: { store: Store; notify: Notify }) {
+export function Courses({ store, notify }: { store: Store; notify: Notify }) {
   const stored = useCollection(store, 'curricula.json.enc')
   const curricula = effectiveCurricula(stored)
-  // Een lopende of komende planning: dan opent Training op Planning, anders op Studenten.
-  const [tab, setTab] = useState<Tab>(() => (splitPlans(store.get('plans.json.enc'), todayIso()).current.length > 0 ? 'planning' : 'students'))
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,50 +62,15 @@ export function Training({ store, notify }: { store: Store; notify: Notify }) {
     }
   }
 
-  const tabs = (
-    <div className="segments" role="tablist">
-      {TABS.map(({ id, label }) => (
-        <button key={id} role="tab" aria-selected={tab === id} className={`segment${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
-          {t(label)}
-        </button>
-      ))}
-    </div>
-  )
-
-  if (tab === 'planning') {
-    return (
-      <section className="stack-lg">
-        <header className="page-header">
-          <h1>{t('nav.training')}</h1>
-        </header>
-        {tabs}
-        <PlansView store={store} notify={notify} curricula={curricula} />
-      </section>
-    )
-  }
-
-  if (tab === 'students') {
-    return (
-      <section className="stack-lg">
-        <header className="page-header">
-          <h1>{t('nav.training')}</h1>
-        </header>
-        {tabs}
-        <StudentsView store={store} notify={notify} curricula={curricula} />
-      </section>
-    )
-  }
-
   return (
     <section className="stack-lg">
       <header className="page-header">
-        <h1>{t('nav.training')}</h1>
+        <h1>{t('curriculum.courses')}</h1>
         <button className="btn small quiet" onClick={() => setCreating(true)}>
           <Icon icon={Plus} />
           {t('curriculum.newCourse')}
         </button>
       </header>
-      {tabs}
       <ErrorLine error={error} />
       {byBody(curricula).map((group) => (
         <div key={group.body} className="section">
@@ -210,9 +160,9 @@ function CourseView({ store, course, notify, onBack }: { store: Store; course: C
 
   return (
     <section className="stack-lg">
-      <button className="btn link back-link" onClick={onBack} aria-label={t('curriculum.backToTraining')}>
+      <button className="btn link back-link" onClick={onBack} aria-label={t('curriculum.backToCourses')}>
         <Icon icon={ChevronLeft} />
-        {t('nav.training')}
+        {t('curriculum.courses')}
       </button>
       <header className="page-header">
         <h1>{courseLabel(course, lang)}</h1>
