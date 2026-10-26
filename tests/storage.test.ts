@@ -92,8 +92,8 @@ describe('GithubClient', () => {
     await a.store.put('trips.json.enc', trip('t1', 'eerste'))
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'synced' })
-    // meta, trips, legs, transactions, settings, curricula en students.
-    expect(empty.files.size).toBe(7)
+    // meta, trips, legs, transactions, settings, curricula, students en plans.
+    expect(empty.files.size).toBe(8)
 
     // Alleen een README: meta ontbreekt (404), nieuw logboek mag.
     const readme = new FakeGithub()

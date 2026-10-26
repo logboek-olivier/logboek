@@ -146,6 +146,46 @@ export interface Student extends SyncRecord {
   archivedAt?: string | null
 }
 
+// Weekplanning (release 2). Groepen verwijzen naar studenten via id; namen staan alleen in students.json.enc.
+
+export type DaySlot = 'ochtend' | 'middag' | 'avond'
+export const DAY_SLOTS: readonly DaySlot[] = ['ochtend', 'middag', 'avond']
+
+export interface PlanGroup {
+  id: string
+  /** Bijvoorbeeld "Groep A" of de bootnaam; geen studentnamen nodig. */
+  name: string
+  curriculumId: string
+  level: StudentLevel
+  studentIds: string[]
+}
+
+export interface PlanBlock {
+  /** Vast id per blok, zodat een blok te verplaatsen is naar een andere dag of een ander dagdeel. */
+  id: string
+  slot: DaySlot
+  groupIds: string[]
+  topicIds: string[]
+  location?: string
+  note?: string
+}
+
+export interface PlanDay {
+  /** jjjj-mm-dd */
+  date: string
+  blocks: PlanBlock[]
+}
+
+export interface WeekPlan extends SyncRecord {
+  title: string
+  /** jjjj-mm-dd */
+  startDate: string
+  dayCount: number
+  tripId?: string
+  groups: PlanGroup[]
+  days: PlanDay[]
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -154,6 +194,7 @@ export interface Collections {
   'settings.json.enc': Settings
   'curricula.json.enc': Curriculum
   'students.json.enc': Student
+  'plans.json.enc': WeekPlan
 }
 
 export type CollectionPath = keyof Collections
@@ -165,6 +206,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'settings.json.enc',
   'curricula.json.enc',
   'students.json.enc',
+  'plans.json.enc',
 ]
 
 export function newId(): string {
