@@ -1,7 +1,8 @@
-import { ChevronDown, FileSpreadsheet, LoaderCircle, Pencil, Sailboat, Upload } from 'lucide-react'
+import { CalendarPlus, ChevronDown, FileSpreadsheet, LoaderCircle, Pencil, Sailboat, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { BarChart } from '../components/BarChart'
-import { LegSheet, TripSheet, type Notify } from '../components/EditSheets'
+import { LegSheet, type Notify } from '../components/EditSheets'
+import { WeekSheet } from '../components/WeekSheet'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -18,7 +19,7 @@ import { t } from '../i18n'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
-type Editing = { kind: 'leg'; leg: Leg } | { kind: 'trip'; trip: Trip } | null
+type Editing = { kind: 'leg'; leg: Leg } | { kind: 'trip'; trip: Trip } | { kind: 'new-week' } | null
 
 export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   const [editing, setEditing] = useState<Editing>(null)
@@ -128,6 +129,10 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
         <h1>{t('nav.sailing')}</h1>
         {summary.days > 0 && importButton(false)}
       </header>
+      <button className="btn small quiet new-week" onClick={() => setEditing({ kind: 'new-week' })}>
+        <Icon icon={CalendarPlus} />
+        {t('week.new')}
+      </button>
       {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
       <input ref={fileInput} type="file" hidden aria-label={t('import.file')} onChange={(e) => void onFile(e.target.files?.[0])} />
       <ErrorLine error={error} />
@@ -175,9 +180,8 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
         </>
       )}
       {editing?.kind === 'leg' && <LegSheet store={store} leg={editing.leg} onClose={() => setEditing(null)} notify={notify} />}
-      {editing?.kind === 'trip' && (
-        <TripSheet store={store} trip={editing.trip} onClose={() => setEditing(null)} notify={notify} />
-      )}
+      {editing?.kind === 'trip' && <WeekSheet store={store} trip={editing.trip} onClose={() => setEditing(null)} notify={notify} />}
+      {editing?.kind === 'new-week' && <WeekSheet store={store} trip={null} onClose={() => setEditing(null)} notify={notify} />}
     </section>
   )
 }
@@ -242,7 +246,7 @@ function TripRow({
           <li className="legs-actions">
             <button className="btn small quiet" onClick={onEditTrip}>
               <Icon icon={Pencil} />
-              {t('edit.trip')}
+              {t('week.edit')}
             </button>
           </li>
         </ul>
