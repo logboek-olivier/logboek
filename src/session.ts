@@ -17,10 +17,11 @@ import {
 import { loadWordlist } from './crypto/recovery'
 import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFingerprint } from './crypto/webauthn'
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
+import { UPDATE_APP_MESSAGE } from './model/schema'
 import { ConflictError, GithubClient, GithubError } from './storage/github'
 import { clearAll, getObject, openLogboekDb, type Db } from './storage/idb'
 import { Store } from './storage/store'
-import { loadToken, storeToken } from './storage/token'
+import { loadToken, storeToken, type StoredToken } from './storage/token'
 
 // Levenscyclus van een sessie: eerste keer (nieuw of koppelen), ontgrendelen, vergrendelen.
 // De hoofdsleutel leeft alleen in de Store; vergrendelen laat die vallen (beveiligingsregel 10).
@@ -62,8 +63,11 @@ export class Session {
     return () => this.listeners.delete(listener)
   }
 
+  /** `dbName` alleen voor tests; de app gebruikt de standaardnaam. */
+  constructor(private readonly dbName?: string) {}
+
   async init(): Promise<void> {
-    this.db = await openLogboekDb()
+    this.db = await openLogboekDb(this.dbName)
     await this.toLocked()
   }
 
@@ -144,14 +148,38 @@ export class Session {
     return revealRecoveryWords(meta, passphrase, await loadWordlist())
   }
 
-  async replaceToken(token: string): Promise<void> {
+  /** Vervaldatum (jjjj-mm-dd) van de token op dit apparaat, of null als onbekend. Alleen zinvol na ontgrendelen. */
+  tokenExpiresAt: string | null = null
+
+  /**
+   * Controleert een nieuwe token (toegang tot logboek-data) en geeft de vervaldatum uit de header
+   * `github-authentication-token-expiration` als de browser die mag lezen; anders null.
+   */
+  async checkToken(token: string): Promise<{ expiresAt: string | null }> {
+    return new GithubClient(token.trim()).checkAccess()
+  }
+
+  /** Lopende vervanging; een tweede aanroep krijgt dezelfde promise, zodat er nooit twee Stores ontstaan. */
+  private replacing: Promise<void> | null = null
+
+  replaceToken(token: string, expiresAt: string | null): Promise<void> {
+    if (this.replacing) return this.replacing
+    this.replacing = this.doReplaceToken(token, expiresAt).finally(() => {
+      this.replacing = null
+    })
+    return this.replacing
+  }
+
+  /** `expiresAt` komt uit het formulier en is leidend, ook als het leeg is; de header is alleen voorvulling. */
+  private async doReplaceToken(token: string, expiresAt: string | null): Promise<void> {
     const db = this.requireDb()
     const { masterKey, store: previous } = this.requireUnlocked()
     const generation = this.generation
     const client = new GithubClient(token.trim())
     await client.checkAccess()
     this.assertSameSession(generation)
-    await storeToken(db, masterKey, token.trim())
+    await storeToken(db, masterKey, token.trim(), expiresAt)
+    this.tokenExpiresAt = expiresAt
     this.assertSameSession(generation)
     // De Store houdt de oude client; een nieuwe Store openen zorgt dat sync de nieuwe token gebruikt.
     const store = await Store.open(db, masterKey, client)
@@ -219,13 +247,17 @@ export class Session {
     await this.openWithStoredToken(masterKey)
   }
 
-  /** Nieuw logboek, stap 1: token controleren en nagaan dat logboek-data leeg is. */
-  async checkEmptyRepo(token: string): Promise<void> {
+  /**
+   * Nieuw logboek, stap 1: token controleren en nagaan dat logboek-data geen logboek bevat.
+   * Een repo zonder commits (404/409) of met alleen een README is leeg genoeg.
+   */
+  async checkEmptyRepo(token: string): Promise<{ expiresAt: string | null }> {
     const client = new GithubClient(token.trim())
-    await client.checkAccess()
+    const access = await client.checkAccess()
     if ((await client.getFile(META_PATH)) !== null) {
       throw new SetupError('Deze repo bevat al een logboek. Kies "Bestaand logboek koppelen".')
     }
+    return access
   }
 
   /** Nieuw logboek, stap 2: sleutels maken. Nog niets opgeslagen; eerst de herstelcode bevestigen. */
@@ -234,18 +266,22 @@ export class Session {
   }
 
   /** Nieuw logboek, stap 3: meta.json.enc aanmaken, token opslaan, ontgrendeld verder. */
-  async finishNewVault(token: string, vault: PreparedVault): Promise<void> {
+  async finishNewVault(token: string, expiresAt: string | null, vault: PreparedVault): Promise<void> {
     const db = this.requireDb()
     const client = new GithubClient(token.trim())
     const bytes = new TextEncoder().encode(JSON.stringify(vault.meta))
     const sha = await client.putFile(META_PATH, bytes, null)
     await clearAll(db)
     await Store.storeMeta(db, vault.meta, sha)
-    await this.open(client, token.trim(), vault.masterKey)
+    await this.open(client, { token: token.trim(), expiresAt }, vault.masterKey)
   }
 
   /** Bestaand logboek koppelen: meta ophalen, ontgrendelen met wachtzin of herstelcode, alles ophalen. */
-  async link(token: string, secret: { passphrase: string } | { recoveryCode: string }): Promise<void> {
+  async link(
+    token: string,
+    expiresAt: string | null,
+    secret: { passphrase: string } | { recoveryCode: string },
+  ): Promise<void> {
     const db = this.requireDb()
     const client = new GithubClient(token.trim())
     const file = await client.getFile(META_PATH)
@@ -254,7 +290,7 @@ export class Session {
     const masterKey = await unlock(meta, await withWordlist(secret))
     await clearAll(db)
     await Store.storeMeta(db, meta, file.sha)
-    await this.open(client, token.trim(), masterKey)
+    await this.open(client, { token: token.trim(), expiresAt }, masterKey)
   }
 
   /** Ontgrendelen op een apparaat dat al gekoppeld is. */
@@ -266,14 +302,15 @@ export class Session {
 
   private async openWithStoredToken(masterKey: CryptoKey): Promise<void> {
     const db = this.requireDb()
-    const token = await loadToken(db, masterKey)
-    if (token === null) {
+    const stored = await loadToken(db, masterKey)
+    if (stored === null) {
       // Kan alleen na een onvolledige koppeling; opnieuw koppelen is de veilige weg.
       await clearAll(db)
       this.setState({ phase: 'setup' })
       throw new SetupError('Token ontbreekt op dit apparaat. Koppel het logboek opnieuw.')
     }
-    await this.open(new GithubClient(token), null, masterKey)
+    this.tokenExpiresAt = stored.expiresAt
+    await this.open(new GithubClient(stored.token), null, masterKey)
   }
 
   lock(): void {
@@ -283,6 +320,7 @@ export class Session {
     this.generation++
     this.unlockedClient = null
     this.unlockedKey = null
+    this.tokenExpiresAt = null
     // Eerst synchroon weg van het ontgrendelde scherm, dan pas het geheugen wissen: geen render met een gewiste Store.
     if (this.lastMeta) this.setState({ phase: 'locked', meta: this.lastMeta, fingerprint: this.lastFingerprint })
     else this.setState({ phase: 'loading' })
@@ -305,9 +343,14 @@ export class Session {
     this.lockTimer = setTimeout(() => this.lock(), LOCK_AFTER_MS)
   }
 
-  private async open(client: GithubClient, tokenToStore: string | null, masterKey: CryptoKey): Promise<void> {
+  private async open(client: GithubClient, tokenToStore: StoredToken | null, masterKey: CryptoKey): Promise<void> {
     const db = this.requireDb()
-    if (tokenToStore !== null) await storeToken(db, masterKey, tokenToStore)
+    if (tokenToStore !== null) {
+      await storeToken(db, masterKey, tokenToStore.token, tokenToStore.expiresAt)
+      this.tokenExpiresAt = tokenToStore.expiresAt
+    }
+    // Blijvende opslag aanvragen, zodat de browser de versleutelde kopie en de outbox niet opruimt.
+    void requestPersistentStorage()
     const store = await Store.open(db, masterKey, client)
     this.generation++
     this.unlockedClient = client
@@ -341,12 +384,31 @@ async function withWordlist(secret: { passphrase: string } | { recoveryCode: str
   return { recoveryCode: secret.recoveryCode, wordlist: await loadWordlist() }
 }
 
+async function requestPersistentStorage(): Promise<void> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage?.persist) await navigator.storage.persist()
+  } catch {
+    // Niet beschikbaar of geweigerd: de app werkt gewoon, alleen zonder garantie tegen opruimen.
+  }
+}
+
+/** Aantal dagen tot de vervaldatum (jjjj-mm-dd), negatief als al verlopen; null als onbekend. */
+export function daysUntil(date: string | null, today: string): number | null {
+  if (!date) return null
+  const ms = Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)))
+  const now = Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10)))
+  return Math.round((ms - now) / 86_400_000)
+}
+
 /** Nederlandse melding voor fouten uit opslag en sleutels; nooit inhoud of sleutels. */
 export function describeError(error: unknown): string {
   if (error instanceof SetupError) return error.message
+  // Bij invoeren of vervangen is een 401/403 een token die nooit werkte: eigen melding, niet "verlopen".
   if (error instanceof GithubError) return error.message
   if (error instanceof Error) {
     switch (error.name) {
+      case 'NewerSchemaError':
+        return UPDATE_APP_MESSAGE
       case 'NetworkError':
         return 'Geen verbinding'
       case 'WrongSecretError':

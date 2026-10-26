@@ -53,7 +53,19 @@ export function looksLikeToken(token: string): boolean {
   return /^(github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,})$/.test(token.trim())
 }
 
+const EXPIRATION_HEADER = 'github-authentication-token-expiration'
+
+/** "2026-11-24 12:00:00 UTC" of een ISO-tijd → jjjj-mm-dd; onleesbaar → null. */
+export function parseExpirationHeader(value: string | null): string | null {
+  if (!value) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim())
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
 export class GithubClient {
+  /** Vervaldatum van de token (jjjj-mm-dd) als GitHub die in een antwoord meegaf en de browser de header mag lezen. */
+  tokenExpiresAt: string | null = null
+
   constructor(
     private readonly token: string,
     private readonly fetchImpl: FetchLike = (input, init) => globalThis.fetch(input, init),
@@ -75,6 +87,8 @@ export class GithubClient {
     } catch {
       throw new NetworkError()
     }
+    const expiration = parseExpirationHeader(response.headers.get(EXPIRATION_HEADER))
+    if (expiration) this.tokenExpiresAt = expiration
     if (response.status === 401) throw new AuthError(401)
     if (response.status === 403) {
       // Een 403 met uitgeputte rate limit is geen tokenfout.
@@ -105,16 +119,17 @@ export class GithubClient {
     }
   }
 
-  /** Controleert dat de token de repo kan lezen. */
-  async checkAccess(): Promise<void> {
+  /** Controleert dat de token de repo kan lezen. Geeft de vervaldatum van de token als die leesbaar is. */
+  async checkAccess(): Promise<{ expiresAt: string | null }> {
     const response = await this.request(`/repos/${this.repo}`)
     if (!response.ok) throw new GithubError('Repo logboek-data niet gevonden', response.status)
+    return { expiresAt: this.tokenExpiresAt }
   }
 
-  /** Haalt een bestand op; null als het niet bestaat. */
+  /** Haalt een bestand op; null als het niet bestaat. Een repo zonder commits geeft 404 of 409: ook "bestaat niet". */
   async getFile(path: string): Promise<RemoteFile | null> {
     const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`)
-    if (response.status === 404) return null
+    if (response.status === 404 || response.status === 409) return null
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status)
     const body = await this.json(response)
     if (typeof body.sha !== 'string') throw new GithubError('Onverwacht antwoord', response.status)

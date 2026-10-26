@@ -1,10 +1,13 @@
 import { utf8 } from '../crypto/encrypt'
 import { META_PATH, parseMeta, serializeMeta, type Meta } from '../crypto/keys'
+import { NewerSchemaError, UPDATE_APP_MESSAGE } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, GithubError, NetworkError, type GithubClient } from './github'
+import { AuthError, GithubError, NetworkError, type GithubClient, type RemoteFile } from './github'
 import { getObject, putObject, type Db } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
 import { decryptRecords, encryptRecords, syncCollection } from './sync'
+
+export const TOKEN_INVALID_MESSAGE = 'Token verlopen of ingetrokken · Token vervangen'
 
 // Ontsleutelde data in het geheugen, alleen na ontgrendelen. Elke wijziging gaat direct versleuteld naar
 // IndexedDB en in de outbox; sync gebeurt bij ontgrendelen en op verzoek. Vergrendelen = alles hier wissen.
@@ -42,6 +45,8 @@ export class Store {
   /** Er kwam een wijziging of een sync-verzoek binnen terwijl een sync liep: daarna nog een ronde. */
   private syncAgain = false
   private locked = false
+  /** logboek-data bevat een bestand van een nieuwere schemaversie: niets meer naar GitHub schrijven. */
+  private outdated = false
 
   private constructor(
     private readonly db: Db,
@@ -144,17 +149,51 @@ export class Store {
   }
 
   private async runSync(): Promise<void> {
+    const count = () => this.pendingCount()
+    if (this.outdated) {
+      this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count: count() })
+      return
+    }
     this.setStatus({ kind: 'syncing' })
-    // Eén onleesbaar of blijvend conflicterend bestand houdt de andere bestanden niet tegen;
-    // zonder verbinding of met een ongeldige token stoppen we wel direct.
     let failure: unknown = null
+    // Leespas: alle bestanden ophalen en controleren vóór er iets geschreven wordt. Een bestand van een
+    // nieuwere schemaversie (geschreven door een nieuwere app) betekent: niets naar GitHub schrijven.
+    const prefetched = new Map<CollectionPath, RemoteFile | null>()
     for (const path of COLLECTION_PATHS) {
       if (this.locked) return
       try {
-        await this.syncPath(path)
+        const file = await this.client.getFile(path)
+        if (file) await decryptRecords(this.masterKey, path, file.content)
+        prefetched.set(path, file)
+      } catch (error) {
+        if (this.locked) return
+        if (error instanceof NewerSchemaError) {
+          this.outdated = true
+          this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count: count() })
+          return
+        }
+        if (error instanceof NetworkError || error instanceof AuthError) {
+          this.reportFailure(error)
+          return
+        }
+        // Onleesbaar bestand: dit pad wordt overgeslagen (geen PUT), de andere gaan door; de fout wordt gemeld.
+        failure = error
+      }
+    }
+    // Eén onleesbaar of blijvend conflicterend bestand houdt de andere bestanden niet tegen;
+    // zonder verbinding of met een ongeldige token stoppen we wel direct.
+    for (const path of COLLECTION_PATHS) {
+      if (this.locked) return
+      if (!prefetched.has(path)) continue
+      try {
+        await this.syncPath(path, prefetched.get(path))
       } catch (error) {
         if (this.locked) return
         failure = error
+        if (error instanceof NewerSchemaError) {
+          this.outdated = true
+          break
+        }
         if (error instanceof NetworkError || error instanceof AuthError) break
       }
     }
@@ -163,17 +202,22 @@ export class Store {
       this.setStatus(this.idleStatus())
       return
     }
+    this.reportFailure(failure)
+  }
+
+  private reportFailure(failure: unknown): void {
     const count = this.pendingCount()
     if (failure instanceof NetworkError) this.setStatus({ kind: 'offline', count })
-    else if (failure instanceof AuthError) this.setStatus({ kind: 'error', message: 'Token ongeldig', count })
+    else if (failure instanceof AuthError) this.setStatus({ kind: 'error', message: TOKEN_INVALID_MESSAGE, count })
+    else if (failure instanceof NewerSchemaError) this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count })
     else if (failure instanceof GithubError) this.setStatus({ kind: 'error', message: failure.message, count })
     else this.setStatus({ kind: 'error', message: 'Synchroniseren mislukt', count })
   }
 
-  private async syncPath(path: CollectionPath): Promise<void> {
+  private async syncPath(path: CollectionPath, prefetched: RemoteFile | null | undefined): Promise<void> {
     const snapshot = { ...(this.outbox[path] ?? {}) }
     const local = this.collections.get(path) ?? []
-    const result = await syncCollection(this.client, this.masterKey, path, local)
+    const result = await syncCollection(this.client, this.masterKey, path, local, prefetched)
     if (this.locked) return
     // Wijzigingen tijdens het wachten blijven staan: samenvoegen met wat ondertussen lokaal is gezet.
     const during = (this.collections.get(path) ?? []).filter((r) => {

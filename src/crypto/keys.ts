@@ -1,3 +1,4 @@
+import { NewerSchemaError } from '../model/schema'
 import {
   decryptObject,
   encryptObject,
@@ -273,7 +274,10 @@ export function parseMeta(json: string): Meta {
   } catch {
     throw new InvalidMetaError()
   }
-  if (!isRecord(raw) || raw.format !== 'logboek-meta' || raw.version !== 1) throw new InvalidMetaError()
+  if (!isRecord(raw) || raw.format !== 'logboek-meta') throw new InvalidMetaError()
+  // Een nieuwere meta (geschreven door een nieuwere app) is geen fout in de data: de app moet bijgewerkt worden.
+  if (typeof raw.version === 'number' && Number.isInteger(raw.version) && raw.version > 1) throw new NewerSchemaError(raw.version)
+  if (raw.version !== 1) throw new InvalidMetaError()
   const { passphrase: p, recovery: r, recoveryCode, check } = raw
   if (check !== undefined && !isBase64Blob(check)) throw new InvalidMetaError()
   if (

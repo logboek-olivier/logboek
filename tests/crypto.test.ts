@@ -14,6 +14,7 @@ import {
   type Meta,
 } from '../src/crypto/keys'
 import { entropyToWords, parseWordlist, RecoveryCodeError, wordsToEntropy } from '../src/crypto/recovery'
+import { NewerSchemaError } from '../src/model/schema'
 
 // Vectoren berekend met node:crypto (pbkdf2Sync, hkdfSync, createCipheriv), los van de WebCrypto-code.
 // MK = bytes 00..1f, herstelcode-entropie = 32 x 7f. Alle waarden zijn verzonnen testdata.
@@ -246,7 +247,8 @@ describe('hoofdsleutel en meta.json.enc', () => {
     const variants: unknown[] = [
       null,
       [],
-      { ...FIXED_META, version: 2 },
+      { ...FIXED_META, version: 0 },
+      { ...FIXED_META, version: '1' },
       { ...FIXED_META, format: 'iets' },
       { ...FIXED_META, passphrase: { ...FIXED_META.passphrase, iterations: 599_999 } },
       { ...FIXED_META, passphrase: { ...FIXED_META.passphrase, iterations: 600_000.5 } },
@@ -262,5 +264,7 @@ describe('hoofdsleutel en meta.json.enc', () => {
     ]
     expect(() => parseMeta('{niet json')).toThrow(InvalidMetaError)
     for (const variant of variants) expect(() => parseMeta(JSON.stringify(variant))).toThrow(InvalidMetaError)
+    // Een hogere versie is geen beschadigde meta: de app moet bijgewerkt worden.
+    expect(() => parseMeta(JSON.stringify({ ...FIXED_META, version: 2 }))).toThrow(NewerSchemaError)
   })
 })

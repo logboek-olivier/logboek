@@ -4,13 +4,19 @@ import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } 
 
 // Eerste keer op een apparaat: nieuw logboek of bestaand logboek koppelen.
 
+interface TokenInfo {
+  token: string
+  /** Vervaldatum jjjj-mm-dd, of null als onbekend (klassieke token zonder einddatum). */
+  expiresAt: string | null
+}
+
 type Step =
   | { kind: 'choose' }
   | { kind: 'token'; mode: 'new' | 'link' }
-  | { kind: 'passphrase'; token: string }
-  | { kind: 'words'; token: string; vault: PreparedVault }
-  | { kind: 'confirm'; token: string; vault: PreparedVault; positions: number[] }
-  | { kind: 'secret'; token: string }
+  | { kind: 'passphrase'; token: TokenInfo }
+  | { kind: 'words'; token: TokenInfo; vault: PreparedVault }
+  | { kind: 'confirm'; token: TokenInfo; vault: PreparedVault; positions: number[] }
+  | { kind: 'secret'; token: TokenInfo }
 
 export function Setup() {
   const [step, setStep] = useState<Step>({ kind: 'choose' })
@@ -47,18 +53,14 @@ export function Setup() {
   }
 
   if (step.kind === 'token') {
-    const onSubmit = (token: string) =>
-      run(async () => {
-        if (step.mode === 'new') {
-          await session.checkEmptyRepo(token)
-          setStep({ kind: 'passphrase', token })
-        } else {
-          setStep({ kind: 'secret', token })
-        }
-      })
+    const check = (token: string) =>
+      step.mode === 'new' ? session.checkEmptyRepo(token) : session.checkToken(token)
     return (
       <Screen title={step.mode === 'new' ? 'Nieuw logboek' : 'Logboek koppelen'} onBack={() => setStep({ kind: 'choose' })}>
-        <TokenForm busy={busy} error={error} onSubmit={onSubmit} />
+        <TokenForm
+          check={check}
+          onDone={(token) => setStep(step.mode === 'new' ? { kind: 'passphrase', token } : { kind: 'secret', token })}
+        />
       </Screen>
     )
   }
@@ -81,8 +83,9 @@ export function Setup() {
   }
 
   if (step.kind === 'words') {
+    // Terug = andere token kiezen; er is nog niets opgeslagen, de sleutels worden dan opnieuw gemaakt.
     return (
-      <Screen title="Herstelcode">
+      <Screen title="Herstelcode" onBack={() => setStep({ kind: 'token', mode: 'new' })}>
         <p>
           Schrijf deze {RECOVERY_WORD_COUNT} woorden op papier, in deze volgorde. Zonder wachtzin en zonder deze
           woorden is het logboek niet te openen.
@@ -110,7 +113,7 @@ export function Setup() {
           error={error}
           positions={step.positions}
           words={step.vault.recoveryWords}
-          onSubmit={() => run(() => session.finishNewVault(step.token, step.vault))}
+          onSubmit={() => run(() => session.finishNewVault(step.token.token, step.token.expiresAt, step.vault))}
         />
       </Screen>
     )
@@ -122,7 +125,7 @@ export function Setup() {
         busy={busy}
         error={error}
         submitLabel="Koppelen"
-        onSubmit={(secret) => run(() => session.link(step.token, secret))}
+        onSubmit={(secret) => run(() => session.link(step.token.token, step.token.expiresAt, secret))}
       />
     </Screen>
   )
@@ -168,37 +171,88 @@ export function ErrorLine({ error }: { error: string | null }) {
   ) : null
 }
 
-function TokenForm({
-  busy,
-  error,
-  onSubmit,
+/**
+ * Token invoeren in twee stappen: (1) token controleren bij GitHub, (2) vervaldatum bevestigen,
+ * vooraf ingevuld als de browser de header github-authentication-token-expiration mocht lezen.
+ */
+export function TokenForm({
+  check,
+  onDone,
+  submitLabel = 'Verder',
+  disabled = false,
 }: {
-  busy: boolean
-  error: string | null
-  onSubmit: (token: string) => void
+  check: (token: string) => Promise<{ expiresAt: string | null }>
+  onDone: (token: TokenInfo) => void
+  submitLabel?: string
+  /** Bijvoorbeeld zolang de aanroeper nog bezig is met opslaan; voorkomt dubbel tikken. */
+  disabled?: boolean
 }) {
   const [token, setToken] = useState('')
-  const submit = (e: FormEvent) => {
+  const [expiresAt, setExpiresAt] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [fromHeader, setFromHeader] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const blocked = busy || disabled
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (token.trim().length > 0) onSubmit(token)
+    if (token.trim().length === 0 || blocked) return
+    if (checked) {
+      // De waarde in het veld is leidend, ook als Olivier hem bewust leegmaakt.
+      onDone({ token: token.trim(), expiresAt: expiresAt || null })
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await check(token)
+      setExpiresAt(result.expiresAt ?? '')
+      setFromHeader(result.expiresAt !== null)
+      setChecked(true)
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
-    <form onSubmit={submit} className="stack">
+    <form onSubmit={(e) => void submit(e)} className="stack">
       <label>
         GitHub-token
         <input
           type="password"
           autoComplete="off"
           value={token}
-          onChange={(e) => setToken(e.target.value)}
+          onChange={(e) => {
+            // Andere token: alles van de vorige controle vergeten.
+            setToken(e.target.value)
+            setChecked(false)
+            setExpiresAt('')
+            setFromHeader(false)
+          }}
           placeholder="github_pat_…"
           required
         />
       </label>
-      <p className="muted">Fine-grained token met alleen Contents: lezen en schrijven op logboek-data.</p>
+      {!checked && <p className="muted">Fine-grained token met alleen Contents: lezen en schrijven op logboek-data.</p>}
+      {checked && (
+        <>
+          <label>
+            Vervaldatum van de token
+            <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          </label>
+          <p className="muted">
+            {fromHeader
+              ? 'Overgenomen van GitHub. De app waarschuwt 30 dagen voor het verlopen.'
+              : 'Niet leesbaar van GitHub; vul de datum in die je bij het aanmaken koos, of laat leeg.'}
+          </p>
+        </>
+      )}
       <ErrorLine error={error} />
-      <button className="btn primary" type="submit" disabled={busy || token.trim().length === 0}>
-        {busy ? 'Controleren…' : 'Verder'}
+      <button className="btn primary" type="submit" disabled={blocked || token.trim().length === 0}>
+        {busy ? 'Controleren…' : checked ? submitLabel : 'Controleren'}
       </button>
     </form>
   )

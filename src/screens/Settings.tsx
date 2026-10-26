@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
-import { ErrorLine } from './Setup'
+import { ErrorLine, TokenForm } from './Setup'
 
-// Instellingen: vergrendelen, wachtzin wijzigen, herstelcode tonen, vingerafdruk aan/uit, token vervangen.
+// Instellingen: vergrendelen, wachtzin wijzigen, herstelcode tonen, vingerafdruk aan/uit, token vervangen, back-up.
 
-type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token'
+type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'backup'
 
 export function Settings({ onBack, onDone }: { onBack: () => void; onDone: (message: string) => void }) {
   const session = useSession()
@@ -78,6 +78,11 @@ export function Settings({ onBack, onDone }: { onBack: () => void; onDone: (mess
           }}
         />
       )}
+
+      <button className="btn" aria-expanded={panel === 'backup'} onClick={() => toggle('backup')}>
+        Back-up maken
+      </button>
+      {panel === 'backup' && <Backup />}
     </section>
   )
 }
@@ -223,24 +228,39 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
 function ReplaceToken({ onDone }: { onDone: () => void }) {
   const session = useSession()
   const { busy, error, run } = useAction()
-  const [token, setToken] = useState('')
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    void run(async () => {
-      await session.replaceToken(token)
-      onDone()
-    })
-  }
   return (
-    <form className="stack panel" onSubmit={submit}>
-      <label>
-        Nieuwe GitHub-token
-        <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" />
-      </label>
+    <div className="stack panel">
+      <TokenForm
+        check={(token) => session.checkToken(token)}
+        submitLabel={busy ? 'Vervangen…' : 'Vervangen'}
+        disabled={busy}
+        onDone={({ token, expiresAt }) =>
+          void run(async () => {
+            await session.replaceToken(token, expiresAt)
+            onDone()
+          })
+        }
+      />
       <ErrorLine error={error} />
-      <button className="btn primary" type="submit" disabled={token.trim().length === 0 || busy}>
-        {busy ? 'Controleren…' : 'Vervangen'}
-      </button>
-    </form>
+    </div>
+  )
+}
+
+/** Back-up van logboek-data op een eigen computer. De app doet hiervoor geen netwerkverkeer; dit is alleen tekst. */
+function Backup() {
+  return (
+    <div className="stack panel">
+      <p className="muted">
+        De versleutelde data staat in de GitHub-repo <code>logboek-data</code>. Een kopie op de laptop maak en ververs je
+        in PowerShell (eenmalig clonen, daarna bijwerken):
+      </p>
+      <pre className="code">{`git clone https://github.com/logboek-olivier/logboek-data.git
+cd logboek-data
+git pull`}</pre>
+      <p className="muted">
+        De bestanden zijn zonder wachtzin of herstelcode niet te lezen. Bewaar de herstelcode op papier, niet naast de
+        kopie.
+      </p>
+    </div>
   )
 }

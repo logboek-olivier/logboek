@@ -29,6 +29,8 @@ export class FakeGithub {
   readonly statuses: number[] = []
   /** Wordt vóór elk request afgewacht; handig om een sync op te houden. */
   gate: Promise<void> | null = null
+  /** Repo zonder commits: GitHub antwoordt op GET contents met 409 "Git Repository is empty." tot de eerste PUT. */
+  emptyRepo = false
   /** Wordt vlak vóór elke PUT aangeroepen; handig om een gelijktijdige schrijver na te bootsen. */
   beforePut: ((path: string) => void) | null = null
   private shaCounter = 0
@@ -60,7 +62,7 @@ export class FakeGithub {
     const prefix = `https://api.github.com/repos/${REPO}`
     if (!url.startsWith(prefix)) return json(404, { message: 'Not Found' })
     const rest = url.slice(prefix.length)
-    if (rest === '') return json(200, { full_name: REPO })
+    if (rest === '') return json(200, { full_name: REPO }, this.forceHeaders)
 
     const blob = /^\/git\/blobs\/(.+)$/.exec(rest)
     if (blob && method === 'GET') {
@@ -74,6 +76,7 @@ export class FakeGithub {
     const file = this.files.get(path)
 
     if (method === 'GET') {
+      if (this.emptyRepo && this.files.size === 0) return json(409, { message: 'Git Repository is empty.' })
       if (!file) return json(404, { message: 'Not Found' })
       return json(200, { sha: file.sha, content: `${file.content}\n`, encoding: 'base64', size: 1 })
     }

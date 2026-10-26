@@ -7,9 +7,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      // Registratie via een extern script; geen inline script vanwege de CSP.
-      injectRegister: 'script',
+      // Nieuwe versie pas na "Herladen" (src/updates.ts); registratie in main.tsx, geen inline script (CSP).
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Logboek',
