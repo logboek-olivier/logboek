@@ -15,6 +15,8 @@ import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
 import { TodayPlan } from './Planning'
+import { CloseWeekSheet, WeekSheet, weekTypeLabel } from '../components/WeekSheet'
+import { activeWeek, needsClosing, weekView } from '../model/weeks'
 import { t } from '../i18n'
 
 // Vandaag: planning van vandaag (als er een lopende weekplanning is), nm dit jaar met voortgang naar het jaardoel, nm totaal, dagen tot de volgende vervaldatum, laatste tocht.
@@ -91,6 +93,7 @@ export function Today({
         />
       )}
       <TodayPlan store={store} notify={notify} />
+      <WeekCard store={store} notify={notify} />
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}
@@ -249,5 +252,51 @@ function Card({
       ))}
       {children}
     </div>
+  )
+}
+
+/** Kaart "Deze week": de lopende week (tikken = bewerken), "Week afronden" na de einddatum, of een nieuwe week starten. */
+function WeekCard({ store, notify }: { store: Store; notify: Notify }) {
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const [open, setOpen] = useState<'new' | 'edit' | 'close' | null>(null)
+  const week = activeWeek(trips, settings)
+  const view = week ? weekView(week, legs) : null
+  return (
+    <section className="stat wide week-card" aria-label={t('week.current')}>
+      <span className="stat-label">
+        <Icon icon={CalendarDays} />
+        {t('week.current')}
+      </span>
+      {view ? (
+        <>
+          <button className="week-card-main" onClick={() => setOpen('edit')} aria-label={`${t('week.edit')}: ${view.trip.name}`}>
+            <span className="stat-value small-value">{view.trip.name}</span>
+            <span className="small muted">
+              {[weekTypeLabel(view.type), view.startDate ? formatDateRange(view.startDate, view.endDate) : '', view.boat].filter(Boolean).join(' · ')}
+            </span>
+          </button>
+          {needsClosing(view, todayIso()) && (
+            <div className="notice">
+              <p className="small">{t('week.closePrompt', { name: view.trip.name })}</p>
+              <button className="btn small primary" onClick={() => setOpen('close')}>
+                {t('week.close')}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <span className="small muted">{t('week.noActive')}</span>
+          <button className="btn small primary" onClick={() => setOpen('new')}>
+            {t('week.new')}
+          </button>
+        </>
+      )}
+      {open === 'new' && <WeekSheet store={store} trip={null} notify={notify} onClose={() => setOpen(null)} />}
+      {open === 'edit' && week && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setOpen(null)} />}
+      {open === 'close' && week && <CloseWeekSheet store={store} trip={week} notify={notify} onClose={() => setOpen(null)} />}
+    </section>
   )
 }

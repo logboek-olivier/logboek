@@ -19,10 +19,10 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
   await createNewLogbook(page)
   await importFixture(page)
 
-  // Tocht hernoemen.
+  // Tocht (week) hernoemen.
   await page.locator('.trip').filter({ hasText: 'Cursus binnenwater' }).getByRole('button').first().click()
-  await page.getByRole('button', { name: 'Tocht bewerken' }).click()
-  await page.getByRole('dialog').getByLabel('Naam').fill('Cursus op het meer')
+  await page.getByRole('button', { name: 'Week bewerken' }).click()
+  await page.getByRole('dialog').getByLabel('Naam', { exact: true }).fill('Cursus op het meer')
   await expectNoHorizontalOverflow(page)
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.trip').first()).toContainText('Cursus op het meer')

@@ -7,6 +7,7 @@ import { defaultTripName } from '../import/mileage-csv'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings, saveSettings } from '../model/settings'
+import { activeWeek, roleForType } from '../model/weeks'
 import {
   CURRENCIES,
   newId,
@@ -296,14 +297,19 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
   const weeks = useMemo(() => {
     const withDays = summarizeTrips(trips, legs).map((s) => s.trip)
     const empty = active(trips).filter((trip) => !withDays.some((w) => w.id === trip.id))
-    return [...empty, ...withDays].slice(0, 12)
-  }, [trips, legs])
+    const list = [...empty, ...withDays].slice(0, 12)
+    const running = activeWeek(trips, settings)
+    return running && !list.some((w) => w.id === running.id) ? [running, ...list] : list
+  }, [trips, legs, settings])
   const lastTrip = useMemo(() => {
     const id = lastLeg?.tripId ?? settings.lastTripId
     return active(trips).find((trip) => trip.id === id)
   }, [trips, lastLeg, settings.lastTripId])
-  // Dezelfde week als de vorige dag kort geleden was; anders begint een nieuwe week.
+  // De lopende week gaat voor; anders dezelfde week als de vorige dag kort geleden was; anders een nieuwe week.
+  const current = activeWeek(trips, settings)
   const sameTripDefault = !!lastTrip && !!lastLeg && lastLeg.date >= addDays(today, -3)
+  const defaultTripId = current?.id ?? (sameTripDefault && lastTrip ? lastTrip.id : NEW_WEEK)
+  const weekRole = (trip: Trip | undefined) => (trip?.type ? roleForType(trip.type) : null)
 
   const [date, setDate] = useState(today)
   const [fromPlace, setFromPlace] = useState(lastLeg?.toPlace ?? '')
@@ -312,9 +318,18 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
   const [water, setWater] = useState<Water>(settings.lastWater ?? waterOf(lastLeg))
   const [nightHours, setNightHours] = useState('')
   const [wind, setWind] = useState('')
-  const [boat, setBoat] = useState(settings.lastBoat || lastLeg?.boat || '')
-  const [role, setRole] = useState<Role>(settings.lastRole)
-  const [tripId, setTripId] = useState<string>(sameTripDefault && lastTrip ? lastTrip.id : NEW_WEEK)
+  const [boat, setBoat] = useState(current?.boat || settings.lastBoat || lastLeg?.boat || '')
+  const [role, setRole] = useState<Role>(weekRole(current ?? undefined) ?? settings.lastRole)
+  const [tripId, setTripId] = useState<string>(defaultTripId)
+
+  /** Andere week gekozen: boot en rol volgen die week als die ze heeft. */
+  function chooseWeek(id: string) {
+    setTripId(id)
+    const trip = trips.find((w) => w.id === id)
+    if (trip?.boat) setBoat(trip.boat)
+    const r = weekRole(trip)
+    if (r) setRole(r)
+  }
   const [tripName, setTripName] = useState('')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
@@ -438,7 +453,7 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
       </div>
       <label>
         {t('field.week')}
-        <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+        <select value={tripId} onChange={(e) => chooseWeek(e.target.value)}>
           <option value={NEW_WEEK}>{t('quick.newWeek')}</option>
           {weeks.map((w) => (
             <option key={w.id} value={w.id}>

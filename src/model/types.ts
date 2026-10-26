@@ -11,8 +11,44 @@ export type Role = 'schipper' | 'co-schipper' | 'bemanningslid' | 'trainee' | 'i
 export const ROLES: readonly Role[] = ['schipper', 'co-schipper', 'bemanningslid', 'trainee', 'instructeur']
 
 
+// Een tocht is ook een week (release 2+). Alle weekvelden zijn optioneel: oudere en geïmporteerde tochten hebben
+// alleen een naam; type en datums worden dan afgeleid (src/model/weeks.ts) tot Olivier de week bewerkt.
+
+export type WeekType = 'training-geven' | 'skipper-charter' | 'zelf-cruisen' | 'zelf-trainen' | 'delivery' | 'overig'
+export const WEEK_TYPES: readonly WeekType[] = ['training-geven', 'skipper-charter', 'zelf-cruisen', 'zelf-trainen', 'delivery', 'overig']
+export type Organisation = 'sailing-virgins' | 'yacht-week' | 'eigen' | 'overig'
+export const ORGANISATIONS: readonly Organisation[] = ['sailing-virgins', 'yacht-week', 'eigen', 'overig']
+
+/** Deelnemer van een week: alleen voornaam, eventueel niveau en cursus (beveiligingsregel 14). */
+export interface Participant {
+  id: string
+  firstName: string
+  level?: StudentLevel
+  curriculumId?: string
+}
+
+export interface WeekReview {
+  /** Reviewscore zoals de organisatie die geeft, bijvoorbeeld 9,4. */
+  score?: number
+  /** Citaten uit reviews; Engelstalige citaten blijven Engels. */
+  quotes: string[]
+}
+
 export interface Trip extends SyncRecord {
   name: string
+  type?: WeekType
+  /** jjjj-mm-dd */
+  startDate?: string
+  /** jjjj-mm-dd, inclusief; standaard startDate + 6 dagen. */
+  endDate?: string
+  boat?: string
+  area?: string
+  organisation?: Organisation
+  participants?: Participant[]
+  note?: string
+  review?: WeekReview
+  /** jjjj-mm-dd waarop de week is afgerond. */
+  closedAt?: string
 }
 
 export interface Leg extends SyncRecord {
@@ -76,6 +112,8 @@ export interface Settings extends SyncRecord {
   lastWater?: Water
   /** Jaardoel in nm voor de kaart op Vandaag; standaard 2.500. */
   yearGoalNm?: number
+  /** De lopende week ("Nieuwe week starten" maakt een week actief; afronden maakt hem weer leeg). */
+  activeWeekId?: string | null
 }
 
 // Training (release 2). Bond-onafhankelijk: ASA, RYA, CWO of een eigen cursus.

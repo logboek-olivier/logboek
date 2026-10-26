@@ -98,8 +98,10 @@ export function lastTrip(trips: readonly Trip[], legs: readonly Leg[]): TripSumm
   return summarizeTrips(trips, legs)[0] ?? null
 }
 
-/** Tocht waar een datum in valt (begin- en einddatum inclusief), of null. */
+/** Tocht waar een datum in valt (begin- en einddatum inclusief), of null. Opgeslagen weekdatums gaan voor. */
 export function tripForDate(trips: readonly Trip[], legs: readonly Leg[], date: string): Trip | null {
+  const week = active(trips).find((t) => t.startDate && t.endDate && t.startDate <= date && date <= t.endDate)
+  if (week) return week
   const match = summarizeTrips(trips, legs).find((t) => t.startDate <= date && date <= t.endDate)
   return match?.trip ?? null
 }
