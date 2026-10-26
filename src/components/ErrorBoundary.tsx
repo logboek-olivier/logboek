@@ -3,6 +3,7 @@ import { Component, useSyncExternalStore, type ReactNode } from 'react'
 import { clearError, lastError, recordError, subscribeErrors } from '../errors'
 import { CopyErrorDetails } from './ErrorDetails'
 import { Icon } from './Icon'
+import { t } from '../i18n'
 
 /** Vangt een fout tijdens tekenen: geen wit scherm, maar een melding met foutdetails en Herladen. */
 export class ErrorBoundary extends Component<{ children: ReactNode }, { crashed: boolean }> {
@@ -22,11 +23,11 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { crashed:
       <main className="app">
         <div className="crash">
           <Icon icon={TriangleAlert} />
-          <h1>Er ging iets mis</h1>
-          <p className="muted">De gegevens zijn veilig: alles staat versleuteld op het apparaat en op GitHub.</p>
+          <h1>{t('error.generic')}</h1>
+          <p className="muted">{t('error.crashSafe')}</p>
           <CopyErrorDetails />
           <button className="btn primary" onClick={() => window.location.reload()}>
-            Herladen
+            {t('update.reload')}
           </button>
         </div>
       </main>
@@ -59,7 +60,7 @@ export function UnhandledErrorBar() {
   if (!unhandled || !recorded) return null
   return (
     <div className="error-bar" role="alert">
-      <span>Er ging iets mis.</span>
+      <span>{t('error.generic')}</span>
       <CopyErrorDetails />
       <button
         className="btn link small"
@@ -68,7 +69,7 @@ export function UnhandledErrorBar() {
           clearError()
         }}
       >
-        Sluiten
+        {t('common.close')}
       </button>
     </div>
   )

@@ -1,4 +1,5 @@
 import { updates, useUpdateAvailable } from '../updates'
+import { t } from '../i18n'
 
 /** Balk bovenaan zodra een nieuwe versie klaarstaat. Herladen gebeurt alleen op verzoek. */
 export function UpdateBar() {
@@ -6,9 +7,9 @@ export function UpdateBar() {
   if (!available) return null
   return (
     <div className="update-bar" role="status">
-      <span>Nieuwe versie beschikbaar</span>
+      <span>{t('update.available')}</span>
       <button className="btn link" onClick={() => updates.reload()}>
-        Herladen
+        {t('update.reload')}
       </button>
     </div>
   )

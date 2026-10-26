@@ -10,13 +10,6 @@ export type Role = 'schipper' | 'co-schipper' | 'bemanningslid' | 'trainee' | 'i
 
 export const ROLES: readonly Role[] = ['schipper', 'co-schipper', 'bemanningslid', 'trainee', 'instructeur']
 
-export const ROLE_LABELS: Record<Role, string> = {
-  schipper: 'Schipper',
-  'co-schipper': 'Co-schipper',
-  bemanningslid: 'Bemanningslid',
-  trainee: 'Trainee',
-  instructeur: 'Instructeur',
-}
 
 export interface Trip extends SyncRecord {
   name: string
@@ -51,18 +44,6 @@ export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | '
 
 export const CURRENCIES: readonly Currency[] = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'DKK', 'NOK', 'HRK']
 export const TRANSACTION_SOURCES: readonly TransactionSource[] = ['yacht-week', 'sailing-virgins', 'delivery', 'overig']
-export const SOURCE_LABELS: Record<TransactionSource, string> = {
-  'yacht-week': 'Yacht Week',
-  'sailing-virgins': 'Sailing Virgins',
-  delivery: 'Delivery',
-  overig: 'Overig',
-}
-export const KIND_LABELS: Record<TransactionKind, string> = {
-  fooi: 'Fooi',
-  loon: 'Loon',
-  kosten: 'Kosten',
-  investering: 'Investering',
-}
 
 export interface Transaction extends SyncRecord {
   /** jjjj-mm-dd */

@@ -1,5 +1,8 @@
 import { summarize, type SailingSummary } from '../model/derive'
-import { newId, ROLE_LABELS, ROLES, type Leg, type Role, type Trip } from '../model/types'
+import { formatMonthName } from '../format'
+import { t } from '../i18n'
+import { roleLabel } from '../i18n/labels'
+import { newId, ROLES, type Leg, type Role, type Trip } from '../model/types'
 import { FileFormatError, readRowSources, type FileKind, type SheetCell, type SheetRow } from './rows'
 
 // Import van de mijlenregistratie: het Excel-bestand (.xlsx) zelf of een export als CSV.
@@ -13,7 +16,7 @@ export class ImportError extends Error {
     message: string,
     readonly row: number | null = null,
   ) {
-    super(row === null ? message : `Rij ${row}: ${message}`)
+    super(row === null ? message : t('import.row', { row, message }))
     this.name = 'ImportError'
   }
 }
@@ -37,24 +40,11 @@ const ROLE_MAP: Record<string, Role> = {
   bemanning: 'bemanningslid',
   trainee: 'trainee',
   instructeur: 'instructeur',
+  instructor: 'instructeur',
+  crew: 'bemanningslid',
 }
 
-const ROLE_LIST = ROLES.map((r) => ROLE_LABELS[r]).join(', ')
-
-const MONTHS = [
-  'januari',
-  'februari',
-  'maart',
-  'april',
-  'mei',
-  'juni',
-  'juli',
-  'augustus',
-  'september',
-  'oktober',
-  'november',
-  'december',
-]
+const roleList = () => ROLES.map((r) => roleLabel(r)).join(', ')
 
 interface Columns {
   date: number
@@ -132,7 +122,7 @@ export function parseMileageCsv(text: string, now: string = new Date().toISOStri
 }
 
 function noHeaderMessage(kind: FileKind): string {
-  return `Kopregel niet gevonden: geen rij die begint met "Datum". Kies de mijlenregistratie (${kind === 'xlsx' ? 'het werkblad met de dagen' : 'CSV of Excel'}).`
+  return t(kind === 'xlsx' ? 'import.noHeaderXlsx' : 'import.noHeaderCsv')
 }
 
 function findHeader(rows: readonly SheetRow[]): number {
@@ -168,7 +158,7 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     const content = [columns.fromPlace, columns.toPlace, columns.role, columns.boat, columns.fromCountry, columns.toCountry, columns.skipper, columns.coSkipper]
     const hasNm = [columns.inland, columns.sea, columns.tidal, columns.night].some((c) => text(c) !== '' && text(c) !== '0')
     if (!content.some((c) => text(c) !== '') && !hasNm) {
-      if (text(columns.notes) !== '') warnings.push(`Rij ${rowNumber}: alleen ${COLUMN_LABELS.notes} ingevuld; rij overgeslagen`)
+      if (text(columns.notes) !== '') warnings.push(t('import.warnOnlyNotes', { row: rowNumber, column: COLUMN_LABELS.notes }))
       trip = null
       continue
     }
@@ -177,14 +167,14 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     let dateEstimated = false
     const dateCell = raw(columns.date)
     if (dateCell.formulaWithoutValue) {
-      if (previousDate === null) throw new ImportError('datum is een formule zonder opgeslagen waarde en er is geen vorige rij. Open het bestand in Excel, sla het op en probeer opnieuw.', rowNumber)
+      if (previousDate === null) throw new ImportError(t('import.dateFormulaFirst'), rowNumber)
       date = previousDate
       dateEstimated = true
-      warnings.push(`Rij ${rowNumber}: datum is een formule zonder opgeslagen waarde; datum van de vorige rij genomen (geschat)`)
+      warnings.push(t('import.warnDateFormula', { row: rowNumber }))
     } else if (dateCell.isoDate !== undefined) {
       date = checkYear(dateCell.isoDate, rowNumber)
     } else if (text(columns.date) === '') {
-      if (previousDate === null) throw new ImportError('datum ontbreekt op de eerste dag van het bestand.', rowNumber)
+      if (previousDate === null) throw new ImportError(t('import.dateMissingFirst'), rowNumber)
       date = previousDate
       dateEstimated = true
     } else {
@@ -192,7 +182,7 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
       date = parsed.date
       if (parsed.clamped) {
         dateEstimated = true
-        warnings.push(`Rij ${rowNumber}: dag bestaat niet in die maand; laatste dag van de maand genomen (geschat)`)
+        warnings.push(t('import.warnDayClamped', { row: rowNumber }))
       }
     }
     previousDate = date
@@ -201,7 +191,7 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     const role = ROLE_MAP[roleText.toLowerCase().replace(/\s+/g, '')]
     if (!role) {
       throw new ImportError(
-        roleText === '' ? `rol ontbreekt (kolom ${COLUMN_LABELS.role}). Vul een van deze in: ${ROLE_LIST}.` : `rol niet herkend (kolom ${COLUMN_LABELS.role}). Toegestaan: ${ROLE_LIST}.`,
+        t(roleText === '' ? 'import.roleMissing' : 'import.roleUnknown', { column: COLUMN_LABELS.role, roles: roleList() }),
         rowNumber,
       )
     }
@@ -210,11 +200,11 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     const number = (key: 'inland' | 'sea' | 'tidal' | 'night'): number => {
       const c = raw(columns[key])
       if (c.formulaWithoutValue) {
-        warnings.push(`Rij ${rowNumber}: ${COLUMN_LABELS[key]} is een formule zonder opgeslagen waarde; 0 genomen`)
+        warnings.push(t('import.warnNumberFormula', { row: rowNumber, column: COLUMN_LABELS[key] }))
         return 0
       }
       if (c.number !== undefined) {
-        if (c.number < 0) throw new ImportError(`negatief getal in kolom ${COLUMN_LABELS[key]}.`, rowNumber)
+        if (c.number < 0) throw new ImportError(t('import.negative', { column: COLUMN_LABELS[key] }), rowNumber)
         return c.number
       }
       return parseNumber(c.text.trim(), rowNumber, COLUMN_LABELS[key])
@@ -252,7 +242,7 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     if (notes && legs.some((l) => l.tripId === trip!.id)) leg.notes = notes
     legs.push(leg)
   }
-  if (legs.length === 0) throw new ImportError(`Geen dagen gevonden onder de kopregel (rij ${header.number}).`)
+  if (legs.length === 0) throw new ImportError(t('import.noDays', { row: header.number }))
   return { trips, legs, summary: summarize(legs), warnings }
 }
 
@@ -270,7 +260,7 @@ function windText(cell: SheetCell): string {
 
 function checkYear(iso: string, rowNumber: number): string {
   const y = Number(iso.slice(0, 4))
-  if (y < 1990 || y > 2100) throw new ImportError('datum valt buiten 1990–2100. Controleer de kolom Datum.', rowNumber)
+  if (y < 1990 || y > 2100) throw new ImportError(t('import.dateRange'), rowNumber)
   return iso
 }
 
@@ -282,7 +272,7 @@ function mapColumns(header: readonly SheetCell[], rowNumber: number): Columns {
     const candidates = names.map((n, i) => ({ n, i })).filter(({ n }) => n.startsWith(want))
     const exact = candidates.find(({ n }) => n === want)
     const best = exact ?? candidates.sort((a, b) => a.n.length - b.n.length)[0]
-    if (!best) throw new ImportError(`kolom "${COLUMN_LABELS[key]}" ontbreekt in de kopregel.`, rowNumber)
+    if (!best) throw new ImportError(t('import.columnMissing', { column: COLUMN_LABELS[key] }), rowNumber)
     return best.i
   }
   return {
@@ -318,10 +308,10 @@ export function parseDate(text: string, rowNumber: number | null = null): { date
     ;[d, m] = [Number(eu[1]), Number(eu[2])]
     y = eu[3]!.length === 2 ? 2000 + Number(eu[3]) : Number(eu[3])
   } else {
-    throw new ImportError('datum niet herkend (kolom Datum). Gebruik dag-maand-jaar, bijvoorbeeld 12-8-2021.', rowNumber)
+    throw new ImportError(t('import.dateUnknown'), rowNumber)
   }
   if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1990 || y > 2100) {
-    throw new ImportError('datum bestaat niet (kolom Datum).', rowNumber)
+    throw new ImportError(t('import.dateInvalid'), rowNumber)
   }
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   const clamped = d > daysInMonth
@@ -330,16 +320,16 @@ export function parseDate(text: string, rowNumber: number | null = null): { date
 }
 
 /** Leeg = 0. "12", "12,5", "12.5", "12 nm" en "4 uur" zijn geldig. */
-export function parseNumber(text: string, rowNumber: number | null = null, column = 'mijlen of nachturen'): number {
+export function parseNumber(text: string, rowNumber: number | null = null, column: string = t('import.numberColumns')): number {
   const cleaned = text.replace(/\s*(nm|uur|u|h)\.?$/i, '').replace(',', '.').trim()
   if (cleaned === '' || cleaned === '-') return 0
   const n = Number(cleaned)
-  if (!Number.isFinite(n) || n < 0) throw new ImportError(`getal niet herkend in kolom ${column}.`, rowNumber)
+  if (!Number.isFinite(n) || n < 0) throw new ImportError(t('import.numberUnknown', { column }), rowNumber)
   return n
 }
 
 export function defaultTripName(boat: string, date: string): string {
   const [y, m] = date.split('-')
-  const month = MONTHS[Number(m) - 1] ?? ''
+  const month = m ? formatMonthName(Number(m)) : ''
   return `${boat} ${month} ${y}`.trim()
 }

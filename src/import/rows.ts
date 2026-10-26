@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { parseCsv } from './csv'
 import { readXlsx, XlsxError } from './xlsx'
 
@@ -39,21 +40,21 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024
  * Excel (.xlsx) begint met "PK"; al het andere wordt als tekst (CSV) gelezen.
  */
 export function readRowSources(bytes: Uint8Array): { kind: FileKind; sheets: SheetRow[][] } {
-  if (bytes.length === 0) throw new FileFormatError('Het bestand is leeg.')
-  if (bytes.length > MAX_FILE_BYTES) throw new FileFormatError('Het bestand is te groot (maximaal 10 MB).')
+  if (bytes.length === 0) throw new FileFormatError(t('import.fileEmpty'))
+  if (bytes.length > MAX_FILE_BYTES) throw new FileFormatError(t('import.fileTooBig'))
   if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
     try {
       return { kind: 'xlsx', sheets: readXlsx(bytes).map((s) => s.rows) }
     } catch (error) {
-      if (error instanceof XlsxError) throw new FileFormatError(`${error.message}.`)
-      throw new FileFormatError('Excel-bestand is beschadigd of niet leesbaar.')
+      if (error instanceof XlsxError) throw new FileFormatError(t(error.key))
+      throw new FileFormatError(t('import.xlsxDamaged'))
     }
   }
   if (bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
-    throw new FileFormatError('Oud Excel-formaat (.xls) wordt niet ondersteund. Sla het bestand op als Excel-werkmap (.xlsx) of als CSV UTF-8.')
+    throw new FileFormatError(t('import.xlsOld'))
   }
   const text = decodeText(bytes)
-  if (text.includes('\u0000')) throw new FileFormatError('Dit is geen CSV- of Excel-bestand.')
+  if (text.includes('\u0000')) throw new FileFormatError(t('import.notCsv'))
   const rows = parseCsv(text).map((cells, i) => ({ number: i + 1, cells: cells.map((t) => ({ text: t })) }))
   return { kind: 'csv', sheets: [rows] }
 }

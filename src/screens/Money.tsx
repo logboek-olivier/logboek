@@ -8,8 +8,10 @@ import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
 import { active } from '../model/derive'
 import { isIncome, monthSeries, perMonth, perSource, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
-import { KIND_LABELS, SOURCE_LABELS, todayIso, type Transaction } from '../model/types'
+import { kindLabel, sourceLabel } from '../i18n/labels'
+import { todayIso, type Transaction } from '../model/types'
 import type { Store } from '../storage/store'
+import { t } from '../i18n'
 
 // Geld: zeilgeld per maand, per bron, fooi per week (12 weken), lijst per maand met verwijderen. Geen netto waarde.
 
@@ -30,41 +32,41 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   return (
     <section className="stack-lg">
       <header className="page-header">
-        <h1>Geld</h1>
+        <h1>{t('nav.money')}</h1>
       </header>
       {live.length === 0 && (
         <Empty
           icon={Wallet}
           action={
             <button className="btn primary" onClick={onAdd}>
-              Fooi toevoegen
+              {t('money.addTip')}
             </button>
           }
         >
-          Nog geen zeilgeld. Een fooi of kosten invoeren kost een paar seconden.
+          {t('money.empty')}
         </Empty>
       )}
       {live.length > 0 && (
         <>
           <dl className="grid">
             <Stat
-              label="Saldo"
+              label={t('money.balance')}
               value={formatMoney(all.balanceEur, 'EUR')}
               tone={all.balanceEur >= 0 ? 'positive' : 'negative'}
               hero
             />
-            <Stat label="Inkomsten" value={formatMoney(all.incomeEur, 'EUR')} />
-            <Stat label="Kosten" value={formatMoney(all.costsEur, 'EUR')} />
+            <Stat label={t('money.income')} value={formatMoney(all.incomeEur, 'EUR')} />
+            <Stat label={t('money.costs')} value={formatMoney(all.costsEur, 'EUR')} />
             <OtherStat other={all.other} />
           </dl>
 
           <div className="section card card-body">
             <div className="section-head">
-              <h2>Fooi per week</h2>
-              <span className="muted">12 weken</span>
+              <h2>{t('chart.tipsPerWeek')}</h2>
+              <span className="muted">{t('chart.weeks12')}</span>
             </div>
             <BarChart
-              label={`Fooi per week, laatste 12 weken: ${weeks.map((w) => `${formatDateShort(w.weekStart)} ${formatMoney(w.eur, 'EUR')}`).join(', ')}`}
+              label={`${t('chart.tipsPerWeek')}: ${weeks.map((w) => `${formatDateShort(w.weekStart)} ${formatMoney(w.eur, 'EUR')}`).join(', ')}`}
               groups={weeks.map((w) => ({
                 key: w.weekStart,
                 label: formatDateShort(w.weekStart).replace('.', ''),
@@ -75,7 +77,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             />
             {Object.keys(weekOther).length > 0 && (
               <p className="muted small">
-                Niet in de grafiek:{' '}
+                {t('money.notInChart')}{' '}
                 {Object.entries(weekOther)
                   .map(([c, v]) => formatMoney(v, c))
                   .join(', ')}
@@ -85,30 +87,30 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
 
           <div className="section card card-body">
             <div className="section-head">
-              <h2>Per maand</h2>
+              <h2>{t('money.perMonth')}</h2>
               <span className="muted">EUR</span>
             </div>
             <BarChart
-              label={`Inkomsten en kosten per maand: ${series.map((m) => `${formatMonth(m.month)} in ${formatMoney(m.incomeEur, 'EUR')}, uit ${formatMoney(m.costsEur, 'EUR')}`).join('; ')}`}
+              label={`${t('chart.incomeCosts')}: ${series.map((m) => `${formatMonth(m.month)} +${formatMoney(m.incomeEur, 'EUR')}, −${formatMoney(m.costsEur, 'EUR')}`).join('; ')}`}
               groups={series.map((m) => ({ key: m.month, label: formatMonthShort(m.month), values: [m.incomeEur, m.costsEur] }))}
               format={(n) => formatMoneyShort(n)}
               labelEvery={2}
             />
             <ul className="legend">
               <li>
-                <span className="swatch" /> Inkomsten
+                <span className="swatch" /> {t('money.income')}
               </li>
               <li>
-                <span className="swatch s2" /> Kosten
+                <span className="swatch s2" /> {t('money.costs')}
               </li>
             </ul>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Maand</th>
-                  <th className="num">In</th>
-                  <th className="num">Uit</th>
-                  <th className="num">Saldo</th>
+                  <th>{t('money.month')}</th>
+                  <th className="num">{t('money.in')}</th>
+                  <th className="num">{t('money.out')}</th>
+                  <th className="num">{t('money.balance')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,12 +130,12 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           </div>
 
           <div className="section">
-            <h2>Per bron</h2>
+            <h2>{t('money.perSource')}</h2>
             <ul className="rows">
               {sources.map((s) => (
                 <li key={s.source} className="row-item">
                   <div className="row-main">
-                    <span className="row-title">{SOURCE_LABELS[s.source]}</span>
+                    <span className="row-title">{sourceLabel(s.source)}</span>
                     <OtherLine other={s.other} />
                   </div>
                   <span className="row-value">
@@ -147,7 +149,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           </div>
 
           <div className="section">
-            <h2>Transacties</h2>
+            <h2>{t('money.transactions')}</h2>
             {months.map((m) => (
               <div key={m.month} className="group">
                 <h3 className="group-head">
@@ -161,17 +163,17 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
                       <li key={tx.id} className="tx">
                         <button
                           className="row-item"
-                          aria-label={`${tx.note ?? KIND_LABELS[tx.kind]}, ${formatDate(tx.date)}, ${formatMoney(tx.amount, tx.currency)} · Bewerken`}
+                          aria-label={`${tx.note ?? kindLabel(tx.kind)}, ${formatDate(tx.date)}, ${formatMoney(tx.amount, tx.currency)} · ${t('common.edit')}`}
                           onClick={() => setEditing(tx)}
                         >
                           <span className={`row-icon${isIncome(tx.kind) ? '' : ' cost'}`}>
                             <Icon icon={isIncome(tx.kind) ? Coins : Receipt} />
                           </span>
                           <div className="row-main">
-                            <span className="row-title">{tx.note ?? KIND_LABELS[tx.kind]}</span>
+                            <span className="row-title">{tx.note ?? kindLabel(tx.kind)}</span>
                             <span className="muted">
                               {formatDateShort(tx.date)}
-                              {tx.note ? ` · ${KIND_LABELS[tx.kind]}` : ''} · {SOURCE_LABELS[tx.source]}
+                              {tx.note ? ` · ${kindLabel(tx.kind)}` : ''} · {sourceLabel(tx.source)}
                             </span>
                           </div>
                           <span className={`row-value ${isIncome(tx.kind) ? 'positive' : ''}`}>
@@ -223,7 +225,7 @@ function OtherStat({ other }: { other: MoneyTotals['other'] }) {
   if (entries.length === 0) return null
   return (
     <div className="stat wide">
-      <dt>Andere valuta</dt>
+      <dt>{t('money.otherCurrencies')}</dt>
       <dd className="small">
         {entries.map(([c, v]) => (
           <span key={c}>

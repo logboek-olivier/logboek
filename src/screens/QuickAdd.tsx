@@ -1,6 +1,7 @@
 import { Coins, Receipt, Sailboat } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
+import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
 import { active, compareLegs, tripForDate } from '../model/derive'
@@ -8,12 +9,9 @@ import { addDays, parseAmount } from '../model/money'
 import { currentSettings, saveSettings } from '../model/settings'
 import {
   CURRENCIES,
-  KIND_LABELS,
   newId,
   nowIso,
-  ROLE_LABELS,
   ROLES,
-  SOURCE_LABELS,
   todayIso,
   TRANSACTION_SOURCES,
   type AddTab,
@@ -28,6 +26,7 @@ import {
   type Trip,
 } from '../model/types'
 import type { Store } from '../storage/store'
+import { t } from '../i18n'
 
 // Snel toevoegen: Fooi · Kosten · Dag. Maximaal drie velden, de rest laatst gebruikt. Opslaan = één tik.
 
@@ -42,23 +41,23 @@ function confirmVibration() {
 
 export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
   const [tab, setTab] = useState<AddTab>('fooi')
-  const choose = (t: AddTab) => setTab(t)
+  const choose = (next: AddTab) => setTab(next)
   return (
     <section className="stack">
       <header className="page-header">
-        <h1>Toevoegen</h1>
+        <h1>{t('nav.add')}</h1>
       </header>
       <div className="segments" role="tablist">
-        {(['fooi', 'kosten', 'dag'] as AddTab[]).map((t) => (
+        {(['fooi', 'kosten', 'dag'] as AddTab[]).map((id) => (
           <button
-            key={t}
+            key={id}
             role="tab"
-            aria-selected={tab === t}
-            className={`segment${tab === t ? ' active' : ''}`}
-            onClick={() => choose(t)}
+            aria-selected={tab === id}
+            className={`segment${tab === id ? ' active' : ''}`}
+            onClick={() => choose(id)}
           >
-            <Icon icon={t === 'fooi' ? Coins : t === 'kosten' ? Receipt : Sailboat} />
-            {t === 'fooi' ? 'Fooi' : t === 'kosten' ? 'Kosten' : 'Dag'}
+            <Icon icon={id === 'fooi' ? Coins : id === 'kosten' ? Receipt : Sailboat} />
+            {t(id === 'fooi' ? 'quick.tabTip' : id === 'kosten' ? 'quick.tabCost' : 'quick.tabDay')}
           </button>
         ))}
       </div>
@@ -107,7 +106,7 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
     setBusy(true)
     try {
       await saveTransaction(store, { date, kind, amount: parsed, currency, source }, { lastIncomeKind: kind === 'loon' ? 'loon' : 'fooi' })
-      onDone(`${KIND_LABELS[kind]} opgeslagen`)
+      onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
       setBusy(false)
     }
@@ -116,19 +115,19 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
       <label>
-        Bedrag
+        {t('field.amount')}
         <input
           className="amount"
           inputMode="decimal"
           autoFocus
           enterKeyHint="done"
           autoComplete="off"
-          placeholder="0,00"
+          placeholder={t('quick.amountPlaceholder')}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
       </label>
-      <div className="segments small" role="radiogroup" aria-label="Soort">
+      <div className="segments small" role="radiogroup" aria-label={t('field.kind')}>
         {(['fooi', 'loon'] as TransactionKind[]).map((k) => (
           <button
             key={k}
@@ -138,23 +137,23 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
             className={`segment${kind === k ? ' active' : ''}`}
             onClick={() => setKind(k)}
           >
-            {KIND_LABELS[k]}
+            {kindLabel(k)}
           </button>
         ))}
       </div>
       <div className="two">
         <label>
-          Bron
+          {t('field.source')}
           <select value={source} onChange={(e) => setSource(e.target.value as TransactionSource)}>
             {TRANSACTION_SOURCES.map((s) => (
               <option key={s} value={s}>
-                {SOURCE_LABELS[s]}
+                {sourceLabel(s)}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Valuta
+          {t('field.currency')}
           <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
             {CURRENCIES.map((c) => (
               <option key={c} value={c}>
@@ -165,11 +164,11 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
         </label>
       </div>
       <label>
-        Datum
+        {t('field.date')}
         <input type="date" value={date} max={addDays(todayIso(), 1)} onChange={(e) => setDate(e.target.value)} />
       </label>
       <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
-        Opslaan
+        {t('common.save')}
       </button>
     </form>
   )
@@ -197,7 +196,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
         { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}) },
         { lastCostKind: kind === 'investering' ? 'investering' : 'kosten' },
       )
-      onDone(`${KIND_LABELS[kind]} opgeslagen`)
+      onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
       setBusy(false)
     }
@@ -206,23 +205,23 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
       <label>
-        Bedrag
+        {t('field.amount')}
         <input
           className="amount"
           inputMode="decimal"
           autoFocus
           enterKeyHint="done"
           autoComplete="off"
-          placeholder="0,00"
+          placeholder={t('quick.amountPlaceholder')}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
       </label>
       <label>
-        Omschrijving
+        {t('field.description')}
         <input type="text" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
-      <div className="segments small" role="radiogroup" aria-label="Soort">
+      <div className="segments small" role="radiogroup" aria-label={t('field.kind')}>
         {(['kosten', 'investering'] as TransactionKind[]).map((k) => (
           <button
             key={k}
@@ -232,15 +231,15 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
             className={`segment${kind === k ? ' active' : ''}`}
             onClick={() => setKind(k)}
           >
-            {KIND_LABELS[k]}
+            {kindLabel(k)}
           </button>
         ))}
       </div>
       {!more && (
         <p className="muted">
-          {SOURCE_LABELS[source]} · {currency} · vandaag{' '}
+          {sourceLabel(source)} · {currency} · {t('quick.today')}{' '}
           <button type="button" className="btn link inline" onClick={() => setMore(true)}>
-            Meer
+            {t('common.more')}
           </button>
         </p>
       )}
@@ -248,17 +247,17 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
         <>
           <div className="two">
             <label>
-              Bron
+              {t('field.source')}
               <select value={source} onChange={(e) => setSource(e.target.value as TransactionSource)}>
                 {TRANSACTION_SOURCES.map((s) => (
                   <option key={s} value={s}>
-                    {SOURCE_LABELS[s]}
+                    {sourceLabel(s)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Valuta
+              {t('field.currency')}
               <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
@@ -269,13 +268,13 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
             </label>
           </div>
           <label>
-            Datum
+            {t('field.date')}
             <input type="date" value={date} max={addDays(todayIso(), 1)} onChange={(e) => setDate(e.target.value)} />
           </label>
         </>
       )}
       <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
-        Opslaan
+        {t('common.save')}
       </button>
     </form>
   )
@@ -294,7 +293,7 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
   const lastLeg = useMemo(() => [...active(legs)].sort(compareLegs).at(-1), [legs])
   const lastTrip = useMemo(() => {
     const id = lastLeg?.tripId ?? settings.lastTripId
-    return active(trips).find((t) => t.id === id)
+    return active(trips).find((trip) => trip.id === id)
   }, [trips, lastLeg, settings.lastTripId])
   // Dezelfde tocht als de vorige dag kort geleden was; anders begint een nieuwe tocht.
   const sameTripDefault = !!lastTrip && !!lastLeg && lastLeg.date >= addDays(today, -3)
@@ -360,7 +359,7 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
       await saveSettings(store, { lastBoat: boat.trim(), lastRole: role, lastTripId: tripId, lastWater: water })
       confirmVibration()
       void store.sync()
-      onDone('Dag opgeslagen')
+      onDone(t('toast.daySaved'))
     } finally {
       setBusy(false)
     }
@@ -369,14 +368,14 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
       <label>
-        Naar (plaats)
+        {t('field.toPlace')}
         <input type="text" autoFocus autoComplete="off" value={toPlace} onChange={(e) => setToPlace(e.target.value)} />
       </label>
       <label>
-        Zeemijlen
+        {t('field.nm')}
         <input className="amount" inputMode="decimal" autoComplete="off" placeholder="0" value={nm} onChange={(e) => setNm(e.target.value)} />
       </label>
-      <div className="segments small" role="radiogroup" aria-label="Watertype">
+      <div className="segments small" role="radiogroup" aria-label={t('field.water')}>
         {(['zee', 'getij', 'binnen'] as Water[]).map((w) => (
           <button
             key={w}
@@ -386,51 +385,51 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
             className={`segment${water === w ? ' active' : ''}`}
             onClick={() => setWater(w)}
           >
-            {w === 'zee' ? 'Zee' : w === 'getij' ? 'Getij' : 'Binnen'}
+            {t(w === 'zee' ? 'water.seaTab' : w === 'getij' ? 'water.tidalTab' : 'water.inlandTab')}
           </button>
         ))}
       </div>
       {!more && (
         <p className="muted">
-          {fromPlace ? `Van ${fromPlace} · ` : ''}
-          {boat || 'geen boot'} · {ROLE_LABELS[role]} ·{' '}
-          {newTrip ? 'nieuwe tocht' : `tocht ${lastTrip?.name ?? ''}`}{' '}
+          {fromPlace ? `${t('quick.from', { place: fromPlace })} · ` : ''}
+          {boat || t('quick.noBoat')} · {roleLabel(role)} ·{' '}
+          {newTrip ? t('quick.newTripShort') : t('quick.tripShort', { name: lastTrip?.name ?? '' })}{' '}
           <button type="button" className="btn link inline" onClick={() => setMore(true)}>
-            Meer
+            {t('common.more')}
           </button>
         </p>
       )}
       {more && (
         <>
           <label>
-            Datum
+            {t('field.date')}
             <input type="date" value={date} max={addDays(today, 1)} onChange={(e) => setDate(e.target.value)} />
           </label>
           <div className="two">
             <label>
-              Van (plaats)
+              {t('field.fromPlace')}
               <input type="text" autoComplete="off" value={fromPlace} onChange={(e) => setFromPlace(e.target.value)} />
             </label>
             <label>
-              Van (land)
+              {t('field.fromCountry')}
               <input type="text" autoComplete="off" value={fromCountry} onChange={(e) => setFromCountry(e.target.value)} />
             </label>
           </div>
           <label>
-            Naar (land)
+            {t('field.toCountry')}
             <input type="text" autoComplete="off" value={toCountry} onChange={(e) => setToCountry(e.target.value)} />
           </label>
           <div className="two">
             <label>
-              Boot
+              {t('field.boat')}
               <input type="text" autoComplete="off" value={boat} onChange={(e) => setBoat(e.target.value)} />
             </label>
             <label>
-              Rol
+              {t('field.role')}
               <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
+                    {roleLabel(r)}
                   </option>
                 ))}
               </select>
@@ -438,27 +437,27 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
           </div>
           <div className="two">
             <label>
-              Nachturen
+              {t('field.nightHours')}
               <input inputMode="decimal" autoComplete="off" value={nightHours} onChange={(e) => setNightHours(e.target.value)} />
             </label>
             <label>
-              Wind (bft)
+              {t('field.wind')}
               <input type="text" autoComplete="off" placeholder="3-4" value={wind} onChange={(e) => setWind(e.target.value)} />
             </label>
           </div>
           {lastTrip && (
             <label className="check">
               <input type="checkbox" checked={newTrip} onChange={(e) => setNewTrip(e.target.checked)} />
-              Nieuwe tocht (anders bij "{lastTrip.name}")
+              {t('quick.newTripCheck', { name: lastTrip.name })}
             </label>
           )}
           {(newTrip || !lastTrip) && (
             <label>
-              Naam tocht
+              {t('field.tripName')}
               <input
                 type="text"
                 autoComplete="off"
-                placeholder={defaultTripName(boat.trim() || 'Boot', date)}
+                placeholder={defaultTripName(boat.trim() || t('field.boat'), date)}
                 value={tripName}
                 onChange={(e) => setTripName(e.target.value)}
               />
@@ -466,9 +465,9 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
           )}
         </>
       )}
-      {!boat && !more && <p className="error">Boot ontbreekt: open "Meer" en vul de boot in.</p>}
+      {!boat && !more && <p className="error">{t('quick.boatMissing')}</p>}
       <button className="btn primary" type="submit" disabled={!ok || busy}>
-        Opslaan
+        {t('common.save')}
       </button>
     </form>
   )

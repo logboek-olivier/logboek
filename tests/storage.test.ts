@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { encryptObject, fromBase64, toBase64, utf8 } from '../src/crypto/encrypt'
-import { NewerSchemaError, SCHEMA_VERSION, UPDATE_APP_MESSAGE } from '../src/model/schema'
+import { NewerSchemaError, SCHEMA_VERSION } from '../src/model/schema'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 import {
   AuthError,
@@ -15,7 +15,7 @@ import {
 import { openDB } from 'idb'
 import { getObject, getSessionKey, openLogboekDb, putLocal, type Db } from '../src/storage/idb'
 import { clearSynced, markPending, pendingCount } from '../src/storage/outbox'
-import { Store, TOKEN_INVALID_MESSAGE } from '../src/storage/store'
+import { Store } from '../src/storage/store'
 import { decodeRecords, encodeRecords, encryptRecords, mergeRecords, SyncFailedError, syncCollection } from '../src/storage/sync'
 import { loadToken, storeToken } from '../src/storage/token'
 import type { Trip } from '../src/model/types'
@@ -323,7 +323,7 @@ describe('sync tussen twee apparaten', () => {
       deletedAt: null,
     })
     await a.store.sync()
-    expect(a.store.getStatus()).toEqual({ kind: 'error', message: 'Synchroniseren mislukt', count: 0 })
+    expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'failed', count: 0 })
     expect(github.files.has('legs.json.enc')).toBe(true)
     const b = await device(github)
     await b.store.sync()
@@ -389,7 +389,7 @@ describe('sync tussen twee apparaten', () => {
     await a.store.put('trips.json.enc', trip('t1', 'x'))
     github.forceStatus = 401
     await a.store.sync()
-    expect(a.store.getStatus()).toEqual({ kind: 'error', message: TOKEN_INVALID_MESSAGE, count: 1 })
+    expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'token', count: 1 })
     expect(a.store.pendingCount()).toBe(1)
     // Na een nieuwe token (hier: GitHub antwoordt weer gewoon) gaat de wijziging alsnog mee.
     github.forceStatus = null
@@ -425,13 +425,13 @@ describe('sync tussen twee apparaten', () => {
     const newer = JSON.stringify({ format: 'logboek-collection', schemaVersion: SCHEMA_VERSION + 1, records: [] })
     github.write('transactions.json.enc', toBase64(await encryptObject(masterKey, 'transactions.json.enc', utf8(newer))))
     await a.store.sync()
-    expect(a.store.getStatus()).toEqual({ kind: 'error', message: UPDATE_APP_MESSAGE, count: 2 })
+    expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'update', count: 2 })
     // Geen enkele PUT, ook niet voor de bestanden die vóór het nieuwere bestand aan de beurt waren.
     expect(github.requests.filter((r) => r.method === 'PUT')).toHaveLength(0)
     // Ook een volgende sync schrijft niets en houdt de melding.
     await a.store.sync()
     expect(github.requests.filter((r) => r.method === 'PUT')).toHaveLength(0)
-    expect(a.store.getStatus()).toEqual({ kind: 'error', message: UPDATE_APP_MESSAGE, count: 2 })
+    expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'update', count: 2 })
     // Lokaal blijft alles bewaard voor na de update.
     const again = await Store.open(a.db, masterKey, new GithubClient(TOKEN, github.fetch))
     expect(again.pendingCount()).toBe(2)

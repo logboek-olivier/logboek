@@ -5,9 +5,11 @@ import type { SheetCell, SheetRow } from './rows'
 // Leest de werkbladen van een .xlsx zonder Excel-bibliotheek: fflate pakt uit, xml.ts leest de onderdelen.
 // Formulecellen geven de opgeslagen waarde; ontbreekt die, dan krijgt de cel `formulaWithoutValue`.
 
+export type XlsxErrorKey = 'import.xlsxNoWorkbook' | 'import.xlsxTooBig' | 'import.xlsxDamaged' | 'import.xlsxNoSheets'
+
 export class XlsxError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(readonly key: XlsxErrorKey) {
+    super(key)
     this.name = 'XlsxError'
   }
 }
@@ -30,7 +32,7 @@ export function readXlsx(bytes: Uint8Array): Sheet[] {
 
   const workbookPath = officeDocumentPath(read('_rels/.rels'))
   const workbook = read(workbookPath)
-  if (!workbook) throw new XlsxError('Werkmap ontbreekt in het Excel-bestand')
+  if (!workbook) throw new XlsxError('import.xlsxNoWorkbook')
   const dir = workbookPath.includes('/') ? workbookPath.slice(0, workbookPath.lastIndexOf('/') + 1) : ''
   const rels = relationships(read(`${dir}_rels/${workbookPath.slice(dir.length)}.rels`), dir)
 
@@ -49,7 +51,7 @@ export function readXlsx(bytes: Uint8Array): Sheet[] {
     if (!xml) continue
     sheets.push({ name: sheet.attrs.name ?? '', rows: sheetRows(xml, strings, dateStyles, date1904) })
   }
-  if (sheets.length === 0) throw new XlsxError('Geen werkbladen gevonden in het Excel-bestand')
+  if (sheets.length === 0) throw new XlsxError('import.xlsxNoSheets')
   return sheets
 }
 
@@ -60,13 +62,13 @@ function unzip(bytes: Uint8Array): Record<string, Uint8Array> {
       filter(file) {
         if (!/\.(xml|rels)$/i.test(file.name)) return false
         total += file.originalSize
-        if (total > MAX_UNZIPPED) throw new XlsxError('Excel-bestand is te groot')
+        if (total > MAX_UNZIPPED) throw new XlsxError('import.xlsxTooBig')
         return true
       },
     })
   } catch (error) {
     if (error instanceof XlsxError) throw error
-    throw new XlsxError('Excel-bestand is beschadigd of niet leesbaar')
+    throw new XlsxError('import.xlsxDamaged')
   }
 }
 

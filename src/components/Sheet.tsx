@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Icon } from './Icon'
+import { t } from '../i18n'
 
 // Onderblad: schuift van onderen in, met een donkere laag erachter. Escape, de sluitknop of tikken op de laag sluit.
 
@@ -30,7 +31,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} ref={panel} tabIndex={-1}>
         <header className="sheet-header">
           <h2>{title}</h2>
-          <button type="button" className="btn icon" aria-label="Sluiten" onClick={onClose}>
+          <button type="button" className="btn icon" aria-label={t('common.close')} onClick={onClose}>
             <Icon icon={X} />
           </button>
         </header>

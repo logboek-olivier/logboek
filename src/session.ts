@@ -18,7 +18,7 @@ import { loadWordlist } from './crypto/recovery'
 import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFingerprint } from './crypto/webauthn'
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
 import { recordError } from './errors'
-import { UPDATE_APP_MESSAGE } from './model/schema'
+import { t, type MessageKey } from './i18n'
 import { ConflictError, GithubClient, GithubError } from './storage/github'
 import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKey, type Db } from './storage/idb'
 import { Store } from './storage/store'
@@ -41,9 +41,10 @@ export type SessionState =
   | { phase: 'locked'; meta: Meta; fingerprint: boolean }
   | { phase: 'unlocked'; store: Store }
 
+/** Fout bij eerste keer of ontgrendelen; `key` is de vertaalsleutel van de melding. */
 export class SetupError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(readonly key: MessageKey) {
+    super(key)
     this.name = 'SetupError'
   }
 }
@@ -185,7 +186,7 @@ export class Session {
     for (let attempt = 0; attempt < 2; attempt++) {
       const stored = await getObject(db, META_PATH)
       const meta = await Store.loadMeta(db)
-      if (!meta) throw new SetupError('meta.json.enc ontbreekt op dit apparaat')
+      if (!meta) throw new SetupError('error.metaMissing')
       const changed = await changePassphrase(meta, { passphrase: current }, next)
       this.assertSameSession(generation)
       try {
@@ -206,7 +207,7 @@ export class Session {
 
   async revealRecovery(passphrase: string): Promise<string[]> {
     const meta = await Store.loadMeta(this.requireDb())
-    if (!meta) throw new SetupError('meta.json.enc ontbreekt op dit apparaat')
+    if (!meta) throw new SetupError('error.metaMissing')
     return revealRecoveryWords(meta, passphrase, await loadWordlist())
   }
 
@@ -263,7 +264,7 @@ export class Session {
   async enableFingerprint(passphrase: string): Promise<void> {
     const db = this.requireDb()
     const meta = await Store.loadMeta(db)
-    if (!meta) throw new SetupError('meta.json.enc ontbreekt op dit apparaat')
+    if (!meta) throw new SetupError('error.metaMissing')
     // Eerst de wachtzin controleren, dan pas om de vingerafdruk vragen.
     await unlock(meta, { passphrase })
     const registration = await registerFingerprint()
@@ -297,7 +298,7 @@ export class Session {
   async unlockWithFingerprint(signal?: AbortSignal): Promise<void> {
     const db = this.requireDb()
     const record = await loadFingerprint(db)
-    if (!record) throw new SetupError('Vingerafdruk is niet ingesteld op dit apparaat')
+    if (!record) throw new SetupError('error.fingerprintNotSet')
     const prf = await evaluateFingerprint(fromBase64(record.credentialId), fromBase64(record.prfSalt), signal)
     let kek: CryptoKey
     try {
@@ -317,7 +318,7 @@ export class Session {
     const client = new GithubClient(token.trim())
     const access = await client.checkAccess()
     if ((await client.getFile(META_PATH)) !== null) {
-      throw new SetupError('Deze repo bevat al een logboek. Kies "Bestaand logboek koppelen".')
+      throw new SetupError('error.repoHasLogbook')
     }
     return access
   }
@@ -347,7 +348,7 @@ export class Session {
     const db = this.requireDb()
     const client = new GithubClient(token.trim())
     const file = await client.getFile(META_PATH)
-    if (!file) throw new SetupError('Geen logboek gevonden in logboek-data. Kies "Nieuw logboek".')
+    if (!file) throw new SetupError('error.repoEmpty')
     const meta = parseMeta(new TextDecoder().decode(file.content))
     const masterKey = await unlock(meta, await withWordlist(secret))
     await clearAll(db)
@@ -370,7 +371,7 @@ export class Session {
       // Kan alleen na een onvolledige koppeling; opnieuw koppelen is de veilige weg.
       await clearAll(db)
       this.setState({ phase: 'setup' })
-      throw new SetupError('Token ontbreekt op dit apparaat. Koppel het logboek opnieuw.')
+      throw new SetupError('error.tokenMissing')
     }
     this.tokenExpiresAt = stored.expiresAt
     await this.open(new GithubClient(stored.token), null, masterKey, resumedLastUsed)
@@ -557,28 +558,43 @@ export function daysUntil(date: string | null, today: string): number | null {
 /** Nederlandse melding voor fouten uit opslag en sleutels; nooit inhoud of sleutels. Legt de fout vast voor de foutdetails. */
 export function describeError(error: unknown): string {
   recordError(error)
-  if (error instanceof SetupError) return error.message
+  if (error instanceof SetupError) return t(error.key)
   // Bij invoeren of vervangen is een 401/403 een token die nooit werkte: eigen melding, niet "verlopen".
-  if (error instanceof GithubError) return error.message
+  if (error instanceof GithubError) return t(`github.${error.code}`)
   if (error instanceof Error) {
     switch (error.name) {
       case 'NewerSchemaError':
-        return UPDATE_APP_MESSAGE
+        return t('sync.updateApp')
       case 'NetworkError':
-        return 'Geen verbinding'
+        return t('sync.offline')
       case 'WrongSecretError':
-        return 'Wachtzin of herstelcode klopt niet'
+        return t('error.wrongSecret')
       case 'RecoveryCodeError':
-        return error.message
+        return describeRecoveryError(error.message)
       case 'InvalidMetaError':
-        return 'meta.json.enc is ongeldig'
+        return t('error.invalidMeta')
       case 'DecryptError':
-        return 'Ontsleutelen mislukt'
+        return t('error.decrypt')
       case 'WebAuthnError':
-        return error.message
+        return describeWebAuthnError(error.message)
     }
   }
-  return 'Er ging iets mis'
+  return t('error.generic')
+}
+
+// De crypto-modules (onafhankelijk gereviewd) houden hun Nederlandse meldingen; hier volgt de vertaling.
+function describeRecoveryError(message: string): string {
+  const word = /^Woord (\d+)/.exec(message)
+  if (word) return t('error.recoveryWord', { n: Number(word[1]) })
+  if (message.startsWith('Herstelcode moet')) return t('error.recoveryCount')
+  return t('error.recoveryWrong')
+}
+
+function describeWebAuthnError(message: string): string {
+  if (message.includes('afgebroken')) return t('error.fingerprintCancelled')
+  if (message.includes('ondersteunt geen')) return t('error.fingerprintNoPrf')
+  if (message.includes('geen sleutel')) return t('error.fingerprintNoKey')
+  return t('error.fingerprintFailed')
 }
 
 export const SessionContext = createContext<Session | null>(null)

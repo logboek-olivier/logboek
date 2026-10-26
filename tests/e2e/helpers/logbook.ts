@@ -1,35 +1,37 @@
 import { expect, type Page } from '@playwright/test'
+import { translate, type Lang } from '../../../src/i18n'
 
 // Verzonnen testgegevens; dit is geen echte token en geen echte wachtzin.
 export const TOKEN = 'github_pat_E2E_TEST_0123456789abcdefghijklmnopqrstuvwxyz'
 export const PASSPHRASE = 'nep wachtzin voor e2e'
 
 /** Token invoeren in twee stappen: controleren bij GitHub, dan de vervaldatum bevestigen. */
-export async function enterToken(page: Page, submitLabel = 'Verder'): Promise<void> {
-  await page.getByLabel('GitHub-token').fill(TOKEN)
-  await page.getByRole('button', { name: 'Controleren', exact: true }).click()
-  await expect(page.getByLabel('Vervaldatum van de token')).toBeVisible()
+export async function enterToken(page: Page, submitLabel = 'Verder', lang: Lang = 'nl'): Promise<void> {
+  await page.getByLabel(translate(lang, 'token.label')).fill(TOKEN)
+  await page.getByRole('button', { name: translate(lang, 'token.check'), exact: true }).click()
+  await expect(page.getByLabel(translate(lang, 'token.expiry'))).toBeVisible()
   await page.getByRole('button', { name: submitLabel, exact: true }).click()
 }
 
 /** Doorloopt "Nieuw logboek" tot en met het ontgrendelde hoofdscherm. Geeft de herstelwoorden terug. */
-export async function createNewLogbook(page: Page): Promise<string[]> {
+export async function createNewLogbook(page: Page, lang: Lang = 'nl'): Promise<string[]> {
+  const L = (key: Parameters<typeof translate>[1]) => translate(lang, key as 'common.next')
   await page.goto('./')
-  await page.getByRole('button', { name: 'Nieuw logboek' }).click()
-  await enterToken(page)
-  await page.getByLabel('Wachtzin', { exact: true }).fill(PASSPHRASE)
-  await page.getByLabel('Nog een keer').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Verder' }).click()
-  await expect(page.getByRole('heading', { name: 'Herstelcode' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: L('setup.new') }).click()
+  await enterToken(page, L('common.next'), lang)
+  await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+  await page.getByLabel(L('passphrase.again')).fill(PASSPHRASE)
+  await page.getByRole('button', { name: L('common.next') }).click()
+  await expect(page.getByRole('heading', { name: L('setup.recovery') })).toBeVisible({ timeout: 30_000 })
   const words = await page.locator('.words li').allTextContents()
   expect(words).toHaveLength(24)
-  await page.getByRole('button', { name: 'Ik heb ze opgeschreven' }).click()
+  await page.getByRole('button', { name: L('setup.wroteDown') }).click()
   for (const label of await page.locator('label').allTextContents()) {
-    const m = /Woord (\d+)/.exec(label)
-    if (m) await page.getByLabel(`Woord ${m[1]}`, { exact: true }).fill(words[Number(m[1]) - 1] ?? '')
+    const m = /(?:Woord|Word) (\d+)/.exec(label)
+    if (m) await page.getByLabel(label.trim(), { exact: true }).fill(words[Number(m[1]) - 1] ?? '')
   }
-  await page.getByRole('button', { name: 'Logboek aanmaken' }).click()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: L('setup.create') }).click()
+  await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible({ timeout: 30_000 })
   return words
 }
 

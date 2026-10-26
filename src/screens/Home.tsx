@@ -4,6 +4,7 @@ import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine } from '../components/SyncStatusLine'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { setScreen } from '../errors'
+import { t } from '../i18n'
 import type { Store } from '../storage/store'
 import { Money } from './Money'
 import { QuickAdd } from './QuickAdd'
@@ -32,7 +33,7 @@ export function Home({ store }: { store: Store }) {
     setToast({
       id: counter.current,
       text,
-      action: undo ? { label: 'Ongedaan maken', run: () => void undo() } : undefined,
+      action: undo ? { label: t('common.undo'), run: () => void undo() } : undefined,
     })
   }, [])
 

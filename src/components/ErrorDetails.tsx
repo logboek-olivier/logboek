@@ -2,6 +2,7 @@ import { Copy } from 'lucide-react'
 import { useState } from 'react'
 import { errorReport, lastError } from '../errors'
 import { Icon } from './Icon'
+import { t } from '../i18n'
 
 /** Knop "Kopieer foutdetails" voor de laatst vastgelegde fout. Zonder klembord: de tekst verschijnt om te selecteren. */
 export function CopyErrorDetails() {
@@ -24,10 +25,10 @@ export function CopyErrorDetails() {
     <div className="error-details">
       <button type="button" className="btn link small" onClick={() => void copy()}>
         <Icon icon={Copy} />
-        {state === 'copied' ? 'Gekopieerd' : 'Kopieer foutdetails'}
+        {state === 'copied' ? t('error.copied') : t('error.copyDetails')}
       </button>
       {state === 'manual' && (
-        <textarea className="error-report" readOnly rows={8} value={text} aria-label="Foutdetails" onFocus={(e) => e.currentTarget.select()} />
+        <textarea className="error-report" readOnly rows={8} value={text} aria-label={t('error.details')} onFocus={(e) => e.currentTarget.select()} />
       )}
     </div>
   )

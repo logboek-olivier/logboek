@@ -2,7 +2,6 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { daysUntil, Session } from '../src/session'
 import { getSessionKey, openLogboekDb, putSessionKey } from '../src/storage/idb'
-import { TOKEN_INVALID_MESSAGE } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 
@@ -197,7 +196,7 @@ describe('sessie en token', () => {
     github.forceStatus = 401
     await previous.put('trips.json.enc', { id: 't1', name: 'wacht', updatedAt: new Date().toISOString(), deletedAt: null })
     await previous.sync()
-    expect(previous.getStatus()).toEqual({ kind: 'error', message: TOKEN_INVALID_MESSAGE, count: 1 })
+    expect(previous.getStatus()).toEqual({ kind: 'error', code: 'token', count: 1 })
     expect(previous.pendingCount()).toBe(1)
 
     // Nieuwe token: controleren moet slagen, dus GitHub antwoordt weer gewoon.

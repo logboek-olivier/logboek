@@ -2,6 +2,7 @@ import { CircleCheck, CloudOff, LoaderCircle, RefreshCw, TriangleAlert } from 'l
 import { useSyncExternalStore } from 'react'
 import { describeStatus, type Store, type SyncStatus } from '../storage/store'
 import { Icon } from './Icon'
+import { t } from '../i18n'
 
 export function useSyncStatus(store: Store) {
   return useSyncExternalStore(
@@ -25,7 +26,7 @@ export function SyncStatusLine({ store }: { store: Store }) {
     <button
       type="button"
       className={`sync-status sync-${status.kind}`}
-      aria-label={`${describeStatus(status)} · Synchroniseren`}
+      aria-label={`${describeStatus(status)} · ${t('sync.now')}`}
       onClick={() => void store.sync()}
       disabled={status.kind === 'syncing'}
     >
