@@ -16,10 +16,7 @@ import { parseAmount } from '../model/money'
 import { saveSettings } from '../model/settings'
 import {
   CURRENCIES,
-  KIND_LABELS,
-  ROLE_LABELS,
   ROLES,
-  SOURCE_LABELS,
   TRANSACTION_SOURCES,
   type Currency,
   type Leg,
@@ -31,7 +28,9 @@ import {
 } from '../model/types'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
+import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
+import { t } from '../i18n'
 
 // Onderbladen om een transactie, dag of tocht te bewerken. Verwijderen zonder bevestigingsvraag; de aanroeper toont
 // "Verwijderd · Ongedaan maken".
@@ -72,7 +71,7 @@ export function TransactionSheet({
     try {
       await updateTransaction(store, tx, { amount: parsed, kind, source, currency, date, note: note.trim() || undefined })
       onClose()
-      notify('Opgeslagen')
+      notify(t('toast.saved'))
     } finally {
       setBusy(false)
     }
@@ -81,14 +80,14 @@ export function TransactionSheet({
   async function remove() {
     const undo = await deleteTransaction(store, tx)
     onClose()
-    notify('Verwijderd', undo)
+    notify(t('toast.deleted'), undo)
   }
 
   return (
-    <Sheet title={`${KIND_LABELS[tx.kind]} bewerken`} onClose={onClose}>
+    <Sheet title={t('edit.transaction', { kind: kindLabel(tx.kind) })} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
         <label>
-          Bedrag
+          {t('field.amount')}
           <input
             className="amount"
             inputMode="decimal"
@@ -99,17 +98,17 @@ export function TransactionSheet({
         </label>
         <div className="two">
           <label>
-            Soort
+            {t('field.kind')}
             <select value={kind} onChange={(e) => setKind(e.target.value as TransactionKind)}>
               {KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {KIND_LABELS[k]}
+                  {kindLabel(k)}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Valuta
+            {t('field.currency')}
             <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
@@ -121,31 +120,31 @@ export function TransactionSheet({
         </div>
         <div className="two">
           <label>
-            Bron
+            {t('field.source')}
             <select value={source} onChange={(e) => setSource(e.target.value as TransactionSource)}>
               {TRANSACTION_SOURCES.map((s) => (
                 <option key={s} value={s}>
-                  {SOURCE_LABELS[s]}
+                  {sourceLabel(s)}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Datum
+            {t('field.date')}
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
         <label>
-          Omschrijving
+          {t('field.description')}
           <input type="text" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
-            Opslaan
+            {t('common.save')}
           </button>
           <button className="btn danger" type="button" onClick={() => void remove()}>
             <Icon icon={Trash2} />
-            Verwijderen
+            {t('common.delete')}
           </button>
         </div>
       </form>
@@ -208,7 +207,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
         tripId === NEW_TRIP ? { newName: newTripName } : { id: tripId },
       )
       onClose()
-      notify('Opgeslagen')
+      notify(t('toast.saved'))
     } finally {
       setBusy(false)
     }
@@ -217,72 +216,72 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   async function remove() {
     const undo = await deleteLeg(store, leg)
     onClose()
-    notify('Verwijderd', undo)
+    notify(t('toast.deleted'), undo)
   }
 
   return (
-    <Sheet title="Dag bewerken" onClose={onClose}>
+    <Sheet title={t('edit.day')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
-        {leg.source === 'import' && <p className="muted">Geïmporteerde dag: een nieuwe import vervangt deze wijziging.</p>}
+        {leg.source === 'import' && <p className="muted">{t('edit.importedDay')}</p>}
         <label>
-          Datum
+          {t('field.date')}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
         <div className="two">
           <label>
-            Van (plaats)
+            {t('field.fromPlace')}
             <input type="text" autoComplete="off" value={fromPlace} onChange={(e) => setFromPlace(e.target.value)} />
           </label>
           <label>
-            Van (land)
+            {t('field.fromCountry')}
             <input type="text" autoComplete="off" value={fromCountry} onChange={(e) => setFromCountry(e.target.value)} />
           </label>
         </div>
         <div className="two">
           <label>
-            Naar (plaats)
+            {t('field.toPlace')}
             <input type="text" autoComplete="off" value={toPlace} onChange={(e) => setToPlace(e.target.value)} />
           </label>
           <label>
-            Naar (land)
+            {t('field.toCountry')}
             <input type="text" autoComplete="off" value={toCountry} onChange={(e) => setToCountry(e.target.value)} />
           </label>
         </div>
         <div className="three">
           <label>
-            Binnen (nm)
+            {t('field.inlandNm')}
             <input inputMode="decimal" autoComplete="off" value={inland} onChange={(e) => setInland(e.target.value)} />
           </label>
           <label>
-            Zee (nm)
+            {t('field.seaNm')}
             <input inputMode="decimal" autoComplete="off" value={sea} onChange={(e) => setSea(e.target.value)} />
           </label>
           <label>
-            Getij (nm)
+            {t('field.tidalNm')}
             <input inputMode="decimal" autoComplete="off" value={tidal} onChange={(e) => setTidal(e.target.value)} />
           </label>
         </div>
         <div className="two">
           <label>
-            Nachturen
+            {t('field.nightHours')}
             <input inputMode="decimal" autoComplete="off" value={night} onChange={(e) => setNight(e.target.value)} />
           </label>
           <label>
-            Wind (bft)
+            {t('field.wind')}
             <input type="text" autoComplete="off" value={wind} onChange={(e) => setWind(e.target.value)} />
           </label>
         </div>
         <div className="two">
           <label>
-            Boot
+            {t('field.boat')}
             <input type="text" autoComplete="off" value={boat} onChange={(e) => setBoat(e.target.value)} />
           </label>
           <label>
-            Rol
+            {t('field.role')}
             <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
               {ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
+                  {roleLabel(r)}
                 </option>
               ))}
             </select>
@@ -290,42 +289,42 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
         </div>
         <div className="two">
           <label>
-            Schipper/trainer
+            {t('field.skipper')}
             <input type="text" autoComplete="off" value={skipper} onChange={(e) => setSkipper(e.target.value)} />
           </label>
           <label>
-            Co-schipper
+            {t('field.coSkipper')}
             <input type="text" autoComplete="off" value={coSkipper} onChange={(e) => setCoSkipper(e.target.value)} />
           </label>
         </div>
         <label>
-          Tocht
+          {t('field.trip')}
           <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
             {trips.map((t) => (
               <option key={t.trip.id} value={t.trip.id}>
                 {t.trip.name}
               </option>
             ))}
-            <option value={NEW_TRIP}>Nieuwe tocht…</option>
+            <option value={NEW_TRIP}>{t('edit.newTrip')}</option>
           </select>
         </label>
         {tripId === NEW_TRIP && (
           <label>
-            Naam nieuwe tocht
+            {t('field.newTripName')}
             <input type="text" autoComplete="off" value={newTripName} onChange={(e) => setNewTripName(e.target.value)} />
           </label>
         )}
         <label>
-          Bijzonderheden
+          {t('field.notes')}
           <input type="text" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!ok || busy}>
-            Opslaan
+            {t('common.save')}
           </button>
           <button className="btn danger" type="button" onClick={() => void remove()}>
             <Icon icon={Trash2} />
-            Verwijderen
+            {t('common.delete')}
           </button>
         </div>
       </form>
@@ -345,7 +344,7 @@ export function TripSheet({ store, trip, onClose, notify }: { store: Store; trip
     try {
       await renameTrip(store, trip, name)
       onClose()
-      notify('Opgeslagen')
+      notify(t('toast.saved'))
     } finally {
       setBusy(false)
     }
@@ -354,29 +353,29 @@ export function TripSheet({ store, trip, onClose, notify }: { store: Store; trip
   async function remove() {
     const undo = await deleteTrip(store, trip)
     onClose()
-    notify('Verwijderd', undo)
+    notify(t('toast.deleted'), undo)
   }
 
   return (
-    <Sheet title="Tocht bewerken" onClose={onClose}>
+    <Sheet title={t('edit.trip')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
         <label>
-          Naam
+          {t('field.name')}
           <input type="text" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         {summary && (
           <p className="muted">
-            {formatDateRange(summary.startDate, summary.endDate)} · {summary.days} {summary.days === 1 ? 'dag' : 'dagen'} ·{' '}
-            {formatNm(summary.nm)}. Een dag naar een andere tocht verplaatsen: tik op de dag en kies de tocht.
+            {formatDateRange(summary.startDate, summary.endDate)} · {t('unit.days', { n: summary.days })} · {formatNm(summary.nm)}.{' '}
+            {t('edit.moveDayHint')}
           </p>
         )}
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!name.trim() || busy}>
-            Opslaan
+            {t('common.save')}
           </button>
           <button className="btn danger" type="button" onClick={() => void remove()}>
             <Icon icon={Trash2} />
-            Tocht en dagen verwijderen
+            {t('trip.deleteWithDays')}
           </button>
         </div>
       </form>
@@ -404,14 +403,14 @@ export function GoalSheet({
     await saveSettings(store, { yearGoalNm: Math.round(parsed) })
     void store.sync()
     onClose()
-    notify('Jaardoel opgeslagen')
+    notify(t('toast.goalSaved'))
   }
 
   return (
-    <Sheet title="Jaardoel" onClose={onClose}>
+    <Sheet title={t('settings.yearGoal')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
         <label>
-          Zeemijlen per kalenderjaar
+          {t('field.yearGoal')}
           <input
             className="amount"
             inputMode="numeric"
@@ -422,7 +421,7 @@ export function GoalSheet({
           />
         </label>
         <button className="btn primary" type="submit" disabled={parsed === null}>
-          Opslaan
+          {t('common.save')}
         </button>
       </form>
     </Sheet>

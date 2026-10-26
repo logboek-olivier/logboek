@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Cloud, Download, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud, Download, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
@@ -9,11 +9,11 @@ import { currentSettings, yearGoal } from '../model/settings'
 import type { Store } from '../storage/store'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
 import { ErrorLine, TokenForm } from './Setup'
-import { FINGERPRINT_LABEL } from './Unlock'
+import { LANGS, setLang, t, useLang } from '../i18n'
 
 // Instellingen: vergrendelen, wachtzin wijzigen, herstelcode tonen, vingerafdruk aan/uit, token vervangen, back-up.
 
-type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'backup'
+type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'backup' | 'language'
 
 export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const onDone = (message: string) => notify(message)
@@ -44,59 +44,60 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   return (
     <section className="stack-lg">
       <header className="page-header">
-        <h1>Instellingen</h1>
+        <h1>{t('nav.settings')}</h1>
       </header>
 
       <ul className="rows">
         <li>
           <button className="settings-row" onClick={() => session.lock()}>
             <Icon icon={Lock} />
-            <span className="row-main">Vergrendelen</span>
+            <span className="row-main">{t('settings.lock')}</span>
           </button>
         </li>
       </ul>
 
       <div className="section">
-        <h2>Logboek</h2>
+        <h2>{t('settings.logbook')}</h2>
         <ul className="rows">
           <li>
             <button className="settings-row" onClick={() => setGoalOpen(true)}>
               <Icon icon={Target} />
-              <span className="row-main">Jaardoel</span>
+              <span className="row-main">{t('settings.yearGoal')}</span>
               <span className="muted">{formatNm(yearGoal(settings))}</span>
               <Icon icon={ChevronRight} className="chevron" />
             </button>
           </li>
+          {row('language', Languages, t('settings.language'), <LanguagePicker />)}
         </ul>
       </div>
       {goalOpen && <GoalSheet store={store} current={yearGoal(settings)} onClose={() => setGoalOpen(false)} notify={notify} />}
 
       <div className="section">
-        <h2>Beveiliging</h2>
+        <h2>{t('settings.security')}</h2>
         <ul className="rows">
           {row(
             'passphrase',
             KeyRound,
-            'Wachtzin wijzigen',
+            t('settings.changePassphrase'),
             <ChangePassphrase
               onDone={() => {
                 setPanel('none')
-                onDone('Wachtzin gewijzigd')
+                onDone(t('toast.passphraseChanged'))
               }}
             />,
           )}
-          {row('recovery', ShieldCheck, 'Herstelcode tonen', <RevealRecovery />)}
+          {row('recovery', ShieldCheck, t('settings.showRecovery'), <RevealRecovery />)}
           {(fingerprintPossible || fingerprintOn) &&
             row(
               'fingerprint',
               FingerprintIcon,
-              `${FINGERPRINT_LABEL} ${fingerprintOn ? 'uitzetten' : 'aanzetten'}`,
+              t(fingerprintOn ? 'fingerprint.turnOff' : 'fingerprint.turnOn'),
               <Fingerprint
                 enabled={fingerprintOn}
                 onDone={(on) => {
                   setFingerprintOn(on)
                   setPanel('none')
-                  onDone(on ? `${FINGERPRINT_LABEL} aan` : `${FINGERPRINT_LABEL} uit`)
+                  onDone(t(on ? 'fingerprint.on' : 'fingerprint.off'))
                 }}
               />,
             )}
@@ -104,34 +105,34 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
       </div>
 
       <div className="section">
-        <h2>Opslag</h2>
+        <h2>{t('settings.storage')}</h2>
         <ul className="rows">
           {row(
             'token',
             Cloud,
-            'Token vervangen',
+            t('settings.replaceToken'),
             <ReplaceToken
               onDone={() => {
                 setPanel('none')
-                onDone('Token vervangen')
+                onDone(t('settings.replaceToken'))
               }}
             />,
           )}
-          {row('backup', Download, 'Back-up maken', <Backup />)}
+          {row('backup', Download, t('settings.backup'), <Backup />)}
         </ul>
       </div>
 
       <div className="section">
-        <h2>Over</h2>
+        <h2>{t('settings.about')}</h2>
         <ul className="rows">
           <li className="row-item">
             <Icon icon={Info} />
             <dl className="about">
-              <dt>Versie</dt>
+              <dt>{t('settings.version')}</dt>
               <dd className="num">{APP_VERSION}</dd>
-              <dt>Gebouwd</dt>
-              <dd className="num">{BUILD_DATE ? formatDate(BUILD_DATE.slice(0, 10)) : 'onbekend'}</dd>
-              <dt>Commit</dt>
+              <dt>{t('settings.built')}</dt>
+              <dd className="num">{BUILD_DATE ? formatDate(BUILD_DATE.slice(0, 10)) : t('common.unknown')}</dd>
+              <dt>{t('settings.commit')}</dt>
               <dd className="num">
                 <code>{COMMIT}</code>
               </dd>
@@ -177,22 +178,22 @@ function ChangePassphrase({ onDone }: { onDone: () => void }) {
   return (
     <form className="stack" onSubmit={submit}>
       <label>
-        Huidige wachtzin
+        {t('passphrase.current')}
         <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
       </label>
       <label>
-        Nieuwe wachtzin
+        {t('passphrase.new')}
         <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
       </label>
       <label>
-        Nog een keer
+        {t('passphrase.again')}
         <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
       </label>
-      {next.length > 0 && next.length < MIN_PASSPHRASE_LENGTH && <p className="error">Te kort (minimaal {MIN_PASSPHRASE_LENGTH} tekens)</p>}
-      {again.length > 0 && next !== again && <p className="error">De twee wachtzinnen verschillen</p>}
+      {next.length > 0 && next.length < MIN_PASSPHRASE_LENGTH && <p className="error">{t('passphrase.tooShortMin', { n: MIN_PASSPHRASE_LENGTH })}</p>}
+      {again.length > 0 && next !== again && <p className="error">{t('passphrase.mismatch')}</p>}
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={!ok || busy}>
-        {busy ? 'Wijzigen…' : 'Wijzigen'}
+        {busy ? t('settings.changing') : t('settings.change')}
       </button>
     </form>
   )
@@ -216,7 +217,7 @@ function RevealRecovery() {
           ))}
         </ol>
         <button className="btn" onClick={() => setWords(null)}>
-          Verbergen
+          {t('settings.hide')}
         </button>
       </div>
     )
@@ -224,12 +225,12 @@ function RevealRecovery() {
   return (
     <form className="stack" onSubmit={submit}>
       <label>
-        Wachtzin
+        {t('passphrase.label')}
         <input type="password" autoComplete="current-password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
       </label>
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={passphrase.length === 0 || busy}>
-        {busy ? 'Controleren…' : 'Tonen'}
+        {busy ? t('common.checking') : t('settings.show')}
       </button>
     </form>
   )
@@ -242,7 +243,7 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
   if (enabled) {
     return (
       <div className="stack">
-        <p className="muted">Daarna is alleen de wachtzin nog mogelijk op dit apparaat.</p>
+        <p className="muted">{t('fingerprint.offHint')}</p>
         <ErrorLine error={error} />
         <button
           className="btn primary"
@@ -254,7 +255,7 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
             })
           }
         >
-          Uitzetten
+          {t('fingerprint.disable')}
         </button>
       </div>
     )
@@ -269,16 +270,15 @@ function Fingerprint({ enabled, onDone }: { enabled: boolean; onDone: (on: boole
   return (
     <form className="stack" onSubmit={submit}>
       <p className="muted">
-        Bevestig met de wachtzin; daarna vraagt het apparaat om de vingerafdruk. Android accepteert ook de pincode of
-        het patroon van de schermvergrendeling.
+        {t('fingerprint.onHint')}
       </p>
       <label>
-        Wachtzin
+        {t('passphrase.label')}
         <input type="password" autoComplete="current-password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
       </label>
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={passphrase.length === 0 || busy}>
-        {busy ? 'Bezig…' : 'Aanzetten'}
+        {busy ? t('common.busy') : t('fingerprint.enable')}
       </button>
     </form>
   )
@@ -291,7 +291,7 @@ function ReplaceToken({ onDone }: { onDone: () => void }) {
     <div className="stack">
       <TokenForm
         check={(token) => session.checkToken(token)}
-        submitLabel={busy ? 'Vervangen…' : 'Vervangen'}
+        submitLabel={busy ? t('settings.replacing') : t('settings.replace')}
         disabled={busy}
         onDone={({ token, expiresAt }) =>
           void run(async () => {
@@ -310,16 +310,35 @@ function Backup() {
   return (
     <div className="stack">
       <p className="muted">
-        De versleutelde data staat in de GitHub-repo <code>logboek-data</code>. Een kopie op de laptop maak en ververs je
-        in PowerShell (eenmalig clonen, daarna bijwerken):
+        {t('backup.intro')}
       </p>
       <pre className="code">{`git clone https://github.com/logboek-olivier/logboek-data.git
 cd logboek-data
 git pull`}</pre>
       <p className="muted">
-        De bestanden zijn zonder wachtzin of herstelcode niet te lezen. Bewaar de herstelcode op papier, niet naast de
-        kopie.
+        {t('backup.outro')}
       </p>
+    </div>
+  )
+}
+
+/** Taal van de app op dit apparaat; standaard de taal van de telefoon. */
+function LanguagePicker() {
+  const lang = useLang()
+  return (
+    <div className="segments" role="radiogroup" aria-label={t('settings.language')}>
+      {LANGS.map((l) => (
+        <button
+          key={l}
+          type="button"
+          role="radio"
+          aria-checked={lang === l}
+          className={`segment${lang === l ? ' active' : ''}`}
+          onClick={() => setLang(l)}
+        >
+          {l === 'nl' ? 'Nederlands' : 'English'}
+        </button>
+      ))}
     </div>
   )
 }

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { describeError, useSession } from '../session'
 import { ErrorLine, Screen, SecretForm } from './Setup'
+import { t } from '../i18n'
 
 // Ontgrendelen: wachtzin of herstelcode; vingerafdruk als die op dit apparaat is ingesteld. Niets anders zichtbaar.
 
-/** WebAuthn met userVerification 'required' accepteert op Android ook de pincode of het patroon van het toestel. */
-export const FINGERPRINT_LABEL = 'Vingerafdruk of schermvergrendeling'
 
 export function Unlock({ fingerprint }: { fingerprint: boolean }) {
   const session = useSession()
@@ -69,21 +68,21 @@ export function Unlock({ fingerprint }: { fingerprint: boolean }) {
       {fingerprint && (
         <div className="stack">
           <button className="btn primary" disabled={busy} onClick={askFingerprint}>
-            {FINGERPRINT_LABEL}
+            {t('fingerprint.label')}
           </button>
           <ErrorLine error={error} />
           {fingerprintFailed && (
             <button className="btn link" type="button" onClick={() => void session.disableFingerprint()}>
-              {FINGERPRINT_LABEL} op dit apparaat uitzetten (daarna alleen wachtzin)
+              {t('fingerprint.disableHere')}
             </button>
           )}
-          <p className="muted">Of met de wachtzin:</p>
+          <p className="muted">{t('unlock.orPassphrase')}</p>
         </div>
       )}
       <SecretForm
         busy={busy}
         error={fingerprint ? null : error}
-        submitLabel="Ontgrendelen"
+        submitLabel={t('unlock.unlock')}
         onSubmit={(secret) => void run(() => session.unlockLocal(secret))}
       />
     </Screen>

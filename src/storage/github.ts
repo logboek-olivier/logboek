@@ -7,10 +7,14 @@ export const API_BASE = 'https://api.github.com'
 export const DATA_REPO = 'logboek-olivier/logboek-data'
 const API_VERSION = '2022-11-28'
 
+/** Soort GitHub-fout; de app toont hiervoor een vertaalde melding (zie describeError). */
+export type GithubErrorCode = 'auth' | 'conflict' | 'rateLimit' | 'repoNotFound' | 'read' | 'write' | 'unexpected'
+
 export class GithubError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code: GithubErrorCode = 'unexpected',
   ) {
     super(message)
     this.name = 'GithubError'
@@ -20,7 +24,7 @@ export class GithubError extends Error {
 /** Token ongeldig of geen toegang tot logboek-data. */
 export class AuthError extends GithubError {
   constructor(status: number) {
-    super('GitHub-token is ongeldig of heeft geen toegang', status)
+    super('GitHub-token is ongeldig of heeft geen toegang', status, 'auth')
     this.name = 'AuthError'
   }
 }
@@ -28,7 +32,7 @@ export class AuthError extends GithubError {
 /** Iemand anders schreef het bestand tussen lezen en schrijven. */
 export class ConflictError extends GithubError {
   constructor(status: number) {
-    super('Bestand is ondertussen gewijzigd', status)
+    super('Bestand is ondertussen gewijzigd', status, 'conflict')
     this.name = 'ConflictError'
   }
 }
@@ -93,7 +97,7 @@ export class GithubClient {
     if (response.status === 403) {
       // Een 403 met uitgeputte rate limit is geen tokenfout.
       if (response.headers.get('x-ratelimit-remaining') === '0') {
-        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', 403)
+        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', 403, 'rateLimit')
       }
       throw new AuthError(403)
     }
@@ -122,7 +126,7 @@ export class GithubClient {
   /** Controleert dat de token de repo kan lezen. Geeft de vervaldatum van de token als die leesbaar is. */
   async checkAccess(): Promise<{ expiresAt: string | null }> {
     const response = await this.request(`/repos/${this.repo}`)
-    if (!response.ok) throw new GithubError('Repo logboek-data niet gevonden', response.status)
+    if (!response.ok) throw new GithubError('Repo logboek-data niet gevonden', response.status, 'repoNotFound')
     return { expiresAt: this.tokenExpiresAt }
   }
 
@@ -130,7 +134,7 @@ export class GithubClient {
   async getFile(path: string): Promise<RemoteFile | null> {
     const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`)
     if (response.status === 404 || response.status === 409) return null
-    if (!response.ok) throw new GithubError('Lezen mislukt', response.status)
+    if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
     const body = await this.json(response)
     if (typeof body.sha !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
     const base64 = typeof body.content === 'string' ? body.content.replace(/\s/g, '') : ''
@@ -141,7 +145,7 @@ export class GithubClient {
 
   private async getBlob(sha: string): Promise<Bytes> {
     const response = await this.request(`/repos/${this.repo}/git/blobs/${sha}`)
-    if (!response.ok) throw new GithubError('Lezen mislukt', response.status)
+    if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
     const body = await this.json(response)
     if (typeof body.content !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
     return this.decode(body.content.replace(/\s/g, ''), response.status)
@@ -161,7 +165,7 @@ export class GithubClient {
       }),
     })
     if (response.status === 409 || response.status === 422) throw new ConflictError(response.status)
-    if (!response.ok) throw new GithubError('Schrijven mislukt', response.status)
+    if (!response.ok) throw new GithubError('Schrijven mislukt', response.status, 'write')
     const body = await this.json(response)
     if (!isRecord(body.content) || typeof body.content.sha !== 'string') {
       throw new GithubError('Onverwacht antwoord', response.status)

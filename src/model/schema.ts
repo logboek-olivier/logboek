@@ -4,11 +4,10 @@
 
 export const SCHEMA_VERSION = 1
 
-export const UPDATE_APP_MESSAGE = 'Werk de app bij'
 
 export class NewerSchemaError extends Error {
   constructor(readonly found: number) {
-    super(UPDATE_APP_MESSAGE)
+    super('Werk de app bij')
     this.name = 'NewerSchemaError'
   }
 }

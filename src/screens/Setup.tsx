@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon'
 import { isUserMistake, lastError } from '../errors'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } from '../session'
+import { t } from '../i18n'
 
 // Eerste keer op een apparaat: nieuw logboek of bestaand logboek koppelen.
 
@@ -42,14 +43,14 @@ export function Setup() {
 
   if (step.kind === 'choose') {
     return (
-      <Screen title="Eerste keer">
-        <p className="muted">Kies hoe dit apparaat aan het logboek komt.</p>
+      <Screen title={t('setup.title')}>
+        <p className="muted">{t('setup.choose')}</p>
         <div className="stack">
           <button className="btn primary" onClick={() => setStep({ kind: 'token', mode: 'new' })}>
-            Nieuw logboek
+            {t('setup.new')}
           </button>
           <button className="btn" onClick={() => setStep({ kind: 'token', mode: 'link' })}>
-            Bestaand logboek koppelen
+            {t('setup.link')}
           </button>
         </div>
       </Screen>
@@ -60,7 +61,7 @@ export function Setup() {
     const check = (token: string) =>
       step.mode === 'new' ? session.checkEmptyRepo(token) : session.checkToken(token)
     return (
-      <Screen title={step.mode === 'new' ? 'Nieuw logboek' : 'Logboek koppelen'} onBack={() => setStep({ kind: 'choose' })}>
+      <Screen title={step.mode === 'new' ? t('setup.new') : t('setup.linkTitle')} onBack={() => setStep({ kind: 'choose' })}>
         <TokenForm
           check={check}
           onDone={(token) => setStep(step.mode === 'new' ? { kind: 'passphrase', token } : { kind: 'secret', token })}
@@ -71,7 +72,7 @@ export function Setup() {
 
   if (step.kind === 'passphrase') {
     return (
-      <Screen title="Wachtzin kiezen" onBack={() => setStep({ kind: 'token', mode: 'new' })}>
+      <Screen title={t('setup.choosePassphrase')} onBack={() => setStep({ kind: 'token', mode: 'new' })}>
         <PassphraseForm
           busy={busy}
           error={error}
@@ -89,10 +90,9 @@ export function Setup() {
   if (step.kind === 'words') {
     // Terug = andere token kiezen; er is nog niets opgeslagen, de sleutels worden dan opnieuw gemaakt.
     return (
-      <Screen title="Herstelcode" onBack={() => setStep({ kind: 'token', mode: 'new' })}>
+      <Screen title={t('setup.recovery')} onBack={() => setStep({ kind: 'token', mode: 'new' })}>
         <p>
-          Schrijf deze {RECOVERY_WORD_COUNT} woorden op papier, in deze volgorde. Zonder wachtzin en zonder deze
-          woorden is het logboek niet te openen.
+          {t('setup.writeWords', { n: RECOVERY_WORD_COUNT })}
         </p>
         <ol className="words">
           {step.vault.recoveryWords.map((w, i) => (
@@ -103,7 +103,7 @@ export function Setup() {
           className="btn primary"
           onClick={() => setStep({ kind: 'confirm', token: step.token, vault: step.vault, positions: pickPositions() })}
         >
-          Ik heb ze opgeschreven
+          {t('setup.wroteDown')}
         </button>
       </Screen>
     )
@@ -111,7 +111,7 @@ export function Setup() {
 
   if (step.kind === 'confirm') {
     return (
-      <Screen title="Herstelcode controleren" onBack={() => setStep({ kind: 'words', token: step.token, vault: step.vault })}>
+      <Screen title={t('setup.checkRecovery')} onBack={() => setStep({ kind: 'words', token: step.token, vault: step.vault })}>
         <ConfirmWordsForm
           busy={busy}
           error={error}
@@ -124,11 +124,11 @@ export function Setup() {
   }
 
   return (
-    <Screen title="Logboek koppelen" onBack={() => setStep({ kind: 'token', mode: 'link' })}>
+    <Screen title={t('setup.linkTitle')} onBack={() => setStep({ kind: 'token', mode: 'link' })}>
       <SecretForm
         busy={busy}
         error={error}
-        submitLabel="Koppelen"
+        submitLabel={t('setup.linkButton')}
         onSubmit={(secret) => run(() => session.link(step.token.token, step.token.expiresAt, secret))}
       />
     </Screen>
@@ -156,9 +156,9 @@ export function Screen({
     <main className="app">
       {onBack ? (
         <header className="screen-header">
-          <button className="btn link" onClick={onBack} aria-label="Terug">
+          <button className="btn link" onClick={onBack} aria-label={t('common.back')}>
             <Icon icon={ChevronLeft} />
-            Terug
+            {t('common.back')}
           </button>
           <h1>{title}</h1>
         </header>
@@ -196,7 +196,7 @@ export function ErrorLine({ error }: { error: string | null }) {
 export function TokenForm({
   check,
   onDone,
-  submitLabel = 'Verder',
+  submitLabel = t('common.next'),
   disabled = false,
 }: {
   check: (token: string) => Promise<{ expiresAt: string | null }>
@@ -238,7 +238,7 @@ export function TokenForm({
   return (
     <form onSubmit={(e) => void submit(e)} className="stack">
       <label>
-        GitHub-token
+        {t('token.label')}
         <input
           type="password"
           autoComplete="off"
@@ -254,23 +254,23 @@ export function TokenForm({
           required
         />
       </label>
-      {!checked && <p className="muted">Fine-grained token met alleen Contents: lezen en schrijven op logboek-data.</p>}
+      {!checked && <p className="muted">{t('token.hint')}</p>}
       {checked && (
         <>
           <label>
-            Vervaldatum van de token
+            {t('token.expiry')}
             <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
           </label>
           <p className="muted">
             {fromHeader
-              ? 'Overgenomen van GitHub. De app waarschuwt 30 dagen voor het verlopen.'
-              : 'Niet leesbaar van GitHub; vul de datum in die je bij het aanmaken koos, of laat leeg.'}
+              ? t('token.fromGithub')
+              : t('token.notReadable')}
           </p>
         </>
       )}
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={blocked || token.trim().length === 0}>
-        {busy ? 'Controleren…' : checked ? submitLabel : 'Controleren'}
+        {busy ? t('common.checking') : checked ? submitLabel : t('token.check')}
       </button>
     </form>
   )
@@ -297,19 +297,19 @@ function PassphraseForm({
   return (
     <form onSubmit={submit} className="stack">
       <label>
-        Wachtzin
+        {t('passphrase.label')}
         <input type="password" autoComplete="new-password" value={first} onChange={(e) => setFirst(e.target.value)} />
       </label>
       <label>
-        Nog een keer
+        {t('passphrase.again')}
         <input type="password" autoComplete="new-password" value={second} onChange={(e) => setSecond(e.target.value)} />
       </label>
-      <p className="muted">Minimaal {MIN_PASSPHRASE_LENGTH} tekens. Een zin van een paar woorden werkt het best.</p>
-      {tooShort && <p className="error">Te kort</p>}
-      {mismatch && <p className="error">De twee wachtzinnen verschillen</p>}
+      <p className="muted">{t('passphrase.hint', { n: MIN_PASSPHRASE_LENGTH })}</p>
+      {tooShort && <p className="error">{t('passphrase.tooShort')}</p>}
+      {mismatch && <p className="error">{t('passphrase.mismatch')}</p>}
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={busy || !ok}>
-        {busy ? 'Sleutels maken…' : 'Verder'}
+        {busy ? t('setup.makingKeys') : t('common.next')}
       </button>
     </form>
   )
@@ -338,23 +338,23 @@ function ConfirmWordsForm({
   }
   return (
     <form onSubmit={submit} className="stack">
-      <p>Typ drie woorden van de herstelcode.</p>
+      <p>{t('setup.typeThree')}</p>
       {positions.map((p, i) => (
         <label key={p}>
-          Woord {p + 1}
+          {t('setup.word', { n: p + 1 })}
           <input
             type="text"
             autoComplete="off"
             autoCapitalize="none"
             value={typed[i] ?? ''}
-            onChange={(e) => setTyped(typed.map((t, j) => (j === i ? e.target.value : t)))}
+            onChange={(e) => setTyped(typed.map((w, j) => (j === i ? e.target.value : w)))}
           />
         </label>
       ))}
-      {wrong && <p className="error">Een of meer woorden kloppen niet</p>}
+      {wrong && <p className="error">{t('setup.wordsWrong')}</p>}
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={busy || typed.some((t) => t.trim() === '')}>
-        {busy ? 'Logboek aanmaken…' : 'Logboek aanmaken'}
+        {busy ? t('setup.creating') : t('setup.create')}
       </button>
     </form>
   )
@@ -382,7 +382,7 @@ export function SecretForm({
     <form onSubmit={submit} className="stack">
       {mode === 'passphrase' ? (
         <label>
-          Wachtzin
+          {t('passphrase.label')}
           <input
             type="password"
             autoComplete="current-password"
@@ -393,13 +393,13 @@ export function SecretForm({
         </label>
       ) : (
         <label>
-          Herstelcode ({RECOVERY_WORD_COUNT} woorden)
+          {t('setup.recoveryField', { n: RECOVERY_WORD_COUNT })}
           <textarea rows={4} autoComplete="off" autoCapitalize="none" value={value} onChange={(e) => setValue(e.target.value)} />
         </label>
       )}
       <ErrorLine error={error} />
       <button className="btn primary" type="submit" disabled={busy || value.trim().length === 0}>
-        {busy ? 'Bezig…' : submitLabel}
+        {busy ? t('common.busy') : submitLabel}
       </button>
       <button
         className="btn link"
@@ -409,7 +409,7 @@ export function SecretForm({
           setValue('')
         }}
       >
-        {mode === 'passphrase' ? 'Herstelcode gebruiken' : 'Wachtzin gebruiken'}
+        {mode === 'passphrase' ? t('setup.useRecovery') : t('setup.usePassphrase')}
       </button>
     </form>
   )

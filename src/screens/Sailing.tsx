@@ -10,9 +10,11 @@ import { recordError } from '../errors'
 import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
 import { nmPerMonth, summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
-import { ROLE_LABELS, ROLES, todayIso, type Leg, type Trip } from '../model/types'
+import { roleLabel } from '../i18n/labels'
+import { ROLES, todayIso, type Leg, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
+import { t } from '../i18n'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
@@ -44,7 +46,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       setError(
         e instanceof ImportError
           ? e.message
-          : 'Bestand niet leesbaar. Kies het bestand opnieuw, of sla het eerst op het apparaat op.',
+          : t('import.unreadable'),
       )
     } finally {
       setReading(false)
@@ -70,17 +72,17 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
     return (
       <section className="stack">
         <header className="page-header">
-          <h1>Controle import</h1>
+          <h1>{t('import.check')}</h1>
         </header>
         <p className="muted">
-          Vergelijk met de samenvatting in Excel.{' '}
-          {previous > 0 ? `Importeren vervangt de ${formatNumber(previous)} eerder geïmporteerde dagen.` : ''}
-          {manual > 0 ? ` Zelf toegevoegde dagen (${formatNumber(manual)}) blijven staan.` : ''}
+          {t('import.compare')}
+          {previous > 0 ? ` ${t('import.replaces', { n: formatNumber(previous) })}` : ''}
+          {manual > 0 ? ` ${t('import.manualKept', { n: formatNumber(manual) })}` : ''}
         </p>
         <SummaryGrid summary={pending.summary} />
         {pending.warnings.length > 0 && (
           <>
-            <h2>{pending.warnings.length === 1 ? '1 waarschuwing' : `${pending.warnings.length} waarschuwingen`}</h2>
+            <h2>{t('import.warnings', { n: pending.warnings.length })}</h2>
             <ul className="warnings">
               {pending.warnings.map((w) => (
                 <li key={w}>{w}</li>
@@ -90,10 +92,10 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
         )}
         <div className="stack">
           <button className="btn primary" onClick={() => void confirmImport()} disabled={busy}>
-            {busy ? 'Importeren…' : 'Importeren'}
+            {busy ? t('import.importing') : t('import.import')}
           </button>
           <button className="btn" onClick={() => setPending(null)} disabled={busy}>
-            Annuleren
+            {t('common.cancel')}
           </button>
         </div>
       </section>
@@ -107,31 +109,31 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       disabled={reading}
     >
       <Icon icon={reading ? LoaderCircle : Upload} className={reading ? 'spin' : ''} />
-      {reading ? 'Bestand lezen…' : 'Importeren'}
+      {reading ? t('import.reading') : t('import.import')}
     </button>
   )
 
   // Tochten per maand van de laatste dag, nieuwste eerst.
   const groups: { month: string; trips: TripSummary[] }[] = []
-  for (const t of tripSummaries) {
-    const month = t.endDate.slice(0, 7)
+  for (const s of tripSummaries) {
+    const month = s.endDate.slice(0, 7)
     const last = groups[groups.length - 1]
-    if (last && last.month === month) last.trips.push(t)
-    else groups.push({ month, trips: [t] })
+    if (last && last.month === month) last.trips.push(s)
+    else groups.push({ month, trips: [s] })
   }
 
   return (
     <section className="stack-lg">
       <header className="page-header">
-        <h1>Zeilen</h1>
+        <h1>{t('nav.sailing')}</h1>
         {summary.days > 0 && importButton(false)}
       </header>
       {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
-      <input ref={fileInput} type="file" hidden aria-label="Mijlenbestand" onChange={(e) => void onFile(e.target.files?.[0])} />
+      <input ref={fileInput} type="file" hidden aria-label={t('import.file')} onChange={(e) => void onFile(e.target.files?.[0])} />
       <ErrorLine error={error} />
       {summary.days === 0 && (
         <Empty icon={FileSpreadsheet} action={importButton(true)}>
-          Nog geen dagen. Importeer de mijlenregistratie (Excel of CSV), of voeg een dag toe met +.
+          {t('sailing.empty')}
         </Empty>
       )}
       {summary.days > 0 && (
@@ -139,30 +141,30 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
           <SummaryGrid summary={summary} />
           <div className="section card card-body">
             <div className="section-head">
-              <h2>nm per maand</h2>
-              <span className="muted">12 maanden</span>
+              <h2>{t('chart.nmPerMonth')}</h2>
+              <span className="muted">{t('chart.months12')}</span>
             </div>
             <BarChart
-              label={`Zeemijlen per maand: ${months.map((m) => `${formatMonth(m.month)} ${formatNm(m.nm)}`).join(', ')}`}
+              label={`${t('chart.nmPerMonth')}: ${months.map((m) => `${formatMonth(m.month)} ${formatNm(m.nm)}`).join(', ')}`}
               groups={months.map((m) => ({ key: m.month, label: formatMonthShort(m.month), values: [m.nm] }))}
               format={(n) => formatNm(Math.round(n))}
               labelEvery={2}
             />
           </div>
           <div className="section">
-            <h2>Tochten</h2>
+            <h2>{t('sailing.trips')}</h2>
             {groups.map((g) => (
               <div key={g.month} className="group">
                 <h3 className="group-head">
                   <span>{formatMonth(g.month)}</span>
-                  <span className="num">{formatNm(g.trips.reduce((n, t) => n + t.nm, 0))}</span>
+                  <span className="num">{formatNm(g.trips.reduce((n, s) => n + s.nm, 0))}</span>
                 </h3>
                 <ul className="rows">
-                  {g.trips.map((t) => (
+                  {g.trips.map((s) => (
                     <TripRow
-                      key={t.trip.id}
-                      summary={t}
-                      onEditTrip={() => setEditing({ kind: 'trip', trip: t.trip })}
+                      key={s.trip.id}
+                      summary={s}
+                      onEditTrip={() => setEditing({ kind: 'trip', trip: s.trip })}
                       onEditLeg={(leg) => setEditing({ kind: 'leg', leg })}
                     />
                   ))}
@@ -184,16 +186,16 @@ export function SummaryGrid({ summary }: { summary: SailingSummary }) {
   const water = summary.nmByWater
   return (
     <dl className="grid grid-3">
-      <Stat label="Totaal" value={formatNm(summary.nm)} />
-      <Stat label="Dagen" value={formatNumber(summary.days)} />
-      <Stat label="Tochten" value={formatNumber(summary.trips)} />
-      <Stat label="Nachturen" value={formatHours(summary.nightHours)} />
+      <Stat label={t('stat.total')} value={formatNm(summary.nm)} />
+      <Stat label={t('stat.days')} value={formatNumber(summary.days)} />
+      <Stat label={t('stat.trips')} value={formatNumber(summary.trips)} />
+      <Stat label={t('stat.nightHours')} value={formatHours(summary.nightHours)} />
       {ROLES.filter((r) => summary.nmByRole[r] > 0).map((r) => (
-        <Stat key={r} label={ROLE_LABELS[r]} value={formatNm(summary.nmByRole[r])} />
+        <Stat key={r} label={roleLabel(r)} value={formatNm(summary.nmByRole[r])} />
       ))}
-      <Stat label="Binnenwater" value={formatNm(water.inland)} />
-      <Stat label="Zee" value={formatNm(water.sea)} />
-      <Stat label="Getijdenwater" value={formatNm(water.tidal)} />
+      <Stat label={t('water.inland')} value={formatNm(water.inland)} />
+      <Stat label={t('water.sea')} value={formatNm(water.sea)} />
+      <Stat label={t('water.tidal')} value={formatNm(water.tidal)} />
     </dl>
   )
 }
@@ -226,8 +228,7 @@ function TripRow({
         <span className="row-main">
           <span className="row-title">{summary.trip.name}</span>
           <span className="muted">
-            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {summary.days}{' '}
-            {summary.days === 1 ? 'dag' : 'dagen'}
+            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {t('unit.days', { n: summary.days })}
           </span>
         </span>
         <span className="row-value">{formatNm(summary.nm)}</span>
@@ -241,7 +242,7 @@ function TripRow({
           <li className="legs-actions">
             <button className="btn small quiet" onClick={onEditTrip}>
               <Icon icon={Pencil} />
-              Tocht bewerken
+              {t('edit.trip')}
             </button>
           </li>
         </ul>
@@ -251,13 +252,15 @@ function TripRow({
 }
 
 function LegRow({ leg, onEdit }: { leg: Leg; onEdit: () => void }) {
-  const water = [leg.nmInland > 0 && 'binnen', leg.nmSea > 0 && 'zee', leg.nmTidal > 0 && 'getij'].filter(Boolean).join(', ')
+  const water = [leg.nmInland > 0 && t('water.inlandShort'), leg.nmSea > 0 && t('water.seaShort'), leg.nmTidal > 0 && t('water.tidalShort')]
+    .filter(Boolean)
+    .join(', ')
   return (
     <li className="leg">
       <button
         className="leg-button"
         onClick={onEdit}
-        aria-label={`${leg.fromPlace} → ${leg.toPlace}, ${formatDate(leg.date)} · Bewerken`}
+        aria-label={`${leg.fromPlace} → ${leg.toPlace}, ${formatDate(leg.date)} · ${t('common.edit')}`}
       >
         <div className="row-main">
           <span className="row-title">
@@ -265,9 +268,9 @@ function LegRow({ leg, onEdit }: { leg: Leg; onEdit: () => void }) {
           </span>
           <span className="muted">
             {formatDate(leg.date)}
-            {leg.dateEstimated ? ' (geschat)' : ''} · {ROLE_LABELS[leg.role]}
+            {leg.dateEstimated ? ` ${t('sailing.estimated')}` : ''} · {roleLabel(leg.role)}
             {leg.windBft ? ` · ${leg.windBft} bft` : ''}
-            {leg.nightHours > 0 ? ` · ${formatHours(leg.nightHours)} nacht` : ''}
+            {leg.nightHours > 0 ? ` · ${t('sailing.night', { hours: formatHours(leg.nightHours) })}` : ''}
           </span>
           {leg.notes && <span className="muted">{leg.notes}</span>}
         </div>

@@ -7,8 +7,10 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:4173/logboek/',
+    // De tests lezen Nederlandse teksten; language.spec.ts test Engels apart.
+    locale: 'nl-NL',
   },
-  projects: [{ name: 'mobiel', use: { ...devices['Pixel 7'] } }],
+  projects: [{ name: 'mobiel', use: { ...devices['Pixel 7'], locale: 'nl-NL' } }],
   webServer: {
     command: 'npm run build && npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173/logboek/',

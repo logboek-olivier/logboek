@@ -2,6 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { ErrorBoundary, installGlobalErrorHandlers, UnhandledErrorBar } from './components/ErrorBoundary'
 import { Loading } from './components/Loading'
 import { setScreen } from './errors'
+import { useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
@@ -10,10 +11,16 @@ import { Session, SessionContext } from './session'
 
 export function App() {
   const session = useMemo(() => new Session(), [])
+  // De hele app tekent opnieuw als de taal wisselt (teksten en notatie volgen de taal).
+  const lang = useLang()
   const state = useSyncExternalStore(
     (listener) => session.subscribe(listener),
     () => session.getState(),
   )
+
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
 
   useEffect(() => {
     installGlobalErrorHandlers()

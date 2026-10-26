@@ -10,11 +10,11 @@ import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateRange, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
 import { lastTrip, nmInYear, nmPerMonth, summarize } from '../model/derive'
 import { monthSeries, recentTips, tipsPerWeek } from '../model/money'
-import { UPDATE_APP_MESSAGE } from '../model/schema'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
-import { TOKEN_INVALID_MESSAGE, type Store } from '../storage/store'
+import { describeStatus, type Store } from '../storage/store'
+import { t } from '../i18n'
 
 // Vandaag: nm dit jaar met voortgang naar het jaardoel, nm totaal, fooi afgelopen 30 dagen, zeilgeld deze maand,
 // laatste tocht. Kaarten met kleine grafieken. Omlaag trekken synchroniseert.
@@ -55,40 +55,39 @@ export function Today({
   const goal = yearGoal(settings)
   const share = Math.min(1, nmYear / goal)
   const tokenDays = daysUntil(session.tokenExpiresAt, today)
-  const tokenInvalid = status.kind === 'error' && status.message === TOKEN_INVALID_MESSAGE
+  const tokenInvalid = status.kind === 'error' && status.code === 'token'
 
   return (
     <section className="stack" onTouchStart={pull.onTouchStart} onTouchMove={pull.onTouchMove} onTouchEnd={pull.onTouchEnd}>
       <div className="pull-indicator" ref={pull.indicator} aria-hidden="true">
         <Icon icon={LoaderCircle} className={status.kind === 'syncing' ? 'spin' : ''} />
-        <span>{pull.ready ? 'Loslaten om te synchroniseren' : 'Omlaag trekken om te synchroniseren'}</span>
+        <span>{pull.ready ? t('today.pullRelease') : t('today.pullHint')}</span>
       </div>
       <header className="page-header">
-        <h1>Vandaag</h1>
+        <h1>{t('nav.today')}</h1>
       </header>
       {tokenInvalid && (
         <Notice
-          text="Token verlopen of ingetrokken. Wijzigingen blijven bewaard tot er een geldige token is."
+          text={t('today.tokenInvalid')}
           onSettings={onSettings}
         />
       )}
       {status.kind === 'error' && !tokenInvalid && (
         <div className="notice error-block" role="alert">
           <span>
-            {status.message.startsWith('Synchroniseren') ? status.message : `Synchroniseren mislukt: ${status.message}`}. Wijzigingen
-            blijven op dit apparaat bewaard.
+            {t('today.syncFailed', { message: describeStatus(status) })}
           </span>
-          {status.message !== UPDATE_APP_MESSAGE && <CopyErrorDetails />}
+          {status.code !== 'update' && <CopyErrorDetails />}
         </div>
       )}
       {!tokenInvalid && tokenDays !== null && tokenDays <= TOKEN_WARNING_DAYS && session.tokenExpiresAt && (
         <Notice
           text={
             tokenDays < 0
-              ? `Token is verlopen op ${formatDate(session.tokenExpiresAt)}.`
+              ? t('today.tokenExpired', { date: formatDate(session.tokenExpiresAt) })
               : tokenDays === 0
-                ? 'Token verloopt vandaag.'
-                : `Token verloopt op ${formatDate(session.tokenExpiresAt)} (over ${tokenDays} ${tokenDays === 1 ? 'dag' : 'dagen'}).`
+                ? t('today.tokenExpiresToday')
+                : t('today.tokenExpires', { date: formatDate(session.tokenExpiresAt), n: tokenDays })
           }
           onSettings={onSettings}
         />
@@ -96,21 +95,22 @@ export function Today({
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}
-        aria-label={`nm in ${year}: ${formatNm(nmYear)}, ${formatNumber(Math.round(share * 100))}% van het jaardoel ${formatNm(goal)} · Jaardoel wijzigen`}
+        aria-label={t('today.goalAria', { year, nm: formatNm(nmYear), pct: formatNumber(Math.round(share * 100)), goal: formatNm(goal) })}
       >
         <span className="stat-label">
           <Icon icon={CalendarDays} />
-          nm in {year}
+          {t('today.nmYear', { year })}
         </span>
         <span className="stat-value">{formatNm(nmYear)}</span>
         <span className="small muted">
-          {formatNumber(Math.round(share * 100))}% van {formatNm(goal)}
-          {nmYear < goal ? ` · nog ${formatNm(Math.round((goal - nmYear) * 10) / 10)}` : ' · jaardoel gehaald'}
+          {t('today.goalShare', { pct: formatNumber(Math.round(share * 100)), goal: formatNm(goal) })}
+          {' · '}
+          {nmYear < goal ? t('today.goalLeft', { nm: formatNm(Math.round((goal - nmYear) * 10) / 10) }) : t('today.goalReached')}
         </span>
         <span
           className="progress"
           role="progressbar"
-          aria-label="Voortgang jaardoel"
+          aria-label={t('today.goalProgress')}
           aria-valuemin={0}
           aria-valuemax={goal}
           aria-valuenow={nmYear}
@@ -119,32 +119,32 @@ export function Today({
         </span>
       </button>
       <dl className="grid">
-        <Card icon={Waves} label="nm totaal" value={formatNm(total.nm)}>
+        <Card icon={Waves} label={t('today.nmTotal')} value={formatNm(total.nm)}>
           <BarChart
             compact
             height={40}
-            label={`nm per maand: ${months.map((m) => `${formatMonth(m.month)} ${formatNm(m.nm)}`).join(', ')}`}
+            label={`${t('chart.nmPerMonth')}: ${months.map((m) => `${formatMonth(m.month)} ${formatNm(m.nm)}`).join(', ')}`}
             groups={months.map((m) => ({ key: m.month, label: '', values: [m.nm] }))}
             format={formatNm}
           />
         </Card>
         <Card
           icon={Coins}
-          label="Fooi 30 dagen"
+          label={t('today.tips30')}
           value={formatMoney(tips.eur, 'EUR')}
           extra={Object.entries(tips.other).map(([c, v]) => `+ ${formatMoney(v, c)}`)}
         >
           <BarChart
             compact
             height={40}
-            label={`Fooi per week: ${weeks.map((w) => formatMoney(w.eur, 'EUR')).join(', ')}`}
+            label={`${t('chart.tipsPerWeek')}: ${weeks.map((w) => formatMoney(w.eur, 'EUR')).join(', ')}`}
             groups={weeks.map((w) => ({ key: w.weekStart, label: '', values: [w.eur] }))}
             format={(n) => formatMoney(n, 'EUR')}
           />
         </Card>
         <Card
           icon={Wallet}
-          label={`Zeilgeld ${formatMonth(thisMonth.month)}`}
+          label={t('today.moneyMonth', { month: formatMonth(thisMonth.month) })}
           value={formatMoney(thisMonth.balanceEur, 'EUR')}
           extra={[`+${formatMoney(thisMonth.incomeEur, 'EUR')} · −${formatMoney(thisMonth.costsEur, 'EUR')}`]}
           wide
@@ -152,7 +152,7 @@ export function Today({
           <BarChart
             compact
             height={40}
-            label={`Inkomsten en kosten per maand: ${money.map((m) => `${formatMonth(m.month)} in ${formatMoney(m.incomeEur, 'EUR')}, uit ${formatMoney(m.costsEur, 'EUR')}`).join('; ')}`}
+            label={`${t('chart.incomeCosts')}: ${money.map((m) => `${formatMonth(m.month)} +${formatMoney(m.incomeEur, 'EUR')}, −${formatMoney(m.costsEur, 'EUR')}`).join('; ')}`}
             groups={money.map((m) => ({ key: m.month, label: '', values: [m.incomeEur, m.costsEur] }))}
             format={(n) => formatMoney(n, 'EUR')}
           />
@@ -160,7 +160,7 @@ export function Today({
         {last ? (
           <Card
             icon={Sailboat}
-            label="Laatste tocht"
+            label={t('today.lastTrip')}
             value={last.trip.name}
             extra={[`${formatDateRange(last.startDate, last.endDate)} · ${formatNm(last.nm)}`]}
             wide
@@ -169,12 +169,12 @@ export function Today({
           <div className="stat wide">
             <dt>
               <Icon icon={Anchor} />
-              Laatste tocht
+              {t('today.lastTrip')}
             </dt>
-            <dd className="small muted">Nog geen dagen. Voeg een dag toe of importeer de mijlenregistratie bij Zeilen.</dd>
+            <dd className="small muted">{t('today.noDays')}</dd>
             <dd className="small">
               <button className="btn link" onClick={onAdd}>
-                Dag toevoegen
+                {t('today.addDay')}
               </button>
             </dd>
           </div>
@@ -230,7 +230,7 @@ function Notice({ text, onSettings }: { text: string; onSettings: () => void }) 
     <div className="notice" role="alert">
       <span>{text}</span>
       <button className="btn link" onClick={onSettings}>
-        Token vervangen
+        {t('settings.replaceToken')}
       </button>
     </div>
   )

@@ -1,14 +1,14 @@
 import { utf8 } from '../crypto/encrypt'
 import { recordError } from '../errors'
 import { META_PATH, parseMeta, serializeMeta, type Meta } from '../crypto/keys'
-import { NewerSchemaError, UPDATE_APP_MESSAGE } from '../model/schema'
+import { t } from '../i18n'
+import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, GithubError, NetworkError, type GithubClient, type RemoteFile } from './github'
+import { AuthError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { getObject, putObject, type Db } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
 import { decryptRecords, encryptRecords, syncCollection } from './sync'
 
-export const TOKEN_INVALID_MESSAGE = 'Token verlopen of ingetrokken · Token vervangen'
 
 // Ontsleutelde data in het geheugen, alleen na ontgrendelen. Elke wijziging gaat direct versleuteld naar
 // IndexedDB en in de outbox; sync gebeurt bij ontgrendelen en op verzoek. Vergrendelen = alles hier wissen.
@@ -18,20 +18,26 @@ export type SyncStatus =
   | { kind: 'syncing' }
   | { kind: 'pending'; count: number }
   | { kind: 'offline'; count: number }
-  | { kind: 'error'; message: string; count: number }
+  /** token: verlopen of ingetrokken; update: nieuwere schemaversie; github: andere GitHub-fout; failed: overig. */
+  | { kind: 'error'; code: SyncErrorCode; count: number; github?: GithubErrorCode }
+
+export type SyncErrorCode = 'token' | 'update' | 'github' | 'failed'
 
 export function describeStatus(status: SyncStatus): string {
   switch (status.kind) {
     case 'synced':
-      return 'Gesynct'
+      return t('sync.synced')
     case 'syncing':
-      return 'Synchroniseren…'
+      return t('sync.syncing')
     case 'pending':
-      return status.count === 1 ? '1 wijziging wacht' : `${status.count} wijzigingen wachten`
+      return t('sync.pending', { n: status.count })
     case 'offline':
-      return 'Geen verbinding'
+      return t('sync.offline')
     case 'error':
-      return status.message
+      if (status.code === 'token') return t('sync.tokenInvalid')
+      if (status.code === 'update') return t('sync.updateApp')
+      if (status.code === 'github') return t(`github.${status.github ?? 'unexpected'}`)
+      return t('sync.failed')
   }
 }
 
@@ -152,7 +158,7 @@ export class Store {
   private async runSync(): Promise<void> {
     const count = () => this.pendingCount()
     if (this.outdated) {
-      this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count: count() })
+      this.setStatus({ kind: 'error', code: 'update', count: count() })
       return
     }
     this.setStatus({ kind: 'syncing' })
@@ -170,7 +176,7 @@ export class Store {
         if (this.locked) return
         if (error instanceof NewerSchemaError) {
           this.outdated = true
-          this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count: count() })
+          this.setStatus({ kind: 'error', code: 'update', count: count() })
           return
         }
         if (error instanceof NetworkError || error instanceof AuthError) {
@@ -210,10 +216,10 @@ export class Store {
     const count = this.pendingCount()
     if (!(failure instanceof NetworkError)) recordError(failure)
     if (failure instanceof NetworkError) this.setStatus({ kind: 'offline', count })
-    else if (failure instanceof AuthError) this.setStatus({ kind: 'error', message: TOKEN_INVALID_MESSAGE, count })
-    else if (failure instanceof NewerSchemaError) this.setStatus({ kind: 'error', message: UPDATE_APP_MESSAGE, count })
-    else if (failure instanceof GithubError) this.setStatus({ kind: 'error', message: failure.message, count })
-    else this.setStatus({ kind: 'error', message: 'Synchroniseren mislukt', count })
+    else if (failure instanceof AuthError) this.setStatus({ kind: 'error', code: 'token', count })
+    else if (failure instanceof NewerSchemaError) this.setStatus({ kind: 'error', code: 'update', count })
+    else if (failure instanceof GithubError) this.setStatus({ kind: 'error', code: 'github', github: failure.code, count })
+    else this.setStatus({ kind: 'error', code: 'failed', count })
   }
 
   private async syncPath(path: CollectionPath, prefetched: RemoteFile | null | undefined): Promise<void> {
