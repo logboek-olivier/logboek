@@ -21,12 +21,20 @@ export async function loadFingerprint(db: Db): Promise<FingerprintRecord | null>
   try {
     const raw: unknown = JSON.parse(decoder.decode(blob))
     if (!isFingerprintRecord(raw)) return null
-    for (const v of [raw.credentialId, raw.prfSalt, raw.hkdfSalt, raw.wrappedKey]) fromBase64(v)
-    return raw
+    // Beschadigd record → null, zodat de app terugvalt op alleen de wachtzin in plaats van een verwarrende fout.
+    const ok =
+      fromBase64(raw.credentialId).length >= 16 &&
+      fromBase64(raw.prfSalt).length === 32 &&
+      fromBase64(raw.hkdfSalt).length === 16 &&
+      fromBase64(raw.wrappedKey).length === WRAPPED_KEY_LENGTH
+    return ok ? raw : null
   } catch {
     return null
   }
 }
+
+/** versie(1) | iv(12) | sleutel(32) | tag(16) */
+const WRAPPED_KEY_LENGTH = 1 + 12 + 32 + 16
 
 export async function saveFingerprint(db: Db, record: FingerprintRecord): Promise<void> {
   await putLocal(db, NAME, utf8(JSON.stringify(record)))

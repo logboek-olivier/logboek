@@ -5,6 +5,7 @@ import { randomBytes, utf8, type Bytes } from './encrypt'
 
 const HKDF_INFO = 'logboek/webauthn-kek/v1'
 const RP_NAME = 'Logboek'
+export const PRF_LENGTH = 32
 
 export class WebAuthnError extends Error {
   /** Naam van de onderliggende DOMException (bijvoorbeeld NotAllowedError, AbortError); nooit inhoud. */
@@ -73,6 +74,7 @@ export async function registerFingerprint(): Promise<Registration> {
   if (!results.prf?.enabled) throw new WebAuthnError('Dit apparaat ondersteunt geen vingerafdruk-sleutel (prf)')
   const credentialId = new Uint8Array(credential.rawId)
   const first = results.prf.results?.first
+  if (first !== undefined && first.byteLength < PRF_LENGTH) throw new WebAuthnError('Vingerafdruk gaf geen sleutel (prf)')
   // Sommige authenticators geven de PRF pas bij een assertion; dan meteen één keer ophalen.
   const prfOutput = first ? new Uint8Array(first) : await evaluateFingerprint(credentialId, prfSalt)
   return { credentialId, prfSalt, prfOutput }
@@ -100,11 +102,13 @@ export async function evaluateFingerprint(credentialId: Bytes, prfSalt: Bytes, s
   if (!(assertion instanceof PublicKeyCredential)) throw new WebAuthnError('Vingerafdruk mislukt')
   const results = assertion.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & PrfOutputs
   const first = results.prf?.results?.first
-  if (!first || first.byteLength < 32) throw new WebAuthnError('Vingerafdruk gaf geen sleutel (prf)')
+  if (!first || first.byteLength < PRF_LENGTH) throw new WebAuthnError('Vingerafdruk gaf geen sleutel (prf)')
   return new Uint8Array(first)
 }
 
+/** Laatste verdedigingslinie: zonder 32 bytes geheime invoer geen KEK (WebCrypto accepteert lege HKDF-invoer wel). */
 export async function deriveKekFromPrf(prfOutput: Bytes, hkdfSalt: Bytes): Promise<CryptoKey> {
+  if (prfOutput.length < PRF_LENGTH) throw new WebAuthnError('Vingerafdruk gaf geen sleutel (prf)')
   const material = await crypto.subtle.importKey('raw', prfOutput, 'HKDF', false, ['deriveKey'])
   return crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: hkdfSalt, info: utf8(HKDF_INFO) },

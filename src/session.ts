@@ -10,6 +10,7 @@ import {
   serializeMeta,
   unlock,
   unwrapMasterKey,
+  verifyMetaCheck,
   type Meta,
   type Secret,
 } from './crypto/keys'
@@ -90,13 +91,19 @@ export class Session {
     if (generation !== this.generation) throw new Error('Vergrendeld')
   }
 
-  /** Haalt meta.json.enc op en neemt een nieuwere versie (wachtzin gewijzigd op een ander apparaat) lokaal over. */
-  private async refreshMeta(client: GithubClient, db: Db, generation: number): Promise<void> {
+  /**
+   * Haalt meta.json.enc op en neemt een nieuwere versie (wachtzin gewijzigd op een ander apparaat) lokaal over,
+   * maar alleen als de meta aan deze hoofdsleutel gebonden is. Zo kan iemand met alleen schrijfrechten op
+   * logboek-data de wachtzin niet op afstand ongeldig maken.
+   */
+  private async refreshMeta(client: GithubClient, db: Db, masterKey: CryptoKey, generation: number): Promise<void> {
     try {
       const stored = await getObject(db, META_PATH)
       const remote = await client.getFile(META_PATH)
       if (!remote || remote.sha === stored?.sha || generation !== this.generation) return
       const meta = parseMeta(new TextDecoder().decode(remote.content))
+      if (!(await verifyMetaCheck(meta, masterKey))) return
+      if (generation !== this.generation) return
       await Store.storeMeta(db, meta, remote.sha)
       this.lastMeta = meta
     } catch {
@@ -171,8 +178,12 @@ export class Session {
     await unlock(meta, { passphrase })
     const registration = await registerFingerprint()
     const hkdfSalt = randomBytes(16)
-    const kek = await deriveKekFromPrf(registration.prfOutput, hkdfSalt)
-    registration.prfOutput.fill(0)
+    let kek: CryptoKey
+    try {
+      kek = await deriveKekFromPrf(registration.prfOutput, hkdfSalt)
+    } finally {
+      registration.prfOutput.fill(0)
+    }
     const wrappedKey = await rewrapMasterKey(meta, passphrase, kek, FINGERPRINT_AAD)
     await saveFingerprint(db, {
       credentialId: toBase64(registration.credentialId),
@@ -198,8 +209,12 @@ export class Session {
     const record = await loadFingerprint(db)
     if (!record) throw new SetupError('Vingerafdruk is niet ingesteld op dit apparaat')
     const prf = await evaluateFingerprint(fromBase64(record.credentialId), fromBase64(record.prfSalt), signal)
-    const kek = await deriveKekFromPrf(prf, fromBase64(record.hkdfSalt))
-    prf.fill(0)
+    let kek: CryptoKey
+    try {
+      kek = await deriveKekFromPrf(prf, fromBase64(record.hkdfSalt))
+    } finally {
+      prf.fill(0)
+    }
     const masterKey = await unwrapMasterKey(record.wrappedKey, kek, FINGERPRINT_AAD)
     await this.openWithStoredToken(masterKey)
   }
@@ -302,7 +317,7 @@ export class Session {
     this.setState({ phase: 'unlocked', store })
     this.touch()
     void store.sync()
-    void this.refreshMeta(client, db, this.generation)
+    void this.refreshMeta(client, db, masterKey, this.generation)
   }
 
   private requireDb(): Db {
