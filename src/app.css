@@ -1670,3 +1670,255 @@ button.sync-status {
 .btn.link.group-all {
   align-self: flex-end;
 }
+
+/* ---------- Weekplanning ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+
+.row .grow + .btn.icon {
+  align-self: flex-end;
+}
+
+.plan-group {
+  margin: 0;
+  padding: var(--s-4);
+}
+
+.plan-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+.plan-day h2 {
+  font-size: var(--fs-lg);
+}
+
+.plan-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-left: 4px solid var(--accent);
+}
+
+.plan-block.slot-middag {
+  border-left-color: var(--chart-2);
+}
+
+.plan-block.slot-avond {
+  border-left-color: var(--navy-700);
+}
+
+.plan-block-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 40px;
+}
+
+.plan-block-head .btn.icon {
+  margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-2)) calc(-1 * var(--s-2)) 0;
+}
+
+.plan-slot {
+  font-weight: var(--fw-bold);
+}
+
+.plan-location {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin: 0;
+}
+
+.plan-location .icon {
+  --icon: 14px;
+}
+
+.plan-topics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-topic {
+  display: block;
+  padding: var(--s-1) 0;
+}
+
+.plan-topic.tick {
+  display: flex;
+  width: 100%;
+  min-height: var(--tap);
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-1) 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-topic.tick.done > span:last-child {
+  color: var(--text-muted);
+}
+
+.plan-topic.tick.done .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.check-box.small {
+  width: 28px;
+  height: 28px;
+}
+
+.check-box.small .icon {
+  --icon: 18px;
+}
+
+.plan-note {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.plan-edit-topics .row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.today-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.today-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.today-block + .today-block {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--border);
+}
+
+/* Tonen aan studenten: alleen de planning, over alles heen (ook de onderbalk en de sync-status). */
+body.presenting {
+  overflow: hidden;
+}
+
+body.presenting .bottom-bar {
+  display: none;
+}
+
+.presentation {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  padding: var(--s-4);
+  padding-top: max(var(--s-4), env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--s-8) + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+}
+
+.presentation > * {
+  max-width: var(--page-max);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.presentation h1 {
+  margin-top: var(--s-4);
+  margin-bottom: 0;
+}
+
+.presentation .plan-days {
+  margin-top: var(--s-6);
+}
+
+.presentation .plan-topic {
+  font-size: var(--fs-lg);
+}
+
+.presentation-close {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  margin-left: 0;
+}
+
+/* Afdrukken / PDF: alleen de planning, zwart op wit. */
+.print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 15mm;
+  }
+
+  #root {
+    display: none;
+  }
+
+  .print-root {
+    display: block;
+    color: #000;
+    background: #fff;
+    font-size: 11pt;
+  }
+
+  .print-root .card {
+    border: 1px solid #999;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .print-root .plan-day {
+    break-inside: avoid-page;
+  }
+
+  .print-root .muted,
+  .print-root .plan-note {
+    color: #333;
+  }
+
+  body {
+    background: #fff;
+  }
+}

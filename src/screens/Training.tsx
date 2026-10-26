@@ -1,4 +1,4 @@
-import { BookOpen, ChevronLeft, ChevronRight, FileUp, Flag, Pencil, Plus, Share2, Users } from 'lucide-react'
+import { BookOpen, ChevronLeft, ChevronRight, FileUp, Flag, Pencil, Plus, Share2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { CourseSheet, GroupSheet, TopicSheet } from '../components/CurriculumSheets'
 import type { Notify } from '../components/EditSheets'
@@ -29,18 +29,30 @@ import {
   updateGroup,
   updateTopic,
 } from '../model/curricula'
-import type { Curriculum } from '../model/types'
+import { splitPlans } from '../model/plans'
+import { todayIso, type Curriculum } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
+import { PlansView } from './Planning'
 import { StudentsView } from './Students'
 
 // Training: cursussen per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
 // te delen als JSON en te importeren.
 
+type Tab = 'planning' | 'students' | 'courses'
+
+// Drie tabbladen zonder iconen: met iconen past het niet op 360 px.
+const TABS = [
+  { id: 'planning', label: 'plan.list' },
+  { id: 'students', label: 'students.title' },
+  { id: 'courses', label: 'curriculum.courses' },
+] as const
+
 export function Training({ store, notify }: { store: Store; notify: Notify }) {
   const stored = useCollection(store, 'curricula.json.enc')
   const curricula = effectiveCurricula(stored)
-  const [tab, setTab] = useState<'students' | 'courses'>('students')
+  // Een lopende of komende planning: dan opent Training op Planning, anders op Studenten.
+  const [tab, setTab] = useState<Tab>(() => (splitPlans(store.get('plans.json.enc'), todayIso()).current.length > 0 ? 'planning' : 'students'))
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,14 +79,25 @@ export function Training({ store, notify }: { store: Store; notify: Notify }) {
 
   const tabs = (
     <div className="segments" role="tablist">
-      {(['students', 'courses'] as const).map((id) => (
+      {TABS.map(({ id, label }) => (
         <button key={id} role="tab" aria-selected={tab === id} className={`segment${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
-          <Icon icon={id === 'students' ? Users : BookOpen} />
-          {t(id === 'students' ? 'students.title' : 'curriculum.courses')}
+          {t(label)}
         </button>
       ))}
     </div>
   )
+
+  if (tab === 'planning') {
+    return (
+      <section className="stack-lg">
+        <header className="page-header">
+          <h1>{t('nav.training')}</h1>
+        </header>
+        {tabs}
+        <PlansView store={store} notify={notify} curricula={curricula} />
+      </section>
+    )
+  }
 
   if (tab === 'students') {
     return (

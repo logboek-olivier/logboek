@@ -14,9 +14,10 @@ import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
+import { TodayPlan } from './Planning'
 import { t } from '../i18n'
 
-// Vandaag: nm dit jaar met voortgang naar het jaardoel, nm totaal, dagen tot de volgende vervaldatum, laatste tocht.
+// Vandaag: planning van vandaag (als er een lopende weekplanning is), nm dit jaar met voortgang naar het jaardoel, nm totaal, dagen tot de volgende vervaldatum, laatste tocht.
 // Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
 
 const TOKEN_WARNING_DAYS = 30
@@ -89,6 +90,7 @@ export function Today({
           onSettings={onSettings}
         />
       )}
+      <TodayPlan store={store} notify={notify} />
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}
