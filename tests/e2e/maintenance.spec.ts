@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { createNewLogbook, lock } from './helpers/logbook'
+import { createNewLogbook, lock, openMore } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
 test('Instellingen → Over toont versie, bouwdatum en commit', async ({ page }) => {
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Instellingen' }).click()
+  await openMore(page, 'Instellingen')
   const about = page.locator('.about')
   await expect(about).toContainText('Versie1.0.0')
   await expect(about).toContainText('Gebouwd')

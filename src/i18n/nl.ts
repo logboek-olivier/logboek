@@ -12,7 +12,7 @@ export const nl = {
   'common.close': 'Sluiten',
   'common.delete': 'Verwijderen',
   'common.edit': 'Bewerken',
-  'common.more': 'Meer',
+  'common.more': 'Meer velden',
   'common.next': 'Verder',
   'common.opening': 'Logboek openen…',
   'common.save': 'Opslaan',
@@ -166,8 +166,6 @@ export const nl = {
   'today.goalReached': 'jaardoel gehaald',
   'today.goalProgress': 'Voortgang jaardoel',
   'today.nmTotal': 'nm totaal',
-  'today.tips30': 'Fooi 30 dagen',
-  'today.moneyMonth': (p: { month: string }) => `Zeilgeld ${p.month}`,
   'today.lastTrip': 'Laatste tocht',
   'today.noDays': 'Nog geen dagen. Voeg een dag toe of importeer de mijlenregistratie bij Zeilen.',
   'today.addDay': 'Dag toevoegen',
@@ -239,7 +237,7 @@ export const nl = {
   'quick.newTripShort': 'nieuwe tocht',
   'quick.tripShort': (p: { name: string }) => `tocht ${p.name}`,
   'quick.newTripCheck': (p: { name: string }) => `Nieuwe tocht (anders bij "${p.name}")`,
-  'quick.boatMissing': 'Boot ontbreekt: open "Meer" en vul de boot in.',
+  'quick.boatMissing': 'Boot ontbreekt: open "Meer velden" en vul de boot in.',
 
   // Geld
   'money.addTip': 'Fooi toevoegen',
@@ -336,6 +334,20 @@ export const nl = {
   'setup.recoveryField': (p: { n: number }) => `Herstelcode (${p.n} woorden)`,
   'setup.useRecovery': 'Herstelcode gebruiken',
   'setup.usePassphrase': 'Wachtzin gebruiken',
+
+  // Navigatie (release 2)
+  'nav.training': 'Training',
+  'nav.more': 'Meer',
+  'more.moneyHint': 'Zeilgeld, fooi en kosten',
+  'more.settingsHint': 'Vergrendelen, taal, wachtzin, token',
+
+  // Vervaldatums
+  'today.nextExpiry': 'Volgende vervaldatum',
+  'expiry.token': 'GitHub-token',
+  'expiry.expired': 'verlopen',
+  'expiry.today': 'vandaag',
+  'expiry.inDays': (p: { n: number }) => `over ${p.n} ${plural(p.n, 'dag', 'dagen')}`,
+  'more.back': 'Terug naar Meer',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

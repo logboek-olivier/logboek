@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 // Schermafbeeldingen van elk scherm op 360 en 412 px, licht en donker, in het Nederlands; plus Engels op 360 px.
 // CI uploadt de map screenshots/ als artifact. Elk scherm wordt ook op horizontale overloop gecontroleerd.
@@ -73,7 +73,9 @@ for (const { width, scheme, lang } of RUNS) {
       await shot('vandaag-leeg')
       await button('nav.sailing').click()
       await shot('zeilen-leeg')
-      await button('nav.money').click()
+      await page.getByRole('navigation').getByRole('button', { name: L('nav.more'), exact: true }).click()
+      await shot('meer')
+      await openMore(page, L('nav.money'), L('nav.more'))
       await shot('geld-leeg')
 
       // Gegevens: import van de nep-werkmap, een paar fooien en kosten, twee dagen.
@@ -119,12 +121,12 @@ for (const { width, scheme, lang } of RUNS) {
       await expect(page.getByRole('dialog')).toBeVisible()
       await shot('dag-bewerken')
       await button('common.close').click()
-      await button('nav.money').click()
+      await openMore(page, L('nav.money'), L('nav.more'))
       await shot('geld')
       await page.locator('.tx button').first().click()
       await shot('transactie-bewerken')
       await button('common.close').click()
-      await button('nav.settings').click()
+      await openMore(page, L('nav.settings'), L('nav.more'))
       await button('settings.backup').click()
       await shot('instellingen')
       await button('settings.lock').click()

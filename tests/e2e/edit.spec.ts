@@ -55,7 +55,7 @@ test('Vandaag: jaardoel instellen met voortgang, en omlaag trekken synchroniseer
   await page.getByRole('tab', { name: 'Dag' }).click()
   await page.getByLabel('Naar (plaats)').fill('Nephaven')
   await page.getByLabel('Zeemijlen').fill('250')
-  await page.getByRole('button', { name: 'Meer' }).click()
+  await page.getByRole('button', { name: 'Meer velden' }).click()
   await page.getByLabel('Boot').fill('Nepboot')
   await page.getByRole('button', { name: 'Opslaan' }).click()
 
