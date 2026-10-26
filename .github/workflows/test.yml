@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Vast op 24.04: op het nieuwe ubuntu-latest (Ubuntu 26) blijft de Playwright-installatie met --with-deps hangen.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
