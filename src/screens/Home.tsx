@@ -12,6 +12,7 @@ import { QuickAdd } from './QuickAdd'
 import { Sailing } from './Sailing'
 import { Settings } from './Settings'
 import { Today } from './Today'
+import { Training } from './Training'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Training · + · Zeilen · Meer.
 // Geld en Instellingen zitten onder Meer.
@@ -28,8 +29,6 @@ const SCREEN_NAMES: Record<Screen, string> = {
   instellingen: 'Instellingen',
 }
 
-/** Training komt pas in de balk als er iets te tonen is (curricula, PR C). */
-const HIDDEN_TABS: Tab[] = ['training']
 
 export function Home({ store }: { store: Store }) {
   const [screen, setScreenState] = useState<Screen>('vandaag')
@@ -66,6 +65,7 @@ export function Home({ store }: { store: Store }) {
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={() => select('toevoegen')} />
       )}
+      {screen === 'training' && <Training store={store} notify={notify} />}
       {screen === 'zeilen' && <Sailing store={store} notify={notify} />}
       {screen === 'toevoegen' && <QuickAdd store={store} onDone={done} />}
       {screen === 'meer' && <More onOpen={select} />}
@@ -82,7 +82,7 @@ export function Home({ store }: { store: Store }) {
         </>
       )}
       <Toast message={toast} onDone={clearToast} />
-      <BottomBar active={activeTab} onSelect={select} hidden={HIDDEN_TABS} />
+      <BottomBar active={activeTab} onSelect={select} />
     </main>
   )
 }

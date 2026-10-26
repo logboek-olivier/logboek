@@ -78,12 +78,49 @@ export interface Settings extends SyncRecord {
   yearGoalNm?: number
 }
 
+// Training (release 2). Bond-onafhankelijk: ASA, RYA, CWO of een eigen cursus.
+
+export type CurriculumBody = 'ASA' | 'RYA' | 'CWO' | 'eigen'
+export const CURRICULUM_BODIES: readonly CurriculumBody[] = ['ASA', 'RYA', 'CWO', 'eigen']
+export type TopicKind = 'theorie' | 'praktijk'
+
+/** Tekst in beide talen; een lege vertaling valt terug op de andere taal. */
+export interface LocalizedText {
+  nl: string
+  en: string
+}
+
+export interface Topic {
+  id: string
+  title: LocalizedText
+  kind: TopicKind
+  /** Examenkritisch: komt bovenaan zolang een student het nog niet geoefend heeft. */
+  examCritical: boolean
+}
+
+export interface TopicGroup {
+  id: string
+  title: LocalizedText
+  topics: Topic[]
+}
+
+export interface Curriculum extends SyncRecord {
+  body: CurriculumBody
+  /** Bijvoorbeeld "101" of "Day Skipper". */
+  courseCode: string
+  name: LocalizedText
+  groups: TopicGroup[]
+  /** seed: meegeleverd door de app (ook na bewerken); eigen: door Olivier gemaakt of geïmporteerd. */
+  source: 'seed' | 'eigen'
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
   'legs.json.enc': Leg
   'transactions.json.enc': Transaction
   'settings.json.enc': Settings
+  'curricula.json.enc': Curriculum
 }
 
 export type CollectionPath = keyof Collections
@@ -93,6 +130,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'legs.json.enc',
   'transactions.json.enc',
   'settings.json.enc',
+  'curricula.json.enc',
 ]
 
 export function newId(): string {
