@@ -23,7 +23,7 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
   await expect(page.locator('main')).not.toContainText('nm totaal')
   await expectNoHorizontalOverflow(page)
 
-  for (const tab of ['Deze week', 'Logboek', 'Toevoegen', 'Meer']) {
+  for (const tab of ['Deze trip', 'Logboek', 'Toevoegen', 'Meer']) {
     await page.getByRole('button', { name: tab, exact: true }).click()
     await expectNoHorizontalOverflow(page)
   }

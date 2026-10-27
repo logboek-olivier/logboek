@@ -1,6 +1,6 @@
 # Logboek
 
-Persoonlijke app van Olivier voor zijn zeiljaar: zeillogboek per week, zeilgeld in euro, trainingsapp als zeilinstructeur (cursussen, deelnemers en studenten, weekplanning), later documentenkluis, skills, doelen en overige financiën.
+Persoonlijke app van Olivier voor zijn zeiljaar: zeillogboek per trip, zeilgeld in euro, trainingsapp als zeilinstructeur (cursussen, deelnemers en studenten, weekplanning), later documentenkluis, skills, doelen en overige financiën.
 Eén gebruiker. Gratis. Alleen GitHub. Alles versleuteld. Werkt offline op zee.
 
 Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code af van dit bestand, dan is de code fout, tenzij Olivier dit bestand aanpast.
@@ -49,7 +49,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6; de opgeslagen sessiesleutel (regel 10) door een review-agent in release 1. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
 12. **Identiteitsdocumenten (paspoort, rijbewijs, ID) alleen als het nodig is.** De categorie `identiteit` bestaat, maar blijft standaard leeg. De app vraagt er nooit om.
 13. **Nooit een tweede GitHub Pages-site in organisatie logboek-olivier: die deelt opslag en vingerafdruk met Logboek.**
-14. **Studentgegevens: alleen voornaam, cursus, niveau, voortgang en examenuitslag. Geen contactgegevens, geen gezondheids- of identiteitsgegevens. Nooit in logs of foutdetails. Na 12 maanden automatisch archiveren; archief is te wissen.** Deelnemers van een week vallen hier ook onder: alleen voornaam (met optioneel niveau en cursus).
+14. **Studentgegevens: alleen voornaam, cursus, niveau, voortgang en examenuitslag. Geen contactgegevens, geen gezondheids- of identiteitsgegevens. Nooit in logs of foutdetails. Na 12 maanden automatisch archiveren; archief is te wissen.** Deelnemers van een trip vallen hier ook onder: alleen voornaam (met optioneel niveau en cursus).
 15. **Wisselkoersen komen alleen uit public/rates.json, gebouwd door deploy.yml uit de ECB-bron; de app haalt zelf nooit externe data op.**
 
 ## Cryptografisch ontwerp
@@ -105,10 +105,11 @@ Alle typen in `src/model/types.ts`. Geen `any`.
 
 De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht), een tocht is een reeks dagen.
 
-**Trip** = een week (tocht, bijv. "Yacht week 7", "RYA Offshore exam"; `src/model/weeks.ts`)
-`id, name, type? (training-geven|skipper-charter|zelf-cruisen|zelf-trainen|delivery|overig), startDate?, endDate?, boat?, area?, organisation? (sailing-virgins|yacht-week|eigen|overig), participants?: [{id, firstName, level?, curriculumId?}], note?, review?: {score?, quotes}, closedAt?, updatedAt, deletedAt`
-- Alle weekvelden zijn optioneel. Een oudere of geïmporteerde tocht heeft alleen een naam: type, datums en boot worden dan afgeleid zonder op te slaan. Het type is een voorstel uit de naam ("Yacht week" → skipper-charter, "RYA" → zelf-trainen, anders overig); datums en boot komen uit de dagen.
-- Nieuwe week: naam standaard "Week \<ISO-weeknummer van de startdatum\>", einddatum standaard start + 6 dagen. Opslaan maakt de week actief (`settings.activeWeekId`); afronden zet `closedAt` en de review, en maakt de week weer inactief.
+**Trip** (bijv. "Yacht week 7", "RYA Offshore exam"; van elke lengte, 1 tot 120 dagen; `src/model/weeks.ts`, in de code nog "week")
+`id, name, type? (training-geven|skipper-charter|zelf-cruisen|zelf-trainen|delivery|overig), startDate?, endDate?, boat? (naam), boatModel?, boatLengthFt?, boatKind? (catamaran|eenromp|motor|overig), base?, charter?, area?, organisation? (sailing-virgins|yacht-week|eigen|overig), participants?: [{id, firstName, level?, curriculumId?}], note?, review?: {score?, quotes}, closedAt?, updatedAt, deletedAt`
+- Alle tripvelden zijn optioneel in de data. Een oudere of geïmporteerde trip heeft alleen een naam: type, datums en boot worden dan afgeleid zonder op te slaan. Het type is een voorstel uit de naam ("Yacht week" → skipper-charter, "RYA" → zelf-trainen, anders overig); datums en boot komen uit de dagen.
+- Bootgegevens: bootnaam, model, lengte (voet; de app toont ook meters) en basis zijn verplicht bij opslaan van een trip; soort boot en charterbedrijf of eigenaar zijn optioneel. Een bekende bootnaam vult model, lengte, soort, basis en charterbedrijf van de vorige trip met die boot in. Ontbreken ze bij een oudere trip, dan vraagt Deze trip om aanvullen.
+- Nieuwe trip: naam standaard "\<basis\> \<maand jaar\>", einddatum standaard start + 6 dagen. Eerdere en komende trips zijn gewoon in te voeren. Lopend is de trip die Olivier als lopend startte (`settings.activeWeekId`), anders de trip waarin vandaag valt; opslaan maakt een trip alleen lopend als vandaag erin valt. Afronden zet `closedAt` en de review, en maakt de trip weer inactief.
 - De rol op een dag volgt uit het type: training-geven → instructeur; skipper-charter, zelf-cruisen en delivery → schipper; zelf-trainen → trainee; overig → laatst gebruikt.
 - Een nieuwe import houdt het id van een bestaande tocht met dezelfde naam en eerste dag, en ruimt vastgelegde weken (met type of datums) nooit op.
 
@@ -130,7 +131,7 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 - Alles wordt in euro getoond (`src/model/rates.ts`). Volgorde: `receivedEur` (werkelijk ontvangen, optioneel), dan de opgeslagen koers (`amountEur = amount / rate`, `rate` = valuta per 1 EUR, `rateDate`), dan de ECB-koers uit `public/rates.json` van de transactiedatum of de laatste werkdag daarvoor.
 - Een koers wordt opgeslagen zodra hij definitief is: bij nieuwe transacties direct, bij bestaande één keer per sessie na een geslaagde sync. Is de datum nieuwer dan het koersbestand (of is de app offline), dan geldt tijdelijk de laatst bekende koers, gemarkeerd als "voorlopig"; die wordt nooit opgeslagen. Zonder koersbestand staat een bedrag apart per valuta, nooit omgerekend met een verzonnen koers.
 - `public/rates.json` (`{format: 'logboek-rates', source, dates[], rates: {USD: [...], …}}`) bouwt `scripts/build-rates.mjs` in `deploy.yml` uit de ECB-referentiekoersen (volledige historie); XCD = USD × 2,70. Het bestand staat in `.gitignore` en wordt door de service worker "eerst netwerk, offline uit de cache" geladen, niet geprecachet. De bouwdatum is de commitdatum, zodat de dagelijkse build geen update meldt.
-- `tripId` wordt automatisch gezet als de datum binnen een week valt (opgeslagen weekdatums gaan voor); Olivier kiest dit niet zelf.
+- `tripId` wordt automatisch gezet als de datum binnen een trip valt (opgeslagen tripdatums gaan voor); Olivier kiest dit niet zelf.
 - Later toe te voegen (release 4): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
 
 ### Training
@@ -143,8 +144,8 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 
 **Student** (`students.json.enc`, regel 14)
 `id, firstName, curriculumId, level (beginner|gemiddeld|gevorderd), progress: {[topicId]: {status (nieuw|geoefend|beheerst), updatedAt}}, exam?: {date, passed, note?}, note?, startedAt?, archivedAt?, updatedAt, deletedAt`
-- `weekId?` koppelt de student aan een week. Ontbreekt het (oudere studenten), dan hoort de student bij de week waarin `startedAt` valt; anders staat hij in het Studentenarchief onder "Zonder week". `startedAt` telt ook mee als activiteit.
-- Een deelnemer met cursus krijgt automatisch een student met hetzelfde id; naam, niveau en cursus volgen de week, en de voortgang blijft. Een student die in Deze week wordt toegevoegd, komt bij de deelnemers.
+- `weekId?` koppelt de student aan een trip. Ontbreekt het (oudere studenten), dan hoort de student bij de trip waarin `startedAt` valt; anders staat hij in het Studentenarchief onder "Zonder trip". `startedAt` telt ook mee als activiteit.
+- Een deelnemer met cursus krijgt automatisch een student met hetzelfde id; naam, niveau en cursus volgen de trip, en de voortgang blijft. Een student die in Deze trip wordt toegevoegd, komt bij de deelnemers.
 - Na 12 maanden zonder activiteit (begin, examen, voortgang of wijziging) automatisch gearchiveerd, pas na een geslaagde sync. Het archief is te wissen.
 - Wissen maakt een tombstone met alleen `id` en tijden. Oudere versies blijven versleuteld in de git-geschiedenis van `logboek-data` tot die repo opnieuw wordt aangemaakt.
 - Groepsafvinken verlaagt nooit een status.
@@ -153,7 +154,7 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 `id, title, startDate, dayCount, tripId?, groups: [{id, name, curriculumId, level, studentIds}], days: [{date, blocks: [{id, slot (ochtend|middag|avond), groupIds, topicIds, location?, note?}]}], updatedAt, deletedAt`
 - Concept (`src/model/plans.ts`, zonder netwerk): theorie 's ochtends, praktijk 's middags, examenkritisch eerst, beginners gelijk verdeeld over alle lesdagen, gemiddeld/gevorderd minstens 3/4 onderwerpen per blok, laatste dag herhaling van de examenkritische onderwerpen en examen.
 - Groepen verwijzen naar studenten via id; gedeelde tekst, printweergave en "Toon aan studenten" tonen groepsnamen, nooit studentnamen of voortgang.
-- Een planning hoort bij een week via `tripId`; zonder `tripId` (oudere planningen) bij de week waarin `startDate` valt. Een nieuwe planning vanuit Deze week krijgt de week, de startdatum, het aantal dagen en groepen per cursus van de deelnemers mee.
+- Een planning hoort bij een trip via `tripId`; zonder `tripId` (oudere planningen) bij de trip waarin `startDate` valt. Een nieuwe planning vanuit Deze trip krijgt de trip, de startdatum, het aantal dagen en groepen per cursus van de deelnemers mee.
 
 ### Kluis (release 3)
 
@@ -163,7 +164,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ### Instellingen
 
-`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en week; de lopende week (`activeWeekId`); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
+`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
 
 ## Import mijlenregistratie
 
@@ -185,7 +186,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze week · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -194,30 +195,31 @@ Onderste balk: **Vandaag · Deze week · + · Logboek · Meer**, vijf gelijke va
    - de knop "Dag van vandaag loggen" (opent Toevoegen → Dag, voorgevuld);
    - nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`);
    - dagen tot de volgende vervaldatum (nu de token; de kluis voegt documenten toe).
-4. **Deze week:** de lopende week; zonder lopende week "Nieuwe week starten".
-   - Kop met naam, type, datums, boot, gebied en organisatie (tikken = bewerken).
-   - Na de einddatum "Week afronden": samenvatting (dagen, nm, deelnemers met resultaat) en reviewscore met citaten (Engelstalige citaten blijven Engels).
+4. **Deze trip:** de lopende trip; zonder lopende trip "Nieuwe trip". Onderaan de komende trips met het aantal dagen tot de start (tikken = bewerken).
+   - Kop met naam, type, datums, boot (naam · model · lengte in ft en m · soort), basis, gebied, charterbedrijf en organisatie (tikken = bewerken). Ontbrekende bootgegevens: melding met "Aanvullen".
+   - Vergeten dagen (binnen de trip, tot en met vandaag, zonder gelogde dag): melding met één knop die Toevoegen → Dag op die datum opent.
+   - Na de einddatum "Trip afronden": samenvatting (dagen, nm, deelnemers met resultaat) en reviewscore met citaten (Engelstalige citaten blijven Engels).
    - Deelnemers.
    - Planning (bij training geven): wizard in drie schermen (dagen, groepen, concept), bewerken met tikken, "Toon aan studenten" (alleen de planning volledig scherm, zonder onderbalk of andere gegevens, terug met één knop), delen als tekst via `navigator.share` of als PDF via de printfunctie, in een exporttaal los van de app-taal.
    - Checklists per deelnemer: grote vinkvakken (één tik = volgende status), examenkritische onderwerpen op "nieuw" bovenaan, voortgangsbalk per groep, "Alles geoefend/beheerst" per groep, "Groep afvinken" voor één onderwerp voor meerdere studenten.
-   - Gezeilde dagen met nm-totaal.
-   - Fooien en kosten van de week in euro, standaard verborgen achter "Toon bedragen".
+   - Gezeilde dagen met nm-totaal; elke dag is aan te tikken en te bewerken; "Dag toevoegen" opent Dag op de eerstvolgende vergeten dag. De eerste dag van een trip begint op de basis.
+   - Inkomsten en uitgaven van de trip in euro, standaard verborgen achter "Toon bedragen".
    
    Een open planning of student vult het hele scherm.
    
-   **Nieuwe week starten** (één scherm, ook bewerken):
-   - naam, type als knoppen, startdatum (vandaag), aantal dagen (7);
-   - boot en gebied met suggesties uit eerdere weken, organisatie;
+   **Nieuwe trip** (één scherm, ook bewerken):
+   - naam, type als knoppen, startdatum (vandaag), aantal dagen (7, tot 120);
+   - boot: naam, model, lengte en basis (verplicht), soort en charterbedrijf, met suggesties uit eerdere trips; gebied, organisatie;
    - deelnemers één per regel met optioneel niveau en cursus.
 5. **Toevoegen (+):** tabs **Dag · Fooi · Kosten**, opent op Dag.
-   - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar, nm, watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en week komen uit de lopende week; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Alleen naar en nm zijn nodig.
+   - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar, nm, watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Alleen naar en nm zijn nodig.
    - Fooi: bedrag (groot numeriek toetsenbord), soort, bron, valuta, datum.
    - Kosten: bedrag, omschrijving, soort (kosten/investering); bron, valuta en datum onder "Meer velden".
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
-6. **Logboek:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, tochten). Grafiek nm per maand (12 maanden). "Nieuwe week starten". Daaronder weken per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen; "Week bewerken" opent het weekscherm. Knop "Importeren" (Excel of CSV).
+6. **Logboek:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, trips). Grafiek nm per maand (12 maanden). "Nieuwe trip". Daaronder trips per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen; "Trip bewerken" opent het tripscherm. Knop "Importeren" (Excel of CSV).
 7. **Geld** (onder Meer): alles in euro, het originele bedrag klein eronder ("voorlopig" bij een voorlopige koers). Saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met bewerken (ook het werkelijk ontvangen eurobedrag) en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).
 8. **Cursussen** (onder Meer): per bond, met import (JSON), per cursus bewerken (groepen en onderwerpen toevoegen, wijzigen, verplaatsen, examenkritisch) en delen.
-9. **Studentenarchief** (onder Meer): studenten zonder week en gearchiveerde studenten; terugzetten en wissen.
+9. **Studentenarchief** (onder Meer): studenten zonder trip en gearchiveerde studenten; terugzetten en wissen.
 10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash).
 
 Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
@@ -280,7 +282,7 @@ logboek/
 Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt niet gebouwd.
 
 1. **Bruikbaar (gedaan).** Basis afgerond op 25 oktober 2026 (skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag, Instellingen, vingerafdruk, PWA op telefoon; in gebruik voor mijlen en zeilgeld). Daarbovenop: import van Excel en CSV ook op Android, sessie die verversen en wisselen van app overleeft, vast ontwerpsysteem met iconen en grafieken, bewerken met ongedaan maken, onderhoud vanaf de telefoon (versie, foutdetails).
-2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen. Daarna: herstel bij een onleesbaar bestand op GitHub, Toevoegen met Dag eerst, weken (type, deelnemers, afronden met review), onderbalk Vandaag · Deze week · + · Logboek · Meer, en geld in euro met ECB-koersen.
+2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen. Daarna: herstel bij een onleesbaar bestand op GitHub, Toevoegen met Dag eerst, weken (type, deelnemers, afronden met review), onderbalk Vandaag · Deze trip · + · Logboek · Meer, en geld in euro met ECB-koersen. Daarna gebruiksvriendelijk: Deze trip (trips van elke lengte, bootgegevens, eerdere en komende trips, vergeten dagen), Toevoegen met Dag · Inkomsten · Uitgave, offline kaart met afstandsvoorstel uit eerdere routes, termijnen (deadlines en vervaldatums samen) en planning met grote thema's.
 3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
 4. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, aandelenkoersen, scenario's.
 5. **Doelen en skills.** Doelen, metingen, ademtrainer, skills, voortgang Yachtmaster/ASA.

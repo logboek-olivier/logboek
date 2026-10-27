@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -21,8 +21,11 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
 
   // Tocht (week) hernoemen.
   await page.locator('.trip').filter({ hasText: 'Cursus binnenwater' }).getByRole('button').first().click()
-  await page.getByRole('button', { name: 'Week bewerken' }).click()
+  await page.getByRole('button', { name: 'Trip bewerken' }).click()
   await page.getByRole('dialog').getByLabel('Naam', { exact: true }).fill('Cursus op het meer')
+  // Een geïmporteerde trip heeft nog geen model, lengte en basis: die vraagt het scherm bij bewerken.
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Opslaan' })).toBeDisabled()
+  await fillBoat(page.getByRole('dialog'))
   await expectNoHorizontalOverflow(page)
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.trip').first()).toContainText('Cursus op het meer')
@@ -31,7 +34,7 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
   await page.getByRole('button', { name: /Rietmeer → Meerdorp.*Bewerken/ }).click()
   const sheet = page.getByRole('dialog', { name: 'Dag bewerken' })
   await expect(sheet).toContainText('Geïmporteerde dag')
-  await sheet.getByLabel('Tocht').selectOption({ label: 'Oefentocht noord' })
+  await sheet.getByLabel('Trip').selectOption({ label: 'Oefentocht noord' })
   await sheet.getByLabel('Zee (nm)').fill('50')
   await expectNoHorizontalOverflow(page)
   await sheet.getByRole('button', { name: 'Opslaan' }).click()

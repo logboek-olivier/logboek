@@ -19,6 +19,11 @@ import {
   updateWeek,
   weekView,
   type WeekInput,
+  boatComplete,
+  boatProfile,
+  feetToMetres,
+  missingDays,
+  upcomingTrips,
 } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -56,6 +61,11 @@ const input: WeekInput = {
   startDate: '2026-10-26',
   dayCount: 7,
   boat: ' Nepboot ',
+  boatModel: 'Nepmodel 40',
+  boatLengthFt: 40,
+  boatKind: 'catamaran',
+  base: 'Nepbasis',
+  charter: '',
   area: 'Nepgebied',
   organisation: 'sailing-virgins',
   participants: [{ firstName: ' Nepanna ', level: 'beginner', curriculumId: 'seed-asa-101' }, { firstName: '  ' }, { firstName: 'Nepbram' }],
@@ -68,7 +78,9 @@ describe('weken afleiden', () => {
     expect(isoWeek('2026-01-01')).toBe(1)
     expect(isoWeek('2021-01-01')).toBe(53)
     expect(isoWeek('2024-12-30')).toBe(1)
-    expect(defaultWeekName('2026-10-26', 'nl')).toBe('Week 44')
+    expect(defaultWeekName('2026-10-26', 'nl', 'Nepbasis')).toBe('Nepbasis okt 2026')
+    expect(defaultWeekName('2026-10-26', 'en', 'Nepbasis')).toBe('Nepbasis Oct 2026')
+    expect(defaultWeekName('2026-06-01', 'nl')).toBe('Trip jun 2026')
   })
 
   it('type als voorstel uit de naam; rol volgt uit het type', () => {
@@ -109,8 +121,8 @@ describe('weken afleiden', () => {
 describe('week starten, bewerken en afronden', () => {
   it('starten maakt de week actief; einde = start + 6; afronden met review maakt hem weer leeg, met ongedaan maken', async () => {
     const { store, github } = await device()
-    const trip = await startWeek(store, input, 'nl')
-    expect(trip).toMatchObject({ name: 'Week 44', type: 'training-geven', startDate: '2026-10-26', endDate: '2026-11-01', boat: 'Nepboot', area: 'Nepgebied', organisation: 'sailing-virgins' })
+    const trip = await startWeek(store, input, 'nl', '2026-10-28')
+    expect(trip).toMatchObject({ name: 'Nepbasis okt 2026', boatModel: 'Nepmodel 40', boatLengthFt: 40, boatKind: 'catamaran', base: 'Nepbasis', type: 'training-geven', startDate: '2026-10-26', endDate: '2026-11-01', boat: 'Nepboot', area: 'Nepgebied', organisation: 'sailing-virgins' })
     expect(trip.participants).toHaveLength(2)
     expect(activeWeek(store.get('trips.json.enc'), currentSettings(store.get('settings.json.enc')))?.id).toBe(trip.id)
     expect(needsClosing(weekView(trip, []), '2026-11-01')).toBe(false)
@@ -168,5 +180,38 @@ describe('achterwaarts compatibel', () => {
     // t2 houdt zijn handmatige dag en blijft bestaan.
     expect(trips.some((t) => t.id === 't2')).toBe(true)
     expect(trips.some((t) => t.id === fresh.id)).toBe(true)
+  })
+})
+
+describe('trips van elke lengte, eerdere en komende trips, bootgegevens', () => {
+  it('een eerdere of komende trip maakt de lopende trip niet anders; een trip waarin vandaag valt is vanzelf lopend', async () => {
+    const { store } = await device()
+    const past = await startWeek(store, { ...input, startDate: '2026-09-01', dayCount: 10 }, 'nl', '2026-10-28')
+    const future = await startWeek(store, { ...input, startDate: '2026-12-01', dayCount: 21 }, 'nl', '2026-10-28')
+    const settings = currentSettings(store.get('settings.json.enc'))
+    expect(settings.activeWeekId ?? null).toBeNull()
+    expect(future.endDate).toBe('2026-12-21')
+    const trips = store.get('trips.json.enc')
+    expect(activeWeek(trips, settings, '2026-10-28')).toBeNull()
+    expect(activeWeek(trips, settings, '2026-12-05')?.id).toBe(future.id)
+    expect(activeWeek(trips, settings, '2026-09-03')?.id).toBe(past.id)
+    expect(upcomingTrips(trips, '2026-10-28').map((t) => t.id)).toEqual([future.id])
+  })
+
+  it('bootgegevens: verplicht naam, model, lengte en basis; een bekende boot vult de rest in', () => {
+    const full: Trip = { ...oldTrip('a', 'Nep'), boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, boatKind: 'catamaran', base: 'Nepbasis', charter: 'Nepcharter', startDate: '2026-01-01' }
+    expect(boatComplete(full)).toBe(true)
+    expect(boatComplete({ ...full, base: ' ' })).toBe(false)
+    expect(boatComplete(oldTrip('b', 'Oud'))).toBe(false)
+    expect(boatProfile([full], ' nepboot ')).toEqual({ boatModel: 'Nepmodel 40', boatLengthFt: 40, boatKind: 'catamaran', base: 'Nepbasis', charter: 'Nepcharter' })
+    expect(boatProfile([full], 'Andere boot')).toBeNull()
+    expect(feetToMetres(42)).toBe(12.8)
+  })
+
+  it('vergeten dagen binnen de trip, tot en met vandaag', () => {
+    const trip: Trip = { ...oldTrip('w', 'Nep'), startDate: '2026-10-20', endDate: '2026-10-25' }
+    const view = weekView(trip, [leg('a', 'w', '2026-10-20'), leg('b', 'w', '2026-10-22')])
+    expect(missingDays(view, '2026-10-23')).toEqual(['2026-10-21', '2026-10-23'])
+    expect(missingDays(view, '2026-11-01')).toEqual(['2026-10-21', '2026-10-23', '2026-10-24', '2026-10-25'])
   })
 })

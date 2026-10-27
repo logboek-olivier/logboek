@@ -1,11 +1,11 @@
-import { CalendarPlus, ChevronRight, Eye, EyeOff, Pencil, Users } from 'lucide-react'
+import { CalendarPlus, ChevronRight, Eye, EyeOff, Pencil, Plus, Users } from 'lucide-react'
 import { useCallback, useState, useSyncExternalStore } from 'react'
-import type { Notify } from '../components/EditSheets'
+import { LegSheet, type Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { CloseWeekSheet, organisationLabel, WeekSheet, weekTypeLabel } from '../components/WeekSheet'
-import { formatDate, formatDateRange, formatMoney, formatNm } from '../format'
+import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { totalNm } from '../model/derive'
@@ -13,15 +13,25 @@ import { totals } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
-import { activeWeek, needsClosing, weekView } from '../model/weeks'
+import { daysUntil } from '../session'
+import { activeWeek, boatComplete, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
+import type { Leg, Trip } from '../model/types'
+import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { PlansView } from './Planning'
 import { StudentsView } from './Students'
 
-// Deze week: kop (tikken = bewerken), deelnemers, planning (bij training geven), checklists per deelnemer,
-// gezeilde dagen met nm-totaal, en fooien en kosten van de week, standaard verborgen achter "Toon bedragen".
+// Deze trip: kop met boot (tikken = bewerken), deelnemers, planning (bij training geven), checklists per deelnemer,
+// gezeilde dagen met nm-totaal (elke dag te bewerken, vergeten dagen met één tik toe te voegen), inkomsten en
+// uitgaven van de trip, standaard verborgen achter "Toon bedragen", en de komende trips.
 
-export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
+/** Bootgegevens op één regel: naam · model · lengte in voet en meter. */
+export function boatLine(trip: Trip, fallbackBoat = ''): string {
+  const length = trip.boatLengthFt ? t('boat.feet', { ft: formatNumber(trip.boatLengthFt), m: formatNumber(feetToMetres(trip.boatLengthFt)) }) : ''
+  return [trip.boat || fallbackBoat, trip.boatModel ?? '', length, trip.boatKind ? t(`boatKind.${trip.boatKind}`) : ''].filter(Boolean).join(' · ')
+}
+
+export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: Notify; onAddDay: (init: AddInit) => void }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
@@ -29,12 +39,20 @@ export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
   const curricula = effectiveCurricula(stored)
   const lang = useLang()
   const [sheet, setSheet] = useState<'new' | 'edit' | 'close' | null>(null)
+  const [editTrip, setEditTrip] = useState<Trip | null>(null)
   // Een open planning of student vult het hele scherm; de andere onderdelen wijken dan.
   const [planOpen, setPlanOpen] = useState(false)
   const [studentOpen, setStudentOpen] = useState(false)
   const onPlanDetail = useCallback((open: boolean) => setPlanOpen(open), [])
   const onStudentDetail = useCallback((open: boolean) => setStudentOpen(open), [])
   const week = activeWeek(trips, settings)
+  const upcoming = upcomingTrips(trips).filter((u) => u.id !== week?.id)
+  const upcomingSection = (
+    <>
+      <UpcomingTrips trips={upcoming} onOpen={setEditTrip} />
+      {editTrip && <WeekSheet store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
+    </>
+  )
 
   if (!week) {
     return (
@@ -52,6 +70,7 @@ export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
         >
           {t('week.noActive')}
         </Empty>
+        {upcomingSection}
         {sheet === 'new' && <WeekSheet store={store} trip={null} notify={notify} onClose={() => setSheet(null)} />}
       </section>
     )
@@ -60,6 +79,8 @@ export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
   const view = weekView(week, legs)
   const detail = planOpen || studentOpen
   const participants = week.participants ?? []
+  const missing = missingDays(view, todayIso())
+  const nextDay = missing[0] ?? (view.endDate && todayIso() > view.endDate ? view.endDate : todayIso())
 
   return (
     <section className="stack-lg this-week">
@@ -76,8 +97,25 @@ export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
             <span className="muted small">
               {[weekTypeLabel(view.type), view.startDate ? formatDateRange(view.startDate, view.endDate) : ''].filter(Boolean).join(' · ')}
             </span>
-            <span className="muted small">{[view.boat, week.area, week.organisation ? organisationLabel(week.organisation) : ''].filter(Boolean).join(' · ')}</span>
+            <span className="muted small">{boatLine(week, view.boat)}</span>
+            <span className="muted small">{[week.base, week.area, week.charter, week.organisation ? organisationLabel(week.organisation) : ''].filter(Boolean).join(' · ')}</span>
           </button>
+          {!boatComplete(week) && (
+            <div className="notice">
+              <p className="small">{t('boat.missing')}</p>
+              <button className="btn small primary" onClick={() => setSheet('edit')}>
+                {t('boat.complete')}
+              </button>
+            </div>
+          )}
+          {missing.length > 0 && (
+            <div className="notice">
+              <p className="small">{t('trip.missingDays', { n: missing.length })}</p>
+              <button className="btn small primary" onClick={() => onAddDay({ date: missing[0]!, tripId: week.id })}>
+                {t('trip.logMissing', { date: formatDate(missing[0]!) })}
+              </button>
+            </div>
+          )}
           {needsClosing(view, todayIso()) && (
             <div className="notice">
               <p className="small">{t('week.closePrompt', { name: week.name })}</p>
@@ -128,8 +166,9 @@ export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
       )}
       {!detail && (
         <>
-          <SailedDays legs={view.legs} nm={view.nm} />
+          <SailedDays store={store} notify={notify} legs={view.legs} nm={view.nm} onAdd={() => onAddDay({ date: nextDay, tripId: week.id })} />
           <WeekMoney store={store} weekId={week.id} />
+          {upcomingSection}
         </>
       )}
       {sheet === 'edit' && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
@@ -138,7 +177,8 @@ export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
   )
 }
 
-function SailedDays({ legs, nm }: { legs: ReturnType<typeof weekView>['legs']; nm: number }) {
+function SailedDays({ store, notify, legs, nm, onAdd }: { store: Store; notify: Notify; legs: Leg[]; nm: number; onAdd: () => void }) {
+  const [editing, setEditing] = useState<Leg | null>(null)
   return (
     <div className="section">
       <div className="section-head">
@@ -150,16 +190,50 @@ function SailedDays({ legs, nm }: { legs: ReturnType<typeof weekView>['legs']; n
       ) : (
         <ul className="rows">
           {legs.map((leg) => (
-            <li key={leg.id} className="row-item">
-              <span className="row-main">
-                <span>{[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ')}</span>
-                <span className="muted small">{formatDate(leg.date)}</span>
-              </span>
-              <span className="row-value">{formatNm(totalNm(leg))}</span>
+            <li key={leg.id}>
+              <button className="row-button" onClick={() => setEditing(leg)} aria-label={t('trip.editDay', { date: formatDate(leg.date) })}>
+                <span className="row-main">
+                  <span>{[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ')}</span>
+                  <span className="muted small">{formatDate(leg.date)}</span>
+                </span>
+                <span className="row-value">{formatNm(totalNm(leg))}</span>
+              </button>
             </li>
           ))}
         </ul>
       )}
+      <button className="btn" onClick={onAdd}>
+        <Icon icon={Plus} />
+        {t('trip.addDay')}
+      </button>
+      {editing && <LegSheet store={store} leg={editing} notify={notify} onClose={() => setEditing(null)} />}
+    </div>
+  )
+}
+
+/** Komende trips met het aantal dagen tot de start; tikken = bewerken. */
+function UpcomingTrips({ trips, onOpen }: { trips: Trip[]; onOpen: (trip: Trip) => void }) {
+  if (trips.length === 0) return null
+  const today = todayIso()
+  return (
+    <div className="section">
+      <h2>{t('trip.upcoming')}</h2>
+      <ul className="rows">
+        {trips.map((trip) => {
+          const n = daysUntil(trip.startDate ?? null, today) ?? 0
+          return (
+            <li key={trip.id}>
+              <button className="row-button" onClick={() => onOpen(trip)} aria-label={`${t('week.edit')}: ${trip.name}`}>
+                <span className="row-main">
+                  <span>{trip.name}</span>
+                  <span className="muted small">{[trip.startDate ? formatDateRange(trip.startDate, trip.endDate ?? trip.startDate) : '', boatLine(trip)].filter(Boolean).join(' · ')}</span>
+                </span>
+                <span className="row-value small">{t('trip.inDays', { n })}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

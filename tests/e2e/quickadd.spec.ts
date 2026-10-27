@@ -14,7 +14,7 @@ test('Toevoegen: tabs Dag · Fooi · Kosten, opent op Dag; zonder boot geen blok
   for (const label of ['Datum', 'Van', 'Naar', 'Zeemijlen', 'Nachturen', 'Wind (bft)', 'Boot', 'Notitie']) {
     await expect(page.getByLabel(label, { exact: true })).toBeVisible()
   }
-  for (const name of ['Rol', 'Week']) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible()
+  for (const name of ['Rol', 'Trip']) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible()
   await expect(page.getByRole('radiogroup', { name: 'Watertype' })).toBeVisible()
   await expect(page.getByLabel('Datum', { exact: true })).toHaveValue(/^\d{4}-\d{2}-\d{2}$/)
   await expectNoHorizontalOverflow(page)

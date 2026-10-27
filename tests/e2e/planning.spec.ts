@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -28,17 +28,18 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   const github = await mockGithub(page)
   await createNewLogbook(page)
   const nav = page.getByRole('navigation')
-  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
+  await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
 
   // Een week (training geven) met één deelnemer met cursus, zodat afvinken iets vastlegt.
-  await page.getByRole('button', { name: 'Nieuwe week starten' }).click()
+  await page.getByRole('button', { name: 'Nieuwe trip' }).click()
   await page.getByRole('dialog').getByLabel('Deelnemer 1', { exact: true }).fill('Nepanna')
   await page.getByRole('dialog').getByRole('combobox', { name: 'Cursus deelnemer 1' }).selectOption('seed-asa-101')
-  await page.getByRole('dialog').getByRole('button', { name: 'Week starten' }).click()
+  await fillBoat(page.getByRole('dialog'))
+  await page.getByRole('dialog').getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
   // Stap 1: dagen (voorgevuld met de week).
-  await expect(page.getByText('Nog geen planning voor deze week.')).toBeVisible()
+  await expect(page.getByText('Nog geen planning voor deze trip.')).toBeVisible()
   await page.getByRole('button', { name: 'Nieuwe planning' }).click()
   await expect(page.getByText('Stap 1 van 3')).toBeVisible()
   await expect(page.getByLabel('Aantal dagen')).toHaveValue('7')
@@ -138,7 +139,7 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   await expect(card.getByRole('button', { name: /tik om af te vinken/ }).first()).toBeVisible()
 
   // Deze week toont de planning bij de week.
-  await nav.getByRole('button', { name: 'Deze week', exact: true }).click()
+  await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
   await expect(page.getByRole('button', { name: /Nepweek zeilschool/ })).toBeVisible()
 
   await nav.getByRole('button', { name: 'Vandaag', exact: true }).click()

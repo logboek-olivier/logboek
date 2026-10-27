@@ -9,7 +9,7 @@ import { t } from '../i18n'
 import type { Store } from '../storage/store'
 import { Money } from './Money'
 import { BackToMore, More, type MoreScreen } from './More'
-import { QuickAdd } from './QuickAdd'
+import { QuickAdd, type AddInit } from './QuickAdd'
 import { Sailing } from './Sailing'
 import { Settings } from './Settings'
 import { StudentArchive } from './StudentArchive'
@@ -17,14 +17,14 @@ import { ThisWeek } from './ThisWeek'
 import { Today } from './Today'
 import { Courses } from './Courses'
 
-// Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze week · + · Logboek · Meer.
+// Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
 
 type Screen = Tab | MoreScreen
 
 const SCREEN_NAMES: Record<Screen, string> = {
   vandaag: 'Vandaag',
-  week: 'Deze week',
+  week: 'Deze trip',
   toevoegen: 'Toevoegen',
   logboek: 'Logboek',
   meer: 'Meer',
@@ -38,6 +38,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
 export function Home({ store }: { store: Store }) {
   const [screen, setScreenState] = useState<Screen>('vandaag')
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [addInit, setAddInit] = useState<AddInit | undefined>(undefined)
   const counter = useRef(0)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -67,6 +68,7 @@ export function Home({ store }: { store: Store }) {
   }, [store, rates, status])
 
   function select(next: Screen) {
+    if (next !== 'toevoegen') setAddInit(undefined)
     setScreenState(next)
     window.scrollTo(0, 0)
   }
@@ -84,9 +86,18 @@ export function Home({ store }: { store: Store }) {
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={() => select('toevoegen')} />
       )}
-      {screen === 'week' && <ThisWeek store={store} notify={notify} />}
+      {screen === 'week' && (
+        <ThisWeek
+          store={store}
+          notify={notify}
+          onAddDay={(init) => {
+            select('toevoegen')
+            setAddInit(init)
+          }}
+        />
+      )}
       {screen === 'logboek' && <Sailing store={store} notify={notify} />}
-      {screen === 'toevoegen' && <QuickAdd store={store} onDone={done} />}
+      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} />}
       {screen === 'meer' && <More onOpen={select} />}
       {screen === 'geld' && (
         <>

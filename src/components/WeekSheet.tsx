@@ -6,9 +6,11 @@ import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { deleteTrip } from '../model/edit'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings } from '../model/settings'
-import { ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type Organisation, type StudentLevel, type Trip, type WeekType } from '../model/types'
+import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type BoatKind, type Organisation, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
+  boatProfile,
   closeWeek,
+  feetToMetres,
   dayCountOf,
   DEFAULT_WEEK_DAYS,
   defaultWeekName,
@@ -39,19 +41,48 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   const legs = store.get('legs.json.enc')
   const view = trip ? weekView(trip, legs) : null
   const curricula = effectiveCurricula(store.get('curricula.json.enc'))
-  const { boats, areas } = suggestions(store.get('trips.json.enc'), legs)
+  const trips = store.get('trips.json.enc')
+  const { boats, areas, bases, charters } = suggestions(trips, legs)
   const [name, setName] = useState(trip?.name ?? '')
   const [type, setType] = useState<WeekType>(view?.type ?? 'training-geven')
   const [startDate, setStartDate] = useState(view?.startDate || todayIso())
   const [dayCount, setDayCount] = useState(String(view ? dayCountOf(view) : DEFAULT_WEEK_DAYS))
   const [boat, setBoat] = useState(view?.boat ?? '')
+  const [boatModel, setBoatModel] = useState(trip?.boatModel ?? '')
+  const [boatLength, setBoatLength] = useState(trip?.boatLengthFt ? formatNumber(trip.boatLengthFt) : '')
+  const [boatKind, setBoatKind] = useState<BoatKind | undefined>(trip?.boatKind)
+  const [base, setBase] = useState(trip?.base ?? '')
+  const [charter, setCharter] = useState(trip?.charter ?? '')
+  const [filledFrom, setFilledFrom] = useState(false)
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
   const [note, setNote] = useState(trip?.note ?? '')
   const [busy, setBusy] = useState(false)
   const days = Math.round(parseAmount(dayCount) ?? 0)
-  const ok = !!startDate && days >= 1 && days <= MAX_WEEK_DAYS
+  const lengthFt = parseAmount(boatLength)
+  const boatOk = boat.trim() !== '' && boatModel.trim() !== '' && lengthFt !== null && lengthFt > 0 && base.trim() !== ''
+  const ok = !!startDate && days >= 1 && days <= MAX_WEEK_DAYS && boatOk
+
+  /** Bekende boot gekozen: model, lengte, soort, basis en charterbedrijf van de vorige trip met deze boot invullen. */
+  function chooseBoat(value: string) {
+    setBoat(value)
+    const profile = boatProfile(trips, value, trip?.id)
+    if (!profile) return
+    const fill = (empty: boolean, value: string | undefined, set: (v: string) => void) => {
+      if (!empty || !value) return false
+      set(value)
+      return true
+    }
+    const filled = [
+      fill(!boatModel.trim(), profile.boatModel, setBoatModel),
+      fill(!boatLength.trim(), profile.boatLengthFt ? formatNumber(profile.boatLengthFt) : undefined, setBoatLength),
+      fill(!boatKind, profile.boatKind, (v) => setBoatKind(v as BoatKind)),
+      fill(!base.trim(), profile.base, setBase),
+      fill(!charter.trim(), profile.charter, setCharter),
+    ].some(Boolean)
+    setFilledFrom(filled)
+  }
 
   const setRow = (i: number, patch: Partial<ParticipantInput>) => {
     const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r))
@@ -64,7 +95,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
     e.preventDefault()
     if (!ok || busy) return
     setBusy(true)
-    const input = { name, type, startDate, dayCount: days, boat, area, organisation: organisation || undefined, participants: rows, note }
+    const input = { name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note }
     try {
       if (trip) {
         await updateWeek(store, trip, input, getLang())
@@ -91,7 +122,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
       <form className="stack week-form" onSubmit={(e) => void submit(e)}>
         <label>
           {t('field.name')}
-          <input type="text" autoComplete="off" maxLength={120} placeholder={defaultWeekName(startDate || todayIso(), lang)} value={name} onChange={(e) => setName(e.target.value)} />
+          <input type="text" autoComplete="off" maxLength={120} placeholder={defaultWeekName(startDate || todayIso(), lang, base)} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="type-buttons" role="radiogroup" aria-label={t('week.type')}>
           {WEEK_TYPES.map((wt) => (
@@ -112,26 +143,69 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
           </label>
         </div>
         {ok && <p className="muted small">{t('week.until', { date: formatDate(addDays(startDate, days - 1)) })}</p>}
-        <div className="two">
-          <label>
-            {t('field.boat')}
-            <input type="text" autoComplete="off" list="week-boats" value={boat} onChange={(e) => setBoat(e.target.value)} />
-            <datalist id="week-boats">
-              {boats.map((b) => (
-                <option key={b} value={b} />
-              ))}
-            </datalist>
-          </label>
-          <label>
-            {t('week.area')}
-            <input type="text" autoComplete="off" list="week-areas" value={area} onChange={(e) => setArea(e.target.value)} />
-            <datalist id="week-areas">
-              {areas.map((a) => (
-                <option key={a} value={a} />
-              ))}
-            </datalist>
-          </label>
-        </div>
+        <fieldset className="boat-fields">
+          <legend>{t('boat.title')}</legend>
+          <div className="two">
+            <label>
+              {t('boat.name')}
+              <input type="text" autoComplete="off" list="week-boats" maxLength={120} required value={boat} onChange={(e) => chooseBoat(e.target.value)} />
+              <datalist id="week-boats">
+                {boats.map((b) => (
+                  <option key={b} value={b} />
+                ))}
+              </datalist>
+            </label>
+            <label>
+              {t('boat.model')}
+              <input type="text" autoComplete="off" maxLength={120} required placeholder={t('boat.modelPlaceholder')} value={boatModel} onChange={(e) => setBoatModel(e.target.value)} />
+            </label>
+          </div>
+          {filledFrom && <p className="muted small">{t('boat.fromEarlier')}</p>}
+          <div className="two">
+            <label>
+              {t('boat.length')}
+              <input inputMode="decimal" autoComplete="off" required placeholder="42" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
+              {lengthFt !== null && lengthFt > 0 && <span className="muted small">{t('boat.metres', { m: formatNumber(feetToMetres(lengthFt)) })}</span>}
+            </label>
+            <label>
+              {t('boat.base')}
+              <input type="text" autoComplete="off" list="week-bases" maxLength={120} required placeholder={t('boat.basePlaceholder')} value={base} onChange={(e) => setBase(e.target.value)} />
+              <datalist id="week-bases">
+                {bases.map((b) => (
+                  <option key={b} value={b} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+          <div className="type-buttons" role="radiogroup" aria-label={t('boat.kind')}>
+            {BOAT_KINDS.map((k) => (
+              <button key={k} type="button" role="radio" aria-checked={boatKind === k} className={`chip${boatKind === k ? ' active' : ''}`} onClick={() => setBoatKind(boatKind === k ? undefined : k)}>
+                {t(`boatKind.${k}`)}
+              </button>
+            ))}
+          </div>
+          <div className="two">
+            <label>
+              {t('boat.charter')}
+              <input type="text" autoComplete="off" list="week-charters" maxLength={120} value={charter} onChange={(e) => setCharter(e.target.value)} />
+              <datalist id="week-charters">
+                {charters.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </label>
+            <label>
+              {t('week.area')}
+              <input type="text" autoComplete="off" list="week-areas" value={area} onChange={(e) => setArea(e.target.value)} />
+              <datalist id="week-areas">
+                {areas.map((a) => (
+                  <option key={a} value={a} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+          {!boatOk && <p className="muted small">{t('boat.required')}</p>}
+        </fieldset>
         <label>
           {t('week.organisation')}
           <select value={organisation} onChange={(e) => setOrganisation(e.target.value as Organisation | '')}>

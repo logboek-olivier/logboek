@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
 import { mockRates } from './helpers/rates'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, fillBoat } from './helpers/logbook'
 
 // Schermafbeeldingen van elk scherm op 360 en 412 px, licht en donker, in het Nederlands en het Engels.
 // CI uploadt de map screenshots/ als artifact. Elk scherm wordt ook op horizontale overloop gecontroleerd.
@@ -124,7 +124,7 @@ for (const { width, scheme, lang } of RUNS) {
       await shot('deze-week-leeg')
       await page.getByRole('main').getByRole('button', { name: L('week.new') }).click()
       const weekSheet = page.getByRole('dialog')
-      await weekSheet.getByLabel(L('field.boat'), { exact: true }).fill('Nepboot Vijf')
+      await fillBoat(weekSheet, lang, 'Nepboot Vijf')
       await weekSheet.getByLabel(L('week.area')).fill('Nepgebied')
       for (const [n, name, level] of [[1, 'Nepanna', 'level.beginner'], [2, 'Nepbram', 'level.gevorderd'], [3, 'Nepcees', 'level.gemiddeld']] as const) {
         const T = translate as (l: Lang, k: MessageKey, p: { n: number }) => string
