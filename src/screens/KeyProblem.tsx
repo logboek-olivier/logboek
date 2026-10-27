@@ -80,6 +80,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'students.json.enc': 'key.file.students',
   'plans.json.enc': 'key.file.plans',
   'places.json.enc': 'key.file.places',
+  'reminders.json.enc': 'key.file.reminders',
 }
 
 /** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */

@@ -255,6 +255,21 @@ export interface Place extends SyncRecord {
   country?: string
 }
 
+/** Deadline (iets wat vóór een datum moet gebeuren) of vervaldatum (iets wat dan verloopt). */
+export type ReminderKind = 'deadline' | 'vervalt'
+export const REMINDER_KINDS: readonly ReminderKind[] = ['deadline', 'vervalt']
+
+/** Termijn: bijvoorbeeld "Vliegticket boeken" (deadline) of "Pinpas" (vervalt). */
+export interface Reminder extends SyncRecord {
+  title: string
+  /** jjjj-mm-dd */
+  date: string
+  kind: ReminderKind
+  /** jjjj-mm-dd waarop afgerond, of null. */
+  doneAt: string | null
+  note?: string
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -265,6 +280,7 @@ export interface Collections {
   'students.json.enc': Student
   'plans.json.enc': WeekPlan
   'places.json.enc': Place
+  'reminders.json.enc': Reminder
 }
 
 export type CollectionPath = keyof Collections
@@ -278,6 +294,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'students.json.enc',
   'plans.json.enc',
   'places.json.enc',
+  'reminders.json.enc',
 ]
 
 export function newId(): string {
