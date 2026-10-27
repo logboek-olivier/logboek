@@ -18,7 +18,7 @@ Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code
 
 | Onderdeel | Keuze |
 |---|---|
-| App | React 18 + Vite + TypeScript, PWA (vite-plugin-pwa, Workbox) |
+| App | React 18 + Vite + TypeScript, PWA (vite-plugin-pwa, Workbox). Een nieuwe versie neemt zelf over, ruimt oude caches op en herlaadt open vensters (`public/sw-vensters.js`), zodat er nooit twee versies tegelijk draaien |
 | Styling | Eén CSS-bestand (`src/app.css`) met het ontwerpsysteem als variabelen: kleuren (marineblauw, zeegroen accent, warm lichte achtergrond), typografie (systeemlettertype, tabular-nums voor getallen), ruimtes, hoekradius, schaduwen. Geen UI-framework. Licht/donker via `prefers-color-scheme`. Iconen: lucide-react, één lijndikte (1,75) en maat via `--icon`. Grafieken in eigen SVG (`src/components/BarChart.tsx`) |
 | Opslag telefoon | IndexedDB via `idb` |
 | Opslag bron | Private GitHub-repo `logboek-olivier/logboek-data`, via GitHub REST API (`api.github.com`) |
@@ -93,9 +93,9 @@ logboek-data/
 - **Elk record** heeft `id` (UUIDv4), `updatedAt` (ISO), `deletedAt` (ISO of null). Verwijderen is een tombstone.
 - **Sync:** (1) haal huidige SHA en inhoud op, (2) ontsleutel, (3) voeg samen per `id`, laatste `updatedAt` wint, (4) versleutel, (5) schrijf met de oude SHA als voorwaarde. Conflict (409/422)? Opnieuw vanaf stap 1. Maximaal 3 pogingen, daarna melding.
 - **Offline:** lezen altijd; schrijven naar outbox; sync bij ontgrendelen en bij handmatig verversen als er verbinding is. Geen achtergrondsync. Sync-status altijd zichtbaar bovenaan elk scherm: "gesynct", "3 wijzigingen wachten" of "geen verbinding".
-- **Onleesbaar bestand:** één bestand dat niet te ontsleutelen of te lezen is, houdt de andere niet tegen. Syncstatus en foutdetails noemen het pad (nooit inhoud). Is er een leesbare lokale kopie en is `meta.json.enc` via het check-veld aan deze sleutel gebonden, dan biedt de app "Lokale versie opnieuw opslaan op GitHub" aan, alleen na een tik; de onleesbare versie blijft in de geschiedenis. Zonder lokale kopie wist de app niets.
+- **Onleesbaar bestand:** één bestand dat niet te ontsleutelen of te lezen is, houdt de andere niet tegen. Syncstatus en foutdetails noemen het pad (nooit inhoud). Is `meta.json.enc` via het check-veld aan deze sleutel gebonden, dan toont de app "Logboek herstellen" (zie Sleutel-invariant).
 - **Andere sleutel:** vóór elke sync controleert de app `meta.json.enc` op GitHub. Hoort het check-veld bij een andere hoofdsleutel, of ontbreekt `meta.json.enc` terwijl het apparaat een logboek heeft, dan schrijft het apparaat niets. "Nieuw logboek" weigert een repo met losse databestanden zonder meta.
-- **Sleutel-invariant:** een hoofdsleutel (wachtzin, herstelcode, vingerafdruk of opgeslagen sessiesleutel) wordt alleen gebruikt als hij via het check-veld bij de lokale `meta.json.enc` hoort. Vóór elke schrijfactie naar IndexedDB moet die meta nog dezelfde zijn, vóór elke schrijfactie naar GitHub moet `meta.json.enc` daar bij de sleutel horen. Klopt dat niet: niets schrijven, sessiesleutel wissen, scherm "Sleutel past niet bij je logboek" met "Kopieer foutdetails". Nieuw logboek of koppelen vergrendelt de andere tabbladen. Lukt ontgrendelen met wachtzin of herstelcode maar staan lokale gegevens onder een andere sleutel, dan toont de app per bestand wat verloren gaat en wist pas na "Opnieuw beginnen vanaf GitHub" (en alleen als `meta.json.enc` op GitHub bij de sleutel hoort).
+- **Sleutel-invariant:** een hoofdsleutel (wachtzin, herstelcode, vingerafdruk of opgeslagen sessiesleutel) wordt alleen gebruikt als hij via het check-veld bij de lokale `meta.json.enc` hoort. Vóór elke schrijfactie naar IndexedDB moet die meta nog dezelfde zijn, vóór elke schrijfactie naar GitHub moet `meta.json.enc` daar bij de sleutel horen. Klopt dat niet: niets schrijven, sessiesleutel wissen, scherm "Sleutel past niet bij je logboek" met "Kopieer foutdetails". Nieuw logboek of koppelen vergrendelt de andere tabbladen. Hoort `meta.json.enc` op GitHub wel bij de sleutel, maar zijn lokale gegevens of bestanden op GitHub niet met die sleutel te lezen, dan toont de app één scherm "Logboek herstellen" (`src/repair.ts`): in gewone taal wat er verloren gaat, dan één tik op "Herstellen" plus wachtzin of herstelcode. Herstellen wist lokaal alleen wat niet te ontsleutelen is, en vervangt op GitHub alleen bestanden die niet te ontsleutelen zijn (met de oude SHA als voorwaarde) door de leesbare lokale kopie of een lege versie; de oude versie blijft in de geschiedenis. Wat met de sleutel leesbaar is, of wel ontsleutelt maar ongeldig is, blijft altijd staan. Blijkt bij de tik meer verloren te gaan dan getoond, dan eerst opnieuw tonen. Een token vraagt het scherm alleen als de token op het apparaat onleesbaar is. Het verslag (alleen paden) staat in `localStorage`, zodat het scherm bij het volgende openen al vóór de wachtzin toont wat er verloren gaat.
 
 ## Datamodel
 
@@ -245,6 +245,7 @@ logboek/
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, Sheet, EditSheets, WeekSheet, CurriculumSheets,
                      SyncStatusLine, Icon, Toast, …)
     session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10)
+    repair.ts        Logboek herstellen: diagnose en herstel van onleesbare bestanden
     errors.ts        foutdetails zonder inhoud
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
@@ -267,6 +268,7 @@ logboek/
 - **Live-gang (na review en handtest):** (1) repo `logboek-data` verwijderen en leeg opnieuw aanmaken; (2) nieuwe fine-grained token, oude intrekken; (3) op elk apparaat de sitegegevens van `logboek-olivier.github.io` wissen en de app opnieuw installeren; (4) nieuw logboek met de echte wachtzin, nieuwe herstelcode op papier; (5) mijlen opnieuw importeren, zeilgeld opnieuw invoeren of exporteren/importeren.
 - **Cloud-sessies (vanaf de boot):** werken alleen in `logboek`, nooit in `logboek-data`. Elke taak eindigt in een PR.
 - Olivier werkt alleen vanaf zijn telefoon via cloud-sessies. Elke release in losse PR's; schermafbeeldingen uit CI bekijken vóór mergen.
+- Olivier doet geen handwerk buiten de app. Herstel, migraties en opruimen gebeuren in de app zelf, met hoogstens een paar tikken. Alleen wat echt alleen hij kan (wachtzin, bestand kiezen, GitHub-rechten) vraagt de app aan hem.
 - **Reviews en wachten:** reviews met hoogstens één review-agent tegelijk, op de voorgrond. Bij werk zonder Olivier nooit wachten op achtergrondmeldingen; CI volgen met `gh pr checks --watch` en deploys met `gh run watch`.
 - **Definition of done:** tests groen, werkt offline, werkt op 360 px breed, geen nieuwe netwerkbestemmingen, geen nieuwe afhankelijkheden zonder reden in de PR.
 - **Dataformaat:** wijzigingen altijd achterwaarts compatibel. Een nieuwe `schemaVersion` alleen met migratie en een test die data van de vorige versie inleest. Ziet de app een hogere `schemaVersion` dan hij kent, dan schrijft hij niets naar GitHub en toont hij "Werk de app bij".

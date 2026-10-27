@@ -8,7 +8,8 @@ import { updates } from './updates'
 const root = document.getElementById('root')
 if (!root) throw new Error('root ontbreekt')
 
-// Nieuwe versie: melden, nooit zelf herladen (zie src/updates.ts).
+// Een nieuwe service worker neemt zelf over en herlaadt de vensters (public/sw-vensters.js). Blijft er toch een
+// wachten (bijvoorbeeld een oudere service worker), dan meldt de balk dat er een nieuwe versie klaarstaat.
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {

@@ -17,4 +17,9 @@ export default tseslint.config(
       globals: { URL: 'readonly', Buffer: 'readonly', console: 'readonly', process: 'readonly', fetch: 'readonly', AbortSignal: 'readonly' },
     },
   },
+  {
+    // Aanvulling op de service worker (workbox importScripts).
+    files: ['public/sw-vensters.js'],
+    languageOptions: { globals: { self: 'readonly' } },
+  },
 )

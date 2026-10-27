@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react'
 
-// Nieuwe versie van de app: de service worker wacht tot Olivier op "Herladen" tikt. Nooit automatisch herladen,
-// zodat een invoer of een lopende sync niet halverwege afbreekt. De outbox staat in IndexedDB en overleeft herladen.
+// Nieuwe versie van de app. Normaal neemt de nieuwe service worker direct over en herlaadt hij de vensters
+// (public/sw-vensters.js); de outbox staat in IndexedDB en overleeft herladen. Wacht er toch een service worker, dan
+// toont de balk "Herladen".
 
 type Listener = () => void
 

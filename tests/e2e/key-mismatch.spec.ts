@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate, type Lang } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, PASSPHRASE } from './helpers/logbook'
 
 // Sleutel-invariant: "Sleutel past niet bij je logboek" (niets geschreven) en het herstelpad na ontgrendelen met de
 // wachtzin als lokale gegevens onder een andere sleutel staan. Alle gegevens zijn verzonnen.
@@ -66,30 +66,59 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       expect(errors).toEqual([])
     })
 
-    test(`lokale gegevens onder een andere sleutel: per bestand tonen, pas na een tik opnieuw beginnen vanaf GitHub (${lang})`, async ({ page }) => {
+    test(`Logboek herstellen: toestand na PR #27, één tik, daarna Gesynct en de ASA-cursussen terug (${lang})`, async ({ page }) => {
       const errors = collectConsoleErrors(page)
       const github = await mockGithub(page)
       await createNewLogbook(page, lang)
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
 
-      // Lokale kopie van transactions.json.enc onder een andere sleutel, zoals op de telefoon.
-      await page.evaluate((bytes) => putForeignObject('transactions.json.enc', bytes), foreignBytes())
+      // Zoals op de telefoon: vier bestanden op GitHub en hun lokale kopieën onder een vreemde sleutel.
+      const broken = ['transactions.json.enc', 'settings.json.enc', 'curricula.json.enc', 'students.json.enc']
+      const oldShas = new Map<string, string>()
+      for (const path of broken) {
+        const file = github.files.get(path)!
+        oldShas.set(path, `${file.sha}-vreemd`)
+        github.files.set(path, { sha: `${file.sha}-vreemd`, content: Buffer.from(foreignBytes()).toString('base64') })
+        await page.evaluate(([p, bytes]) => putForeignObject(p as string, bytes as number[]), [path, foreignBytes()] as const)
+      }
+      const tripsSha = github.files.get('trips.json.enc')!.sha
       const puts = github.requests.filter((r) => r.method === 'PUT').length
+      // Openen: direct "Logboek herstellen", met in gewone taal wat er verloren gaat, nog vóór de wachtzin.
       await page.reload()
-      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
-      await page.getByRole('button', { name: L('unlock.unlock') }).click()
-
-      await expect(page.getByRole('heading', { name: L('key.recoverTitle') })).toBeVisible({ timeout: 30_000 })
-      await expect(page.locator('.loss-list')).toContainText(L('key.file.transactions'))
-      await expect(page.locator('.loss-list')).toContainText('transactions.json.enc')
-      await expect(page.locator('.loss-list li')).toHaveCount(1)
+      await expect(page.getByRole('heading', { name: L('repair.title') })).toBeVisible({ timeout: 30_000 })
+      const lost = page.locator('.loss-list')
+      for (const key of ['key.file.transactions', 'key.file.settings', 'key.file.curricula', 'key.file.students'] as const) await expect(lost).toContainText(L(key))
+      await expect(page.locator('.loss-list li')).toHaveCount(4)
       expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts)
-      await shots(page, 'herstel', lang)
+      await shots(page, 'herstellen', lang)
 
-      await page.getByRole('button', { name: L('key.restart') }).click()
+      // Tik plus wachtzin: herstellen.
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await page.getByRole('button', { name: L('repair.button') }).click()
       await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible({ timeout: 30_000 })
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
+      // Alleen de onleesbare bestanden vervangen, met de oude SHA als voorwaarde; leesbare bestanden niet aangeraakt.
+      for (const path of broken) {
+        const put = github.requests.find((r) => r.method === 'PUT' && r.url.endsWith(`/contents/${path}`) && r.body?.includes(oldShas.get(path)!))
+        expect(put, path).toBeDefined()
+      }
+      expect(github.files.get('trips.json.enc')!.sha).toBe(tripsSha)
+      await openMore(page, L('curriculum.courses'), L('nav.more'))
+      await expect(page.getByRole('button', { name: /ASA 101/ })).toBeVisible()
+      // Opnieuw openen: gewoon verder, geen herstelscherm meer.
+      await page.reload()
+      await expect(page.getByRole('heading', { name: L('repair.title') })).toHaveCount(0)
       expect(errors).toEqual([])
+    })
+
+    test(`nieuwe versies ruimen zelf oude versies, caches en vensters op (${lang})`, async ({ page }) => {
+      const sw = await (await page.request.get('sw.js')).text()
+      expect(sw).toContain('sw-vensters.js')
+      expect(sw).toContain('skipWaiting')
+      expect(sw).toContain('clientsClaim')
+      expect(sw).toContain('cleanupOutdatedCaches')
+      const extra = await (await page.request.get('sw-vensters.js')).text()
+      expect(extra).toContain('navigate')
     })
   })
 }

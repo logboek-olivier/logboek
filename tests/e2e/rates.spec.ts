@@ -19,7 +19,8 @@ async function shots(page: Page, name: string, lang: Lang) {
 
 for (const lang of ['nl', 'en'] as Lang[]) {
   test.describe(lang, () => {
-    test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB', viewport: { width: 360, height: 800 } })
+    // De service worker neemt direct over en haalt rates.json zelf op (page.route ziet dat niet): hier geblokkeerd.
+    test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB', viewport: { width: 360, height: 800 }, serviceWorkers: 'block' })
 
     test(`koersen: voorlopig met de laatst bekende koers, ontvangen eurobedrag gaat voor, weektotalen in euro (${lang})`, async ({ page }) => {
       const L = (key: MessageKey, ...args: unknown[]) => (translate as (l: Lang, k: MessageKey, ...a: unknown[]) => string)(lang, key, ...args)
