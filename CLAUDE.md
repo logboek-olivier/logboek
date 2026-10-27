@@ -129,8 +129,8 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 - **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen, ook geïmporteerde dagen), wat Olivier echt gevaren heeft. Een kleine spelvariant van een lange naam (één letter verschil vanaf 8 letters: "Palmizana" / "Palimizana") telt als dezelfde plaats. Twijfel (één letter verschil vanaf 5 letters, twee vanaf 10) wordt een voorstel "Samenvoegen" in Toevoegen → Dag en onder Meer → Plaatsen: alle dagen krijgen de meest gebruikte schrijfwijze, met ongedaan maken. Een nieuwe naam die op een bekende lijkt, krijgt "Bedoel je …?". Het vult het nm-veld voor zolang Olivier niets typt. Zonder eerdere keren alleen een hint "Hemelsbreed …" (grootcirkel), nooit als voorstel.
 
 **Reminder** = termijn (`reminders.json.enc`, `src/model/reminders.ts`)
-`id, title, date, kind (deadline|vervalt), doneAt (jjjj-mm-dd of null), note?, updatedAt, deletedAt`
-- Deadlines ("Vliegticket boeken, uiterlijk over 3 weken") en vervaldatums ("Pinpas verloopt over een jaar") staan samen in één lijst, met de vervaldatum van de token en de start van de volgende trip erbij. Toevoegen: wat, soort en wanneer (snelle keuzes over 1 week, 3 weken, 1 maand, 3 maanden, 1 jaar, of een datum). Afronden en verwijderen met ongedaan maken. De kluis voegt later documenten met een vervaldatum toe.
+`id, title, date, kind (deadline|vervalt), doneAt (jjjj-mm-dd of null), note?, repeat? (maandelijks|jaarlijks), updatedAt, deletedAt`
+- Deadlines ("Vliegticket boeken, uiterlijk over 3 weken") en vervaldatums ("Pinpas verloopt over een jaar") staan samen in één lijst, met de vervaldatum van de token en de start van de volgende trip erbij. Toevoegen: wat, soort en wanneer (snelle keuzes over 1 week, 3 weken, 1 maand, 3 maanden, 1 jaar, of een datum). Afronden en verwijderen met ongedaan maken; een terugkerende termijn (maandelijks of jaarlijks) blijft open en schuift bij afronden naar de volgende keer. "Zet in agenda" maakt lokaal een `.ics`-bestand (`src/model/ics.ts`: hele dag, herinnering standaard een week vooraf om 9:00, aan te passen en onthouden in `settings.reminderAlarmDays`, herhalen als RRULE) en opent dat via delen of downloaden (`src/share.ts`); de app verstuurt niets. De kluis voegt later documenten met een vervaldatum toe.
 
 **Afgeleiden** (`src/model/derive.ts`, met tests): totaal nm, nm per rol, nm per watertype (binnenwater / zee / getijdenwater), nachturen, aantal dagen, aantal tochten, nm dit kalenderjaar, laatste tocht.
 
@@ -180,7 +180,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ### Instellingen
 
-`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); bevestigde of overgeslagen boten (`boatsChecked`, naam|model); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
+`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); bevestigde of overgeslagen boten (`boatsChecked`, naam|model); herinnering in agenda-bestanden (`reminderAlarmDays`); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
 
 ## Import mijlenregistratie
 
@@ -232,7 +232,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - naam, type als knoppen, startdatum (vandaag), aantal dagen (7, tot 120);
    - boot: naam, model, lengte, basis, soort en charterbedrijf, met suggesties uit eerdere trips; gebied, organisatie (niets verplicht);
    - deelnemers één per regel met optioneel niveau en cursus.
-5. **Toevoegen (+):** tabs **Dag · Inkomsten · Uitgave**, opent op Dag.
+5. **Toevoegen (+):** tabs **Dag · Inkomsten · Uitgave**, opent op Dag. Snelkoppelingen op het app-icoon (manifest `shortcuts`: Dag loggen, Inkomsten, Uitgave) openen `?toevoegen=dag|inkomsten|uitgave`: na ontgrendelen (of binnen de 5 minuten van de sessie) direct Toevoegen op dat tabblad; de parameter verdwijnt meteen uit de adresbalk.
    - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar (beide met suggesties uit eerdere plaatsen en een kaartknop: offline kaart, bekende plaatsen als stip, tik = nieuw punt met naam, "Huidige locatie"), nm (voorgevuld met het afstandsvoorstel), watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Niets is verplicht.
    - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bron, valuta, datum, notitie.
    - Uitgave: bedrag, omschrijving, soort (kosten/investering); bron, valuta, datum en trip onder "Meer velden".
@@ -264,7 +264,7 @@ logboek/
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
-                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts
+                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts, ics.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines, Boats, Places,
                      Money, QuickAdd, More, Settings
@@ -273,6 +273,7 @@ logboek/
     session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10)
     repair.ts        Logboek herstellen: diagnose en herstel van onleesbare bestanden
     errors.ts        foutdetails zonder inhoud
+    share.ts         lokaal gemaakt bestand delen of downloaden
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes) + playwright (setup, unlock, sessie, import, boten, plaatsen, sjablonen, bewerken, aanvullen,

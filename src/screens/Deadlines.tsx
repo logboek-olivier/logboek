@@ -54,7 +54,7 @@ export function DueList({ store, items, notify, onToken }: { store: Store; items
               <span className="row-main">
                 <span>{item.title}</span>
                 <span className="muted small">
-                  {[item.kind === 'trip' ? '' : t(`reminderKind.${item.kind}`), formatDate(item.date)].filter(Boolean).join(' · ')}
+                  {[item.kind === 'trip' ? '' : t(`reminderKind.${item.kind}`), formatDate(item.date), item.repeat ? t(`reminderRepeat.${item.repeat}`) : ''].filter(Boolean).join(' · ')}
                 </span>
               </span>
               <span className={`row-value small${days < 0 ? ' negative' : days <= 7 ? ' warning' : ''}`}>{dueLabel(item, today)}</span>

@@ -737,4 +737,14 @@ export const en: Messages = {
   'route.today': 'Planned today',
   'route.asPlanned': 'As planned',
   'route.adjust': 'Adjust',
+  // Repeating reminders and calendar
+  'reminder.repeat': 'Repeat',
+  'reminderRepeat.eenmalig': 'Once',
+  'reminderRepeat.maandelijks': 'Monthly',
+  'reminderRepeat.jaarlijks': 'Yearly',
+  'reminder.nextTime': (p) => `Next time: ${p.date}`,
+  'reminder.alarm': 'Reminder',
+  'reminder.alarmSameDay': 'On the day',
+  'reminder.alarmBefore': (p) => (p.n === 1 ? '1 day before' : p.n === 7 ? '1 week before' : p.n === 14 ? '2 weeks before' : p.n === 30 ? '1 month before' : `${p.n} days before`),
+  'reminder.toCalendar': 'Add to calendar',
 }

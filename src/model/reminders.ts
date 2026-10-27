@@ -1,7 +1,7 @@
 import type { Store } from '../storage/store'
 import type { Undo } from './edit'
 import { addDays } from './money'
-import { newId, nowIso, type Reminder, type ReminderKind } from './types'
+import { newId, nowIso, type Reminder, type ReminderKind, type ReminderRepeat } from './types'
 
 // Termijnen: deadlines ("Vliegticket boeken, uiterlijk over 3 weken") en vervaldatums ("Pinpas verloopt over een jaar")
 // samen, met de vervaldatum van de token en de start van de volgende trip erbij. Vandaag toont de eerstvolgende.
@@ -35,13 +35,14 @@ export interface DueItem {
   date: string
   kind: ReminderKind | 'trip'
   source: 'eigen' | 'token' | 'trip'
+  repeat?: ReminderRepeat
 }
 
 /** Openstaande termijnen plus token en volgende trip, eerstvolgende eerst (verlopen bovenaan). */
 export function dueItems(reminders: readonly Reminder[], extra: readonly DueItem[]): DueItem[] {
   const own: DueItem[] = reminders
     .filter((r) => r.deletedAt === null && !r.doneAt)
-    .map((r) => ({ id: r.id, title: r.title, date: r.date, kind: r.kind, source: 'eigen' }))
+    .map((r) => ({ id: r.id, title: r.title, date: r.date, kind: r.kind, source: 'eigen', ...(r.repeat ? { repeat: r.repeat } : {}) }))
   return [...own, ...extra].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.title.localeCompare(b.title)))
 }
 
@@ -54,6 +55,7 @@ export interface ReminderInput {
   date: string
   kind: ReminderKind
   note: string
+  repeat?: ReminderRepeat
 }
 
 export async function saveReminder(store: Store, input: ReminderInput, existing?: Reminder): Promise<Reminder> {
@@ -64,6 +66,7 @@ export async function saveReminder(store: Store, input: ReminderInput, existing?
     kind: input.kind,
     doneAt: existing?.doneAt ?? null,
     ...(input.note.trim() ? { note: input.note.trim().slice(0, 500) } : {}),
+    ...(input.repeat ? { repeat: input.repeat } : {}),
     updatedAt: nowIso(),
     deletedAt: null,
   }
@@ -72,10 +75,19 @@ export async function saveReminder(store: Store, input: ReminderInput, existing?
   return record
 }
 
-/** Afronden of weer openzetten, met ongedaan maken. */
+/** De volgende keer van een terugkerende termijn (zelfde dag van de maand, of de laatste dag). */
+export function nextOccurrence(reminder: Pick<Reminder, 'date' | 'repeat'>): string {
+  return dateAfter(reminder.date, reminder.repeat === 'jaarlijks' ? { key: 'year1', months: 12 } : { key: 'month1', months: 1 })
+}
+
+/**
+ * Afronden of weer openzetten, met ongedaan maken. Een terugkerende termijn blijft open en schuift naar de volgende
+ * keer.
+ */
 export async function setDone(store: Store, reminder: Reminder, done: boolean, today: string): Promise<Undo> {
   const before = reminder
-  await store.put('reminders.json.enc', { ...reminder, doneAt: done ? today : null, updatedAt: nowIso() })
+  const next = done && reminder.repeat ? { date: nextOccurrence(reminder), doneAt: null } : { doneAt: done ? today : null }
+  await store.put('reminders.json.enc', { ...reminder, ...next, updatedAt: nowIso() })
   void store.sync()
   return async () => {
     await store.put('reminders.json.enc', { ...before, updatedAt: nowIso() })

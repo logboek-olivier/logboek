@@ -1,15 +1,20 @@
-import { Check, RotateCcw, Trash2 } from 'lucide-react'
+import { CalendarPlus, Check, RotateCcw, Trash2 } from 'lucide-react'
+import { formatDate } from '../format'
+import { ALARM_CHOICES, buildIcs, DEFAULT_ALARM_DAYS } from '../model/ics'
+import { currentSettings, saveSettings } from '../model/settings'
+import { shareOrDownload } from '../share'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { deleteReminder } from '../model/edit'
-import { dateAfter, QUICK_OFFSETS, saveReminder, setDone } from '../model/reminders'
-import { REMINDER_KINDS, todayIso, type Reminder, type ReminderKind } from '../model/types'
+import { dateAfter, nextOccurrence, QUICK_OFFSETS, saveReminder, setDone } from '../model/reminders'
+import { newId, REMINDER_KINDS, REMINDER_REPEATS, todayIso, type Reminder, type ReminderKind, type ReminderRepeat } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 
-// Termijn toevoegen of bewerken: wat, deadline of vervaldatum, en wanneer (snelle keuze of datum). Drie velden.
+// Termijn toevoegen of bewerken: wat, deadline of vervaldatum, en wanneer (snelle keuze of datum). Drie velden; herhalen
+// (maandelijks, jaarlijks) en "Zet in agenda" (een .ics-bestand met herinnering vooraf) zijn optioneel.
 
 export function ReminderSheet({ store, reminder, notify, onClose }: { store: Store; reminder: Reminder | null; notify: Notify; onClose: () => void }) {
   const today = todayIso()
@@ -17,6 +22,9 @@ export function ReminderSheet({ store, reminder, notify, onClose }: { store: Sto
   const [kind, setKind] = useState<ReminderKind>(reminder?.kind ?? 'deadline')
   const [date, setDate] = useState(reminder?.date ?? dateAfter(today, QUICK_OFFSETS[1]))
   const [note, setNote] = useState(reminder?.note ?? '')
+  const [repeat, setRepeat] = useState<ReminderRepeat | undefined>(reminder?.repeat)
+  const settings = currentSettings(store.get('settings.json.enc'))
+  const [alarmDays, setAlarmDays] = useState(settings.reminderAlarmDays ?? DEFAULT_ALARM_DAYS)
   const [busy, setBusy] = useState(false)
   const ok = title.trim() !== '' && /^\d{4}-\d{2}-\d{2}$/.test(date)
 
@@ -25,7 +33,7 @@ export function ReminderSheet({ store, reminder, notify, onClose }: { store: Sto
     if (!ok || busy) return
     setBusy(true)
     try {
-      await saveReminder(store, { title, date, kind, note }, reminder ?? undefined)
+      await saveReminder(store, { title, date, kind, note, repeat }, reminder ?? undefined)
       notify(t('toast.saved'))
       onClose()
     } finally {
@@ -37,7 +45,19 @@ export function ReminderSheet({ store, reminder, notify, onClose }: { store: Sto
     if (!reminder) return
     const undo = await setDone(store, reminder, !reminder.doneAt, today)
     onClose()
-    notify(t(reminder.doneAt ? 'reminder.reopened' : 'reminder.doneToast'), undo)
+    if (reminder.repeat && !reminder.doneAt) notify(t('reminder.nextTime', { date: formatDate(nextOccurrence(reminder)) }), undo)
+    else notify(t(reminder.doneAt ? 'reminder.reopened' : 'reminder.doneToast'), undo)
+  }
+
+  /** Agenda-bestand (.ics) met herinnering vooraf; lokaal gemaakt en gedeeld of gedownload. */
+  async function toCalendar() {
+    if (!ok) return
+    if (alarmDays !== settings.reminderAlarmDays) {
+      await saveSettings(store, { reminderAlarmDays: alarmDays })
+      void store.sync()
+    }
+    const ics = buildIcs({ id: reminder?.id ?? newId(), title: title.trim(), date, note: note.trim() || undefined, repeat, alarmDays })
+    await shareOrDownload(new File([ics], 'termijn.ics', { type: 'text/calendar' }), title.trim())
   }
 
   async function remove() {
@@ -71,6 +91,13 @@ export function ReminderSheet({ store, reminder, notify, onClose }: { store: Sto
             )
           })}
         </div>
+        <div className="segments small" role="radiogroup" aria-label={t('reminder.repeat')}>
+          {([undefined, ...REMINDER_REPEATS] as (ReminderRepeat | undefined)[]).map((r) => (
+            <button key={r ?? 'eenmalig'} type="button" role="radio" aria-checked={repeat === r} className={`segment${repeat === r ? ' active' : ''}`} onClick={() => setRepeat(r)}>
+              {t(r ? `reminderRepeat.${r}` : 'reminderRepeat.eenmalig')}
+            </button>
+          ))}
+        </div>
         <div className="two">
           <label>
             {t(kind === 'deadline' ? 'reminder.dateDeadline' : 'reminder.dateExpiry')}
@@ -80,6 +107,22 @@ export function ReminderSheet({ store, reminder, notify, onClose }: { store: Sto
             {t('field.note')}
             <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
+        </div>
+        <div className="calendar-row">
+          <label>
+            {t('reminder.alarm')}
+            <select value={alarmDays} onChange={(e) => setAlarmDays(Number(e.target.value))}>
+              {ALARM_CHOICES.map((d) => (
+                <option key={d} value={d}>
+                  {d === 0 ? t('reminder.alarmSameDay') : t('reminder.alarmBefore', { n: d })}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn" type="button" disabled={!ok} onClick={() => void toCalendar()}>
+            <Icon icon={CalendarPlus} />
+            {t('reminder.toCalendar')}
+          </button>
         </div>
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!ok || busy}>

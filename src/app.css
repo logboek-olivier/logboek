@@ -2317,3 +2317,10 @@ body.presenting .bottom-bar {
 .planned-today .two .btn {
   width: 100%;
 }
+
+.calendar-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-3);
+  align-items: end;
+}

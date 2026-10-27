@@ -6,6 +6,7 @@ import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { recordError } from '../errors'
+import { shareOrDownload } from '../share'
 import { t, useLang } from '../i18n'
 import {
   addGroup,
@@ -136,22 +137,7 @@ function CourseView({ store, course, notify, onBack }: { store: Store; course: C
     const json = exportCurriculum(course)
     const name = exportFileName(course)
     const file = new File([json], name, { type: 'application/json' })
-    try {
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: courseLabel(course, lang) })
-        return
-      }
-    } catch (e) {
-      // Afgebroken door Olivier: niets doen.
-      if (e instanceof Error && e.name === 'AbortError') return
-    }
-    // Geen deelfunctie: als bestand downloaden.
-    const url = URL.createObjectURL(file)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    await shareOrDownload(file, courseLabel(course, lang))
   }
 
   const editingGroup = editing?.kind === 'group' && editing.groupId ? course.groups.find((g) => g.id === editing.groupId) : null
