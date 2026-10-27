@@ -5,6 +5,7 @@ import { MapSheet } from '../components/MapSheet'
 import { formatNm, formatNumber } from '../format'
 import { findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
 import { MergeProposal } from './Places'
+import { plannedFor } from '../model/routes'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
@@ -54,6 +55,9 @@ function confirmVibration() {
 export interface AddInit {
   date: string
   tripId?: string
+  /** Geplande etappe ("Aanpassen" op Vandaag). */
+  from?: string
+  to?: string
 }
 
 export function QuickAdd({ store, onDone, init, notify }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify }) {
@@ -399,12 +403,14 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   // Van: de vorige bestemming binnen deze trip; de eerste dag van een trip begint op de basis van de boot.
   const startDate = init?.date ?? today
   const previousInTrip = current ? [...active(legs)].filter((l) => l.tripId === current.id && l.date <= startDate).sort(compareLegs).at(-1) : undefined
-  const defaultFrom = previousInTrip?.toPlace ?? (current && current.base && !previousInTrip ? current.base : (lastLeg?.toPlace ?? ''))
+  // Een geplande etappe van die dag (route-sjabloon of vorige trip) vult van en naar voor.
+  const planned = plannedFor(current ?? null, legs, startDate)
+  const defaultFrom = init?.from ?? planned?.from ?? previousInTrip?.toPlace ?? (current && current.base && !previousInTrip ? current.base : (lastLeg?.toPlace ?? ''))
   const weekRole = (trip: Trip | undefined) => (trip?.type ? roleForType(trip.type) : null)
 
   const [date, setDate] = useState(startDate)
   const [fromPlace, setFromPlace] = useState(defaultFrom)
-  const [toPlace, setToPlace] = useState('')
+  const [toPlace, setToPlace] = useState(init?.to ?? planned?.to ?? '')
   const [nm, setNm] = useState('')
   const [nmTouched, setNmTouched] = useState(false)
   const [mapFor, setMapFor] = useState<'from' | 'to' | null>(null)

@@ -4,7 +4,7 @@ import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
 import type { Undo } from './edit'
 import { addDays } from './money'
 import { saveSettings } from './settings'
-import { newId, todayIso, type BoatKind, type Leg, type Organisation, type Participant, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { newId, todayIso, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
 // charterbedrijf), gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een naam; dan worden type
@@ -195,6 +195,16 @@ export interface WeekInput {
   organisation?: Organisation
   participants: ParticipantInput[]
   note: string
+  /** Geplande etappes (sjabloon of vorige trip); ontbreekt het, dan blijft een bestaande planning staan. */
+  route?: PlannedLeg[]
+}
+
+/** Geplande etappes: korte plaatsnamen, hoogstens 120 dagen. */
+export function cleanRoute(route: readonly PlannedLeg[]): PlannedLeg[] {
+  return route
+    .filter((r) => Number.isInteger(r.day) && r.day >= 0 && r.day < MAX_WEEK_DAYS && (r.from.trim() || r.to.trim()))
+    .slice(0, MAX_WEEK_DAYS)
+    .map((r) => ({ day: r.day, from: r.from.trim().slice(0, 80), to: r.to.trim().slice(0, 80), ...(r.nm !== undefined && Number.isFinite(r.nm) && r.nm >= 0 ? { nm: r.nm } : {}) }))
 }
 
 /** Alleen voornaam, niveau en cursus; lege regels vallen weg (regel 14). */
@@ -230,6 +240,7 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
     ...(input.organisation ? { organisation: input.organisation } : {}),
     participants: cleanParticipants(input.participants),
     ...(input.note.trim() ? { note: input.note.trim().slice(0, 500) } : {}),
+    ...(input.route && input.route.length > 0 ? { route: cleanRoute(input.route) } : {}),
   }
 }
 
@@ -246,9 +257,11 @@ export async function startWeek(store: Store, input: WeekInput, lang: Lang, toda
 
 /** Bestaande week bijwerken; review en afronding blijven staan. */
 export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lang: Lang): Promise<void> {
-  const { startDate: _s, endDate: _e, boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, ...rest } = trip
+  const { startDate: _s, endDate: _e, boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, route, ...rest } = trip
   void [_s, _e, _b, _m, _l, _k, _ba, _c, _a, _o, _n]
-  const next: Trip = { ...rest, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
+  // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
+  const keep = input.route === undefined && route ? { route } : {}
+  const next: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
   await store.put('trips.json.enc', next)
   await syncParticipants(store, next)
   void store.sync()

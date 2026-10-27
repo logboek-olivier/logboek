@@ -765,6 +765,15 @@ export const nl = {
   'places.onMap': 'Op de kaart',
   'places.notOnMap': 'Geen punt',
   'more.placesHint': 'Op de kaart zetten en samenvoegen',
+  // Route-sjablonen en herhalen
+  'route.quickStart': 'Snel starten',
+  'route.repeat': 'Herhaal vorige trip',
+  'route.template': (p: { label: string; n: number }) => `${p.label} (${p.n}×)`,
+  'route.planned': (p: { n: number }) => (p.n === 1 ? '1 etappe gepland' : `${p.n} etappes gepland`),
+  'route.clear': 'Planning wissen',
+  'route.today': 'Gepland vandaag',
+  'route.asPlanned': 'Zoals gepland',
+  'route.adjust': 'Aanpassen',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

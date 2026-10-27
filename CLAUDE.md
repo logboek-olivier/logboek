@@ -109,12 +109,13 @@ Alle typen in `src/model/types.ts`. Geen `any`.
 De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht), een tocht is een reeks dagen.
 
 **Trip** (bijv. "Yacht week 7", "RYA Offshore exam"; van elke lengte, 1 tot 120 dagen; `src/model/weeks.ts`, in de code nog "week")
-`id, name, type? (training-geven|skipper-charter|zelf-cruisen|zelf-trainen|delivery|overig), startDate?, endDate?, boat? (naam), boatModel?, boatLengthFt?, boatKind? (catamaran|eenromp|motor|overig), base?, charter?, area?, organisation? (sailing-virgins|yacht-week|eigen|overig), participants?: [{id, firstName, level?, curriculumId?}], note?, review?: {score?, quotes}, closedAt?, updatedAt, deletedAt`
+`id, name, type? (training-geven|skipper-charter|zelf-cruisen|zelf-trainen|delivery|overig), startDate?, endDate?, boat? (naam), boatModel?, boatLengthFt?, boatKind? (catamaran|eenromp|motor|overig), base?, charter?, area?, organisation? (sailing-virgins|yacht-week|eigen|overig), participants?: [{id, firstName, level?, curriculumId?}], note?, review?: {score?, quotes}, closedAt?, route?: [{day, from, to, nm?}], updatedAt, deletedAt`
 - Alle tripvelden zijn optioneel in de data. Een oudere of geïmporteerde trip heeft alleen een naam: type, datums en boot worden dan afgeleid zonder op te slaan. Het type is een voorstel uit de naam ("Yacht week" → skipper-charter, "RYA" → zelf-trainen, anders overig); datums en boot komen uit de dagen.
 - Bootgegevens: bootnaam, model, lengte (voet; de app toont ook meters), basis, soort boot en charterbedrijf of eigenaar. Een bekende bootnaam vult model, lengte, soort, basis en charterbedrijf van de vorige trip met die boot in.
 - **Niets is verplicht** (`src/model/gaps.ts`): een trip of dag wordt altijd opgeslagen, ook zonder boot, datum of plaats (lege datum = vandaag, lege mijlen = 0). Ontbreekt bootnaam, model, lengte, basis of (zonder dagen) de startdatum van een trip, of de van- of naar-plaats van een dag, dan staat er de badge "Onvolledig". Op zondag toont Vandaag "N dingen aanvullen": de lege velden één voor één, met een voorstel uit de dagen (boot, basis = eerste vertrekplaats, plaats van de buurdag); model en lengte één keer per boot voor alle trips met die boot. Overslaan mag.
 - Nieuwe trip: naam standaard "\<basis\> \<maand jaar\>", einddatum standaard start + 6 dagen. Eerdere en komende trips zijn gewoon in te voeren. Lopend is de trip die Olivier als lopend startte (`settings.activeWeekId`), anders de trip waarin vandaag valt; opslaan maakt een trip alleen lopend als vandaag erin valt. Afronden zet `closedAt` en de review, en maakt de trip weer inactief.
 - De rol op een dag volgt uit het type: training-geven → instructeur; skipper-charter, zelf-cruisen en delivery → schipper; zelf-trainen → trainee; overig → laatst gebruikt.
+- **Route-sjablonen** (`src/model/routes.ts`): trips die grotendeels dezelfde etappes varen (minstens de helft gedeeld, in beide richtingen) vormen een sjabloon; de nieuwste trip is het voorbeeld. Nieuwe trip biedt onder "Snel starten" "Herhaal vorige trip" en de sjablonen ("A → B (3×)"): boot, type, basis, charter, gebied, organisatie, aantal dagen en de geplande etappes (`route`, dag 0 = startdatum) komen mee; "Planning wissen" haalt de etappes weg. Op Vandaag staat bij een geplande etappe die nog niet gelogd is "Zoals gepland" (logt van, naar en nm uit het afstandsvoorstel, anders de afstand uit het sjabloon, met boot en rol uit de trip) naast "Aanpassen" (Toevoegen → Dag met van en naar voorgevuld). Toevoegen → Dag vult de geplande etappe van die datum ook voor.
 - Een nieuwe import houdt het id van een bestaande tocht met dezelfde naam en eerste dag, en ruimt vastgelegde weken (met type of datums) nooit op.
 
 **Leg** (één dag op het water)
@@ -209,6 +210,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
 3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Onderdelen:
    - de planning van vandaag uit de lopende planning (alleen als er vandaag iets gepland is; tik op een thema = al zijn onderwerpen geoefend voor de hele groep);
+   - bij een geplande etappe (route-sjabloon) "Zoals gepland" en "Aanpassen";
    - de knop "Dag van vandaag loggen" (opent Toevoegen → Dag, voorgevuld);
    - op zondag "N dingen aanvullen" (alleen als er lege velden zijn; zie Niets is verplicht);
    - nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`);
@@ -226,6 +228,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    Een open planning of student vult het hele scherm.
    
    **Nieuwe trip** (één scherm, ook bewerken):
+   - "Snel starten": Herhaal vorige trip en route-sjablonen uit de historie;
    - naam, type als knoppen, startdatum (vandaag), aantal dagen (7, tot 120);
    - boot: naam, model, lengte, basis, soort en charterbedrijf, met suggesties uit eerdere trips; gebied, organisatie (niets verplicht);
    - deelnemers één per regel met optioneel niveau en cursus.
@@ -261,7 +264,7 @@ logboek/
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
-                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts
+                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines, Boats, Places,
                      Money, QuickAdd, More, Settings
@@ -272,7 +275,7 @@ logboek/
     errors.ts        foutdetails zonder inhoud
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
-                     students, plans, weeks, week-links, rates, gaps, boats, places) + playwright (setup, unlock, sessie, import, boten, plaatsen, bewerken, aanvullen,
+                     students, plans, weeks, week-links, rates, gaps, boats, places, routes) + playwright (setup, unlock, sessie, import, boten, plaatsen, sjablonen, bewerken, aanvullen,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)

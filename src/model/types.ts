@@ -37,6 +37,15 @@ export interface WeekReview {
 export type BoatKind = 'catamaran' | 'eenromp' | 'motor' | 'overig'
 export const BOAT_KINDS: readonly BoatKind[] = ['catamaran', 'eenromp', 'motor', 'overig']
 
+/** Geplande etappe van een trip (uit een route-sjabloon of "Herhaal vorige trip"); dag 0 = startdatum. */
+export interface PlannedLeg {
+  day: number
+  from: string
+  to: string
+  /** Afstand van deze etappe in het sjabloon; het voorstel uit de historie gaat voor. */
+  nm?: number
+}
+
 export interface Trip extends SyncRecord {
   name: string
   type?: WeekType
@@ -62,6 +71,8 @@ export interface Trip extends SyncRecord {
   review?: WeekReview
   /** jjjj-mm-dd waarop de week is afgerond. */
   closedAt?: string
+  /** Geplande etappes; Vandaag biedt "Zoals gepland" voor de etappe van vandaag. */
+  route?: PlannedLeg[]
 }
 
 export interface Leg extends SyncRecord {
