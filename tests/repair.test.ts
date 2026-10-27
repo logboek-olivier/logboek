@@ -5,7 +5,7 @@ import { META_PATH, serializeMeta, type Meta } from '../src/crypto/keys'
 import { effectiveCurricula } from '../src/model/curricula'
 import { SEED_CURRICULA } from '../src/model/seed-curricula'
 import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from '../src/model/types'
-import { readMarker } from '../src/repair'
+import { covers, readMarker } from '../src/repair'
 import { LOCK_AFTER_MS, Session } from '../src/session'
 import { getObject, getSessionKey, openLogboekDb, putObject, putSessionKey, type Db } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
@@ -27,7 +27,7 @@ const NOW = '2026-10-26T11:56:00.000Z'
 const originalFetch = globalThis.fetch
 const wordlist = parseWordlistForTests()
 
-let k1: { meta: Meta; masterKey: CryptoKey }
+let k1: { meta: Meta; masterKey: CryptoKey; recoveryWords: string[] }
 let k2: { meta: Meta; masterKey: CryptoKey }
 let github: FakeGithub
 let counter = 0
@@ -60,7 +60,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   github = new FakeGithub()
-  globalThis.fetch = ((input: string, init: RequestInit) => github.fetch(input, init)) as typeof fetch
+  globalThis.fetch = ((input: string, init?: RequestInit) =>
+    // De woordenlijst voor de herstelcode komt in de app uit public/; hier uit het bestand.
+    String(input).endsWith('bip39-en.txt') ? Promise.resolve(new Response(wordlist.join('\n'))) : github.fetch(input, init ?? {})) as typeof fetch
   globalThis.localStorage?.clear()
 })
 
@@ -167,7 +169,7 @@ describe('Logboek herstellen: toestand van de telefoon na PR #27', () => {
     expect(s.getState()).toEqual({
       phase: 'repair',
       needsSecret: false,
-      report: { lost: ['transactions.json.enc', 'settings.json.enc', 'curricula.json.enc', 'students.json.enc'], localOnly: ['trips.json.enc', 'legs.json.enc'], tokenNeeded: false },
+      report: { lost: ['transactions.json.enc', 'settings.json.enc', 'curricula.json.enc', 'students.json.enc'], localOnly: ['trips.json.enc', 'legs.json.enc'], replaced: [], tokenNeeded: false },
     })
     // Zonder tik: niets gewist en niets geschreven.
     expect(puts()).toEqual([])
@@ -209,7 +211,7 @@ describe('Logboek herstellen: toestand van de telefoon na PR #27', () => {
     expect(s.getState()).toEqual({
       phase: 'repair',
       needsSecret: true,
-      report: { lost: ['transactions.json.enc', 'settings.json.enc', 'curricula.json.enc', 'students.json.enc'], localOnly: ['trips.json.enc', 'legs.json.enc'], tokenNeeded: false },
+      report: { lost: ['transactions.json.enc', 'settings.json.enc', 'curricula.json.enc', 'students.json.enc'], localOnly: ['trips.json.enc', 'legs.json.enc'], replaced: [], tokenNeeded: false },
     })
     expect(await getSessionKey(db)).toBeUndefined()
     expect(puts()).toEqual([])
@@ -333,5 +335,93 @@ describe('Logboek herstellen: veiligheid', () => {
     expect(s.getState()).toMatchObject({ phase: 'repair', needsSecret: true })
     await expect(s.repair({})).rejects.toMatchObject({ key: 'error.secretRequired' })
     expect(puts()).toEqual([])
+  }, 60_000)
+})
+
+describe('Logboek herstellen: bevindingen review', () => {
+  it('covers: wat als "blijft op GitHub" getoond is, mag niet ongemerkt verloren gaan', () => {
+    const shown = { lost: ['transactions.json.enc' as const], localOnly: ['trips.json.enc' as const], replaced: [], tokenNeeded: false }
+    expect(covers(shown, { lost: ['transactions.json.enc'], localOnly: ['trips.json.enc'], replaced: [], tokenNeeded: false })).toBe(true)
+    expect(covers(shown, { lost: ['transactions.json.enc', 'trips.json.enc'], localOnly: [], replaced: [], tokenNeeded: false })).toBe(false)
+    expect(covers(shown, { lost: [], localOnly: ['transactions.json.enc'], replaced: [], tokenNeeded: false })).toBe(true)
+    expect(covers(null, { lost: [], localOnly: [], replaced: ['plans.json.enc'], tokenNeeded: false })).toBe(false)
+    expect(covers(null, { lost: [], localOnly: [], replaced: [], tokenNeeded: false })).toBe(true)
+  })
+
+  it('verlopen of ingetrokken token: het herstelscherm vraagt een token in plaats van vast te lopen', async () => {
+    const { name, shas } = await phone({ token: 'k1', sessionKey: 'none' })
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    github.forceStatus = 401
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    expect(s.getState()).toMatchObject({ phase: 'repair', needsSecret: false, report: { tokenNeeded: true } })
+    github.forceStatus = null
+    await s.repair({ token: TOKEN })
+    if (s.getState().phase === 'repair') await s.repair({})
+    await expectRepaired(s, shas, name)
+  }, 60_000)
+
+  it('herstelcode in plaats van wachtzin', async () => {
+    const { name, shas } = await phone({ token: 'k1', sessionKey: 'fresh' })
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.repair({ secret: { recoveryCode: k1.recoveryWords.join(' ') } })
+    await s.repair({})
+    await expectRepaired(s, shas, name)
+  }, 60_000)
+
+  it('regel 10 ook na een bevroren tabblad: een bewaarde sleutel ouder dan 5 minuten wordt bij de tik niet gebruikt', async () => {
+    const { name, db } = await phone({ token: 'k1', sessionKey: 'none' })
+    let now = Date.now()
+    const s = new Session(name, () => now)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    expect(s.getState()).toMatchObject({ phase: 'repair', needsSecret: false })
+    now += LOCK_AFTER_MS
+    await expect(s.repair({})).rejects.toMatchObject({ key: 'error.secretRequired' })
+    expect(s.getState()).toMatchObject({ phase: 'repair', needsSecret: true })
+    expect(puts()).toEqual([])
+    expect(await getObject(db, 'transactions.json.enc')).toBeDefined()
+  }, 60_000)
+
+  it('een bestand in een nieuwer objectformaat wordt nooit vervangen: "Werk de app bij"', async () => {
+    const { name, db } = await phone({ token: 'k1', sessionKey: 'none' })
+    const blob = await encryptRecords(k1.masterKey, 'students.json.enc', [student])
+    blob[0] = 2
+    const sha = github.write('students.json.enc', toBase64(blob))
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE }).catch(() => undefined)
+    if (s.getState().phase === 'repair') await expect(s.repair({})).rejects.toMatchObject({ name: 'NewerSchemaError' })
+    expect(puts()).toEqual([])
+    expect(github.files.get('students.json.enc')!.sha).toBe(sha)
+    expect(await getObject(db, 'transactions.json.enc')).toBeDefined()
+  }, 60_000)
+
+  it('een ander apparaat zet tijdens het herstellen een leesbare versie op GitHub: die blijft staan', async () => {
+    const { name, shas } = await phone({ token: 'k1', sessionKey: 'none' })
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    const otherTip = { ...tip, id: 'van-de-laptop' }
+    let raced = false
+    // Zorg dat de leesbare versie er al staat vóór de PUT.
+    const readable = await encryptRecords(k1.masterKey, 'transactions.json.enc', [otherTip])
+    github.beforePut = (path) => {
+      if (path !== 'transactions.json.enc' || raced) return
+      raced = true
+      github.write(path, toBase64(readable))
+    }
+    await s.repair({})
+    expect(raced).toBe(true)
+    expect(s.getState().phase).toBe('unlocked')
+    await unlockedStore(s).sync()
+    expect((await remoteRecords('transactions.json.enc', k1.masterKey)).map((r) => r.id)).toEqual(['van-de-laptop'])
+    expect(github.files.get('trips.json.enc')!.sha).toBe(shas.get('trips.json.enc'))
   }, 60_000)
 })

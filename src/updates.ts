@@ -35,6 +35,31 @@ class Updates {
 
 export const updates = new Updates()
 
+/** Wordt door de app gezet: true zolang herladen een stap halverwege zou afbreken. */
+let busy: () => boolean = () => false
+
+export function setBusyCheck(check: () => boolean): void {
+  busy = check
+}
+
+/**
+ * Een nieuwe service worker heeft overgenomen (public/sw-vensters.js). Dit venster herlaadt zelf, maar pas als er
+ * niets halverwege is (eerste keer, wachtzin wijzigen, herstellen). De outbox staat in IndexedDB en blijft.
+ */
+export function listenForNewVersion(): void {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
+    if ((event.data as { type?: unknown } | null)?.type !== 'logboek-nieuwe-versie') return
+    event.ports[0]?.postMessage('zelf')
+    const reloadWhenIdle = () => {
+      if (busy()) setTimeout(reloadWhenIdle, 2000)
+      else window.location.reload()
+    }
+    reloadWhenIdle()
+  })
+  navigator.serviceWorker.startMessages()
+}
+
 export function useUpdateAvailable(): boolean {
   return useSyncExternalStore(
     (l) => updates.subscribe(l),

@@ -638,6 +638,7 @@ export const nl = {
   'repair.busy': 'Herstellen…',
   'common.and': 'en',
   'error.secretRequired': 'Vul je wachtzin of herstelcode in.',
+  'repair.replaced': (p: { files: string }) => `Van ${p.files} is de versie op GitHub niet te lezen; de versie van dit apparaat komt ervoor in de plaats.`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

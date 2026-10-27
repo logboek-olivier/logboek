@@ -4,6 +4,7 @@ import { Loading } from './components/Loading'
 import { setScreen } from './errors'
 import { t, useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
+import { setBusyCheck } from './updates'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
 import { KeyMismatch, Repair } from './screens/KeyProblem'
@@ -12,6 +13,7 @@ import { Session, SessionContext } from './session'
 
 export function App() {
   const session = useMemo(() => new Session(), [])
+  useEffect(() => setBusyCheck(() => session.isBusy()), [session])
   // De hele app tekent opnieuw als de taal wisselt (teksten en notatie volgen de taal).
   const lang = useLang()
   const state = useSyncExternalStore(

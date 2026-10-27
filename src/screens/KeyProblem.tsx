@@ -141,6 +141,7 @@ export function Repair({ report, needsSecret }: { report: RepairReport | null; n
               <p className="muted">{t('repair.nothingLost')}</p>
             )}
             {report.localOnly.length > 0 && <p className="muted small">{t('repair.localOnly', { files: listLabels(report.localOnly) })}</p>}
+            {report.replaced.length > 0 && <p className="muted small">{t('repair.replaced', { files: listLabels(report.replaced) })}</p>}
             <p className="muted small">{t('repair.kept')}</p>
           </div>
         </>

@@ -601,4 +601,5 @@ export const en: Messages = {
   'repair.busy': 'Restoring…',
   'common.and': 'and',
   'error.secretRequired': 'Enter your passphrase or recovery code.',
+  'repair.replaced': (p: { files: string }) => `For ${p.files} the version on GitHub cannot be read; the version on this device replaces it.`,
 }

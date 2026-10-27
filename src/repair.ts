@@ -1,8 +1,10 @@
-import { DecryptError } from './crypto/encrypt'
+import { DecryptError, FORMAT_VERSION, type Bytes } from './crypto/encrypt'
+import { META_PATH } from './crypto/keys'
+import { NewerSchemaError } from './model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from './model/types'
 import { ConflictError, type GithubClient } from './storage/github'
-import { deleteObject, getObject, type Db } from './storage/idb'
-import { deleteOutbox, loadOutbox } from './storage/outbox'
+import { deleteIfUnchanged, getLocal, getObject, type Db } from './storage/idb'
+import { loadOutbox, OUTBOX_NAME } from './storage/outbox'
 import { decryptRecords, encryptRecords } from './storage/sync'
 import { loadToken } from './storage/token'
 
@@ -11,7 +13,8 @@ import { loadToken } from './storage/token'
 // - op dit apparaat: alleen objecten die niet te ontsleutelen zijn (DecryptError) worden gewist;
 // - op GitHub: alleen bestanden die niet te ontsleutelen zijn worden vervangen, met de oude SHA als voorwaarde, door de
 //   leesbare lokale kopie of anders een lege versie. De oude versie blijft in de geschiedenis van logboek-data.
-// Een bestand dat wel ontsleutelt maar ongeldig is of van een nieuwere schemaversie, wordt nooit aangeraakt.
+// Een bestand dat wel ontsleutelt maar ongeldig is, van een nieuwere schemaversie, of in een nieuwer objectformaat
+// (versiebyte hoger dan deze app kent), wordt nooit aangeraakt: dan "Werk de app bij".
 
 /** Wat Olivier vóór het herstellen ziet. Alleen paden, nooit inhoud (regel 9). */
 export interface RepairReport {
@@ -19,6 +22,8 @@ export interface RepairReport {
   lost: CollectionPath[]
   /** Op dit apparaat onleesbaar, op GitHub leesbaar: alleen wijzigingen die nog niet gesynct waren, vervallen. */
   localOnly: CollectionPath[]
+  /** Op GitHub onleesbaar, hier leesbaar: de versie van dit apparaat komt op GitHub. */
+  replaced: CollectionPath[]
   /** De token op dit apparaat is onleesbaar of ontbreekt: voor herstellen is een token nodig. */
   tokenNeeded: boolean
 }
@@ -28,6 +33,8 @@ type LocalState = 'absent' | 'readable' | 'unreadable'
 export interface LocalDiagnosis {
   state: Map<CollectionPath, LocalState>
   records: Map<CollectionPath, SyncRecord[]>
+  /** Versleutelde inhoud van wat onleesbaar is, zodat wissen alleen gebeurt als het intussen niet veranderd is. */
+  blobs: Map<CollectionPath | typeof OUTBOX_NAME, Bytes>
   outboxUnreadable: boolean
   tokenUnreadable: boolean
 }
@@ -39,7 +46,13 @@ export interface Diagnosis {
   report: RepairReport
 }
 
-async function readable(run: () => Promise<unknown>): Promise<boolean> {
+/** Een objectformaat van een nieuwere app is geen andere sleutel: nooit vervangen, de app moet bijgewerkt worden. */
+function assertKnownFormat(blob: Bytes): void {
+  if (blob.length > 0 && blob[0]! > FORMAT_VERSION && blob[0]! < 16) throw new NewerSchemaError(blob[0]!)
+}
+
+async function readable(blob: Bytes, run: () => Promise<unknown>): Promise<boolean> {
+  assertKnownFormat(blob)
   try {
     await run()
     return true
@@ -53,18 +66,21 @@ async function readable(run: () => Promise<unknown>): Promise<boolean> {
 export async function diagnoseLocal(db: Db, masterKey: CryptoKey): Promise<LocalDiagnosis> {
   const state = new Map<CollectionPath, LocalState>()
   const records = new Map<CollectionPath, SyncRecord[]>()
+  const blobs: LocalDiagnosis['blobs'] = new Map()
   for (const path of COLLECTION_PATHS) {
     const stored = await getObject(db, path)
     if (!stored) {
       state.set(path, 'absent')
       continue
     }
+    assertKnownFormat(stored.blob)
     try {
       records.set(path, await decryptRecords(masterKey, path, stored.blob))
       state.set(path, 'readable')
     } catch (error) {
       if (!(error instanceof DecryptError)) throw error
       state.set(path, 'unreadable')
+      blobs.set(path, stored.blob)
     }
   }
   let tokenUnreadable = true
@@ -73,8 +89,10 @@ export async function diagnoseLocal(db: Db, masterKey: CryptoKey): Promise<Local
   } catch (error) {
     if (!(error instanceof DecryptError)) throw error
   }
-  const outboxUnreadable = !(await readable(() => loadOutbox(db, masterKey)))
-  return { state, records, outboxUnreadable, tokenUnreadable }
+  const outbox = await getLocal(db, OUTBOX_NAME)
+  const outboxUnreadable = outbox !== undefined && !(await readable(outbox, () => loadOutbox(db, masterKey)))
+  if (outbox && outboxUnreadable) blobs.set(OUTBOX_NAME, outbox)
+  return { state, records, blobs, outboxUnreadable, tokenUnreadable }
 }
 
 /** Verslag zonder GitHub (geen verbinding of geen token): elk onleesbaar lokaal bestand telt als verloren. */
@@ -82,6 +100,7 @@ export function localReport(local: LocalDiagnosis): RepairReport {
   return {
     lost: COLLECTION_PATHS.filter((p) => local.state.get(p) === 'unreadable'),
     localOnly: [],
+    replaced: [],
     tokenNeeded: local.tokenUnreadable,
   }
 }
@@ -96,38 +115,55 @@ export async function diagnose(masterKey: CryptoKey, client: GithubClient, local
   for (const path of COLLECTION_PATHS) {
     const file = await client.getFile(path)
     if (!file) continue
-    if (await readable(() => decryptRecords(masterKey, path, file.content))) remoteReadable.add(path)
+    if (await readable(file.content, () => decryptRecords(masterKey, path, file.content))) remoteReadable.add(path)
     else remoteUnreadable.set(path, file.sha)
   }
   const lost: CollectionPath[] = []
   const localOnly: CollectionPath[] = []
+  const replaced: CollectionPath[] = []
   for (const path of COLLECTION_PATHS) {
     const here = local.state.get(path)
     if (here === 'unreadable' && remoteReadable.has(path)) localOnly.push(path)
     else if (here === 'unreadable' || (remoteUnreadable.has(path) && here !== 'readable')) lost.push(path)
+    else if (remoteUnreadable.has(path)) replaced.push(path)
   }
-  return { local, remoteUnreadable, report: { lost, localOnly, tokenNeeded: local.tokenUnreadable } }
+  return { local, remoteUnreadable, report: { lost, localOnly, replaced, tokenNeeded: local.tokenUnreadable } }
 }
 
-/** Is alles wat bij herstellen verloren gaat, vooraf getoond? */
+/**
+ * Is alles wat bij herstellen verloren gaat of vervangen wordt, vooraf getoond, en niet ernstiger dan getoond?
+ * Verloren moet als verloren getoond zijn; "alleen lokale wijzigingen" en "versie van dit apparaat naar GitHub" mogen
+ * ook als verloren getoond zijn.
+ */
 export function covers(shown: RepairReport | null, fresh: RepairReport): boolean {
-  const needed = [...fresh.lost, ...fresh.localOnly]
-  if (needed.length === 0) return true
+  if (fresh.lost.length + fresh.localOnly.length + fresh.replaced.length === 0) return true
   if (!shown) return false
-  const known = new Set([...shown.lost, ...shown.localOnly])
-  return needed.every((p) => known.has(p))
+  const lost = new Set(shown.lost)
+  const milder = new Set([...shown.lost, ...shown.localOnly, ...shown.replaced])
+  return fresh.lost.every((p) => lost.has(p)) && [...fresh.localOnly, ...fresh.replaced].every((p) => milder.has(p))
 }
 
-/** Voert het herstel uit volgens de diagnose. Opent het logboek niet; dat doet de sessie daarna. */
-export async function executeRepair(db: Db, masterKey: CryptoKey, client: GithubClient, diagnosis: Diagnosis): Promise<void> {
+/** Een ander tabblad schreef tijdens het herstellen in de lokale opslag: niets gewist, opnieuw proberen. */
+export class LocalChangedError extends Error {
+  constructor() {
+    super('Lokale opslag gewijzigd tijdens herstellen')
+    this.name = 'LocalChangedError'
+  }
+}
+
+/**
+ * Voert het herstel uit volgens de diagnose. Opent het logboek niet; dat doet de sessie daarna. `vaultCheck`: het
+ * check-veld van de lokale meta waaraan de sleutel gebonden is; lokaal wissen gebeurt alleen als dat nog klopt.
+ */
+export async function executeRepair(db: Db, masterKey: CryptoKey, client: GithubClient, diagnosis: Diagnosis, vaultCheck: string): Promise<void> {
   const { local } = diagnosis
   // GitHub eerst: mislukt dat (geen verbinding), dan is er lokaal nog niets gewist en kan Olivier het opnieuw proberen.
   for (const [path, sha] of diagnosis.remoteUnreadable) {
     const records = local.state.get(path) === 'readable' ? (local.records.get(path) ?? []) : []
     await replaceUnreadable(client, masterKey, path, sha, records)
   }
-  for (const path of COLLECTION_PATHS) if (local.state.get(path) === 'unreadable') await deleteObject(db, path)
-  if (local.outboxUnreadable) await deleteOutbox(db)
+  const items = [...local.blobs].map(([key, blob]) => ({ store: key === OUTBOX_NAME ? ('local' as const) : ('objects' as const), key, blob }))
+  if (items.length > 0 && !(await deleteIfUnchanged(db, META_PATH, vaultCheck, items))) throw new LocalChangedError()
 }
 
 /** Vervangt een onleesbaar bestand, alleen zolang het nog onleesbaar is (SHA als voorwaarde). */
@@ -141,7 +177,7 @@ async function replaceUnreadable(client: GithubClient, masterKey: CryptoKey, pat
       if (!(error instanceof ConflictError) || attempt === 1) throw error
       // Intussen gewijzigd (ander apparaat): is het nu leesbaar, dan blijft het staan.
       const file = await client.getFile(path)
-      if (!file || (await readable(() => decryptRecords(masterKey, path, file.content)))) return
+      if (!file || (await readable(file.content, () => decryptRecords(masterKey, path, file.content)))) return
       current = file.sha
     }
   }
@@ -158,7 +194,7 @@ export function readMarker(dbName: string | undefined): RepairReport | null {
     if (typeof raw !== 'object' || raw === null) return null
     const paths = (value: unknown) => (Array.isArray(value) ? COLLECTION_PATHS.filter((p) => value.includes(p)) : [])
     const r = raw as Record<string, unknown>
-    return { lost: paths(r.lost), localOnly: paths(r.localOnly), tokenNeeded: r.tokenNeeded === true }
+    return { lost: paths(r.lost), localOnly: paths(r.localOnly), replaced: paths(r.replaced), tokenNeeded: r.tokenNeeded === true }
   } catch {
     return null
   }
