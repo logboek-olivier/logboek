@@ -1,4 +1,4 @@
-import { decryptObject, encryptObject, utf8, type Bytes } from '../crypto/encrypt'
+import { decryptObject, encryptObject, FORMAT_VERSION, utf8, type Bytes } from '../crypto/encrypt'
 import { NewerSchemaError, SCHEMA_VERSION } from '../model/schema'
 import type { SyncRecord } from '../model/types'
 import { ConflictError, type GithubClient, type RemoteFile } from './github'
@@ -60,6 +60,9 @@ export async function encryptRecords(masterKey: CryptoKey, path: string, records
 }
 
 export async function decryptRecords<T extends SyncRecord>(masterKey: CryptoKey, path: string, blob: Bytes): Promise<T[]> {
+  // Een objectformaat van een nieuwere app (versiebyte 2–15) is geen andere sleutel: niets schrijven en "Werk de app
+  // bij". Andere eerste bytes zijn gewoon onleesbaar.
+  if (blob.length > 0 && blob[0]! > FORMAT_VERSION && blob[0]! < 16) throw new NewerSchemaError(blob[0]!)
   return decodeRecords<T>(path, await decryptObject(masterKey, path, blob))
 }
 

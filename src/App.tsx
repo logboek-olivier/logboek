@@ -4,14 +4,16 @@ import { Loading } from './components/Loading'
 import { setScreen } from './errors'
 import { t, useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
+import { setBusyCheck } from './updates'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
-import { KeyMismatch, KeyRecover } from './screens/KeyProblem'
+import { KeyMismatch, Repair } from './screens/KeyProblem'
 import { Unlock } from './screens/Unlock'
 import { Session, SessionContext } from './session'
 
 export function App() {
   const session = useMemo(() => new Session(), [])
+  useEffect(() => setBusyCheck(() => session.isBusy()), [session])
   // De hele app tekent opnieuw als de taal wisselt (teksten en notatie volgen de taal).
   const lang = useLang()
   const state = useSyncExternalStore(
@@ -52,7 +54,7 @@ export function App() {
     }
   }, [session, state.phase])
 
-  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag', mismatch: 'Sleutel past niet', recover: 'Herstel' }[state.phase])
+  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag', mismatch: 'Sleutel past niet', repair: 'Logboek herstellen' }[state.phase])
   let screen: React.ReactNode
   switch (state.phase) {
     case 'loading':
@@ -70,8 +72,8 @@ export function App() {
     case 'mismatch':
       screen = <KeyMismatch where={state.where} />
       break
-    case 'recover':
-      screen = <KeyRecover report={state.report} />
+    case 'repair':
+      screen = <Repair report={state.report} needsSecret={state.needsSecret} />
       break
   }
   return (

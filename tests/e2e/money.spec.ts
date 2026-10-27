@@ -3,7 +3,8 @@ import { mockGithub } from './helpers/fake-github'
 import { mockRates } from './helpers/rates'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
-test.use({ viewport: { width: 360, height: 740 } })
+// De service worker neemt direct over en haalt rates.json zelf op (page.route ziet dat niet): hier geblokkeerd.
+test.use({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block' })
 
 test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de ECB-koers), verwijderen', async ({ page }) => {
   const errors = collectConsoleErrors(page)

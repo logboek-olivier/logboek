@@ -4,13 +4,11 @@ import { toBase64, utf8 } from '../src/crypto/encrypt'
 import { META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../src/crypto/keys'
 import { lastError } from '../src/errors'
 import { COLLECTION_PATHS } from '../src/model/types'
-import { LOCK_AFTER_MS, Session } from '../src/session'
+import { Session } from '../src/session'
 import { GithubClient } from '../src/storage/github'
-import { getObject, getSessionKey, openLogboekDb, putObject } from '../src/storage/idb'
-import { saveOutbox } from '../src/storage/outbox'
+import { getObject, getSessionKey, openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
-import { loadToken, storeToken } from '../src/storage/token'
-import { decryptRecords, encryptRecords } from '../src/storage/sync'
+import { decryptRecords } from '../src/storage/sync'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 
@@ -135,7 +133,7 @@ describe('twee instanties, één IndexedDB: een oude instantie met een andere ho
 })
 
 describe('invariant bij openen', () => {
-  it('een opgeslagen sessiesleutel die niet bij meta.json.enc hoort: niets schrijven, sleutel wissen, scherm "Sleutel past niet"', async () => {
+  it('een opgeslagen sessiesleutel die niet bij meta.json.enc hoort: niets schrijven, sleutel wissen, "Logboek herstellen" met wachtzin', async () => {
     const name = `logboek-sleutel-${++counter}`
     const a = track(new Session(name))
     await a.init()
@@ -154,48 +152,9 @@ describe('invariant bij openen', () => {
 
     const b = track(new Session(name))
     await b.init()
-    expect(b.getState().phase).toBe('mismatch')
+    expect(b.getState()).toEqual({ phase: 'repair', report: null, needsSecret: true })
     expect(await getSessionKey(db)).toBeUndefined()
     expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(before)
-  }, 60_000)
-})
-
-describe('herstelpad', () => {
-  it('ontgrendelen lukt maar lokale data staat onder een andere sleutel: per bestand tonen, pas na een keuze opnieuw beginnen vanaf GitHub', async () => {
-    const name = `logboek-sleutel-${++counter}`
-    const a = track(new Session(name))
-    await a.init()
-    const vault = await createVault(NEW_PASSPHRASE, wordlist)
-    await a.finishNewVault(TOKEN, null, vault)
-    await unlockedStore(a).put('trips.json.enc', { id: 't1', name: 'Nepweek', updatedAt: NOW, deletedAt: null })
-    await unlockedStore(a).sync()
-    a.lock()
-
-    // Lokale kopie van transactions.json.enc onder een andere sleutel (zoals de telefoon nu heeft).
-    const other = await createVault(OLD_PASSPHRASE, wordlist)
-    const db = await openLogboekDb(name)
-    const blob = await encryptRecords(other.masterKey, 'transactions.json.enc', [tip('lokaal')])
-    await putObject(db, { path: 'transactions.json.enc', blob, sha: 'oud' })
-    const putsBefore = github.requests.filter((r) => r.method === 'PUT').length
-
-    const b = track(new Session(name))
-    await b.init()
-    await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
-    const state = b.getState()
-    expect(state.phase).toBe('recover')
-    if (state.phase !== 'recover') return
-    expect(state.report.unreadable).toEqual(['transactions.json.enc'])
-    expect(state.report.tokenUnreadable).toBe(false)
-    // Niets gewist en niets geschreven zolang Olivier niet kiest.
-    expect((await getObject(db, 'transactions.json.enc'))!.blob).toEqual(blob)
-    expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(putsBefore)
-
-    await b.restartFromGithub()
-    expect(b.getState().phase).toBe('unlocked')
-    await unlockedStore(b).sync()
-    expect(unlockedStore(b).list('trips.json.enc').map((t) => t.name)).toEqual(['Nepweek'])
-    expect(unlockedStore(b).list('transactions.json.enc')).toEqual([])
-    await expectGithubReadableWith(vault.masterKey)
   }, 60_000)
 })
 
@@ -275,59 +234,6 @@ describe('invariant in de Store (lokaal)', () => {
   }, 60_000)
 })
 
-describe('herstelpad met onleesbare token', () => {
-  it('vraagt een token, wist pas na de keuze en gebruikt dan de nieuwe token', async () => {
-    const name = `logboek-sleutel-${++counter}`
-    const a = track(new Session(name))
-    await a.init()
-    const vault = await createVault(NEW_PASSPHRASE, wordlist)
-    await a.finishNewVault(TOKEN, null, vault)
-    await unlockedStore(a).sync()
-    a.lock()
-    const other = await createVault(OLD_PASSPHRASE, wordlist)
-    const db = await openLogboekDb(name)
-    // Token en outbox onder een andere sleutel.
-    await storeToken(db, other.masterKey, 'github_pat_VREEMD_0123456789abcdefghijklmnopqrstuvwxyz', null)
-    await saveOutbox(db, other.masterKey, { 'trips.json.enc': { x: NOW } })
-
-    const b = track(new Session(name))
-    await b.init()
-    await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
-    const state = b.getState()
-    expect(state.phase).toBe('recover')
-    if (state.phase !== 'recover') return
-    expect(state.report).toEqual({ unreadable: [], tokenUnreadable: true, outboxUnreadable: true })
-    await expect(b.restartFromGithub()).rejects.toMatchObject({ key: 'error.tokenRequired' })
-    expect(b.getState().phase).toBe('recover')
-    await b.restartFromGithub(TOKEN)
-    expect(b.getState().phase).toBe('unlocked')
-    expect(await loadToken(db, vault.masterKey)).toEqual({ token: TOKEN, expiresAt: null })
-  }, 60_000)
-
-  it('herstelt niet als meta.json.enc op GitHub bij een andere sleutel hoort', async () => {
-    const name = `logboek-sleutel-${++counter}`
-    const a = track(new Session(name))
-    await a.init()
-    const vault = await createVault(NEW_PASSPHRASE, wordlist)
-    await a.finishNewVault(TOKEN, null, vault)
-    await unlockedStore(a).sync()
-    a.lock()
-    const other = await createVault(OLD_PASSPHRASE, wordlist)
-    const db = await openLogboekDb(name)
-    const blob = await encryptRecords(other.masterKey, 'transactions.json.enc', [tip('lokaal')])
-    await putObject(db, { path: 'transactions.json.enc', blob, sha: 'oud' })
-    github.write(META_PATH, toBase64(utf8(serializeMeta(other.meta))))
-
-    const b = track(new Session(name))
-    await b.init()
-    await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
-    expect(b.getState().phase).toBe('recover')
-    await expect(b.restartFromGithub()).rejects.toMatchObject({ name: 'KeyMismatchError' })
-    expect(b.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
-    expect((await getObject(db, 'transactions.json.enc'))!.blob).toEqual(blob)
-  }, 60_000)
-})
-
 describe('dezelfde sleutel, nieuwe meta (review)', () => {
   async function unlockedWith(name: string, passphrase = NEW_PASSPHRASE) {
     const a = track(new Session(name))
@@ -395,30 +301,7 @@ describe('dezelfde sleutel, nieuwe meta (review)', () => {
   }, 60_000)
 })
 
-describe('regel 10 en een geblokkeerde opslag (review)', () => {
-  it('het herstelscherm vergrendelt na 5 minuten', async () => {
-    const name = `logboek-sleutel-${++counter}`
-    const a = track(new Session(name))
-    await a.init()
-    await a.finishNewVault(TOKEN, null, await createVault(NEW_PASSPHRASE, wordlist))
-    a.lock()
-    const other = await createVault(OLD_PASSPHRASE, wordlist)
-    const db = await openLogboekDb(name)
-    await putObject(db, { path: 'transactions.json.enc', blob: await encryptRecords(other.masterKey, 'transactions.json.enc', [tip('x')]), sha: null })
-    const b = track(new Session(name))
-    await b.init()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
-      expect(b.getState().phase).toBe('recover')
-      vi.advanceTimersByTime(LOCK_AFTER_MS)
-    } finally {
-      vi.useRealTimers()
-    }
-    await vi.waitFor(() => expect(b.getState().phase).toBe('locked'))
-    await expect(b.restartFromGithub()).rejects.toThrow()
-  }, 60_000)
-
+describe('geblokkeerde opslag (review)', () => {
   it('een oudere versie houdt de opslag vast: melding in plaats van stil hangen', async () => {
     const name = `logboek-sleutel-${++counter}`
     const old = await new Promise<IDBDatabase>((resolve, reject) => {

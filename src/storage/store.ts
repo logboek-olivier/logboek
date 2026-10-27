@@ -113,6 +113,7 @@ export class Store {
   /** De sleutel past niet (meer) bij meta.json.enc: deze Store schrijft nooit meer iets. */
   private mismatch = false
   private readonly mismatchListeners = new Set<(error: KeyMismatchError) => void>()
+  private readonly repairListeners = new Set<(error: UnreadableFileError) => void>()
 
   private constructor(
     private readonly db: Db,
@@ -153,6 +154,15 @@ export class Store {
   onKeyMismatch(listener: (error: KeyMismatchError) => void): () => void {
     this.mismatchListeners.add(listener)
     return () => this.mismatchListeners.delete(listener)
+  }
+
+  /**
+   * Wordt aangeroepen na een sync waarin meta.json.enc bij deze sleutel hoort maar bestanden op GitHub niet te
+   * ontsleutelen zijn: de sessie biedt dan "Logboek herstellen" aan.
+   */
+  onRepairNeeded(listener: (error: UnreadableFileError) => void): () => void {
+    this.repairListeners.add(listener)
+    return () => this.repairListeners.delete(listener)
   }
 
   subscribe(listener: Listener): () => void {
@@ -329,6 +339,11 @@ export class Store {
     }
     if (this.locked) return
     if (failure === null && unreadable.size > 0) failure = new UnreadableFileError([...unreadable.keys()], [...new Set(unreadable.values())].join(', '))
+    const undecryptable = [...unreadable].filter(([, reason]) => reason === 'DecryptError').map(([path]) => path)
+    if (this.vaultCheck !== null && meta === 'match' && undecryptable.length > 0) {
+      const error = new UnreadableFileError(undecryptable, 'DecryptError')
+      for (const listener of this.repairListeners) listener(error)
+    }
     if (failure === null) {
       this.syncedOnce = true
       this.setStatus(this.idleStatus())

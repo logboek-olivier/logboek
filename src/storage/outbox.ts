@@ -6,7 +6,7 @@ import { deleteLocal, getLocal, putLocal, type Db } from './idb'
 
 export type Outbox = Record<string, Record<string, string>>
 
-const OUTBOX_NAME = 'outbox'
+export const OUTBOX_NAME = 'outbox'
 const OUTBOX_AAD = 'local/outbox'
 const decoder = new TextDecoder()
 

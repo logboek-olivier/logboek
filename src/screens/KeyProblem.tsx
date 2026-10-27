@@ -2,11 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { t, type MessageKey } from '../i18n'
 import type { CollectionPath } from '../model/types'
-import { describeError, useSession, type RecoveryReport } from '../session'
+import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
+import type { RepairReport } from '../repair'
+import { describeError, useSession } from '../session'
 import { ErrorLine, Screen } from './Setup'
 
-// Sleutel past niet bij het logboek (fase 'mismatch'), of ontgrendeld met een geldige sleutel terwijl lokale gegevens
-// onder een andere sleutel staan (fase 'recover'). Nooit stil verder: niets geschreven, niets gewist zonder keuze.
+// Sleutel past niet bij het logboek (fase 'mismatch'), of gegevens die niet met de sleutel uit meta.json.enc te lezen
+// zijn (fase 'repair'). Nooit stil verder: niets geschreven, niets gewist zonder tik en wachtzin.
 
 export function KeyMismatch({ where }: { where: 'local' | 'remote' }) {
   const session = useSession()
@@ -79,11 +81,24 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'plans.json.enc': 'key.file.plans',
 }
 
-export function KeyRecover({ report }: { report: RecoveryReport }) {
+/** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */
+function listLabels(paths: readonly CollectionPath[]): string {
+  const labels = paths.map((p) => t(FILE_LABEL[p]).toLowerCase())
+  return labels.length <= 1 ? (labels[0] ?? '') : `${labels.slice(0, -1).join(', ')} ${t('common.and')} ${labels[labels.length - 1]}`
+}
+
+/**
+ * Logboek herstellen: in gewone taal wat er verloren gaat, dan één tik op "Herstellen" (met wachtzin of herstelcode
+ * als die gevraagd wordt, en alleen een token als de token op dit apparaat onleesbaar is).
+ */
+export function Repair({ report, needsSecret }: { report: RepairReport | null; needsSecret: boolean }) {
   const session = useSession()
+  const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
+  const [secret, setSecret] = useState('')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const tokenNeeded = report?.tokenNeeded ?? false
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -91,7 +106,10 @@ export function KeyRecover({ report }: { report: RecoveryReport }) {
     setBusy(true)
     setError(null)
     try {
-      await session.restartFromGithub(report.tokenUnreadable ? token : undefined)
+      await session.repair({
+        secret: needsSecret ? (mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret }) : undefined,
+        token: tokenNeeded ? token : undefined,
+      })
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -99,54 +117,72 @@ export function KeyRecover({ report }: { report: RecoveryReport }) {
     }
   }
 
+  const disabled = busy || (needsSecret && secret.trim().length === 0) || (tokenNeeded && token.trim().length === 0)
   return (
-    <Screen title={t('key.recoverTitle')}>
-      <p>{t('key.recoverText')}</p>
-      <div className="section">
-        <h2>{t('key.lost')}</h2>
-        <ul className="rows loss-list">
-          {report.unreadable.map((path) => (
-            <li key={path} className="row-item">
-              <span className="row-main">
-                <span>{t(FILE_LABEL[path])}</span>
-                <span className="muted small">{path} · {t('key.lostFile')}</span>
-              </span>
-            </li>
-          ))}
-          {report.outboxUnreadable && (
-            <li className="row-item">
-              <span className="row-main">
-                <span>{t('key.lostOutbox')}</span>
-                <span className="muted small">{t('key.lostOutboxHint')}</span>
-              </span>
-            </li>
-          )}
-          {report.tokenUnreadable && (
-            <li className="row-item">
-              <span className="row-main">
-                <span>{t('key.lostToken')}</span>
-                <span className="muted small">{t('key.lostTokenHint')}</span>
-              </span>
-            </li>
-          )}
-        </ul>
-        <p className="muted small">{t('key.kept')}</p>
-      </div>
+    <Screen title={t('repair.title')}>
+      {report === null ? (
+        <p>{t('repair.unknown')}</p>
+      ) : (
+        <>
+          <p>{t('repair.intro')}</p>
+          <div className="section">
+            <h2>{t('repair.lost')}</h2>
+            {report.lost.length > 0 ? (
+              <ul className="rows loss-list">
+                {report.lost.map((path) => (
+                  <li key={path} className="row-item">
+                    <span className="row-main">
+                      <span>{t(FILE_LABEL[path])}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">{t('repair.nothingLost')}</p>
+            )}
+            {report.localOnly.length > 0 && <p className="muted small">{t('repair.localOnly', { files: listLabels(report.localOnly) })}</p>}
+            {report.replaced.length > 0 && <p className="muted small">{t('repair.replaced', { files: listLabels(report.replaced) })}</p>}
+            <p className="muted small">{t('repair.kept')}</p>
+          </div>
+        </>
+      )}
       <form className="stack" onSubmit={(e) => void submit(e)}>
-        {report.tokenUnreadable && (
+        {needsSecret &&
+          (mode === 'passphrase' ? (
+            <label>
+              {t('passphrase.label')}
+              <input type="password" autoComplete="current-password" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            </label>
+          ) : (
+            <label>
+              {t('setup.recoveryField', { n: RECOVERY_WORD_COUNT })}
+              <textarea rows={4} autoComplete="off" autoCapitalize="none" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            </label>
+          ))}
+        {tokenNeeded && (
           <label>
             {t('token.label')}
-            <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" required />
+            <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" />
+            <span className="muted small">{t('repair.tokenHint')}</span>
           </label>
         )}
-        <button className="btn primary" type="submit" disabled={busy}>
-          {t('key.restart')}
-        </button>
         <ErrorLine error={error} />
+        <button className="btn primary" type="submit" disabled={disabled}>
+          {busy ? t('repair.busy') : t('repair.button')}
+        </button>
+        {needsSecret && (
+          <button
+            className="btn link"
+            type="button"
+            onClick={() => {
+              setMode(mode === 'passphrase' ? 'recovery' : 'passphrase')
+              setSecret('')
+            }}
+          >
+            {mode === 'passphrase' ? t('setup.useRecovery') : t('setup.usePassphrase')}
+          </button>
+        )}
       </form>
-      <button className="btn link" type="button" disabled={busy} onClick={() => void session.backToUnlock()}>
-        {t('key.backToUnlock')}
-      </button>
       <CopyErrorDetails />
     </Screen>
   )

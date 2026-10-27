@@ -19,11 +19,10 @@ import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFi
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
 import { recordError } from './errors'
 import { t, type MessageKey } from './i18n'
-import { ConflictError, GithubClient, GithubError } from './storage/github'
-import { clearAll, deleteObject, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKeyIfVault, type Db } from './storage/idb'
-import { deleteOutbox, loadOutbox } from './storage/outbox'
-import { KeyMismatchError, Store } from './storage/store'
-import { decryptRecords, InvalidDataError } from './storage/sync'
+import { AuthError, ConflictError, GithubClient, GithubError, NetworkError } from './storage/github'
+import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKeyIfVault, type Db } from './storage/idb'
+import { clearMarker, covers, diagnose, diagnoseLocal, executeRepair, localReport, readMarker, writeMarker, type RepairReport } from './repair'
+import { KeyMismatchError, Store, UnreadableFileError } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 
@@ -51,16 +50,21 @@ export type SessionState =
   | { phase: 'unlocked'; store: Store }
   /** De sleutel hoort niet bij meta.json.enc: niets geschreven, sessiesleutel gewist. Nooit stil verder. */
   | { phase: 'mismatch'; where: 'local' | 'remote' }
-  /** Ontgrendeld met wachtzin of herstelcode, maar lokale gegevens staan onder een andere sleutel; Olivier kiest. */
-  | { phase: 'recover'; report: RecoveryReport }
+  /**
+   * Logboek herstellen: gegevens die niet met de sleutel uit meta.json.enc te lezen zijn (src/repair.ts). `report`: wat
+   * er verloren gaat (null = nog onbekend, eerst de wachtzin). `needsSecret`: herstellen vraagt de wachtzin.
+   */
+  | { phase: 'repair'; report: RepairReport | null; needsSecret: boolean }
 
-/** Wat er op dit apparaat niet met de sleutel uit meta.json.enc te ontsleutelen is (alleen paden, nooit inhoud). */
-export interface RecoveryReport {
-  unreadable: CollectionPath[]
-  /** De token is onleesbaar of ontbreekt: voor opnieuw beginnen is een token nodig. */
-  tokenUnreadable: boolean
-  /** De lijst met nog niet gesynchroniseerde wijzigingen is onleesbaar. */
-  outboxUnreadable: boolean
+/** Sleutel (uit wachtzin of herstelcode) die wacht op de tik op "Herstellen", met de grens van 5 minuten. */
+interface PendingRepair {
+  masterKey: CryptoKey
+  client: GithubClient | null
+  token: StoredToken | null
+  /** Monotone klok: hierna niet meer bruikbaar. */
+  deadline: number
+  /** Systeemklok bij het bewaren. */
+  heldAt: number
 }
 
 /** Waar de hoofdsleutel vandaan komt. */
@@ -124,6 +128,9 @@ export class Session {
     this.db = await openLogboekDb(this.dbName, () => this.setState({ phase: 'loading', blocked: true }))
     if (await this.resume()) return
     await this.toLocked()
+    // Eerder een herstel nodig gebleken en nog niet gedaan: direct "Logboek herstellen", met wat er verloren gaat.
+    const marker = readMarker(this.dbName)
+    if (marker && this.state.phase === 'locked') this.setState({ phase: 'repair', report: marker, needsSecret: true })
   }
 
   /** Verder met de opgeslagen hoofdsleutel als die jonger is dan 5 minuten; anders wissen. */
@@ -153,9 +160,7 @@ export class Session {
     try {
       await this.openWithStoredToken(record.key, 'resume', record.lastUsed)
       return true
-    } catch (error) {
-      // Sleutel past niet: het scherm 'mismatch' blijft staan (de sessiesleutel is al gewist).
-      if (error instanceof KeyMismatchError) return true
+    } catch {
       await deleteSessionKey(db).catch(() => undefined)
       return false
     }
@@ -207,7 +212,11 @@ export class Session {
   }
 
   /** Alleen zinvol als de huidige wachtzin klopt; de nieuwe meta gaat naar GitHub en naar IndexedDB. */
-  async changePassphrase(current: string, next: string): Promise<void> {
+  changePassphrase(current: string, next: string): Promise<void> {
+    return this.busy(() => this.doChangePassphrase(current, next))
+  }
+
+  private async doChangePassphrase(current: string, next: string): Promise<void> {
     const db = this.requireDb()
     const { client, masterKey } = this.requireUnlocked()
     const generation = this.generation
@@ -413,37 +422,81 @@ export class Session {
 
   /**
    * `resumedLastUsed`: hervat met de opgeslagen sleutel; openen telt dan niet als gebruik.
-   * Met wachtzin of herstelcode ('secret') en lokale gegevens die niet met deze sleutel te ontsleutelen zijn:
-   * niets wissen, maar per bestand tonen wat verloren gaat en Olivier laten kiezen (fase 'recover').
+   * Past de sessiesleutel of vingerafdruk niet bij de lokale meta, of zijn lokale gegevens niet met de sleutel te lezen:
+   * "Logboek herstellen" (met wachtzin of herstelcode). Nooit stil verder, nooit iets wissen zonder tik en wachtzin.
    */
   private async openWithStoredToken(masterKey: CryptoKey, source: KeySource, resumedLastUsed?: number): Promise<void> {
     const db = this.requireDb()
-    await this.bindKey(masterKey, source)
-    let stored: StoredToken | null
+    let bound = false
+    let client: GithubClient | null = null
     try {
-      stored = await loadToken(db, masterKey)
+      await this.bindKey(masterKey, source)
+      bound = true
+      let stored: StoredToken | null
+      try {
+        stored = await loadToken(db, masterKey)
+      } catch (error) {
+        if (source === 'secret' && error instanceof DecryptError) return await this.enterRepair(masterKey, null, true, error)
+        throw error
+      }
+      if (stored === null) {
+        // Niets wissen: met de wachtzin kan Olivier in het herstelscherm een token invoeren.
+        if (source === 'secret') return await this.enterRepair(masterKey, null, true, new SetupError('error.tokenMissing'))
+        throw new SetupError('error.tokenMissing')
+      }
+      this.tokenExpiresAt = stored.expiresAt
+      client = new GithubClient(stored.token)
+      try {
+        await this.open(client, null, masterKey, source, resumedLastUsed)
+      } catch (error) {
+        if (source === 'secret' && error instanceof DecryptError) return await this.enterRepair(masterKey, client, true, error)
+        throw error
+      }
     } catch (error) {
-      if (source === 'secret' && error instanceof DecryptError) return this.offerRecovery(masterKey, error)
-      throw error
-    }
-    if (stored === null) {
-      // Kan alleen na een onvolledige koppeling. Niets wissen: met de wachtzin kan Olivier een token invoeren.
-      if (source === 'secret') return this.offerRecovery(masterKey, new SetupError('error.tokenMissing'))
-      throw new SetupError('error.tokenMissing')
-    }
-    this.tokenExpiresAt = stored.expiresAt
-    try {
-      await this.open(new GithubClient(stored.token), null, masterKey, source, resumedLastUsed)
-    } catch (error) {
-      if (source === 'secret' && error instanceof DecryptError) return this.offerRecovery(masterKey, error)
+      // Sessiesleutel of vingerafdruk hoort niet bij de lokale meta of de lokale gegevens: herstellen met de wachtzin.
+      if ((source === 'resume' || source === 'fingerprint') && (error instanceof KeyMismatchError || error instanceof DecryptError || error instanceof SetupError)) {
+        if (source === 'fingerprint' && error instanceof KeyMismatchError) await deleteFingerprint(db).catch(() => undefined)
+        // Sleutel hoort wel bij de meta (binnen 5 minuten, regel 10), alleen de gegevens niet: alvast bepalen wat er
+        // verloren gaat, zodat het herstelscherm dat vóór de wachtzin toont. Herstellen zelf vraagt de wachtzin.
+        if (bound && error instanceof DecryptError) {
+          try {
+            await this.enterRepair(masterKey, client, false, error)
+            return
+          } catch (failure) {
+            recordError(failure)
+          }
+        }
+        recordError(error)
+        this.enterRepairWithoutKey()
+        return
+      }
       throw error
     }
   }
 
   /** Check-veld van de lokale meta waaraan de sleutel gebonden is (wisselt mee bij een gewijzigde wachtzin). */
   private vaultCheck = ''
-  /** Sleutel uit wachtzin of herstelcode die wacht op Olivier's keuze in de fase 'recover'. */
-  private pendingRecovery: { masterKey: CryptoKey } | null = null
+  /**
+   * Fase 'repair' na wachtzin of herstelcode: de sleutel (en zo nodig een client of nieuwe token) wacht op de tik op
+   * "Herstellen". Hoogstens 5 minuten (regel 10).
+   */
+  private pendingRepair: PendingRepair | null = null
+  /** Lopende bewerking die niet door een herlaad (nieuwe versie) onderbroken mag worden. */
+  private busyCount = 0
+
+  /** True zolang herladen een stap halverwege zou afbreken (eerste keer, wachtzin wijzigen, herstellen). */
+  isBusy(): boolean {
+    return this.busyCount > 0 || this.state.phase === 'setup'
+  }
+
+  private async busy<T>(run: () => Promise<T>): Promise<T> {
+    this.busyCount++
+    try {
+      return await run()
+    } finally {
+      this.busyCount--
+    }
+  }
 
   /**
    * Sleutel-invariant bij openen: de sleutel moet via het check-veld bij de lokale meta horen. Geeft het check-veld.
@@ -452,6 +505,8 @@ export class Session {
   private async bindKey(masterKey: CryptoKey, source: KeySource): Promise<string> {
     const check = await this.boundCheck(masterKey)
     if (check !== null) return check
+    // Sessiesleutel of vingerafdruk: de aanroeper gaat naar "Logboek herstellen".
+    if (source === 'resume' || source === 'fingerprint') throw new KeyMismatchError('local')
     throw this.keyMismatch(new KeyMismatchError('local'), source)
   }
 
@@ -476,7 +531,7 @@ export class Session {
     this.generation++
     this.unlockedClient = null
     this.unlockedKey = null
-    this.pendingRecovery = null
+    this.pendingRepair = null
     store?.lock()
   }
 
@@ -495,75 +550,172 @@ export class Session {
     this.unlockedClient = null
     this.unlockedKey = null
     this.tokenExpiresAt = null
-    this.pendingRecovery = null
+    this.pendingRepair = null
     recordError(error)
     this.setState({ phase: 'mismatch', where: error.where })
     store?.lock()
     return error
   }
 
-  /** Lokale gegevens zijn niet te ontsleutelen met een geldige sleutel: tonen wat er verloren gaat, niets wissen. */
-  private async offerRecovery(masterKey: CryptoKey, cause: Error): Promise<void> {
-    const report = await this.localReport(masterKey)
-    if (report.unreadable.length === 0 && !report.tokenUnreadable && !report.outboxUnreadable) throw cause
+  /** "Logboek herstellen" zonder sleutel: sessiesleutel wissen, wachtzin vragen. Toont het laatst bekende verslag. */
+  private enterRepairWithoutKey(): void {
+    writeLockedAt(this.dbName, this.clock())
+    if (this.db) void deleteSessionKey(this.db).catch(() => undefined)
+    this.dropKey()
+    this.tokenExpiresAt = null
+    this.setState({ phase: 'repair', report: readMarker(this.dbName), needsSecret: true })
+  }
+
+  /**
+   * Lokale gegevens of bestanden op GitHub zijn niet te lezen met een sleutel die wel bij meta.json.enc hoort: bepalen
+   * wat er verloren gaat en "Logboek herstellen" tonen. Niets wissen. `secretGiven`: de sleutel komt net uit wachtzin
+   * of herstelcode, dan volstaat de tik op "Herstellen"; anders vraagt het herstelscherm de wachtzin.
+   */
+  private async enterRepair(masterKey: CryptoKey, client: GithubClient | null, secretGiven: boolean, cause: Error): Promise<void> {
+    const db = this.requireDb()
+    const generation = this.generation
+    const local = await diagnoseLocal(db, masterKey)
+    let report = localReport(local)
+    if (client) {
+      try {
+        await this.assertRemoteMeta(client, masterKey)
+        report = (await diagnose(masterKey, client, local)).report
+      } catch (error) {
+        // Ander logboek op GitHub: het scherm 'mismatch' staat er al. Geen verbinding: het lokale verslag geldt.
+        if (error instanceof KeyMismatchError) return
+        // Token verlopen of ingetrokken: het herstelscherm vraagt een token (alleen Olivier kan die geven).
+        if (error instanceof AuthError) {
+          report = { ...report, tokenNeeded: true }
+          client = null
+        } else if (!(error instanceof NetworkError)) throw error
+      }
+    }
+    if (generation !== this.generation) return
+    if (report.lost.length === 0 && report.localOnly.length === 0 && !report.tokenNeeded && !local.outboxUnreadable && !(cause instanceof UnreadableFileError)) throw cause
     recordError(cause)
-    this.generation++
-    this.pendingRecovery = { masterKey }
-    this.setState({ phase: 'recover', report })
-    // Ook hier geldt regel 10: de sleutel staat in het geheugen.
+    this.dropKey()
+    this.tokenExpiresAt = null
+    // Geen sessiesleutel tijdens herstellen: verversen hervat niet met gegevens die niet bij de sleutel passen.
+    writeLockedAt(this.dbName, this.clock())
+    await deleteSessionKey(db).catch(() => undefined)
+    writeMarker(this.dbName, report)
+    if (secretGiven) this.holdForRepair({ masterKey, client, token: null })
+    this.setState({ phase: 'repair', report, needsSecret: !secretGiven })
+  }
+
+  /** Sleutel bewaren tot de tik op "Herstellen", hoogstens 5 minuten (regel 10): timer plus harde controle bij gebruik. */
+  private holdForRepair(pending: Omit<PendingRepair, 'deadline' | 'heldAt'>): void {
+    this.pendingRepair = { ...pending, deadline: this.monotonic() + LOCK_AFTER_MS, heldAt: this.clock() }
     this.clearLockTimer()
     this.lockTimer = setTimeout(() => this.lock(), LOCK_AFTER_MS)
   }
 
-  private async localReport(masterKey: CryptoKey): Promise<RecoveryReport> {
-    const db = this.requireDb()
-    const unreadable: CollectionPath[] = []
-    for (const path of COLLECTION_PATHS) {
-      const stored = await getObject(db, path)
-      if (stored && !(await decrypts(() => decryptRecords(masterKey, path, stored.blob)))) unreadable.push(path)
+  /** De bewaarde herstelsleutel, of null als die er niet is of ouder is dan 5 minuten (dan wordt hij gewist). */
+  private heldRepairKey(): PendingRepair | null {
+    const pending = this.pendingRepair
+    if (!pending) return null
+    const age = this.clock() - pending.heldAt
+    if (this.monotonic() >= pending.deadline || age < 0 || age >= LOCK_AFTER_MS) {
+      this.lock()
+      return null
     }
-    let tokenUnreadable = true
-    try {
-      tokenUnreadable = (await loadToken(db, masterKey)) === null
-    } catch (error) {
-      if (!(error instanceof DecryptError)) throw error
-    }
-    const outboxUnreadable = !(await decrypts(() => loadOutbox(db, masterKey)))
-    return { unreadable, tokenUnreadable, outboxUnreadable }
+    return pending
+  }
+
+  /** meta.json.enc op GitHub moet bij de sleutel horen; anders het scherm 'mismatch' (ander logboek, opnieuw koppelen). */
+  private async assertRemoteMeta(client: GithubClient, masterKey: CryptoKey): Promise<void> {
+    const remote = await client.getFile(META_PATH)
+    const meta = remote ? parseMeta(new TextDecoder().decode(remote.content)) : null
+    if (!meta || !(await verifyMetaCheck(meta, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
   }
 
   /**
-   * Opnieuw beginnen vanaf GitHub, alleen na Olivier's keuze. Eerst controleren dat meta.json.enc op GitHub bij deze
-   * sleutel hoort; dan alleen wissen wat niet te ontsleutelen is (de leesbare lokale gegevens blijven en worden met
-   * GitHub samengevoegd) en ontgrendeld verder. `token` is nodig als de token op dit apparaat onleesbaar is.
+   * Logboek herstellen, na de tik op "Herstellen" (plus wachtzin of herstelcode als die gevraagd wordt). Wist alleen wat
+   * niet met de sleutel uit meta.json.enc te lezen is en vervangt onleesbare bestanden op GitHub (zie src/repair.ts).
+   * Blijkt er meer verloren te gaan dan getoond, dan eerst het nieuwe verslag tonen en opnieuw een tik vragen.
    */
-  async restartFromGithub(token?: string): Promise<void> {
+  repair(input: { secret?: { passphrase: string } | { recoveryCode: string }; token?: string }): Promise<void> {
+    return this.busy(() => this.doRepair(input))
+  }
+
+  private async doRepair(input: { secret?: { passphrase: string } | { recoveryCode: string }; token?: string }): Promise<void> {
     const db = this.requireDb()
-    const pending = this.pendingRecovery
-    if (this.state.phase !== 'recover' || !pending) throw new Error('Geen herstel')
-    const report = this.state.report
+    if (this.state.phase !== 'repair') throw new Error('Geen herstel')
+    const pending = this.state.phase === 'repair' && !this.state.needsSecret ? this.heldRepairKey() : null
+    if (this.state.phase !== 'repair') throw new Error('Geen herstel')
+    const shown = this.state.report
     const generation = this.generation
-    let stored: StoredToken | null
-    if (report.tokenUnreadable) {
-      const trimmed = token?.trim() ?? ''
-      if (!trimmed) throw new SetupError('error.tokenRequired')
-      stored = { token: trimmed, expiresAt: (await new GithubClient(trimmed).checkAccess()).expiresAt }
-    } else stored = await loadToken(db, pending.masterKey)
-    if (!stored) throw new SetupError('error.tokenRequired')
-    const client = new GithubClient(stored.token)
-    const remote = await client.getFile(META_PATH)
-    if (generation !== this.generation || this.pendingRecovery !== pending) throw new Error('Vergrendeld')
-    const meta = remote ? parseMeta(new TextDecoder().decode(remote.content)) : null
-    if (!meta || !(await verifyMetaCheck(meta, pending.masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
-    if (generation !== this.generation) throw new Error('Vergrendeld')
-    for (const path of report.unreadable) await deleteObject(db, path)
-    if (report.outboxUnreadable) await deleteOutbox(db)
+    let masterKey = pending?.masterKey ?? null
+    if (!masterKey) {
+      if (!input.secret) throw new SetupError('error.secretRequired')
+      const meta = await Store.loadMeta(db)
+      if (!meta) throw new SetupError('error.metaMissing')
+      masterKey = await unlock(meta, await withWordlist(input.secret))
+    }
+    this.assertSameSession(generation)
+    const vaultCheck = await this.boundCheck(masterKey)
+    if (vaultCheck === null) throw this.keyMismatch(new KeyMismatchError('local'))
+    let client = pending?.client ?? null
+    let token = pending?.token ?? null
+    const typed = input.token?.trim() ?? ''
+    if (typed) {
+      const { expiresAt } = await new GithubClient(typed).checkAccess()
+      token = { token: typed, expiresAt }
+      client = new GithubClient(typed)
+    }
+    if (!client) {
+      const stored = await loadToken(db, masterKey).catch((error: unknown) => {
+        if (error instanceof DecryptError) return null
+        throw error
+      })
+      if (stored) {
+        client = new GithubClient(stored.token)
+        this.tokenExpiresAt = stored.expiresAt
+      }
+    }
+    this.assertSameSession(generation)
+    if (!client) {
+      // Alleen een token kan Olivier zelf geven (GitHub-rechten): het herstelscherm vraagt erom, de sleutel wacht.
+      const report = { ...(shown ?? localReport(await diagnoseLocal(db, masterKey))), tokenNeeded: true }
+      writeMarker(this.dbName, report)
+      this.generation++
+      this.holdForRepair({ masterKey, client: null, token: null })
+      this.setState({ phase: 'repair', report, needsSecret: false })
+      throw new SetupError('error.tokenRequired')
+    }
+    let diagnosis: Awaited<ReturnType<typeof diagnose>>
+    try {
+      await this.assertRemoteMeta(client, masterKey)
+      diagnosis = await diagnose(masterKey, client, await diagnoseLocal(db, masterKey))
+    } catch (error) {
+      if (!(error instanceof AuthError) || generation !== this.generation) throw error
+      // Token verlopen of ingetrokken: om een token vragen, de sleutel wacht (hoogstens 5 minuten).
+      const report = { ...(shown ?? localReport(await diagnoseLocal(db, masterKey))), tokenNeeded: true }
+      writeMarker(this.dbName, report)
+      this.generation++
+      this.holdForRepair({ masterKey, client: null, token: null })
+      this.setState({ phase: 'repair', report, needsSecret: false })
+      throw error
+    }
+    this.assertSameSession(generation)
+    if (!covers(shown, diagnosis.report)) {
+      writeMarker(this.dbName, diagnosis.report)
+      this.generation++
+      this.holdForRepair({ masterKey, client, token })
+      this.setState({ phase: 'repair', report: diagnosis.report, needsSecret: false })
+      return
+    }
+    // Andere tabbladen (ook een oudere versie) houden mogelijk de verkeerde sleutel: eerst vergrendelen.
+    this.channel?.postMessage('lock')
+    await executeRepair(db, masterKey, client, diagnosis, vaultCheck)
     await deleteSessionKey(db)
-    // Intussen vergrendeld (5 minuten verstreken)? Dan niet alsnog ontgrendelen.
-    if (generation !== this.generation || this.pendingRecovery !== pending) throw new Error('Vergrendeld')
-    this.pendingRecovery = null
-    this.tokenExpiresAt = stored.expiresAt
-    await this.open(client, report.tokenUnreadable ? stored : null, pending.masterKey, 'secret')
+    // Een vingerafdruk-verpakking kan van de verkeerde sleutel zijn; opnieuw aanzetten kan in Instellingen.
+    await deleteFingerprint(db).catch(() => undefined)
+    clearMarker(this.dbName)
+    this.assertSameSession(generation)
+    this.pendingRepair = null
+    if (token) this.tokenExpiresAt = token.expiresAt
+    await this.open(client, token, masterKey, 'secret')
   }
 
   /** Bestanden waarvan dit apparaat een (versleutelde) kopie heeft; voor de lijst bij opnieuw koppelen. */
@@ -585,15 +737,16 @@ export class Session {
     writeLockedAt(this.dbName, this.clock())
     this.dropKey()
     await clearAll(db)
+    clearMarker(this.dbName)
     this.lastMeta = null
     this.lastFingerprint = false
     this.setState({ phase: 'setup' })
   }
 
-  /** Terug naar ontgrendelen (vanaf 'mismatch' of 'recover'); er wordt niets gewist. */
+  /** Terug naar ontgrendelen (vanaf 'mismatch'); er wordt niets gewist. */
   async backToUnlock(): Promise<void> {
     this.clearLockTimer()
-    this.pendingRecovery = null
+    this.pendingRepair = null
     this.generation++
     await this.toLocked()
   }
@@ -606,10 +759,11 @@ export class Session {
     writeLockedAt(this.dbName, this.clock())
     if (this.db) void deleteSessionKey(this.db).catch(() => undefined)
     if (broadcast) this.channel?.postMessage('lock')
-    if (this.state.phase === 'recover') {
-      this.pendingRecovery = null
+    if (this.state.phase === 'repair') {
+      // Sleutel wissen; het herstelscherm blijft staan en vraagt dan de wachtzin.
+      this.pendingRepair = null
       this.generation++
-      void this.toLocked().catch(() => this.setState({ phase: 'setup' }))
+      if (!this.state.needsSecret) this.setState({ ...this.state, needsSecret: true })
       return
     }
     if (this.state.phase !== 'unlocked') return
@@ -657,6 +811,7 @@ export class Session {
 
   /** Vergrendelt als het laatste gebruik 5 minuten of langer geleden is. Geeft true als er vergrendeld werd. */
   checkExpiry(): boolean {
+    if (this.state.phase === 'repair') return this.pendingRepair !== null && this.heldRepairKey() === null
     if (this.state.phase !== 'unlocked') return false
     const age = this.clock() - this.lastUsed
     if (age >= LOCK_AFTER_MS || age < 0 || this.monotonic() >= this.deadline) {
@@ -717,7 +872,10 @@ export class Session {
     const store = await Store.open(db, masterKey, client, vaultCheck)
     this.generation++
     this.vaultCheck = vaultCheck
-    this.pendingRecovery = null
+    this.pendingRepair = null
+    // Geopend zonder onleesbare lokale gegevens: een oud herstelverslag geldt niet meer (een nieuwe sync meldt het
+    // opnieuw als er op GitHub nog iets onleesbaar is).
+    clearMarker(this.dbName)
     this.watch(store)
     this.unlockedClient = client
     this.unlockedKey = masterKey
@@ -743,6 +901,12 @@ export class Session {
   private watch(store: Store): void {
     store.onKeyMismatch((error) => {
       if (this.state.phase === 'unlocked' && this.state.store === store) this.keyMismatch(error)
+    })
+    // Bestanden op GitHub die niet met deze sleutel te lezen zijn: "Logboek herstellen" (met de wachtzin).
+    store.onRepairNeeded((error) => {
+      const key = this.unlockedKey
+      if (this.state.phase !== 'unlocked' || this.state.store !== store || !key) return
+      void this.enterRepair(key, this.unlockedClient, false, error).catch((e: unknown) => recordError(e))
     })
   }
 
@@ -787,17 +951,6 @@ function writeLockedAt(dbName: string | undefined, at: number): void {
 async function withWordlist(secret: { passphrase: string } | { recoveryCode: string }): Promise<Secret> {
   if ('passphrase' in secret) return secret
   return { recoveryCode: secret.recoveryCode, wordlist: await loadWordlist() }
-}
-
-/** True als `run` slaagt, false bij een DecryptError (andere sleutel); andere fouten gaan door. */
-async function decrypts(run: () => Promise<unknown>): Promise<boolean> {
-  try {
-    await run()
-    return true
-  } catch (error) {
-    if (error instanceof DecryptError || error instanceof InvalidDataError) return false
-    throw error
-  }
 }
 
 async function requestPersistentStorage(): Promise<void> {

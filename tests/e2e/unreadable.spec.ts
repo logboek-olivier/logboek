@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { translate, type Lang } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { createNewLogbook, expectNoHorizontalOverflow, PASSPHRASE } from './helpers/logbook'
 
 /** Geldige vorm (versie 1, iv, tag) maar onder een andere sleutel versleuteld: ontsleutelen faalt. */
 function foreignCiphertext(): string {
@@ -24,9 +24,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const plans = github.files.get('plans.json.enc')!
       github.files.set('plans.json.enc', { sha: `${plans.sha}-vreemd`, content: foreignCiphertext() })
       await page.getByRole('button', { name: new RegExp(translate(lang, 'sync.now')) }).click()
-      await expect(status).toHaveText(translate(lang, 'sync.unreadable', { paths: 'plans.json.enc' }))
-      const alert = page.getByRole('alert').filter({ hasText: 'plans.json.enc' })
-      await expect(alert).toContainText(translate(lang, 'sync.repairHint', { path: 'plans.json.enc' }))
+      // Meta hoort bij deze sleutel: één scherm "Logboek herstellen". De lokale kopie is leesbaar, dus er gaat niets verloren.
+      await expect(page.getByRole('heading', { name: translate(lang, 'repair.title') })).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByText(translate(lang, 'repair.nothingLost'))).toBeVisible()
       for (const width of [360, 412]) {
         for (const scheme of ['light', 'dark'] as const) {
           await page.setViewportSize({ width, height: 740 })
@@ -38,9 +38,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Niets automatisch overschreven.
       expect(github.files.get('plans.json.enc')!.sha).toBe(`${plans.sha}-vreemd`)
 
-      await alert.getByRole('button', { name: translate(lang, 'sync.repair') }).click()
-      await expect(status).toHaveText(translate(lang, 'sync.synced'))
-      await expect(page.getByRole('alert').filter({ hasText: 'plans.json.enc' })).toHaveCount(0)
+      // Tik plus wachtzin: de lokale versie gaat naar GitHub (met de oude SHA als voorwaarde).
+      await page.getByLabel(translate(lang, 'passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await page.getByRole('button', { name: translate(lang, 'repair.button') }).click()
+      await expect(status).toHaveText(translate(lang, 'sync.synced'), { timeout: 15_000 })
       expect(github.files.get('plans.json.enc')!.sha).not.toBe(`${plans.sha}-vreemd`)
     })
   })

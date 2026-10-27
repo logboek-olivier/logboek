@@ -35,7 +35,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // Nieuwe versie pas na "Herladen" (src/updates.ts); registratie in main.tsx, geen inline script (CSP).
+      // Registratie in main.tsx, geen inline script (CSP). Nieuwe versies nemen zelf over (zie workbox hieronder).
       registerType: 'prompt',
       injectRegister: false,
       includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'],
@@ -58,6 +58,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Een nieuwe versie neemt direct over, ruimt oude caches op en herlaadt open vensters (public/sw-vensters.js),
+        // zodat er nooit twee versies tegelijk draaien. Olivier hoeft niets te doen.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        importScripts: ['sw-vensters.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,txt,webmanifest}'],
         navigateFallback: '/logboek/index.html',
         // Koersen niet in de precache (die verandert dagelijks): eerst het netwerk, offline de laatst opgehaalde.

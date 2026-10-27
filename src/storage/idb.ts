@@ -95,6 +95,35 @@ export async function putObjectIfVault(db: Db, metaPath: string, expectedCheck: 
   return ok
 }
 
+function sameBytes(a: Bytes | undefined, b: Bytes): boolean {
+  return a !== undefined && a.length === b.length && a.every((v, i) => v === b[i])
+}
+
+/**
+ * Wist objecten (store 'objects') en lokale items (store 'local') in één transactie, alleen als de lokale meta nog het
+ * check-veld `expectedCheck` heeft en elk item nog precies de verwachte inhoud heeft. Anders wordt niets gewist en
+ * geeft de functie false: een ander tabblad heeft intussen iets geschreven.
+ */
+export async function deleteIfUnchanged(
+  db: Db,
+  metaPath: string,
+  expectedCheck: string,
+  items: { store: 'objects' | 'local'; key: string; blob: Bytes }[],
+): Promise<boolean> {
+  const tx = db.transaction(['objects', 'local'], 'readwrite')
+  const objects = tx.objectStore('objects')
+  const local = tx.objectStore('local')
+  let ok = storedCheck(await objects.get(metaPath)) === expectedCheck
+  for (const item of items) {
+    if (!ok) break
+    const current = item.store === 'objects' ? (await objects.get(item.key))?.blob : (await local.get(item.key))?.blob
+    ok = sameBytes(current, item.blob)
+  }
+  if (ok) for (const item of items) await (item.store === 'objects' ? objects.delete(item.key) : local.delete(item.key))
+  await tx.done
+  return ok
+}
+
 /** Zoals putObjectIfVault, voor de sessiesleutel. */
 export async function putSessionKeyIfVault(db: Db, metaPath: string, expectedCheck: string, record: SessionKeyRecord): Promise<boolean> {
   const tx = db.transaction(['objects', 'session'], 'readwrite')
