@@ -30,7 +30,8 @@ import { StudentsView } from './Students'
 /** Bootgegevens op één regel: naam · model · lengte in voet en meter. */
 export function boatLine(trip: Trip, fallbackBoat = ''): string {
   const length = trip.boatLengthFt ? t('boat.feet', { ft: formatNumber(trip.boatLengthFt), m: formatNumber(feetToMetres(trip.boatLengthFt)) }) : ''
-  return [trip.boat || fallbackBoat, trip.boatModel ?? '', length, trip.boatKind ? t(`boatKind.${trip.boatKind}`) : ''].filter(Boolean).join(' · ')
+  // De boot uit de dagen alleen als de trip zelf geen naam en geen model heeft (geïmporteerd: "Naam (Model)").
+  return [trip.boat || (trip.boatModel ? '' : fallbackBoat), trip.boatModel ?? '', length, trip.boatKind ? t(`boatKind.${trip.boatKind}`) : ''].filter(Boolean).join(' · ')
 }
 
 export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: Notify; onAddDay: (init: AddInit) => void }) {

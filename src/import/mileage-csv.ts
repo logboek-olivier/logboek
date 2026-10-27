@@ -1,3 +1,4 @@
+import { tripShip } from '../model/boats'
 import { summarize, type SailingSummary } from '../model/derive'
 import { formatMonthName } from '../format'
 import { t } from '../i18n'
@@ -243,6 +244,13 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     legs.push(leg)
   }
   if (legs.length === 0) throw new ImportError(t('import.noDays', { row: header.number }))
+  // Boten: "Naam (Model)" uit de kolom Schip wordt naam en model van de trip. De lengte blijft een voorstel
+  // (scherm Bootgegevens controleren) en wordt hier nooit ingevuld.
+  for (const trip of trips) {
+    const ship = tripShip(trip, legs)
+    if (ship.name) trip.boat = ship.name
+    if (ship.model) trip.boatModel = ship.model
+  }
   return { trips, legs, summary: summarize(legs), warnings }
 }
 

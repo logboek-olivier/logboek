@@ -179,7 +179,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ### Instellingen
 
-`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
+`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); bevestigde of overgeslagen boten (`boatsChecked`, naam|model); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
 
 ## Import mijlenregistratie
 
@@ -197,11 +197,13 @@ Opbouw van het bestand:
 Controle na import (scherm toont deze getallen; Olivier vergelijkt met zijn Excel): aantal dagen, aantal tochten, totaal nm, nm per rol, nm per watertype, nachturen.
 Opnieuw importeren mag niet dubbelen: legs krijgen `source = import` en een import vervangt alle eerdere `import`-legs (handmatige legs blijven).
 
-Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures`, zelfde opbouw als het origineel: Sheet1 met samenvattingsformules in J1:O4 en kopregel op rij 6, Blad1 met de rollenlijst, data-validatie-extensie) en `tests/fixtures/mijlen-nep.csv`: gegenereerd, zelfde opbouw (samenvattingsregels, kopregel, lege rijen tussen tochten, lege datums, `;` als scheidingsteken), verzonnen plaatsen en getallen.
+**Boten uit de kolom Schip** (`src/model/boats.ts`): meestal "Naam (Model)", soms alleen een model (tekst met een getal) of alleen een naam (zonder getal), soms met een lengte in het model ("38ft"). De import zet naam en model op de trip. De bootlijst is afgeleid uit de trips (opgeslagen bootgegevens, anders de boot uit de dagen), dus ook eerder geïmporteerde data werkt zonder opnieuw te importeren. Lengte (getal met ft of m, of een modelnummer: "4.2" = 42 ft, "42" = 42 ft, "519" = 52 ft, vanaf 600 centimeters) en catamaran (bekende merken) zijn alleen een voorstel: zichtbaar ingevuld en gemarkeerd in het scherm "Bootgegevens controleren", nooit stil opgeslagen. Dat scherm komt direct na een import, en via een melding in het Logboek voor boten met ontbrekende gegevens: per boot naam, model, soort (eenromp/catamaran) en lengte, "Alles bevestigen" schrijft alles naar de trips van die boot; overslaan mag. Onder Meer → Boten staat dezelfde lijst.
+
+Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures`, zelfde opbouw als het origineel: Sheet1 met samenvattingsformules in J1:O4 en kopregel op rij 6, Blad1 met de rollenlijst, data-validatie-extensie) , `tests/fixtures/boten-nep.csv` (gegenereerd door `scripts/fake-boats-csv.ts`: CSV-export met komma's, datums als d/m/jj en dezelfde soorten waarden in Schip, met verzonnen bootnamen en modellen) en `tests/fixtures/mijlen-nep.csv`: gegenereerd, zelfde opbouw (samenvattingsregels, kopregel, lege rijen tussen tochten, lege datums, `;` als scheidingsteken), verzonnen plaatsen en getallen.
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Termijnen, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Termijnen, Boten, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -236,6 +238,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
 7. **Geld** (onder Meer): alles in euro, het originele bedrag klein eronder ("voorlopig" bij een voorlopige koers). Saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met bewerken (ook het werkelijk ontvangen eurobedrag) en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).
 8. **Termijnen** (onder Meer): alle openstaande termijnen, eerstvolgende eerst, toevoegen, en de afgeronde.
 8. **Cursussen** (onder Meer): per bond, met import (JSON), per cursus bewerken (groepen en onderwerpen toevoegen, wijzigen, verplaatsen, examenkritisch) en delen.
+8. **Boten** (onder Meer): alle boten uit de trips met naam, model, soort en lengte, in één keer te bewerken (zie Boten uit de kolom Schip).
 9. **Studentenarchief** (onder Meer): studenten zonder trip en gearchiveerde studenten; terugzetten en wissen.
 10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash).
 
@@ -257,9 +260,9 @@ logboek/
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
-                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts
+                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
-    screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines,
+    screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines, Boats,
                      Money, QuickAdd, More, Settings
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, MapSheet, Sheet, EditSheets, WeekSheet, CurriculumSheets,
                      SyncStatusLine, Icon, Toast, …)
@@ -268,13 +271,13 @@ logboek/
     errors.ts        foutdetails zonder inhoud
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
-                     students, plans, weeks, week-links, rates, gaps) + playwright (setup, unlock, sessie, import, bewerken, aanvullen,
+                     students, plans, weeks, week-links, rates, gaps, boats) + playwright (setup, unlock, sessie, import, boten, bewerken, aanvullen,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
   .github/workflows/ deploy.yml (alleen vanaf main, plus dagelijks voor de koersen), test.yml (bij elke PR en push;
                      uploadt schermafbeeldingen)
-  scripts/           generate-fake-data.ts, fake-xlsx.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json),
+  scripts/           generate-fake-data.ts, fake-xlsx.ts, fake-boats-csv.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json),
                      build-coast.mjs (Natural Earth → public/coast/)
 ```
 

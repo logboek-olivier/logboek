@@ -10,6 +10,8 @@ async function importFixture(page: Page) {
   await page.getByRole('button', { name: 'Logboek' }).click()
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture)
   await page.getByRole('button', { name: 'Importeren' }).click()
+  // Na de import: Bootgegevens controleren (overslaan mag).
+  await page.getByRole('button', { name: 'Overslaan' }).click()
   await expect(page.locator('.trip')).toHaveCount(3)
 }
 
