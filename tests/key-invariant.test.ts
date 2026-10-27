@@ -1,10 +1,10 @@
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toBase64, utf8 } from '../src/crypto/encrypt'
 import { META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../src/crypto/keys'
 import { lastError } from '../src/errors'
 import { COLLECTION_PATHS } from '../src/model/types'
-import { Session } from '../src/session'
+import { LOCK_AFTER_MS, Session } from '../src/session'
 import { GithubClient } from '../src/storage/github'
 import { getObject, getSessionKey, openLogboekDb, putObject } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
@@ -323,7 +323,118 @@ describe('herstelpad met onleesbare token', () => {
     await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
     expect(b.getState().phase).toBe('recover')
     await expect(b.restartFromGithub()).rejects.toMatchObject({ name: 'KeyMismatchError' })
-    expect(b.getState().phase).toBe('mismatch')
+    expect(b.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
     expect((await getObject(db, 'transactions.json.enc'))!.blob).toEqual(blob)
+  }, 60_000)
+})
+
+describe('dezelfde sleutel, nieuwe meta (review)', () => {
+  async function unlockedWith(name: string, passphrase = NEW_PASSPHRASE) {
+    const a = track(new Session(name))
+    await a.init()
+    const vault = await createVault(passphrase, wordlist)
+    await a.finishNewVault(TOKEN, null, vault)
+    await unlockedStore(a).sync()
+    return { a, vault }
+  }
+
+  it('wachtzin wijzigen op dit apparaat: daarna gewoon verder schrijven, lokaal, sessiesleutel en GitHub', async () => {
+    const name = `logboek-sleutel-${++counter}`
+    const { a, vault } = await unlockedWith(name)
+    await a.changePassphrase(NEW_PASSPHRASE, 'nep wachtzin na het wijzigen')
+    await unlockedStore(a).put('transactions.json.enc', tip('na-wijzigen'))
+    await unlockedStore(a).sync()
+    a.flushActivity()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(a.getState().phase).toBe('unlocked')
+    expect(unlockedStore(a).getStatus()).toEqual({ kind: 'synced' })
+    const record = await getSessionKey(await openLogboekDb(name))
+    expect(record && (await verifyMetaCheck(await remoteMeta(), record.key))).toBe(true)
+    await expectGithubReadableWith(vault.masterKey)
+  }, 60_000)
+
+  it('wachtzin gewijzigd op een ander apparaat (nieuwere meta op GitHub, zelfde sleutel): openen en schrijven werken', async () => {
+    const name = `logboek-sleutel-${++counter}`
+    const { a, vault } = await unlockedWith(name)
+    a.lock()
+    const { changePassphrase } = await import('../src/crypto/keys')
+    const changed = await changePassphrase(await remoteMeta(), { passphrase: NEW_PASSPHRASE }, 'nep wachtzin van de laptop')
+    github.write(META_PATH, toBase64(utf8(serializeMeta(changed))))
+
+    const b = track(new Session(name))
+    await b.init()
+    await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
+    expect(b.getState().phase).toBe('unlocked')
+    // refreshMeta neemt de nieuwere meta over; daarna mag schrijven gewoon doorgaan.
+    await new Promise((r) => setTimeout(r, 100))
+    expect((await Store.loadMeta(await openLogboekDb(name)))?.check).toBe(changed.check)
+    await unlockedStore(b).put('transactions.json.enc', tip('na-laptop'))
+    await unlockedStore(b).sync()
+    b.flushActivity()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(b.getState().phase).toBe('unlocked')
+    expect(unlockedStore(b).getStatus()).toEqual({ kind: 'synced' })
+    await expectGithubReadableWith(vault.masterKey)
+  }, 60_000)
+
+  it('GitHub hoort bij een ander logboek: opnieuw koppelen toont de lokale kopieën en wist pas na de keuze', async () => {
+    const name = `logboek-sleutel-${++counter}`
+    const { a } = await unlockedWith(name)
+    await unlockedStore(a).put('trips.json.enc', { id: 't1', name: 'Nepweek', updatedAt: NOW, deletedAt: null })
+    const other = await createVault(OLD_PASSPHRASE, wordlist)
+    github.write(META_PATH, toBase64(utf8(serializeMeta(other.meta))))
+    await unlockedStore(a).sync()
+    expect(a.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    const db = await openLogboekDb(name)
+    expect(await a.localCopies()).toContain('trips.json.enc')
+    expect(await getObject(db, 'trips.json.enc')).toBeDefined()
+    await a.relink()
+    expect(a.getState().phase).toBe('setup')
+    expect(await getObject(db, 'trips.json.enc')).toBeUndefined()
+    expect(await Store.loadMeta(db)).toBeNull()
+  }, 60_000)
+})
+
+describe('regel 10 en een geblokkeerde opslag (review)', () => {
+  it('het herstelscherm vergrendelt na 5 minuten', async () => {
+    const name = `logboek-sleutel-${++counter}`
+    const a = track(new Session(name))
+    await a.init()
+    await a.finishNewVault(TOKEN, null, await createVault(NEW_PASSPHRASE, wordlist))
+    a.lock()
+    const other = await createVault(OLD_PASSPHRASE, wordlist)
+    const db = await openLogboekDb(name)
+    await putObject(db, { path: 'transactions.json.enc', blob: await encryptRecords(other.masterKey, 'transactions.json.enc', [tip('x')]), sha: null })
+    const b = track(new Session(name))
+    await b.init()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await b.unlockLocal({ passphrase: NEW_PASSPHRASE })
+      expect(b.getState().phase).toBe('recover')
+      vi.advanceTimersByTime(LOCK_AFTER_MS)
+    } finally {
+      vi.useRealTimers()
+    }
+    await vi.waitFor(() => expect(b.getState().phase).toBe('locked'))
+    await expect(b.restartFromGithub()).rejects.toThrow()
+  }, 60_000)
+
+  it('een oudere versie houdt de opslag vast: melding in plaats van stil hangen', async () => {
+    const name = `logboek-sleutel-${++counter}`
+    const old = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(name, 1)
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore('objects', { keyPath: 'path' })
+        request.result.createObjectStore('local', { keyPath: 'name' })
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const s = track(new Session(name))
+    const init = s.init()
+    await vi.waitFor(() => expect(s.getState()).toEqual({ phase: 'loading', blocked: true }))
+    old.close()
+    await init
+    expect(s.getState().phase).toBe('setup')
   }, 60_000)
 })

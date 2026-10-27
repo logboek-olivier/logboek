@@ -53,9 +53,16 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       expect(await page.evaluate(() => sessionKeyStored())).toBe(false)
       await shots(page, 'past-niet', lang)
 
-      // Verversen hervat niet: de sessiesleutel is gewist.
+      // Verversen hervat niet: de sessiesleutel is gewist. Ontgrendelen geeft hetzelfde scherm (GitHub hoort bij een
+      // andere sleutel); de uitweg is opnieuw koppelen, met de lijst van wat verloren gaat, pas na een tik.
       await page.reload()
-      await expect(page.getByRole('button', { name: L('unlock.unlock') })).toBeVisible()
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await page.getByRole('button', { name: L('unlock.unlock') }).click()
+      await expect(page.getByRole('heading', { name: L('key.mismatchTitle') })).toBeVisible({ timeout: 30_000 })
+      await expect(page.locator('.loss-list')).toContainText('settings.json.enc')
+      await page.getByRole('button', { name: L('key.relink') }).click()
+      await expect(page.getByRole('heading', { name: L('setup.title') })).toBeVisible()
+      expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts)
       expect(errors).toEqual([])
     })
 

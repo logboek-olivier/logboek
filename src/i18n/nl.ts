@@ -630,6 +630,11 @@ export const nl = {
   'key.file.students': 'Studenten',
   'key.file.plans': 'Planningen',
   'error.tokenRequired': 'Vul een token in.',
+  'key.mismatchRemote': 'meta.json.enc op GitHub hoort bij een andere sleutel of ontbreekt, bijvoorbeeld omdat logboek-data opnieuw is aangemaakt. Dit apparaat schrijft niets naar GitHub. Hoort dit apparaat bij het logboek op GitHub, wis dan de gegevens op dit apparaat en koppel opnieuw.',
+  'key.relinkLost': 'Bij opnieuw koppelen gaat verloren',
+  'key.relinkNothing': 'Er staan geen gegevens op dit apparaat.',
+  'key.relink': 'Gegevens op dit apparaat wissen en opnieuw koppelen',
+  'common.blockedByOtherPage': 'Een ander venster of tabblad van Logboek houdt de opslag vast. Sluit alle andere vensters en tabbladen van Logboek.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -20,10 +20,10 @@ import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } 
 import { recordError } from './errors'
 import { t, type MessageKey } from './i18n'
 import { ConflictError, GithubClient, GithubError } from './storage/github'
-import { clearAll, deleteObject, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKey, type Db } from './storage/idb'
+import { clearAll, deleteObject, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKeyIfVault, type Db } from './storage/idb'
 import { deleteOutbox, loadOutbox } from './storage/outbox'
 import { KeyMismatchError, Store } from './storage/store'
-import { decryptRecords } from './storage/sync'
+import { decryptRecords, InvalidDataError } from './storage/sync'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 
@@ -44,12 +44,13 @@ const ACTIVITY_WRITE_MS = 15 * 1000
 export const MIN_PASSPHRASE_LENGTH = 12
 
 export type SessionState =
-  | { phase: 'loading' }
+  /** `blocked`: een andere pagina van de app (oudere versie) houdt de opslag vast. */
+  | { phase: 'loading'; blocked?: boolean }
   | { phase: 'setup' }
   | { phase: 'locked'; meta: Meta; fingerprint: boolean }
   | { phase: 'unlocked'; store: Store }
   /** De sleutel hoort niet bij meta.json.enc: niets geschreven, sessiesleutel gewist. Nooit stil verder. */
-  | { phase: 'mismatch' }
+  | { phase: 'mismatch'; where: 'local' | 'remote' }
   /** Ontgrendeld met wachtzin of herstelcode, maar lokale gegevens staan onder een andere sleutel; Olivier kiest. */
   | { phase: 'recover'; report: RecoveryReport }
 
@@ -113,9 +114,6 @@ export class Session {
     if (this.channel) {
       this.channel.onmessage = (event: MessageEvent) => {
         if (event.data === 'lock') this.lock(false)
-        // Een ander tabblad maakt of koppelt een logboek: de sleutel hier hoort daar niet bij. Alleen het geheugen
-        // wissen; de opgeslagen sessiesleutel is dan al van het nieuwe logboek.
-        if (event.data === 'reset') this.lock(false, false)
       }
       // Node (tests): het kanaal mag het proces niet openhouden.
       ;(this.channel as unknown as { unref?: () => void }).unref?.()
@@ -123,7 +121,7 @@ export class Session {
   }
 
   async init(): Promise<void> {
-    this.db = await openLogboekDb(this.dbName)
+    this.db = await openLogboekDb(this.dbName, () => this.setState({ phase: 'loading', blocked: true }))
     if (await this.resume()) return
     await this.toLocked()
   }
@@ -202,6 +200,7 @@ export class Session {
       if (generation !== this.generation) return
       await Store.storeMeta(db, meta, remote.sha)
       this.lastMeta = meta
+      if (meta.check) this.vaultCheck = meta.check
     } catch {
       // Geen verbinding of ongeldige meta: de lokale meta blijft gelden.
     }
@@ -212,7 +211,7 @@ export class Session {
     const db = this.requireDb()
     const { client, masterKey } = this.requireUnlocked()
     const generation = this.generation
-    await this.assertLocalVault(generation)
+    await this.assertLocalVault(generation, masterKey)
     for (let attempt = 0; attempt < 2; attempt++) {
       const stored = await getObject(db, META_PATH)
       const meta = await Store.loadMeta(db)
@@ -224,6 +223,8 @@ export class Session {
         this.assertSameSession(generation)
         await Store.storeMeta(db, changed, sha)
         this.lastMeta = changed
+        // Zelfde sleutel, nieuw check-veld (de Store controleert dat zelf met de sleutel).
+        if (changed.check) this.vaultCheck = changed.check
         // De vingerafdruk-verpakking blijft geldig: de hoofdsleutel is niet veranderd.
         return
       } catch (error) {
@@ -234,6 +235,7 @@ export class Session {
         const theirs = parseMeta(new TextDecoder().decode(remote.content))
         if (!(await verifyMetaCheck(theirs, masterKey))) throw error
         await Store.storeMeta(db, theirs, remote.sha)
+        if (theirs.check) this.vaultCheck = theirs.check
       }
     }
   }
@@ -274,7 +276,7 @@ export class Session {
     const client = new GithubClient(token.trim())
     await client.checkAccess()
     this.assertSameSession(generation)
-    await this.assertLocalVault(generation)
+    await this.assertLocalVault(generation, masterKey)
     await storeToken(db, masterKey, token.trim(), expiresAt)
     this.tokenExpiresAt = expiresAt
     this.assertSameSession(generation)
@@ -374,8 +376,9 @@ export class Session {
     const client = new GithubClient(token.trim())
     const bytes = new TextEncoder().encode(JSON.stringify(vault.meta))
     const sha = await client.putFile(META_PATH, bytes, null)
-    // Andere tabbladen (ook een oudere versie die nog open staat) houden de sleutel van het vorige logboek.
-    this.channel?.postMessage('reset')
+    // Andere tabbladen (ook een oudere versie die nog open staat) houden de sleutel van het vorige logboek: vergrendelen.
+    // 'lock' begrijpt ook een oudere versie (vanaf release 1 met sessiesleutel).
+    this.channel?.postMessage('lock')
     this.dropKey()
     await clearAll(db)
     await Store.storeMeta(db, vault.meta, sha)
@@ -394,7 +397,7 @@ export class Session {
     if (!file) throw new SetupError('error.repoEmpty')
     const meta = parseMeta(new TextDecoder().decode(file.content))
     const masterKey = await unlock(meta, await withWordlist(secret))
-    this.channel?.postMessage('reset')
+    this.channel?.postMessage('lock')
     this.dropKey()
     await clearAll(db)
     await Store.storeMeta(db, meta, file.sha)
@@ -437,27 +440,33 @@ export class Session {
     }
   }
 
-  /** Check-veld van de meta waaraan de sleutel bij openen gebonden was; '' voor een oudere meta zonder check-veld. */
+  /** Check-veld van de lokale meta waaraan de sleutel gebonden is (wisselt mee bij een gewijzigde wachtzin). */
   private vaultCheck = ''
   /** Sleutel uit wachtzin of herstelcode die wacht op Olivier's keuze in de fase 'recover'. */
   private pendingRecovery: { masterKey: CryptoKey } | null = null
 
   /**
    * Sleutel-invariant bij openen: de sleutel moet via het check-veld bij de lokale meta horen. Geeft het check-veld.
-   * Een oudere meta zonder check-veld is alleen bruikbaar met wachtzin of herstelcode: dan komt de sleutel uit die meta.
+   * Een meta zonder check-veld (alleen van vóór 26 oktober 2026) is niet te controleren en telt als niet passend.
    */
   private async bindKey(masterKey: CryptoKey, source: KeySource): Promise<string> {
-    const meta = await Store.loadMeta(this.requireDb()).catch(() => null)
-    if (meta?.check && (await verifyMetaCheck(meta, masterKey))) return meta.check
-    if (meta && !meta.check && source === 'secret') return ''
+    const check = await this.boundCheck(masterKey)
+    if (check !== null) return check
     throw this.keyMismatch(new KeyMismatchError('local'), source)
   }
 
-  /** Vóór een lokale schrijfactie buiten de Store: is de lokale meta nog die van deze sessie? */
-  private async assertLocalVault(generation: number): Promise<void> {
+  /** Check-veld van de lokale meta als die aan `masterKey` gebonden is, anders null. */
+  private async boundCheck(masterKey: CryptoKey): Promise<string | null> {
     const meta = await Store.loadMeta(this.requireDb()).catch(() => null)
+    return meta?.check && (await verifyMetaCheck(meta, masterKey)) ? meta.check : null
+  }
+
+  /** Vóór een lokale schrijfactie buiten de Store: hoort de lokale meta nog bij de sleutel van deze sessie? */
+  private async assertLocalVault(generation: number, masterKey: CryptoKey): Promise<void> {
+    const check = await this.boundCheck(masterKey)
     this.assertSameSession(generation)
-    if (!meta || (meta.check ?? '') !== this.vaultCheck) throw this.keyMismatch(new KeyMismatchError('local'))
+    if (check === null) throw this.keyMismatch(new KeyMismatchError('local'))
+    this.vaultCheck = check
   }
 
   /** Wist een eventuele vorige sleutel en Store uit het geheugen (vóór een nieuw of gekoppeld logboek). */
@@ -488,7 +497,7 @@ export class Session {
     this.tokenExpiresAt = null
     this.pendingRecovery = null
     recordError(error)
-    this.setState({ phase: 'mismatch' })
+    this.setState({ phase: 'mismatch', where: error.where })
     store?.lock()
     return error
   }
@@ -550,9 +559,35 @@ export class Session {
     for (const path of report.unreadable) await deleteObject(db, path)
     if (report.outboxUnreadable) await deleteOutbox(db)
     await deleteSessionKey(db)
+    // Intussen vergrendeld (5 minuten verstreken)? Dan niet alsnog ontgrendelen.
+    if (generation !== this.generation || this.pendingRecovery !== pending) throw new Error('Vergrendeld')
     this.pendingRecovery = null
     this.tokenExpiresAt = stored.expiresAt
     await this.open(client, report.tokenUnreadable ? stored : null, pending.masterKey, 'secret')
+  }
+
+  /** Bestanden waarvan dit apparaat een (versleutelde) kopie heeft; voor de lijst bij opnieuw koppelen. */
+  async localCopies(): Promise<CollectionPath[]> {
+    const db = this.requireDb()
+    const result: CollectionPath[] = []
+    for (const path of COLLECTION_PATHS) if (await getObject(db, path)) result.push(path)
+    return result
+  }
+
+  /**
+   * meta.json.enc op GitHub hoort bij een andere sleutel (of ontbreekt): dit apparaat hoort bij een ander logboek.
+   * Alleen na Olivier's tik: alles op dit apparaat wissen en naar Eerste keer (nieuw logboek of koppelen).
+   */
+  async relink(): Promise<void> {
+    if (this.state.phase !== 'mismatch' || this.state.where !== 'remote') throw new Error('Niet van toepassing')
+    const db = this.requireDb()
+    this.channel?.postMessage('lock')
+    writeLockedAt(this.dbName, this.clock())
+    this.dropKey()
+    await clearAll(db)
+    this.lastMeta = null
+    this.lastFingerprint = false
+    this.setState({ phase: 'setup' })
   }
 
   /** Terug naar ontgrendelen (vanaf 'mismatch' of 'recover'); er wordt niets gewist. */
@@ -564,14 +599,12 @@ export class Session {
   }
 
   /** `broadcast`: ook de andere tabbladen vergrendelen (niet als dit tabblad zelf door een ander werd vergrendeld). */
-  lock(broadcast = true, forgetStored = true): void {
+  lock(broadcast = true): void {
     this.clearLockTimer()
     // Altijd de opgeslagen sleutel wissen, ook als het geheugen al leeg is. Het tijdstip gaat eerst synchroon naar
     // localStorage, zodat een sleutel waarvan het wissen nog niet klaar was, toch nooit meer gebruikt wordt.
-    if (forgetStored) {
-      writeLockedAt(this.dbName, this.clock())
-      if (this.db) void deleteSessionKey(this.db).catch(() => undefined)
-    }
+    writeLockedAt(this.dbName, this.clock())
+    if (this.db) void deleteSessionKey(this.db).catch(() => undefined)
     if (broadcast) this.channel?.postMessage('lock')
     if (this.state.phase === 'recover') {
       this.pendingRecovery = null
@@ -647,19 +680,22 @@ export class Session {
     const generation = this.generation
     const lastUsed = this.lastUsed
     this.lastWritten = lastUsed
-    const vaultCheck = this.vaultCheck
     void (async () => {
-      // Na vergrendelen niets meer terugschrijven.
-      if (generation !== this.generation) return
-      // Sleutel-invariant: alleen een sleutel opslaan die bij de huidige lokale meta hoort.
-      const meta = await Store.loadMeta(db).catch(() => null)
-      if (generation !== this.generation) return
-      if (!meta || (meta.check ?? '') !== vaultCheck) {
-        this.keyMismatch(new KeyMismatchError('local'))
-        return
+      // Sleutel-invariant: alleen een sleutel opslaan die bij de huidige lokale meta hoort; controle en schrijven in één
+      // transactie. Een nieuwere meta van dezelfde sleutel (wachtzin gewijzigd) is in orde.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        // Na vergrendelen niets meer terugschrijven.
+        if (generation !== this.generation) return
+        if (await putSessionKeyIfVault(db, META_PATH, this.vaultCheck, { name: 'masterKey', key, lastUsed })) {
+          if (generation !== this.generation) await deleteSessionKey(db)
+          return
+        }
+        const check = await this.boundCheck(key)
+        if (generation !== this.generation) return
+        if (check === null) break
+        this.vaultCheck = check
       }
-      await putSessionKey(db, { name: 'masterKey', key, lastUsed })
-      if (generation !== this.generation) await deleteSessionKey(db)
+      if (generation === this.generation) this.keyMismatch(new KeyMismatchError('local'))
     })().catch(() => undefined)
   }
 
@@ -759,7 +795,7 @@ async function decrypts(run: () => Promise<unknown>): Promise<boolean> {
     await run()
     return true
   } catch (error) {
-    if (error instanceof DecryptError) return false
+    if (error instanceof DecryptError || error instanceof InvalidDataError) return false
     throw error
   }
 }

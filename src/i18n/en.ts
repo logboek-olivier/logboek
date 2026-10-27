@@ -593,4 +593,9 @@ export const en: Messages = {
   'key.file.students': 'Students',
   'key.file.plans': 'Plans',
   'error.tokenRequired': 'Enter a token.',
+  'key.mismatchRemote': 'meta.json.enc on GitHub belongs to a different key or is missing, for example because logboek-data was recreated. This device writes nothing to GitHub. If this device belongs to the logbook on GitHub, delete the data on this device and link again.',
+  'key.relinkLost': 'Lost when linking again',
+  'key.relinkNothing': 'There is no data on this device.',
+  'key.relink': 'Delete data on this device and link again',
+  'common.blockedByOtherPage': 'Another Logboek window or tab is holding the storage. Close all other Logboek windows and tabs.',
 }

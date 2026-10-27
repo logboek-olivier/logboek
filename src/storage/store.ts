@@ -5,7 +5,7 @@ import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
-import { getObject, putObject, type Db } from './idb'
+import { getObject, putObject, putObjectIfVault, type Db, type StoredObject } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
 import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from './sync'
 
@@ -118,7 +118,7 @@ export class Store {
     private readonly db: Db,
     private readonly masterKey: CryptoKey,
     private readonly client: GithubClient,
-    private readonly vaultCheck: string | null,
+    private vaultCheck: string | null,
   ) {}
 
   /**
@@ -436,9 +436,7 @@ export class Store {
     const outbox = this.outbox
     const blob = await encryptRecords(this.masterKey, path, merged)
     if (this.locked) return
-    await this.assertVault()
-    if (this.locked) return
-    await putObject(this.db, { path, blob, sha: result.sha })
+    await this.putGuarded({ path, blob, sha: result.sha })
     if (this.locked) return
     await saveOutbox(this.db, this.masterKey, outbox)
   }
@@ -451,9 +449,7 @@ export class Store {
     const blob = await encryptRecords(this.masterKey, path, records)
     const stored = await getObject(this.db, path)
     if (this.locked) return
-    await this.assertVault()
-    if (this.locked) return
-    await putObject(this.db, { path, blob, sha: stored?.sha ?? null })
+    await this.putGuarded({ path, blob, sha: stored?.sha ?? null })
     if (this.locked) return
     await saveOutbox(this.db, this.masterKey, outbox)
     if (this.locked) return
@@ -471,7 +467,32 @@ export class Store {
     if (this.vaultCheck === null) return
     const meta = await Store.loadMeta(this.db).catch(() => null)
     if (this.mismatch) throw new KeyMismatchError('local')
-    if (!meta || (meta.check ?? '') !== this.vaultCheck) this.tripMismatch('local')
+    if (meta?.check === this.vaultCheck) return
+    // Een nieuwere meta van dezelfde sleutel (wachtzin gewijzigd, hier of op een ander apparaat) is in orde.
+    if (meta?.check && (await verifyMetaCheck(meta, this.masterKey))) {
+      this.vaultCheck = meta.check
+      return
+    }
+    this.tripMismatch('local')
+  }
+
+  /**
+   * Lokaal schrijven onder de sleutel-invariant: controle van de lokale meta en schrijven in één transactie, zodat een
+   * ander tabblad er niet tussen een ander logboek kan neerzetten.
+   */
+  private async putGuarded(object: StoredObject): Promise<void> {
+    if (this.mismatch) throw new KeyMismatchError('local')
+    if (this.vaultCheck === null) {
+      await putObject(this.db, object)
+      return
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (this.locked) return
+      if (await putObjectIfVault(this.db, META_PATH, this.vaultCheck, object)) return
+      // Andere meta: hoort die bij deze sleutel, dan opnieuw met het nieuwe check-veld; anders stoppen.
+      await this.assertVault()
+    }
+    this.tripMismatch('local')
   }
 
   /** Stopt deze Store voorgoed: niets meer schrijven, de sessie laten weten dat de sleutel niet past. */

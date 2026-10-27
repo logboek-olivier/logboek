@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { t, type MessageKey } from '../i18n'
 import type { CollectionPath } from '../model/types'
@@ -8,15 +8,62 @@ import { ErrorLine, Screen } from './Setup'
 // Sleutel past niet bij het logboek (fase 'mismatch'), of ontgrendeld met een geldige sleutel terwijl lokale gegevens
 // onder een andere sleutel staan (fase 'recover'). Nooit stil verder: niets geschreven, niets gewist zonder keuze.
 
-export function KeyMismatch() {
+export function KeyMismatch({ where }: { where: 'local' | 'remote' }) {
   const session = useSession()
+  const [copies, setCopies] = useState<CollectionPath[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Alleen bij een ander logboek op GitHub: de lijst van wat er bij opnieuw koppelen verloren gaat.
+  useEffect(() => {
+    if (where !== 'remote') return
+    let active = true
+    void session.localCopies().then((list) => active && setCopies(list), () => active && setCopies([]))
+    return () => {
+      active = false
+    }
+  }, [session, where])
+
+  async function relink() {
+    setBusy(true)
+    setError(null)
+    try {
+      await session.relink()
+    } catch (err) {
+      setError(describeError(err))
+      setBusy(false)
+    }
+  }
+
   return (
     <Screen title={t('key.mismatchTitle')}>
       <p>{t('key.mismatchText')}</p>
-      <p className="muted">{t('key.mismatchNext')}</p>
+      <p className="muted">{t(where === 'remote' ? 'key.mismatchRemote' : 'key.mismatchNext')}</p>
       <button className="btn primary" onClick={() => void session.backToUnlock()}>
         {t('key.unlockAgain')}
       </button>
+      {where === 'remote' && copies !== null && (
+        <div className="section">
+          <h2>{t('key.relinkLost')}</h2>
+          {copies.length > 0 ? (
+            <ul className="rows loss-list">
+              {copies.map((path) => (
+                <li key={path} className="row-item">
+                  <span className="row-main">
+                    <span>{t(FILE_LABEL[path])}</span>
+                    <span className="muted small">{path} · {t('key.lostFile')}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted small">{t('key.relinkNothing')}</p>
+          )}
+          <button className="btn danger" disabled={busy} onClick={() => void relink()}>
+            {t('key.relink')}
+          </button>
+          <ErrorLine error={error} />
+        </div>
+      )}
       <CopyErrorDetails />
     </Screen>
   )

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { ErrorBoundary, installGlobalErrorHandlers, UnhandledErrorBar } from './components/ErrorBoundary'
 import { Loading } from './components/Loading'
 import { setScreen } from './errors'
-import { useLang } from './i18n'
+import { t, useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
@@ -56,7 +56,7 @@ export function App() {
   let screen: React.ReactNode
   switch (state.phase) {
     case 'loading':
-      screen = <Loading />
+      screen = state.blocked ? <Loading text={t('common.blockedByOtherPage')} /> : <Loading />
       break
     case 'setup':
       screen = <Setup />
@@ -68,7 +68,7 @@ export function App() {
       screen = <Home store={state.store} />
       break
     case 'mismatch':
-      screen = <KeyMismatch />
+      screen = <KeyMismatch where={state.where} />
       break
     case 'recover':
       screen = <KeyRecover report={state.report} />
