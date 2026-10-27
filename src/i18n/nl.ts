@@ -649,10 +649,7 @@ export const nl = {
   'boat.basePlaceholder': 'Nanny Cay',
   'boat.kind': 'Soort boot',
   'boat.charter': 'Charterbedrijf of eigenaar',
-  'boat.required': 'Bootnaam, model, lengte en basis zijn nodig.',
   'boat.fromEarlier': 'Gegevens van de vorige trip met deze boot ingevuld.',
-  'boat.missing': 'Bootgegevens ontbreken (naam, model, lengte of basis).',
-  'boat.complete': 'Aanvullen',
   'boatKind.catamaran': 'Catamaran',
   'boatKind.eenromp': 'Eenromp',
   'boatKind.motor': 'Motorjacht',
@@ -729,6 +726,18 @@ export const nl = {
   'plan.themesHint': "Tik een thema aan of uit. Elk thema is een onderdeel van de cursus met al zijn onderwerpen.",
   'plan.themeDone': (p: { theme: string }) => `${p.theme}: geoefend door de hele groep`,
   'plan.themeOpen': (p: { theme: string }) => `${p.theme}: tik om af te vinken voor de hele groep`,
+  // Niets verplicht: Onvolledig en aanvullen
+  'gaps.badge': 'Onvolledig',
+  'gaps.card': (p: { n: number }) => (p.n === 1 ? '1 ding aanvullen' : `${p.n} dingen aanvullen`),
+  'gaps.start': 'Aanvullen',
+  'gaps.sheetTitle': (p: { i: number; n: number }) => `Aanvullen (${p.i} van ${p.n})`,
+  'gaps.skip': 'Overslaan',
+  'gaps.suggested': 'Voorstel uit je dagen; pas aan of sla op.',
+  'gaps.done': (p: { n: number }) => (p.n === 1 ? '1 veld aangevuld' : `${p.n} velden aangevuld`),
+  'gaps.boatTrips': (p: { n: number }) => (p.n === 1 ? 'Boot · 1 trip' : `Boot · ${p.n} trips`),
+  'gaps.trip': 'Trip',
+  'gaps.day': 'Dag',
+  'boat.lengthShort': 'Lengte',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

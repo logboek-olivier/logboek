@@ -1,5 +1,7 @@
 import { CalendarDays, ChevronRight, LoaderCircle, NotebookPen, Plus } from 'lucide-react'
-import { useRef, useState, type TouchEvent } from 'react'
+import { useMemo, useRef, useState, type TouchEvent } from 'react'
+import { FillSheet } from '../components/FillSheet'
+import { collectGaps, isSunday } from '../model/gaps'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
@@ -17,7 +19,7 @@ import { TodayPlan } from './Planning'
 import { t } from '../i18n'
 
 // Vandaag: planning van vandaag (als er een lopende planning is), "Dag van vandaag loggen", nm dit jaar met
-// voortgang naar het jaardoel en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
+// voortgang naar het jaardoel, op zondag "N dingen aanvullen", en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
 // Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
 
 const TOKEN_WARNING_DAYS = 30
@@ -53,6 +55,10 @@ export function Today({
   // Termijnen: eigen deadlines en vervaldatums, de token en de volgende trip. De kluis voegt later documenten toe.
   const due = useDueItems(store)
   const [addingReminder, setAddingReminder] = useState(false)
+  // Zondag: de lege velden van de week op een rij (niets is verplicht, dit is de wekelijkse inhaalronde).
+  const trips = useCollection(store, 'trips.json.enc')
+  const gaps = useMemo(() => (isSunday(today) ? collectGaps(trips, legs) : []), [trips, legs, today])
+  const [filling, setFilling] = useState(false)
 
   return (
     <section className="stack" onTouchStart={pull.onTouchStart} onTouchMove={pull.onTouchMove} onTouchEnd={pull.onTouchEnd}>
@@ -94,6 +100,14 @@ export function Today({
         <Icon icon={NotebookPen} />
         {t('today.logDay')}
       </button>
+      {gaps.length > 0 && (
+        <div className="notice">
+          <span>{t('gaps.card', { n: gaps.length })}</span>
+          <button className="btn small primary" onClick={() => setFilling(true)}>
+            {t('gaps.start')}
+          </button>
+        </div>
+      )}
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}
@@ -135,6 +149,7 @@ export function Today({
         </button>
       </div>
       {addingReminder && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAddingReminder(false)} />}
+      {filling && <FillSheet store={store} gaps={gaps} notify={notify} onClose={() => setFilling(false)} />}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}
     </section>
   )
