@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { findPlace, greatCircleNm, knownPlaceNames, nearestPlace, placeKey, savePlace, suggestDistance } from '../src/model/places'
+import { editDistance, findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, mergePlaces, nearestPlace, pinPlace, placeKey, placeUses, samePlace, savePlace, similarKnown, suggestDistance } from '../src/model/places'
 import type { Leg, Place } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -37,7 +37,7 @@ describe('afstandsvoorstel', () => {
     expect(suggestDistance(legs, 'Nepstad', 'Andere haven')).toEqual({ nm: 50, count: 1 })
     expect(suggestDistance(legs, 'Nepstad', 'Onbekend')).toBeNull()
     expect(suggestDistance(legs, 'Nepstad', 'Nepstad')).toBeNull()
-    expect(placeKey('  Sint-Barthélemy ')).toBe('sint barthelemy')
+    expect(placeKey('  Sint-Barthélemy ')).toBe('sintbarthelemy')
   })
 
   it('hemelsbreed en de dichtstbijzijnde bekende plaats', () => {
@@ -61,5 +61,51 @@ describe('afstandsvoorstel', () => {
     expect(again.id).toBe(first.id)
     expect(store.list('places.json.enc')).toHaveLength(1)
     expect(first.lat).toBe(17.12346)
+  })
+})
+
+describe('plaatsnamen uit de historie: spaties, hoofdletters en spelvarianten', () => {
+  const history = [
+    leg('1', '2025-07-01', 'Nepbaai Tiha', 'Nepalimizana', 10, { source: 'import' }),
+    leg('2', '2025-07-02', 'nepbaaitiha', 'Nepalmizana', 14, { source: 'import' }),
+    leg('3', '2025-07-03', 'Nepalmizana', 'Nep Baai Tiha', 12),
+    leg('4', '2025-07-04', 'Nepvis', 'Nepvir', 30),
+  ]
+
+  it('het gemiddelde gebruikt ook geïmporteerde dagen en koppelt "Tiha bay" / "Tihabay" en "Palmizana" / "Palimizana"', () => {
+    expect(placeKey('Nep Baai Tiha')).toBe(placeKey('nepbaaitiha'))
+    expect(editDistance('nepalmizana', 'nepalimizana')).toBe(1)
+    expect(samePlace('nepalmizana', 'nepalimizana')).toBe(true)
+    // Korte namen met één letter verschil zijn nooit stil dezelfde plaats.
+    expect(samePlace('nepvis', 'nepvir')).toBe(false)
+    expect(suggestDistance(history, 'Nepbaai Tiha', 'Nepalmizana')).toEqual({ nm: 12, count: 3 })
+  })
+
+  it('voorstel om samen te voegen, met de meest gebruikte schrijfwijze; samenvoegen en ongedaan maken', async () => {
+    const uses = placeUses(history, [])
+    const candidates = mergeCandidates(uses)
+    const palmi = candidates.find((c) => c.into.key === 'nepalmizana')!
+    expect(palmi.others.map((o) => o.name)).toEqual(['Nepalimizana'])
+    expect(candidates.find((c) => c.into.key === 'nepvis' || c.into.key === 'nepvir')).toBeDefined()
+    expect(similarKnown(uses, 'Nepalmizzana')?.name).toBe('Nepalmizana')
+    expect(similarKnown(uses, 'Nepalmizana')).toBeNull()
+
+    const masterKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    const store = await Store.open(await openLogboekDb('logboek-places-merge'), masterKey, new GithubClient('github_pat_PLACES_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
+    await store.putMany('legs.json.enc', history)
+    await savePlace(store, 'Nepalimizana', { lat: 43.1, lon: 16.4 })
+    const undo = await mergePlaces(store, mergeCandidates(placeUses(store.get('legs.json.enc'), store.get('places.json.enc'))).find((c) => c.into.key === 'nepalmizana')!)
+    expect(store.get('legs.json.enc').find((l) => l.id === '1')?.toPlace).toBe('Nepalmizana')
+    // Het punt van de andere schrijfwijze gaat mee.
+    expect(findPlace(store.get('places.json.enc'), 'Nepalmizana')).toMatchObject({ lat: 43.1, lon: 16.4 })
+    await undo()
+    expect(store.get('legs.json.enc').find((l) => l.id === '1')?.toPlace).toBe('Nepalimizana')
+    expect(findPlace(store.get('places.json.enc'), 'Nepalimizana')).not.toBeNull()
+
+    // Een plaats uit de import zonder punt vastzetten, en ongedaan maken.
+    const unpin = await pinPlace(store, 'Nepvis', { lat: 43, lon: 16 })
+    expect(placeUses(store.get('legs.json.enc'), store.get('places.json.enc')).find((u) => u.key === 'nepvis')?.place).not.toBeNull()
+    await unpin()
+    expect(findPlace(store.get('places.json.enc'), 'Nepvis')).toBeNull()
   })
 })

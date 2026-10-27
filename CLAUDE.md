@@ -124,8 +124,8 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 
 **Place** (`places.json.enc`, `src/model/places.ts`)
 `id, name, lat, lon, country?, updatedAt, deletedAt`
-- Een plaats krijgt een punt door op de kaart te tikken of "Huidige locatie" te kiezen, plus een naam; dezelfde naam (zonder hoofdletters en accenten) is dezelfde plaats. Dagen verwijzen via de naam naar een plaats; plaatsen zonder punt (bijvoorbeeld uit de import) blijven gewoon namen.
-- **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen), wat Olivier echt gevaren heeft. Het vult het nm-veld voor zolang Olivier niets typt. Zonder eerdere keren alleen een hint "Hemelsbreed …" (grootcirkel), nooit als voorstel.
+- Een plaats krijgt een punt door op de kaart te tikken of "Huidige locatie" te kiezen, plus een naam; dezelfde naam (zonder hoofdletters, accenten, spaties en leestekens: "Tiha bay" = "Tihabay") is dezelfde plaats. Plaatsen uit de import zonder punt zet Olivier onder Meer → Plaatsen met één tik op de kaart vast (met ongedaan maken). Dagen verwijzen via de naam naar een plaats; plaatsen zonder punt (bijvoorbeeld uit de import) blijven gewoon namen.
+- **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen, ook geïmporteerde dagen), wat Olivier echt gevaren heeft. Een kleine spelvariant van een lange naam (één letter verschil vanaf 8 letters: "Palmizana" / "Palimizana") telt als dezelfde plaats. Twijfel (één letter verschil vanaf 5 letters, twee vanaf 10) wordt een voorstel "Samenvoegen" in Toevoegen → Dag en onder Meer → Plaatsen: alle dagen krijgen de meest gebruikte schrijfwijze, met ongedaan maken. Een nieuwe naam die op een bekende lijkt, krijgt "Bedoel je …?". Het vult het nm-veld voor zolang Olivier niets typt. Zonder eerdere keren alleen een hint "Hemelsbreed …" (grootcirkel), nooit als voorstel.
 
 **Reminder** = termijn (`reminders.json.enc`, `src/model/reminders.ts`)
 `id, title, date, kind (deadline|vervalt), doneAt (jjjj-mm-dd of null), note?, updatedAt, deletedAt`
@@ -203,7 +203,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Termijnen, Boten, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Termijnen, Boten, Plaatsen, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -239,6 +239,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
 8. **Termijnen** (onder Meer): alle openstaande termijnen, eerstvolgende eerst, toevoegen, en de afgeronde.
 8. **Cursussen** (onder Meer): per bond, met import (JSON), per cursus bewerken (groepen en onderwerpen toevoegen, wijzigen, verplaatsen, examenkritisch) en delen.
 8. **Boten** (onder Meer): alle boten uit de trips met naam, model, soort en lengte, in één keer te bewerken (zie Boten uit de kolom Schip).
+8. **Plaatsen** (onder Meer): alle plaatsen uit de dagen, meest gebruikt eerst, met of zonder punt; tik = op de kaart zetten (één tik op de kaart); voorstellen om spelvarianten samen te voegen bovenaan.
 9. **Studentenarchief** (onder Meer): studenten zonder trip en gearchiveerde studenten; terugzetten en wissen.
 10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash).
 
@@ -262,7 +263,7 @@ logboek/
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
                      weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
-    screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines, Boats,
+    screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines, Boats, Places,
                      Money, QuickAdd, More, Settings
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, MapSheet, Sheet, EditSheets, WeekSheet, CurriculumSheets,
                      SyncStatusLine, Icon, Toast, …)
@@ -271,7 +272,7 @@ logboek/
     errors.ts        foutdetails zonder inhoud
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
-                     students, plans, weeks, week-links, rates, gaps, boats) + playwright (setup, unlock, sessie, import, boten, bewerken, aanvullen,
+                     students, plans, weeks, week-links, rates, gaps, boats, places) + playwright (setup, unlock, sessie, import, boten, plaatsen, bewerken, aanvullen,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
