@@ -1,14 +1,19 @@
 import { active, lastMonths, round1 } from './derive'
 import { eurValue } from './rates'
-import type { Currency, Transaction, TransactionKind, TransactionSource } from './types'
+import { INCOME_KIND_LIST, type Currency, type Transaction, type TransactionKind, type TransactionSource } from './types'
 
 // Afgeleiden voor zeilgeld, alles in euro: EUR zelf, het ontvangen eurobedrag, de opgeslagen koers of de ECB-koers
 // van de transactiedatum (src/model/rates.ts). Alleen als er helemaal geen koers is, staat een bedrag apart per valuta.
 
-export const INCOME_KINDS: readonly TransactionKind[] = ['fooi', 'loon']
+export const INCOME_KINDS: readonly TransactionKind[] = INCOME_KIND_LIST
 
 export function isIncome(kind: TransactionKind): boolean {
   return INCOME_KINDS.includes(kind)
+}
+
+/** Een terugbetaling van voorgeschoten kosten is geen verdiend geld: apart geteld, wel in het saldo. */
+export function isEarned(kind: TransactionKind): boolean {
+  return isIncome(kind) && kind !== 'terugbetaling'
 }
 
 /** Bedrag in EUR als dat bekend is (ook voorlopig omgerekend), anders null. */
@@ -17,7 +22,10 @@ export function eurOf(t: Transaction): number | null {
 }
 
 export interface MoneyTotals {
+  /** Verdiend (zonder terugbetalingen). */
   incomeEur: number
+  /** Terugbetaalde onkosten. */
+  reimbursedEur: number
   costsEur: number
   balanceEur: number
   /** Bedragen zonder EUR-waarde, per valuta: inkomsten en kosten apart. */
@@ -25,7 +33,7 @@ export interface MoneyTotals {
 }
 
 export function emptyTotals(): MoneyTotals {
-  return { incomeEur: 0, costsEur: 0, balanceEur: 0, other: {} }
+  return { incomeEur: 0, reimbursedEur: 0, costsEur: 0, balanceEur: 0, other: {} }
 }
 
 export function totals(transactions: readonly Transaction[]): MoneyTotals {
@@ -33,7 +41,8 @@ export function totals(transactions: readonly Transaction[]): MoneyTotals {
   for (const tx of active(transactions)) {
     const eur = eurOf(tx)
     if (eur !== null) {
-      if (isIncome(tx.kind)) t.incomeEur += eur
+      if (tx.kind === 'terugbetaling') t.reimbursedEur += eur
+      else if (isIncome(tx.kind)) t.incomeEur += eur
       else t.costsEur += eur
     } else {
       const bucket = (t.other[tx.currency] ??= { income: 0, costs: 0 })
@@ -42,8 +51,9 @@ export function totals(transactions: readonly Transaction[]): MoneyTotals {
     }
   }
   t.incomeEur = round2(t.incomeEur)
+  t.reimbursedEur = round2(t.reimbursedEur)
   t.costsEur = round2(t.costsEur)
-  t.balanceEur = round2(t.incomeEur - t.costsEur)
+  t.balanceEur = round2(t.incomeEur + t.reimbursedEur - t.costsEur)
   for (const b of Object.values(t.other)) {
     b.income = round2(b.income)
     b.costs = round2(b.costs)

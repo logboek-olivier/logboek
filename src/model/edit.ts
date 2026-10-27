@@ -69,11 +69,17 @@ export async function renameTrip(store: Store, trip: Trip, name: string): Promis
   void store.sync()
 }
 
-export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'currency' | 'source'> & { note?: string; receivedEur?: number }
+export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'currency' | 'source'> & {
+  note?: string
+  receivedEur?: number
+  /** Gekozen trip; null = geen trip; ontbreekt het, dan volgt de trip uit de datum. */
+  tripId?: string | null
+}
 
-/** Werkt een transactie bij; amountEur en tripId volgen uit valuta en datum, net als bij toevoegen. */
+/** Werkt een transactie bij; amountEur volgt uit valuta en datum, de trip uit de keuze of anders de datum. */
 export async function updateTransaction(store: Store, tx: Transaction, patch: TransactionPatch): Promise<void> {
-  const next: Transaction = { ...tx, ...patch, amount: round2(patch.amount), updatedAt: new Date().toISOString() }
+  const { tripId: chosenTrip, ...fields } = patch
+  const next: Transaction = { ...tx, ...fields, amount: round2(patch.amount), updatedAt: new Date().toISOString() }
   if (!patch.note) delete next.note
   if (!patch.receivedEur) delete next.receivedEur
   if (next.currency === 'EUR') {
@@ -88,7 +94,7 @@ export async function updateTransaction(store: Store, tx: Transaction, patch: Tr
     delete next.rateDate
     Object.assign(next, finalRateFields(next) ?? {})
   }
-  const trip = tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)
+  const trip = chosenTrip !== undefined ? (chosenTrip ? { id: chosenTrip } : null) : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)
   if (trip) next.tripId = trip.id
   else delete next.tripId
   await store.put('transactions.json.enc', next)

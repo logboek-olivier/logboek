@@ -32,7 +32,7 @@ test('alle schermen passen op 360 px en Instellingen werkt', async ({ page }) =>
   await expect(page.getByRole('tab', { name: 'Dag' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('button', { name: 'Meer velden' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
-  await page.getByRole('tab', { name: 'Kosten' }).click()
+  await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByRole('button', { name: 'Meer velden' }).click()
   await expectNoHorizontalOverflow(page)
 

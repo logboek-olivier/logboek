@@ -11,6 +11,7 @@ import { finalRateFields } from '../model/rates'
 import { activeWeek, roleForType } from '../model/weeks'
 import {
   CURRENCIES,
+  INCOME_KIND_LIST,
   newId,
   nowIso,
   ROLES,
@@ -23,6 +24,7 @@ import {
   type Leg,
   type Role,
   type Transaction,
+  type IncomeKind,
   type TransactionKind,
   type TransactionSource,
   type Trip,
@@ -30,7 +32,7 @@ import {
 import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
-// Snel toevoegen: Dag · Fooi · Kosten, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
+// Snel toevoegen: Dag · Inkomsten · Uitgave, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
 // bestemming en de laatst gebruikte boot, rol en week; alleen naar en nm zijn nodig. Opslaan = één tik.
 
 /** Korte trilling als bevestiging van opslaan; stil als het apparaat het niet kan. */
@@ -57,7 +59,7 @@ export function QuickAdd({ store, onDone, init }: { store: Store; onDone: (messa
         <h1>{t('nav.add')}</h1>
       </header>
       <div className="segments" role="tablist">
-        {(['dag', 'fooi', 'kosten'] as AddTab[]).map((id) => (
+        {(['dag', 'inkomsten', 'uitgave'] as AddTab[]).map((id) => (
           <button
             key={id}
             role="tab"
@@ -65,14 +67,14 @@ export function QuickAdd({ store, onDone, init }: { store: Store; onDone: (messa
             className={`segment${tab === id ? ' active' : ''}`}
             onClick={() => choose(id)}
           >
-            <Icon icon={id === 'fooi' ? Coins : id === 'kosten' ? Receipt : Sailboat} />
-            {t(id === 'fooi' ? 'quick.tabTip' : id === 'kosten' ? 'quick.tabCost' : 'quick.tabDay')}
+            <Icon icon={id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : Sailboat} />
+            {t(id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : 'quick.tabDay')}
           </button>
         ))}
       </div>
       {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} />}
-      {tab === 'fooi' && <IncomeForm store={store} onDone={onDone} />}
-      {tab === 'kosten' && <CostForm store={store} onDone={onDone} />}
+      {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
+      {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}
     </section>
   )
 }
@@ -88,8 +90,9 @@ async function saveTransaction(
   store: Store,
   tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>,
   remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind'>>,
+  tripId?: string,
 ) {
-  const trip = tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), tx.date)
+  const trip = tripId ? { id: tripId } : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), tx.date)
   const record: Transaction = { ...tx, id: newId(), updatedAt: nowIso(), deletedAt: null }
   if (trip) record.tripId = trip.id
   if (tx.currency === 'EUR') record.amountEur = tx.amount
@@ -100,22 +103,71 @@ async function saveTransaction(
   void store.sync()
 }
 
+/**
+ * Trips om uit te kiezen: de lopende trip en de trip van de datum eerst, dan komende en recente trips. Standaard de
+ * trip waarin de datum valt (of de lopende trip); verandert de datum en heeft Olivier zelf niets gekozen, dan volgt
+ * de trip mee.
+ */
+function useTripChoice(store: Store, date: string) {
+  const { settings, trips, legs } = useDefaults(store)
+  const running = activeWeek(trips, settings, date)
+  const byDate = tripForDate(trips, legs, date)
+  // Geen trip op die datum: de laatste trip die vóór de datum begon, anders de eerstvolgende. Nooit blokkeren.
+  const nearest = useMemo(() => {
+    const dated = active(trips).filter((trip) => trip.startDate)
+    const before = dated.filter((trip) => trip.startDate! <= date).sort((a, b) => (a.startDate! < b.startDate! ? 1 : -1))[0]
+    return before ?? dated.sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))[0] ?? active(trips)[0]
+  }, [trips, date])
+  const fallback = byDate?.id ?? running?.id ?? nearest?.id ?? ''
+  const [chosen, setChosen] = useState<string | null>(null)
+  const options = useMemo(() => {
+    const list = active(trips)
+      .filter((trip) => !trip.closedAt || trip.id === byDate?.id)
+      .sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
+      .slice(0, 20)
+    for (const extra of [nearest, running, byDate]) if (extra && !list.some((x) => x.id === extra.id)) list.unshift(extra)
+    return list
+  }, [trips, byDate, running, nearest])
+  const tripId = chosen ?? fallback
+  return { tripId, setTripId: setChosen, options }
+}
+
+function TripField({ value, options, onChange, required }: { value: string; options: Trip[]; onChange: (id: string) => void; required: boolean }) {
+  return (
+    <label>
+      {t('field.trip')}
+      <select value={value} onChange={(e) => onChange(e.target.value)} required={required}>
+        {(!required || value === '') && <option value="">{t('quick.noTrip')}</option>}
+        {options.map((trip) => (
+          <option key={trip.id} value={trip.id}>
+            {trip.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
-  const [kind, setKind] = useState<TransactionKind>(settings.lastIncomeKind ?? 'fooi')
+  const [kind, setKind] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [date, setDate] = useState(todayIso())
+  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
+  const { tripId, setTripId, options } = useTripChoice(store, date)
+  // Inkomsten horen bij een trip; alleen zonder enige trip mag het leeg blijven.
+  const tripOk = tripId !== '' || options.length === 0
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (parsed === null || busy) return
+    if (parsed === null || !tripOk || busy) return
     setBusy(true)
     try {
-      await saveTransaction(store, { date, kind, amount: parsed, currency, source }, { lastIncomeKind: kind === 'loon' ? 'loon' : 'fooi' })
+      await saveTransaction(store, { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}) }, { lastIncomeKind: kind }, tripId || undefined)
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
       setBusy(false)
@@ -137,20 +189,14 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
           onChange={(e) => setAmount(e.target.value)}
         />
       </label>
-      <div className="segments small" role="radiogroup" aria-label={t('field.kind')}>
-        {(['fooi', 'loon'] as TransactionKind[]).map((k) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={kind === k}
-            className={`segment${kind === k ? ' active' : ''}`}
-            onClick={() => setKind(k)}
-          >
+      <div className="type-buttons" role="radiogroup" aria-label={t('field.kind')}>
+        {INCOME_KIND_LIST.map((k) => (
+          <button key={k} type="button" role="radio" aria-checked={kind === k} className={`chip${kind === k ? ' active' : ''}`} onClick={() => setKind(k)}>
             {kindLabel(k)}
           </button>
         ))}
       </div>
+      <TripField value={tripId} options={options} onChange={setTripId} required={options.length > 0} />
       <div className="two">
         <label>
           {t('field.source')}
@@ -173,11 +219,17 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
           </select>
         </label>
       </div>
-      <label>
-        {t('field.date')}
-        <input type="date" value={date} max={addDays(todayIso(), 1)} onChange={(e) => setDate(e.target.value)} />
-      </label>
-      <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
+      <div className="two">
+        <label>
+          {t('field.date')}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label>
+          {t('field.note')}
+          <input type="text" autoComplete="off" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+      </div>
+      <button className="btn primary" type="submit" disabled={parsed === null || !date || !tripOk || busy}>
         {t('common.save')}
       </button>
     </form>
@@ -195,6 +247,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   const [date, setDate] = useState(todayIso())
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
+  const { tripId, setTripId, options } = useTripChoice(store, date)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -205,6 +258,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
         store,
         { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}) },
         { lastCostKind: kind === 'investering' ? 'investering' : 'kosten' },
+        tripId || undefined,
       )
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
@@ -277,10 +331,13 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
               </select>
             </label>
           </div>
-          <label>
-            {t('field.date')}
-            <input type="date" value={date} max={addDays(todayIso(), 1)} onChange={(e) => setDate(e.target.value)} />
-          </label>
+          <div className="two">
+            <label>
+              {t('field.date')}
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <TripField value={tripId} options={options} onChange={setTripId} required={false} />
+          </div>
         </>
       )}
       <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>

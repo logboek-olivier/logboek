@@ -43,6 +43,7 @@ describe('zeilgeld', () => {
   it('telt EUR op en houdt andere valuta apart', () => {
     expect(totals(sample)).toEqual({
       incomeEur: 1200.5,
+      reimbursedEur: 0,
       costsEur: 535.25,
       balanceEur: 665.25,
       other: { USD: { income: 200, costs: 0 }, GBP: { income: 0, costs: 40 } },
@@ -52,7 +53,19 @@ describe('zeilgeld', () => {
 
   it('rekent een bekend EUR-bedrag van een andere valuta wel mee', () => {
     const converted = [tx({ date: '2026-10-01', kind: 'fooi', amount: 100, currency: 'USD', amountEur: 92 })]
-    expect(totals(converted)).toEqual({ incomeEur: 92, costsEur: 0, balanceEur: 92, other: {} })
+    expect(totals(converted)).toEqual({ incomeEur: 92, reimbursedEur: 0, costsEur: 0, balanceEur: 92, other: {} })
+  })
+
+  it('alle soorten inkomsten tellen als verdiend, behalve een terugbetaling van onkosten (die telt wel in het saldo)', () => {
+    const list = [
+      tx({ date: '2026-10-01', kind: 'fooi', amount: 100 }),
+      tx({ date: '2026-10-02', kind: 'loon', amount: 500 }),
+      tx({ date: '2026-10-03', kind: 'bonus', amount: 50 }),
+      tx({ date: '2026-10-04', kind: 'overig-inkomen', amount: 10 }),
+      tx({ date: '2026-10-05', kind: 'terugbetaling', amount: 40 }),
+      tx({ date: '2026-10-05', kind: 'kosten', amount: 40 }),
+    ]
+    expect(totals(list)).toMatchObject({ incomeEur: 660, reimbursedEur: 40, costsEur: 40, balanceEur: 660 })
   })
 
   it('groepeert per maand, nieuwste eerst, en per bron', () => {

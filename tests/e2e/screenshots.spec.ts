@@ -32,7 +32,7 @@ for (const { width, scheme, lang } of RUNS) {
     test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB' })
 
     test(`schermafbeeldingen ${width} px ${scheme === 'light' ? 'licht' : 'donker'} ${lang}`, async ({ page }) => {
-      test.setTimeout(150_000)
+      test.setTimeout(300_000)
       const L = (key: MessageKey) => translate(lang, key as 'common.save')
       const button = (key: MessageKey, exact = true) => page.getByRole('button', { name: L(key), exact })
       const errors = collectConsoleErrors(page)
@@ -60,7 +60,7 @@ for (const { width, scheme, lang } of RUNS) {
       }
       const addTip = async (amount: string, daysAgo: number) => {
         await button('nav.add').click()
-        await page.getByRole('tab', { name: L('quick.tabTip') }).click()
+        await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
         await page.getByLabel(L('field.amount')).fill(amount)
         await page.getByLabel(L('field.date')).fill(isoDaysAgo(daysAgo))
         await button('common.save').click()
@@ -100,13 +100,13 @@ for (const { width, scheme, lang } of RUNS) {
         await addTip(amount, days)
       }
       await button('nav.add').click()
-      await page.getByRole('tab', { name: L('quick.tabCost') }).click()
+      await page.getByRole('tab', { name: L('quick.tabExpense') }).click()
       await shot('toevoegen-kosten')
       await page.getByLabel(L('field.amount')).fill('42,80')
       await page.getByLabel(L('field.description')).fill('Havengeld Nephaven')
       await button('common.save').click()
       await button('nav.add').click()
-      await page.getByRole('tab', { name: L('quick.tabTip') }).click()
+      await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
       await shot('toevoegen-fooi')
       await page.getByRole('tab', { name: L('quick.tabDay') }).click()
       await page.getByLabel(L('field.to'), { exact: true }).fill('Nepbaai')

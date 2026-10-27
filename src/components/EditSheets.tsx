@@ -1,7 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatNm, formatNumber, formatRate } from '../format'
-import { summarizeTrips } from '../model/derive'
+import { active, summarizeTrips } from '../model/derive'
 import {
   deleteLeg,
   deleteTransaction,
@@ -17,6 +17,7 @@ import { eurValue } from '../model/rates'
 import { saveSettings } from '../model/settings'
 import {
   CURRENCIES,
+  INCOME_KIND_LIST,
   ROLES,
   TRANSACTION_SOURCES,
   type Currency,
@@ -38,7 +39,7 @@ import { t } from '../i18n'
 
 export type Notify = (text: string, undo?: Undo) => void
 
-const KINDS: TransactionKind[] = ['fooi', 'loon', 'kosten', 'investering']
+const KINDS: TransactionKind[] = [...INCOME_KIND_LIST, 'kosten', 'investering']
 
 /** 12.5 → "12,5"; 0 → "" zodat lege velden leeg blijven. */
 function toInput(n: number): string {
@@ -63,6 +64,8 @@ export function TransactionSheet({
   const [date, setDate] = useState(tx.date)
   const [note, setNote] = useState(tx.note ?? '')
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
+  const [tripId, setTripId] = useState(tx.tripId ?? '')
+  const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
   const parsedReceived = received.trim() === '' ? undefined : parseAmount(received)
@@ -81,6 +84,7 @@ export function TransactionSheet({
         date,
         note: note.trim() || undefined,
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
+        tripId: tripId || null,
       })
       onClose()
       notify(t('toast.saved'))
@@ -160,6 +164,17 @@ export function TransactionSheet({
             </p>
           </>
         )}
+        <label>
+          {t('field.trip')}
+          <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+            <option value="">{t('quick.noTrip')}</option>
+            {trips.map((trip) => (
+              <option key={trip.id} value={trip.id}>
+                {trip.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           {t('field.description')}
           <input type="text" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />

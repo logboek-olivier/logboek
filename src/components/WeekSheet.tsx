@@ -162,11 +162,13 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
           </div>
           {filledFrom && <p className="muted small">{t('boat.fromEarlier')}</p>}
           <div className="two">
-            <label>
-              {t('boat.length')}
-              <input inputMode="decimal" autoComplete="off" required placeholder="42" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
+            <div className="stack-sm">
+              <label>
+                {t('boat.length')}
+                <input inputMode="decimal" autoComplete="off" required placeholder="42" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
+              </label>
               {lengthFt !== null && lengthFt > 0 && <span className="muted small">{t('boat.metres', { m: formatNumber(feetToMetres(lengthFt)) })}</span>}
-            </label>
+            </div>
             <label>
               {t('boat.base')}
               <input type="text" autoComplete="off" list="week-bases" maxLength={120} required placeholder={t('boat.basePlaceholder')} value={base} onChange={(e) => setBase(e.target.value)} />

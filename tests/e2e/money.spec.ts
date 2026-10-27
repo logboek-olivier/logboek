@@ -15,7 +15,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
 
   // Fooi in EUR
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Fooi' }).click()
+  await page.getByRole('tab', { name: 'Inkomsten' }).click()
   await page.getByLabel('Bedrag').fill('120,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
@@ -23,7 +23,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
 
   // Fooi in USD: apart tonen, nooit omrekenen
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Fooi' }).click()
+  await page.getByRole('tab', { name: 'Inkomsten' }).click()
   await page.getByLabel('Bedrag').fill('200')
   await page.getByLabel('Valuta').selectOption('USD')
   await page.getByRole('button', { name: 'Opslaan' }).click()
@@ -31,7 +31,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
 
   // Kosten; valuta is nu laatst gebruikt (USD) → via Meer terug naar EUR
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Kosten' }).click()
+  await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByLabel('Bedrag').fill('35')
   await page.getByLabel('Omschrijving').fill('Taxi haven')
   await page.getByRole('button', { name: 'Meer velden' }).click()
