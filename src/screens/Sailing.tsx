@@ -17,6 +17,9 @@ import { roleLabel } from '../i18n/labels'
 import { ROLES, todayIso, type Leg, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
+import { BoatCheck } from './Boats'
+import { boatList, uncheckedBoats } from '../model/boats'
+import { currentSettings } from '../model/settings'
 import { t } from '../i18n'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
@@ -31,7 +34,11 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [reading, setReading] = useState(false)
+  const [checking, setChecking] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  // Boten uit de import (ook eerder geïmporteerde data) die Olivier nog niet bevestigd of overgeslagen heeft.
+  const unchecked = uncheckedBoats(boatList(trips, legs), settings)
 
   const summary = summarize(legs)
   const tripSummaries = summarizeTrips(trips, legs)
@@ -63,10 +70,22 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
     try {
       await applyImport(store, pending)
       setPending(null)
+      setChecking(true)
       void store.sync()
     } finally {
       setBusy(false)
     }
+  }
+
+  if (checking && unchecked.length > 0) {
+    return (
+      <section className="stack">
+        <header className="page-header">
+          <h1>{t('boats.check')}</h1>
+        </header>
+        <BoatCheck store={store} boats={unchecked} notify={notify} canSkip onDone={() => setChecking(false)} />
+      </section>
+    )
   }
 
   if (pending) {
@@ -145,6 +164,14 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       )}
       {summary.days > 0 && (
         <>
+          {unchecked.length > 0 && (
+            <div className="notice">
+              <span>{t('boats.notice', { n: unchecked.length })}</span>
+              <button className="btn small primary" onClick={() => setChecking(true)}>
+                {t('boats.checkButton')}
+              </button>
+            </div>
+          )}
           <SummaryGrid summary={summary} />
           <div className="section card card-body">
             <div className="section-head">

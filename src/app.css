@@ -2266,3 +2266,25 @@ body.presenting .bottom-bar {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Bootgegevens controleren */
+.boat-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.boat-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.boat-length-hint {
+  align-self: end;
+  padding-bottom: var(--s-3);
+}

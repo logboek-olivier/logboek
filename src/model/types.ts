@@ -135,6 +135,8 @@ export interface Settings extends SyncRecord {
   yearGoalNm?: number
   /** De lopende week ("Nieuwe week starten" maakt een week actief; afronden maakt hem weer leeg). */
   activeWeekId?: string | null
+  /** Boten (naam|model) die Olivier na een import bevestigd of overgeslagen heeft; die vraagt de app niet opnieuw. */
+  boatsChecked?: string[]
 }
 
 // Training (release 2). Bond-onafhankelijk: ASA, RYA, CWO of een eigen cursus.

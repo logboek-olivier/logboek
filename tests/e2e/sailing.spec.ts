@@ -28,6 +28,9 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   await expectNoHorizontalOverflow(page)
 
   await page.getByRole('button', { name: 'Importeren' }).click()
+  // Na de import: Bootgegevens controleren (overslaan mag; een volgende import vraagt het niet opnieuw).
+  await expect(page.getByRole('heading', { name: 'Bootgegevens controleren' })).toBeVisible()
+  await page.getByRole('button', { name: 'Overslaan' }).click()
   await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   const trips = page.locator('.trip')
   await expect(trips).toHaveCount(3)
@@ -86,6 +89,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
 
   await page.getByLabel('Mijlenbestand').setInputFiles(fixturePath('mijlen-nep.xlsx'))
   await page.getByRole('button', { name: 'Importeren' }).click()
+  await page.getByRole('button', { name: 'Overslaan' }).click()
   await expect(page.locator('.trip')).toHaveCount(3)
   expect(errors).toEqual([])
 })

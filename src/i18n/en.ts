@@ -701,4 +701,15 @@ export const en: Messages = {
   'gaps.trip': 'Trip',
   'gaps.day': 'Day',
   'boat.lengthShort': 'Length',
+  // Boats from the import
+  'boats.screen': 'Boats',
+  'boats.check': 'Check boat details',
+  'boats.checkButton': 'Check',
+  'boats.notice': (p) => (p.n === 1 ? 'Check 1 boat from your import' : `Check ${p.n} boats from your import`),
+  'boats.intro': 'Name and model come from the Ship column. A length from the model is a suggestion: change it or confirm everything at once.',
+  'boats.lengthSuggested': 'suggested from the model',
+  'boats.confirm': 'Confirm all',
+  'boats.saved': (p) => (p.n === 1 ? '1 boat saved' : `${p.n} boats saved`),
+  'boats.empty': 'No boats yet. Boats come from your trips and the import.',
+  'more.boatsHint': 'Name, model, type and length per boat',
 }

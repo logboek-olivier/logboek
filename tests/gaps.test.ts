@@ -47,7 +47,7 @@ describe('niets verplicht: onvolledig en aanvullen', () => {
     expect(gaps.find((g) => g.kind === 'trip' && g.field === 'base')).toMatchObject({ suggestion: 'Nepstart' })
     expect(gaps.find((g) => g.kind === 'leg')).toMatchObject({ field: 'fromPlace', suggestion: 'Nepmidden' })
     // Zonder bootnaam eerst de naam, met de boot uit de dagen als voorstel.
-    expect(collectGaps([trip('c')], [leg('3', 'c', '2026-03-01', 'A', 'B')]).find((g) => g.kind === 'trip' && g.field === 'boat')).toMatchObject({ suggestion: 'Nepboot (Nepmodel 40)' })
+    expect(collectGaps([trip('c')], [leg('3', 'c', '2026-03-01', 'A', 'B')]).find((g) => g.kind === 'trip' && g.field === 'boat')).toMatchObject({ suggestion: 'Nepboot' })
   })
 
   it('aanvullen schrijft alleen lege velden; een trip zonder bootgegevens en een dag zonder plaats worden gewoon opgeslagen', async () => {

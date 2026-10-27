@@ -17,6 +17,7 @@ import { ThisWeek } from './ThisWeek'
 import { Today } from './Today'
 import { Courses } from './Courses'
 import { Deadlines } from './Deadlines'
+import { Boats } from './Boats'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -31,6 +32,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   meer: 'Meer',
   geld: 'Geld',
   termijnen: 'Termijnen',
+  boten: 'Boten',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -80,7 +82,7 @@ export function Home({ store }: { store: Store }) {
     select('vandaag')
   }
 
-  const activeTab: Tab = screen === 'geld' || screen === 'termijnen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
+  const activeTab: Tab = screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
 
   return (
     <main className="app with-bar">
@@ -111,6 +113,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Deadlines store={store} notify={notify} onToken={() => select('instellingen')} />
+        </>
+      )}
+      {screen === 'boten' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Boats store={store} notify={notify} />
         </>
       )}
       {screen === 'cursussen' && (

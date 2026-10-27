@@ -24,6 +24,7 @@ test('Niets verplicht: lege dag en lege trip opslaan met "Onvolledig"; op zondag
   await nav.getByRole('button', { name: 'Logboek', exact: true }).click()
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture)
   await page.getByRole('button', { name: 'Importeren' }).click()
+  await page.getByRole('button', { name: 'Overslaan' }).click()
   await expect(page.locator('.trip .badge-incomplete').first()).toBeVisible()
 
   await nav.getByRole('button', { name: 'Vandaag', exact: true }).click()

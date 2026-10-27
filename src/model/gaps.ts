@@ -1,4 +1,5 @@
 import type { Store } from '../storage/store'
+import { parseShip } from './boats'
 import { active, compareLegs } from './derive'
 import { addDays } from './money'
 import { DEFAULT_WEEK_DAYS } from './weeks'
@@ -67,10 +68,12 @@ export function collectGaps(trips: readonly Trip[], legs: readonly Leg[]): Gap[]
         }
         continue
       }
-      if (field === 'boat') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|boat`, trip, field, suggestion: mostCommon(own.map((l) => l.boat)) })
+      const ship = parseShip(mostCommon(own.map((l) => l.boat)))
+      if (field === 'boat') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|boat`, trip, field, suggestion: ship.name })
       if (field === 'base') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|base`, trip, field, suggestion: own[0]?.fromPlace.trim() ?? '' })
       // Model en lengte zonder bootnaam: per trip; met een naam komen ze per boot.
-      if (field === 'startDate' || field === 'boatModel' || field === 'boatLengthFt') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|${field}`, trip, field, suggestion: '' })
+      if (field === 'boatModel') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|boatModel`, trip, field, suggestion: ship.model })
+      if (field === 'startDate' || field === 'boatLengthFt') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|${field}`, trip, field, suggestion: '' })
     }
   }
   const tripById = new Map(sorted.map((t) => [t.id, t]))

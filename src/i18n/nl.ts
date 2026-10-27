@@ -738,6 +738,17 @@ export const nl = {
   'gaps.trip': 'Trip',
   'gaps.day': 'Dag',
   'boat.lengthShort': 'Lengte',
+  // Boten uit de import
+  'boats.screen': 'Boten',
+  'boats.check': 'Bootgegevens controleren',
+  'boats.checkButton': 'Controleren',
+  'boats.notice': (p: { n: number }) => (p.n === 1 ? '1 boot uit je import controleren' : `${p.n} boten uit je import controleren`),
+  'boats.intro': 'Naam en model komen uit de kolom Schip. Een lengte uit het model is een voorstel: pas aan of bevestig alles in één keer.',
+  'boats.lengthSuggested': 'voorstel uit het model',
+  'boats.confirm': 'Alles bevestigen',
+  'boats.saved': (p: { n: number }) => (p.n === 1 ? '1 boot opgeslagen' : `${p.n} boten opgeslagen`),
+  'boats.empty': 'Nog geen boten. Boten komen uit je trips en de import.',
+  'more.boatsHint': 'Naam, model, soort en lengte per boot',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

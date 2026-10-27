@@ -89,6 +89,9 @@ for (const { width, scheme, lang } of RUNS) {
       await expect(page.getByRole('heading', { name: L('import.check') })).toBeVisible()
       await shot('import-controle')
       await button('import.import').click()
+      await expect(page.getByRole('heading', { name: L('boats.check') })).toBeVisible()
+      await shot('boten-controle')
+      await button('gaps.skip').click()
       for (const [amount, days] of [
         ['85', 2],
         ['120,50', 9],
