@@ -19,7 +19,6 @@ import {
   updateWeek,
   weekView,
   type WeekInput,
-  boatComplete,
   boatProfile,
   feetToMetres,
   missingDays,
@@ -198,11 +197,8 @@ describe('trips van elke lengte, eerdere en komende trips, bootgegevens', () => 
     expect(upcomingTrips(trips, '2026-10-28').map((t) => t.id)).toEqual([future.id])
   })
 
-  it('bootgegevens: verplicht naam, model, lengte en basis; een bekende boot vult de rest in', () => {
+  it('bootgegevens: een bekende boot vult de rest in', () => {
     const full: Trip = { ...oldTrip('a', 'Nep'), boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, boatKind: 'catamaran', base: 'Nepbasis', charter: 'Nepcharter', startDate: '2026-01-01' }
-    expect(boatComplete(full)).toBe(true)
-    expect(boatComplete({ ...full, base: ' ' })).toBe(false)
-    expect(boatComplete(oldTrip('b', 'Oud'))).toBe(false)
     expect(boatProfile([full], ' nepboot ')).toEqual({ boatModel: 'Nepmodel 40', boatLengthFt: 40, boatKind: 'catamaran', base: 'Nepbasis', charter: 'Nepcharter' })
     expect(boatProfile([full], 'Andere boot')).toBeNull()
     expect(feetToMetres(42)).toBe(12.8)

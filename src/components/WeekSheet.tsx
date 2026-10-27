@@ -24,6 +24,7 @@ import {
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
@@ -59,10 +60,16 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
   const [note, setNote] = useState(trip?.note ?? '')
   const [busy, setBusy] = useState(false)
-  const days = Math.round(parseAmount(dayCount) ?? 0)
+  // Niets is verplicht: een leeg of ongeldig aantal dagen wordt de standaard, ontbrekende bootgegevens geven "Onvolledig".
+  const typedDays = Math.round(parseAmount(dayCount) ?? 0)
+  const days = typedDays >= 1 ? Math.min(MAX_WEEK_DAYS, typedDays) : DEFAULT_WEEK_DAYS
   const lengthFt = parseAmount(boatLength)
-  const boatOk = boat.trim() !== '' && boatModel.trim() !== '' && lengthFt !== null && lengthFt > 0 && base.trim() !== ''
-  const ok = !!startDate && days >= 1 && days <= MAX_WEEK_DAYS && boatOk
+  const missing = [
+    !boat.trim() && t('boat.name'),
+    !boatModel.trim() && t('boat.model'),
+    !(lengthFt !== null && lengthFt > 0) && t('boat.lengthShort'),
+    !base.trim() && t('boat.base'),
+  ].filter((x): x is string => !!x)
 
   /** Bekende boot gekozen: model, lengte, soort, basis en charterbedrijf van de vorige trip met deze boot invullen. */
   function chooseBoat(value: string) {
@@ -93,7 +100,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!ok || busy) return
+    if (busy) return
     setBusy(true)
     const input = { name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note }
     try {
@@ -135,20 +142,20 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
         <div className="two">
           <label>
             {t('week.startDate')}
-            <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </label>
           <label>
             {t('week.dayCount')}
             <input inputMode="numeric" autoComplete="off" value={dayCount} onChange={(e) => setDayCount(e.target.value)} />
           </label>
         </div>
-        {ok && <p className="muted small">{t('week.until', { date: formatDate(addDays(startDate, days - 1)) })}</p>}
+        {startDate && <p className="muted small">{t('week.until', { date: formatDate(addDays(startDate, days - 1)) })}</p>}
         <fieldset className="boat-fields">
           <legend>{t('boat.title')}</legend>
           <div className="two">
             <label>
               {t('boat.name')}
-              <input type="text" autoComplete="off" list="week-boats" maxLength={120} required value={boat} onChange={(e) => chooseBoat(e.target.value)} />
+              <input type="text" autoComplete="off" list="week-boats" maxLength={120} value={boat} onChange={(e) => chooseBoat(e.target.value)} />
               <datalist id="week-boats">
                 {boats.map((b) => (
                   <option key={b} value={b} />
@@ -157,7 +164,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
             </label>
             <label>
               {t('boat.model')}
-              <input type="text" autoComplete="off" maxLength={120} required placeholder={t('boat.modelPlaceholder')} value={boatModel} onChange={(e) => setBoatModel(e.target.value)} />
+              <input type="text" autoComplete="off" maxLength={120} placeholder={t('boat.modelPlaceholder')} value={boatModel} onChange={(e) => setBoatModel(e.target.value)} />
             </label>
           </div>
           {filledFrom && <p className="muted small">{t('boat.fromEarlier')}</p>}
@@ -165,13 +172,13 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
             <div className="stack-sm">
               <label>
                 {t('boat.length')}
-                <input inputMode="decimal" autoComplete="off" required placeholder="42" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
+                <input inputMode="decimal" autoComplete="off" placeholder="42" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
               </label>
               {lengthFt !== null && lengthFt > 0 && <span className="muted small">{t('boat.metres', { m: formatNumber(feetToMetres(lengthFt)) })}</span>}
             </div>
             <label>
               {t('boat.base')}
-              <input type="text" autoComplete="off" list="week-bases" maxLength={120} required placeholder={t('boat.basePlaceholder')} value={base} onChange={(e) => setBase(e.target.value)} />
+              <input type="text" autoComplete="off" list="week-bases" maxLength={120} placeholder={t('boat.basePlaceholder')} value={base} onChange={(e) => setBase(e.target.value)} />
               <datalist id="week-bases">
                 {bases.map((b) => (
                   <option key={b} value={b} />
@@ -206,7 +213,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
               </datalist>
             </label>
           </div>
-          {!boatOk && <p className="muted small">{t('boat.required')}</p>}
+          {missing.length > 0 && <IncompleteLine missing={missing} />}
         </fieldset>
         <label>
           {t('week.organisation')}
@@ -263,7 +270,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
           <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
         <div className="sheet-actions">
-          <button className="btn primary" type="submit" disabled={!ok || busy}>
+          <button className="btn primary" type="submit" disabled={busy}>
             {trip ? (
               t('common.save')
             ) : (

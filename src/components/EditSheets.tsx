@@ -29,6 +29,7 @@ import {
   type Trip,
 } from '../model/types'
 import type { Store } from '../storage/store'
+import { defaultTripName } from '../import/mileage-csv'
 import { Icon } from './Icon'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
@@ -217,7 +218,8 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   const [busy, setBusy] = useState(false)
 
   const numbers = [inland, sea, tidal, night].map(parseNonNegative)
-  const ok = !!date && numbers.every((n) => n !== null) && (tripId !== NEW_TRIP || newTripName.trim() !== '')
+  // Niets is verplicht: zonder datum blijft de oude datum, zonder naam krijgt een nieuwe trip de standaardnaam.
+  const ok = numbers.every((n) => n !== null)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -229,7 +231,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
         store,
         leg,
         {
-          date,
+          date: date || leg.date,
           fromPlace: fromPlace.trim(),
           fromCountry: fromCountry.trim(),
           toPlace: toPlace.trim(),
@@ -245,7 +247,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
           nightHours: nightHours!,
           notes: notes.trim(),
         },
-        tripId === NEW_TRIP ? { newName: newTripName } : { id: tripId },
+        tripId === NEW_TRIP ? { newName: newTripName.trim() || defaultTripName(boat.trim() || t('field.trip'), date || leg.date) } : { id: tripId },
       )
       onClose()
       notify(t('toast.saved'))
@@ -380,7 +382,7 @@ export function TripSheet({ store, trip, onClose, notify }: { store: Store; trip
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!name.trim() || busy) return
+    if (busy) return
     setBusy(true)
     try {
       await renameTrip(store, trip, name)
@@ -411,7 +413,7 @@ export function TripSheet({ store, trip, onClose, notify }: { store: Store; trip
           </p>
         )}
         <div className="sheet-actions">
-          <button className="btn primary" type="submit" disabled={!name.trim() || busy}>
+          <button className="btn primary" type="submit" disabled={busy}>
             {t('common.save')}
           </button>
           <button className="btn danger" type="button" onClick={() => void remove()}>

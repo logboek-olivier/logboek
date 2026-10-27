@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -23,12 +23,12 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
   await page.locator('.trip').filter({ hasText: 'Cursus binnenwater' }).getByRole('button').first().click()
   await page.getByRole('button', { name: 'Trip bewerken' }).click()
   await page.getByRole('dialog').getByLabel('Naam', { exact: true }).fill('Cursus op het meer')
-  // Een geïmporteerde trip heeft nog geen model, lengte en basis: die vraagt het scherm bij bewerken.
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Opslaan' })).toBeDisabled()
-  await fillBoat(page.getByRole('dialog'))
+  // Een geïmporteerde trip heeft nog geen model, lengte en basis: opslaan kan toch, met "Onvolledig".
+  await expect(page.getByRole('dialog').getByText('Onvolledig')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.trip').first()).toContainText('Cursus op het meer')
+  await expect(page.locator('.trip').first().locator('.badge-incomplete')).toHaveText('Onvolledig')
 
   // Dag naar de tocht "Oefentocht noord" verplaatsen.
   await page.getByRole('button', { name: /Rietmeer → Meerdorp.*Bewerken/ }).click()

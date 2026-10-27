@@ -8,6 +8,7 @@ import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
+import { parseNonNegative } from '../model/edit'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings, saveSettings } from '../model/settings'
 import { finalRateFields } from '../model/rates'
@@ -36,7 +37,7 @@ import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
 // Snel toevoegen: Dag · Inkomsten · Uitgave, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
-// bestemming en de laatst gebruikte boot, rol en week; alleen naar en nm zijn nodig. Opslaan = één tik.
+// bestemming en de laatst gebruikte boot, rol en week; niets is verplicht. Opslaan = één tik.
 
 /** Korte trilling als bevestiging van opslaan; stil als het apparaat het niet kan. */
 function confirmVibration() {
@@ -436,10 +437,10 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const nmValue = parseAmount(nm)
-  const night = nightHours.trim() === '' ? 0 : parseAmount(nightHours)
-  // Alleen "naar" en nm zijn nodig; boot, rol en week zijn altijd voorgevuld en blokkeren nooit.
-  const ok = toPlace.trim() !== '' && nmValue !== null && night !== null && !!date
+  const nmValue = parseNonNegative(nm)
+  const night = parseNonNegative(nightHours)
+  // Niets is verplicht: leeg = 0 of leeg, een dag zonder plaats krijgt "Onvolledig". Alleen onleesbare getallen wachten.
+  const ok = nmValue !== null && night !== null
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -447,11 +448,12 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
     setBusy(true)
     try {
       const now = nowIso()
+      const day = date || today
       let id = tripId === NEW_WEEK ? undefined : tripId
       if (!id) {
         const trip: Trip = {
           id: newId(),
-          name: tripName.trim() || defaultTripName(boat.trim(), date),
+          name: tripName.trim() || defaultTripName(boat.trim() || t('field.trip'), day),
           updatedAt: now,
           deletedAt: null,
         }
@@ -463,7 +465,7 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
       const leg: Leg = {
         id: newId(),
         tripId: id,
-        date,
+        date: day,
         fromPlace: fromPlace.trim(),
         fromCountry: country,
         toPlace: toPlace.trim(),

@@ -37,11 +37,6 @@ export function feetToMetres(ft: number): number {
   return Math.round((ft / FEET_PER_METRE) * 10) / 10
 }
 
-/** Naam, model, lengte en basis zijn nodig voor een volledige trip (Olivier vult ontbrekende gegevens aan). */
-export function boatComplete(trip: Trip): boolean {
-  return !!trip.boat?.trim() && !!trip.boatModel?.trim() && !!trip.boatLengthFt && trip.boatLengthFt > 0 && !!trip.base?.trim()
-}
-
 export interface BoatProfile {
   boatModel?: string
   boatLengthFt?: number
@@ -219,11 +214,12 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
   const days = Math.max(1, Math.min(MAX_WEEK_DAYS, Math.round(input.dayCount) || DEFAULT_WEEK_DAYS))
   const text = (v: string) => v.trim().slice(0, MAX_TEXT)
   const length = input.boatLengthFt !== null && Number.isFinite(input.boatLengthFt) && input.boatLengthFt > 0 ? Math.round(input.boatLengthFt * 10) / 10 : null
+  // Zonder startdatum geen datums; de trip krijgt ze dan uit de dagen.
+  const dated = /^\d{4}-\d{2}-\d{2}$/.test(input.startDate)
   return {
-    name: text(input.name) || defaultWeekName(input.startDate, lang, input.base),
+    name: text(input.name) || defaultWeekName(dated ? input.startDate : todayIso(), lang, input.base),
     type: input.type,
-    startDate: input.startDate,
-    endDate: addDays(input.startDate, days - 1),
+    ...(dated ? { startDate: input.startDate, endDate: addDays(input.startDate, days - 1) } : {}),
     ...(text(input.boat) ? { boat: text(input.boat) } : {}),
     ...(text(input.boatModel) ? { boatModel: text(input.boatModel) } : {}),
     ...(length !== null ? { boatLengthFt: length } : {}),
@@ -242,7 +238,7 @@ export async function startWeek(store: Store, input: WeekInput, lang: Lang, toda
   const trip: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
   await store.put('trips.json.enc', trip)
   await syncParticipants(store, trip)
-  const current = trip.startDate! <= today && today <= trip.endDate!
+  const current = !!trip.startDate && !!trip.endDate && trip.startDate <= today && today <= trip.endDate
   await saveSettings(store, { ...(current ? { activeWeekId: trip.id } : {}), ...(trip.boat ? { lastBoat: trip.boat } : {}) })
   void store.sync()
   return trip
@@ -250,8 +246,8 @@ export async function startWeek(store: Store, input: WeekInput, lang: Lang, toda
 
 /** Bestaande week bijwerken; review en afronding blijven staan. */
 export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lang: Lang): Promise<void> {
-  const { boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, ...rest } = trip
-  void [_b, _m, _l, _k, _ba, _c, _a, _o, _n]
+  const { startDate: _s, endDate: _e, boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, ...rest } = trip
+  void [_s, _e, _b, _m, _l, _k, _ba, _c, _a, _o, _n]
   const next: Trip = { ...rest, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
   await store.put('trips.json.enc', next)
   await syncParticipants(store, next)

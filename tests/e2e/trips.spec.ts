@@ -23,8 +23,9 @@ test('Deze trip: eerdere en komende trips invoeren, bootgegevens van een bekende
   let sheet = page.getByRole('dialog')
   await sheet.getByLabel('Startdatum').fill(iso(20))
   await sheet.getByLabel('Aantal dagen').fill('14')
-  await expect(sheet.getByRole('button', { name: 'Trip opslaan' })).toBeDisabled()
-  await expect(sheet.getByText('Bootnaam, model, lengte en basis zijn nodig.')).toBeVisible()
+  // Niets is verplicht: zonder bootgegevens "Onvolledig", geen blokkade.
+  await expect(sheet.getByRole('button', { name: 'Trip opslaan' })).toBeEnabled()
+  await expect(sheet.locator('.incomplete-line')).toHaveText('Onvolledig bootnaam, model, lengte, basis')
   await sheet.getByLabel('Bootnaam', { exact: true }).fill('Nepster')
   await sheet.getByLabel('Model', { exact: true }).fill('Nepcat 45')
   await sheet.getByLabel('Lengte (ft)', { exact: true }).fill('45')

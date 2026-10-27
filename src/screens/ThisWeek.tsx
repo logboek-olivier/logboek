@@ -14,7 +14,9 @@ import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil } from '../session'
-import { activeWeek, boatComplete, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
+import { legGaps, tripIncomplete } from '../model/gaps'
+import { IncompleteBadge } from '../components/Incomplete'
+import { activeWeek, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
 import type { Leg, Trip } from '../model/types'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
@@ -91,7 +93,9 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
           </header>
           <button className="card week-head" onClick={() => setSheet('edit')} aria-label={`${t('week.edit')}: ${week.name}`}>
             <span className="week-head-title">
-              <span>{week.name}</span>
+              <span>
+                {week.name} {tripIncomplete(week, legs) && <IncompleteBadge />}
+              </span>
               <Icon icon={Pencil} />
             </span>
             <span className="muted small">
@@ -100,14 +104,6 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
             <span className="muted small">{boatLine(week, view.boat)}</span>
             <span className="muted small">{[week.base, week.area, week.charter, week.organisation ? organisationLabel(week.organisation) : ''].filter(Boolean).join(' · ')}</span>
           </button>
-          {!boatComplete(week) && (
-            <div className="notice">
-              <p className="small">{t('boat.missing')}</p>
-              <button className="btn small primary" onClick={() => setSheet('edit')}>
-                {t('boat.complete')}
-              </button>
-            </div>
-          )}
           {missing.length > 0 && (
             <div className="notice">
               <p className="small">{t('trip.missingDays', { n: missing.length })}</p>
@@ -193,7 +189,9 @@ function SailedDays({ store, notify, legs, nm, onAdd }: { store: Store; notify: 
             <li key={leg.id}>
               <button className="row-button" onClick={() => setEditing(leg)} aria-label={t('trip.editDay', { date: formatDate(leg.date) })}>
                 <span className="row-main">
-                  <span>{[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ')}</span>
+                  <span>
+                    {[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ')} {legGaps(leg).length > 0 && <IncompleteBadge />}
+                  </span>
                   <span className="muted small">{formatDate(leg.date)}</span>
                 </span>
                 <span className="row-value">{formatNm(totalNm(leg))}</span>
@@ -225,7 +223,9 @@ function UpcomingTrips({ trips, onOpen }: { trips: Trip[]; onOpen: (trip: Trip) 
             <li key={trip.id}>
               <button className="row-button" onClick={() => onOpen(trip)} aria-label={`${t('week.edit')}: ${trip.name}`}>
                 <span className="row-main">
-                  <span>{trip.name}</span>
+                  <span>
+                    {trip.name} {tripIncomplete(trip, []) && <IncompleteBadge />}
+                  </span>
                   <span className="muted small">{[trip.startDate ? formatDateRange(trip.startDate, trip.endDate ?? trip.startDate) : '', boatLine(trip)].filter(Boolean).join(' · ')}</span>
                 </span>
                 <span className="row-value small">{t('trip.inDays', { n })}</span>

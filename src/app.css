@@ -2235,3 +2235,34 @@ body.presenting .bottom-bar {
 .presentation .plan-theme {
   font-size: var(--fs-lg);
 }
+
+/* Onvolledig: niets is verplicht, ontbrekende gegevens krijgen een badge. */
+.badge-incomplete {
+  display: inline-block;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.incomplete-line .badge-incomplete {
+  margin-right: var(--s-1);
+}
+
+.fill-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.fill-context {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

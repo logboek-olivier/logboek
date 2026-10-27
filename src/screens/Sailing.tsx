@@ -3,6 +3,8 @@ import { useRef, useState } from 'react'
 import { BarChart } from '../components/BarChart'
 import { LegSheet, type Notify } from '../components/EditSheets'
 import { WeekSheet } from '../components/WeekSheet'
+import { IncompleteBadge } from '../components/Incomplete'
+import { legGaps, tripIncomplete } from '../model/gaps'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -230,7 +232,9 @@ function TripRow({
           <Icon icon={Sailboat} />
         </span>
         <span className="row-main">
-          <span className="row-title">{summary.trip.name}</span>
+          <span className="row-title">
+            {summary.trip.name} {tripIncomplete(summary.trip, summary.legs) && <IncompleteBadge />}
+          </span>
           <span className="muted">
             {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {t('unit.days', { n: summary.days })}
           </span>
@@ -268,7 +272,7 @@ function LegRow({ leg, onEdit }: { leg: Leg; onEdit: () => void }) {
       >
         <div className="row-main">
           <span className="row-title">
-            {leg.fromPlace} → {leg.toPlace}
+            {leg.fromPlace} → {leg.toPlace} {legGaps(leg).length > 0 && <IncompleteBadge />}
           </span>
           <span className="muted">
             {formatDate(leg.date)}
