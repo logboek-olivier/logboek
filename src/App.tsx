@@ -2,10 +2,11 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { ErrorBoundary, installGlobalErrorHandlers, UnhandledErrorBar } from './components/ErrorBoundary'
 import { Loading } from './components/Loading'
 import { setScreen } from './errors'
-import { useLang } from './i18n'
+import { t, useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
+import { KeyMismatch, KeyRecover } from './screens/KeyProblem'
 import { Unlock } from './screens/Unlock'
 import { Session, SessionContext } from './session'
 
@@ -51,11 +52,11 @@ export function App() {
     }
   }, [session, state.phase])
 
-  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag' }[state.phase])
+  setScreen({ loading: 'Laden', setup: 'Eerste keer', locked: 'Ontgrendelen', unlocked: 'Vandaag', mismatch: 'Sleutel past niet', recover: 'Herstel' }[state.phase])
   let screen: React.ReactNode
   switch (state.phase) {
     case 'loading':
-      screen = <Loading />
+      screen = state.blocked ? <Loading text={t('common.blockedByOtherPage')} /> : <Loading />
       break
     case 'setup':
       screen = <Setup />
@@ -65,6 +66,12 @@ export function App() {
       break
     case 'unlocked':
       screen = <Home store={state.store} />
+      break
+    case 'mismatch':
+      screen = <KeyMismatch where={state.where} />
+      break
+    case 'recover':
+      screen = <KeyRecover report={state.report} />
       break
   }
   return (

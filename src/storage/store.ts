@@ -5,7 +5,7 @@ import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
-import { getObject, putObject, type Db } from './idb'
+import { getObject, putObject, putObjectIfVault, type Db, type StoredObject } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
 import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from './sync'
 
@@ -22,11 +22,12 @@ export type SyncStatus =
    * token: verlopen of ingetrokken; update: nieuwere schemaversie; github: andere GitHub-fout; failed: overig;
    * unreadable: één of meer bestanden op GitHub zijn niet te ontsleutelen of te lezen (`paths`), de andere zijn gesynct;
    * otherKey: logboek-data hoort bij een andere hoofdsleutel dan dit apparaat; noMeta: meta.json.enc ontbreekt op
-   * GitHub (repo leeg of opnieuw aangemaakt). In beide gevallen is er niets geschreven.
+   * GitHub (repo leeg of opnieuw aangemaakt). In beide gevallen is er niets geschreven. keyMismatch: de sleutel in
+   * het geheugen hoort niet (meer) bij meta.json.enc; de sessie stopt en schrijft niets meer.
    */
   | { kind: 'error'; code: SyncErrorCode; count: number; github?: GithubErrorCode; paths?: CollectionPath[] }
 
-export type SyncErrorCode = 'token' | 'update' | 'github' | 'failed' | 'unreadable' | 'otherKey' | 'noMeta'
+export type SyncErrorCode = 'token' | 'update' | 'github' | 'failed' | 'unreadable' | 'otherKey' | 'noMeta' | 'keyMismatch'
 
 /** Een bestand op GitHub is niet te ontsleutelen of te lezen. De melding noemt alleen paden en de soort fout. */
 export class UnreadableFileError extends Error {
@@ -55,6 +56,18 @@ export class OtherKeyError extends Error {
   }
 }
 
+/**
+ * De hoofdsleutel in het geheugen hoort niet bij meta.json.enc. local: de meta op dit apparaat is vervangen (een
+ * ander tabblad of een andere versie van de app maakte of koppelde een logboek) of hoort bij een andere sleutel;
+ * remote: meta.json.enc op GitHub hoort bij een andere sleutel, ontbreekt of is niet te controleren.
+ */
+export class KeyMismatchError extends Error {
+  constructor(readonly where: 'local' | 'remote') {
+    super(`Sleutel past niet bij meta.json.enc (${where})`)
+    this.name = 'KeyMismatchError'
+  }
+}
+
 export function describeStatus(status: SyncStatus): string {
   switch (status.kind) {
     case 'synced':
@@ -72,6 +85,7 @@ export function describeStatus(status: SyncStatus): string {
       if (status.code === 'unreadable') return t('sync.unreadable', { paths: (status.paths ?? []).join(', ') })
       if (status.code === 'otherKey') return t('sync.otherKey')
       if (status.code === 'noMeta') return t('sync.noMeta')
+      if (status.code === 'keyMismatch') return t('key.mismatchTitle')
       return t('sync.failed')
   }
 }
@@ -96,16 +110,26 @@ export class Store {
   private unreadable = new Map<CollectionPath, string>()
   /** Uitkomst van de laatste meta-controle; herstellen mag alleen na een bevestigde 'match'. */
   private metaVerdict: MetaCheck = 'unknown'
+  /** De sleutel past niet (meer) bij meta.json.enc: deze Store schrijft nooit meer iets. */
+  private mismatch = false
+  private readonly mismatchListeners = new Set<(error: KeyMismatchError) => void>()
 
   private constructor(
     private readonly db: Db,
     private readonly masterKey: CryptoKey,
     private readonly client: GithubClient,
+    private vaultCheck: string | null,
   ) {}
 
-  /** Laadt de lokale versleutelde kopie uit IndexedDB. Synchroniseert nog niet. */
-  static async open(db: Db, masterKey: CryptoKey, client: GithubClient): Promise<Store> {
-    const store = new Store(db, masterKey, client)
+  /**
+   * Laadt de lokale versleutelde kopie uit IndexedDB. Synchroniseert nog niet.
+   * `vaultCheck`: het check-veld van de meta waaraan `masterKey` bij openen gebonden is (sessie). Dan geldt de
+   * sleutel-invariant: vóór elke schrijfactie naar IndexedDB moet de lokale meta nog dezelfde zijn, en vóór elke
+   * schrijfactie naar GitHub moet meta.json.enc op GitHub aan deze sleutel gebonden zijn. Zonder (alleen tests van de
+   * opslaglaag) gelden alleen de controles uit runSync.
+   */
+  static async open(db: Db, masterKey: CryptoKey, client: GithubClient, vaultCheck: string | null = null): Promise<Store> {
+    const store = new Store(db, masterKey, client, vaultCheck)
     for (const path of COLLECTION_PATHS) {
       const stored = await getObject(db, path)
       store.collections.set(path, stored ? await decryptRecords(masterKey, path, stored.blob) : [])
@@ -123,6 +147,12 @@ export class Store {
   static async loadMeta(db: Db): Promise<Meta | null> {
     const stored = await getObject(db, META_PATH)
     return stored ? parseMeta(new TextDecoder().decode(stored.blob)) : null
+  }
+
+  /** Wordt aangeroepen zodra deze Store merkt dat de sleutel niet bij meta.json.enc hoort (de sessie stopt dan). */
+  onKeyMismatch(listener: (error: KeyMismatchError) => void): () => void {
+    this.mismatchListeners.add(listener)
+    return () => this.mismatchListeners.delete(listener)
   }
 
   subscribe(listener: Listener): () => void {
@@ -204,6 +234,10 @@ export class Store {
 
   private async runSync(): Promise<void> {
     const count = () => this.pendingCount()
+    if (this.mismatch) {
+      this.setStatus({ kind: 'error', code: 'keyMismatch', count: count() })
+      return
+    }
     if (this.outdated) {
       this.setStatus({ kind: 'error', code: 'update', count: count() })
       return
@@ -214,15 +248,22 @@ export class Store {
     // een andere sleutel naast de echte te staan, die de andere apparaten niet kunnen lezen.
     let meta: MetaCheck
     try {
+      await this.assertVault()
       meta = await this.checkMeta()
       this.metaVerdict = meta
+      if (this.locked) return
+      // Sleutel-invariant: alleen schrijven als meta.json.enc op GitHub aantoonbaar bij deze sleutel hoort.
+      if (this.vaultCheck !== null && meta !== 'match') {
+        this.unreadable = new Map()
+        this.tripMismatch('remote')
+      }
       if (meta === 'mismatch' || meta === 'missing') {
         this.unreadable = new Map()
         this.reportFailure(meta === 'missing' ? new MissingMetaError() : new OtherKeyError())
         return
       }
     } catch (error) {
-      if (this.locked) return
+      if (this.locked || error instanceof KeyMismatchError) return
       if (error instanceof NewerSchemaError) this.outdated = true
       this.reportFailure(error)
       return
@@ -277,7 +318,7 @@ export class Store {
       try {
         await this.syncPath(path, prefetched.get(path))
       } catch (error) {
-        if (this.locked) return
+        if (this.locked || error instanceof KeyMismatchError) return
         failure = error
         if (error instanceof NewerSchemaError) {
           this.outdated = true
@@ -336,6 +377,8 @@ export class Store {
   async repair(path: CollectionPath): Promise<void> {
     this.assertUnlocked()
     if (!(await this.repairable()).includes(path)) return
+    await this.assertVault()
+    if (this.vaultCheck !== null && (await this.checkMeta()) !== 'match') this.tripMismatch('remote')
     for (let attempt = 0; attempt < 2; attempt++) {
       // Vlak voor het schrijven opnieuw kijken: misschien heeft een ander apparaat het bestand al hersteld.
       const remote = await this.client.getFile(path)
@@ -379,6 +422,7 @@ export class Store {
   private async syncPath(path: CollectionPath, prefetched: RemoteFile | null | undefined): Promise<void> {
     const snapshot = { ...(this.outbox[path] ?? {}) }
     const local = this.collections.get(path) ?? []
+    await this.assertVault()
     const result = await syncCollection(this.client, this.masterKey, path, local, prefetched)
     if (this.locked) return
     // Wijzigingen tijdens het wachten blijven staan: samenvoegen met wat ondertussen lokaal is gezet.
@@ -392,7 +436,7 @@ export class Store {
     const outbox = this.outbox
     const blob = await encryptRecords(this.masterKey, path, merged)
     if (this.locked) return
-    await putObject(this.db, { path, blob, sha: result.sha })
+    await this.putGuarded({ path, blob, sha: result.sha })
     if (this.locked) return
     await saveOutbox(this.db, this.masterKey, outbox)
   }
@@ -405,12 +449,62 @@ export class Store {
     const blob = await encryptRecords(this.masterKey, path, records)
     const stored = await getObject(this.db, path)
     if (this.locked) return
-    await putObject(this.db, { path, blob, sha: stored?.sha ?? null })
+    await this.putGuarded({ path, blob, sha: stored?.sha ?? null })
     if (this.locked) return
     await saveOutbox(this.db, this.masterKey, outbox)
     if (this.locked) return
     if (this.status.kind !== 'syncing') this.setStatus(this.idleStatus())
     else this.notify()
+  }
+
+  /**
+   * Sleutel-invariant voor IndexedDB: de lokale meta moet nog de meta zijn waaraan de sleutel bij openen gebonden
+   * was. Een ander tabblad of een andere versie van de app kan intussen een ander logboek hebben gemaakt of gekoppeld;
+   * dan zou deze Store gegevens onder een andere sleutel naast die van het nieuwe logboek zetten.
+   */
+  private async assertVault(): Promise<void> {
+    if (this.mismatch) throw new KeyMismatchError('local')
+    if (this.vaultCheck === null) return
+    const meta = await Store.loadMeta(this.db).catch(() => null)
+    if (this.mismatch) throw new KeyMismatchError('local')
+    if (meta?.check === this.vaultCheck) return
+    // Een nieuwere meta van dezelfde sleutel (wachtzin gewijzigd, hier of op een ander apparaat) is in orde.
+    if (meta?.check && (await verifyMetaCheck(meta, this.masterKey))) {
+      this.vaultCheck = meta.check
+      return
+    }
+    this.tripMismatch('local')
+  }
+
+  /**
+   * Lokaal schrijven onder de sleutel-invariant: controle van de lokale meta en schrijven in één transactie, zodat een
+   * ander tabblad er niet tussen een ander logboek kan neerzetten.
+   */
+  private async putGuarded(object: StoredObject): Promise<void> {
+    if (this.mismatch) throw new KeyMismatchError('local')
+    if (this.vaultCheck === null) {
+      await putObject(this.db, object)
+      return
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (this.locked) return
+      if (await putObjectIfVault(this.db, META_PATH, this.vaultCheck, object)) return
+      // Andere meta: hoort die bij deze sleutel, dan opnieuw met het nieuwe check-veld; anders stoppen.
+      await this.assertVault()
+    }
+    this.tripMismatch('local')
+  }
+
+  /** Stopt deze Store voorgoed: niets meer schrijven, de sessie laten weten dat de sleutel niet past. */
+  private tripMismatch(where: 'local' | 'remote'): never {
+    const error = new KeyMismatchError(where)
+    if (!this.mismatch) {
+      this.mismatch = true
+      recordError(error)
+      this.setStatus({ kind: 'error', code: 'keyMismatch', count: this.pendingCount() })
+      for (const listener of this.mismatchListeners) listener(error)
+    }
+    throw error
   }
 
   private idleStatus(): SyncStatus {

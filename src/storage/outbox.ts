@@ -1,5 +1,5 @@
 import { decryptObject, encryptObject, utf8, type Bytes } from '../crypto/encrypt'
-import { getLocal, putLocal, type Db } from './idb'
+import { deleteLocal, getLocal, putLocal, type Db } from './idb'
 
 // Outbox: welke records sinds de laatste geslaagde sync lokaal zijn gewijzigd, per bestand.
 // { [pad]: { [recordId]: updatedAt } }. Versleuteld onder de hoofdsleutel in IndexedDB.
@@ -41,6 +41,10 @@ export async function loadOutbox(db: Db, masterKey: CryptoKey): Promise<Outbox> 
 export async function saveOutbox(db: Db, masterKey: CryptoKey, outbox: Outbox): Promise<void> {
   const blob: Bytes = await encryptObject(masterKey, OUTBOX_AAD, utf8(JSON.stringify(outbox)))
   await putLocal(db, OUTBOX_NAME, blob)
+}
+
+export async function deleteOutbox(db: Db): Promise<void> {
+  await deleteLocal(db, OUTBOX_NAME)
 }
 
 function isOutbox(value: unknown): value is Outbox {

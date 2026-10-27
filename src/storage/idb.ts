@@ -32,7 +32,11 @@ interface Schema extends DBSchema {
 
 export type Db = IDBPDatabase<Schema>
 
-export async function openLogboekDb(name: string = DB_NAME): Promise<Db> {
+/**
+ * `onBlocked`: een andere pagina van de app (bijvoorbeeld een oudere versie die nog open staat) houdt de database
+ * vast en laat de upgrade niet toe. Zonder melding zou de app stil blijven hangen.
+ */
+export async function openLogboekDb(name: string = DB_NAME, onBlocked?: () => void): Promise<Db> {
   const db: Db = await openDB<Schema>(name, DB_VERSION, {
     upgrade(db, oldVersion) {
       // Versie 1 → 2 voegt alleen 'session' toe; bestaande data blijft staan.
@@ -46,6 +50,9 @@ export async function openLogboekDb(name: string = DB_NAME): Promise<Db> {
     blocking() {
       db.close()
     },
+    blocked() {
+      onBlocked?.()
+    },
   })
   return db
 }
@@ -56,6 +63,45 @@ export async function getObject(db: Db, path: string): Promise<StoredObject | un
 
 export async function putObject(db: Db, object: StoredObject): Promise<void> {
   await db.put('objects', object)
+}
+
+export async function deleteObject(db: Db, path: string): Promise<void> {
+  await db.delete('objects', path)
+}
+
+/** Het check-veld van de lokale meta.json.enc in de opgeslagen (onversleutelde) meta-tekst, of null. */
+function storedCheck(meta: StoredObject | undefined): string | null {
+  if (!meta) return null
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(meta.blob))
+    const check = typeof parsed === 'object' && parsed !== null ? (parsed as { check?: unknown }).check : undefined
+    return typeof check === 'string' ? check : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Schrijft een object alleen als de lokale meta (pad `metaPath`) nog het check-veld `expectedCheck` heeft, in één
+ * transactie: een ander tabblad kan niet tussen controle en schrijven een ander logboek neerzetten. Geeft false
+ * (en schrijft niets) als het check-veld anders is.
+ */
+export async function putObjectIfVault(db: Db, metaPath: string, expectedCheck: string, object: StoredObject): Promise<boolean> {
+  const tx = db.transaction('objects', 'readwrite')
+  const store = tx.objectStore('objects')
+  const ok = storedCheck(await store.get(metaPath)) === expectedCheck
+  if (ok) await store.put(object)
+  await tx.done
+  return ok
+}
+
+/** Zoals putObjectIfVault, voor de sessiesleutel. */
+export async function putSessionKeyIfVault(db: Db, metaPath: string, expectedCheck: string, record: SessionKeyRecord): Promise<boolean> {
+  const tx = db.transaction(['objects', 'session'], 'readwrite')
+  const ok = storedCheck(await tx.objectStore('objects').get(metaPath)) === expectedCheck
+  if (ok) await tx.objectStore('session').put(record)
+  await tx.done
+  return ok
 }
 
 export async function getLocal(db: Db, name: string): Promise<Bytes | undefined> {
