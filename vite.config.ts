@@ -64,7 +64,8 @@ export default defineConfig({
         clientsClaim: true,
         cleanupOutdatedCaches: true,
         importScripts: ['sw-vensters.js'],
-        globPatterns: ['**/*.{js,css,html,svg,png,txt,webmanifest}'],
+        // De offline kaart (public/coast/, ca. 3,5 MB) hoort in de precache: op zee moet de kaart werken.
+        globPatterns: ['**/*.{js,css,html,svg,png,txt,webmanifest}', 'coast/*.json'],
         navigateFallback: '/logboek/index.html',
         // Koersen niet in de precache (die verandert dagelijks): eerst het netwerk, offline de laatst opgehaalde.
         runtimeCaching: [{ urlPattern: /\/logboek\/rates\.json$/, handler: 'NetworkFirst', options: { cacheName: 'koersen', networkTimeoutSeconds: 5 } }],

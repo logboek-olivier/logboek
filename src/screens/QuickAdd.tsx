@@ -1,6 +1,9 @@
-import { Coins, Receipt, Sailboat } from 'lucide-react'
-import { useMemo, useState, type FormEvent } from 'react'
+import { Coins, MapPin, Receipt, Sailboat } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
+import { MapSheet } from '../components/MapSheet'
+import { formatNm, formatNumber } from '../format'
+import { findPlace, greatCircleNm, knownPlaceNames, suggestDistance } from '../model/places'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
@@ -347,6 +350,21 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   )
 }
 
+/** Plaatsveld: typen met suggesties uit eerdere plaatsen, of kiezen op de kaart. */
+function PlaceField({ label, value, onChange, onMap, autoFocus = false }: { label: string; value: string; onChange: (v: string) => void; onMap: () => void; autoFocus?: boolean }) {
+  return (
+    <div className="place-field">
+      <label>
+        {label}
+        <input type="text" autoFocus={autoFocus} autoComplete="off" list="plaatsen" value={value} onChange={(e) => onChange(e.target.value)} />
+      </label>
+      <button type="button" className="btn icon" aria-label={t('map.open', { field: label })} onClick={onMap}>
+        <Icon icon={MapPin} />
+      </button>
+    </div>
+  )
+}
+
 function waterOf(leg: Leg | undefined): Water {
   if (!leg) return 'zee'
   if (leg.nmTidal > 0) return 'getij'
@@ -385,6 +403,20 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
   const [fromPlace, setFromPlace] = useState(defaultFrom)
   const [toPlace, setToPlace] = useState('')
   const [nm, setNm] = useState('')
+  const [nmTouched, setNmTouched] = useState(false)
+  const [mapFor, setMapFor] = useState<'from' | 'to' | null>(null)
+  const places = useCollection(store, 'places.json.enc')
+  const placeNames = useMemo(() => knownPlaceNames(legs, places), [legs, places])
+  // Voorstel uit wat Olivier echt gevaren heeft: gemiddelde van de laatste vijf keer deze route.
+  const suggestion = useMemo(() => suggestDistance(legs, fromPlace, toPlace), [legs, fromPlace, toPlace])
+  const straight = useMemo(() => {
+    const a = findPlace(places, fromPlace)
+    const b = findPlace(places, toPlace)
+    return a && b ? Math.round(greatCircleNm(a, b) * 10) / 10 : null
+  }, [places, fromPlace, toPlace])
+  useEffect(() => {
+    if (!nmTouched) setNm(suggestion ? formatNumber(suggestion.nm) : '')
+  }, [suggestion, nmTouched])
   const [water, setWater] = useState<Water>(settings.lastWater ?? waterOf(lastLeg))
   const [nightHours, setNightHours] = useState('')
   const [wind, setWind] = useState('')
@@ -460,98 +492,127 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
   }
 
   return (
-    <form className="stack day-form" onSubmit={(e) => void submit(e)}>
-      <div className="two">
+    <>
+      <form className="stack day-form" onSubmit={(e) => void submit(e)}>
+        <div className="two">
+          <label>
+            {t('field.date')}
+            <input type="date" value={date} max={addDays(today, 1)} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <PlaceField label={t('field.from')} value={fromPlace} onChange={setFromPlace} onMap={() => setMapFor('from')} />
+        </div>
+        <div className="two">
+          <PlaceField label={t('field.to')} value={toPlace} onChange={setToPlace} onMap={() => setMapFor('to')} autoFocus />
+          <label>
+            {t('field.nm')}
+            <input
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0"
+              value={nm}
+              onChange={(e) => {
+                setNm(e.target.value)
+                setNmTouched(true)
+              }}
+            />
+          </label>
+        </div>
+        <datalist id="plaatsen">
+          {placeNames.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
+        {suggestion ? (
+          <p className="muted small route-hint">{t('route.average', { nm: formatNm(suggestion.nm), n: suggestion.count })}</p>
+        ) : straight !== null ? (
+          <p className="muted small route-hint">{t('route.straight', { nm: formatNm(straight) })}</p>
+        ) : null}
+        <div className="segments small" role="radiogroup" aria-label={t('field.water')}>
+          {(['zee', 'getij', 'binnen'] as Water[]).map((w) => (
+            <button
+              key={w}
+              type="button"
+              role="radio"
+              aria-checked={water === w}
+              className={`segment${water === w ? ' active' : ''}`}
+              onClick={() => setWater(w)}
+            >
+              {t(w === 'zee' ? 'water.seaTab' : w === 'getij' ? 'water.tidalTab' : 'water.inlandTab')}
+            </button>
+          ))}
+        </div>
+        <div className="two">
+          <label>
+            {t('field.nightHours')}
+            <input inputMode="decimal" autoComplete="off" placeholder="0" value={nightHours} onChange={(e) => setNightHours(e.target.value)} />
+          </label>
+          <label>
+            {t('field.wind')}
+            <input type="text" autoComplete="off" placeholder="3-4" value={wind} onChange={(e) => setWind(e.target.value)} />
+          </label>
+        </div>
+        <div className="two">
+          <label>
+            {t('field.boat')}
+            <input type="text" autoComplete="off" value={boat} onChange={(e) => setBoat(e.target.value)} />
+          </label>
+          <label>
+            {t('field.role')}
+            <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {roleLabel(r)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <label>
-          {t('field.date')}
-          <input type="date" value={date} max={addDays(today, 1)} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <label>
-          {t('field.from')}
-          <input type="text" autoComplete="off" value={fromPlace} onChange={(e) => setFromPlace(e.target.value)} />
-        </label>
-      </div>
-      <div className="two">
-        <label>
-          {t('field.to')}
-          <input type="text" autoFocus autoComplete="off" value={toPlace} onChange={(e) => setToPlace(e.target.value)} />
-        </label>
-        <label>
-          {t('field.nm')}
-          <input inputMode="decimal" autoComplete="off" placeholder="0" value={nm} onChange={(e) => setNm(e.target.value)} />
-        </label>
-      </div>
-      <div className="segments small" role="radiogroup" aria-label={t('field.water')}>
-        {(['zee', 'getij', 'binnen'] as Water[]).map((w) => (
-          <button
-            key={w}
-            type="button"
-            role="radio"
-            aria-checked={water === w}
-            className={`segment${water === w ? ' active' : ''}`}
-            onClick={() => setWater(w)}
-          >
-            {t(w === 'zee' ? 'water.seaTab' : w === 'getij' ? 'water.tidalTab' : 'water.inlandTab')}
-          </button>
-        ))}
-      </div>
-      <div className="two">
-        <label>
-          {t('field.nightHours')}
-          <input inputMode="decimal" autoComplete="off" placeholder="0" value={nightHours} onChange={(e) => setNightHours(e.target.value)} />
-        </label>
-        <label>
-          {t('field.wind')}
-          <input type="text" autoComplete="off" placeholder="3-4" value={wind} onChange={(e) => setWind(e.target.value)} />
-        </label>
-      </div>
-      <div className="two">
-        <label>
-          {t('field.boat')}
-          <input type="text" autoComplete="off" value={boat} onChange={(e) => setBoat(e.target.value)} />
-        </label>
-        <label>
-          {t('field.role')}
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {roleLabel(r)}
+          {t('field.week')}
+          <select value={tripId} onChange={(e) => chooseWeek(e.target.value)}>
+            <option value={NEW_WEEK}>{t('quick.newWeek')}</option>
+            {weeks.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
               </option>
             ))}
           </select>
         </label>
-      </div>
-      <label>
-        {t('field.week')}
-        <select value={tripId} onChange={(e) => chooseWeek(e.target.value)}>
-          <option value={NEW_WEEK}>{t('quick.newWeek')}</option>
-          {weeks.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {tripId === NEW_WEEK && (
+        {tripId === NEW_WEEK && (
+          <label>
+            {t('field.weekName')}
+            <input
+              type="text"
+              autoComplete="off"
+              placeholder={defaultTripName(boat.trim() || t('field.boat'), date)}
+              value={tripName}
+              onChange={(e) => setTripName(e.target.value)}
+            />
+          </label>
+        )}
         <label>
-          {t('field.weekName')}
-          <input
-            type="text"
-            autoComplete="off"
-            placeholder={defaultTripName(boat.trim() || t('field.boat'), date)}
-            value={tripName}
-            onChange={(e) => setTripName(e.target.value)}
-          />
+          {t('field.note')}
+          <input type="text" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        <button className="btn primary" type="submit" disabled={!ok || busy}>
+          {t('common.save')}
+        </button>
+      </form>
+      {mapFor && (
+        <MapSheet
+          store={store}
+          title={t(mapFor === 'from' ? 'map.titleFrom' : 'map.titleTo')}
+          name={mapFor === 'from' ? fromPlace : toPlace}
+          around={mapFor === 'from' ? [toPlace, current?.base ?? ''] : [fromPlace, current?.base ?? '']}
+          onChoose={(name) => {
+            if (mapFor === 'from') setFromPlace(name)
+            else setToPlace(name)
+            setMapFor(null)
+          }}
+          onClose={() => setMapFor(null)}
+        />
       )}
-      <label>
-        {t('field.note')}
-        <input type="text" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
-      <button className="btn primary" type="submit" disabled={!ok || busy}>
-        {t('common.save')}
-      </button>
-    </form>
+    </>
   )
 }
 

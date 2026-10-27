@@ -136,6 +136,8 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
               <dd className="num">
                 <code>{COMMIT}</code>
               </dd>
+              <dt>{t('settings.mapSource')}</dt>
+              <dd>{t('settings.mapSourceValue')}</dd>
             </dl>
           </li>
         </ul>

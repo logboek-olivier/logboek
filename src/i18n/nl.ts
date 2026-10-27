@@ -673,6 +673,25 @@ export const nl = {
   'kind.terugbetaling': 'Terugbetaling onkosten',
   'kind.overig-inkomen': 'Overig',
   'money.reimbursed': 'Terugbetaald',
+  // Kaart en plaatsen
+  'key.file.places': 'Plaatsen op de kaart',
+  'map.label': 'Kaart: sleep om te verschuiven, tik om een plaats te zetten',
+  'map.zoomIn': 'Inzoomen',
+  'map.zoomOut': 'Uitzoomen',
+  'map.center': 'Naar het gekozen punt',
+  'map.titleFrom': 'Van: plaats op de kaart',
+  'map.titleTo': 'Naar: plaats op de kaart',
+  'map.open': (p: { field: string }) => `${p.field} op de kaart kiezen`,
+  'map.hint': 'Tik op een bekende plaats of zet een nieuw punt.',
+  'map.placeName': 'Naam van de plaats',
+  'map.choose': 'Kiezen',
+  'map.here': 'Huidige locatie',
+  'map.hereFailed': 'Locatie niet beschikbaar. Zet locatietoegang aan voor deze app of tik op de kaart.',
+  'map.nearKnown': (p: { name: string }) => `Dicht bij ${p.name}`,
+  'route.average': (p: { nm: string; n: number }) => `Voorstel ${p.nm}: gemiddelde van de laatste ${p.n === 1 ? 'keer' : `${p.n} keer`} deze route`,
+  'route.straight': (p: { nm: string }) => `Hemelsbreed ${p.nm}; de werkelijke afstand is meestal groter`,
+  'settings.mapSource': 'Kaart',
+  'settings.mapSourceValue': 'Natural Earth (publiek domein), offline',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
