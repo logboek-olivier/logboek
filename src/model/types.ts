@@ -32,6 +32,10 @@ export interface WeekReview {
   score?: number
   /** Citaten uit reviews; Engelstalige citaten blijven Engels. */
   quotes: string[]
+  /** Oliviers eigen cijfer voor de trip (1–10). */
+  rating?: number
+  /** Eén zin: wat leerde ik. */
+  lesson?: string
 }
 
 export type BoatKind = 'catamaran' | 'eenromp' | 'motor' | 'overig'
@@ -73,6 +77,8 @@ export interface Trip extends SyncRecord {
   closedAt?: string
   /** Geplande etappes; Vandaag biedt "Zoals gepland" voor de etappe van vandaag. */
   route?: PlannedLeg[]
+  /** Afgevinkte punten van de vaste checklists: per checklist-id de id's van de afgevinkte punten. */
+  checks?: Record<string, string[]>
 }
 
 export interface Leg extends SyncRecord {
@@ -293,6 +299,21 @@ export interface Reminder extends SyncRecord {
   repeat?: ReminderRepeat
 }
 
+/** Vaste checklist (safety briefing, check-in, check-out, paklijst); per trip af te vinken, als sjabloon te bewerken. */
+export interface ChecklistItem {
+  id: string
+  text: LocalizedText
+}
+
+export interface Checklist extends SyncRecord {
+  title: LocalizedText
+  items: ChecklistItem[]
+  /** Bij welke soorten trip de lijst in Deze trip staat; leeg of ontbrekend = bij elke trip. */
+  tripTypes?: WeekType[]
+  /** seed: meegeleverd (ook na bewerken); eigen: door Olivier gemaakt. */
+  source: 'seed' | 'eigen'
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -304,6 +325,7 @@ export interface Collections {
   'plans.json.enc': WeekPlan
   'places.json.enc': Place
   'reminders.json.enc': Reminder
+  'checklists.json.enc': Checklist
 }
 
 export type CollectionPath = keyof Collections
@@ -318,6 +340,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'plans.json.enc',
   'places.json.enc',
   'reminders.json.enc',
+  'checklists.json.enc',
 ]
 
 export function newId(): string {

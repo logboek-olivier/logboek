@@ -77,6 +77,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await card.getByRole('button', { name: L('week.close') }).click()
       await expect(sheet).toContainText('Nepanna')
       await expect(sheet).toContainText(L('level.beginner'))
+      // In een minuut: cijfer en één zin; de review van gasten staat ingeklapt.
+      await sheet.getByRole('radio', { name: '8', exact: true }).click()
+      await sheet.getByLabel(L('close.lesson')).fill('Nep: eerder reven')
+      await sheet.getByRole('button', { name: L('close.guestReview') }).click()
       await sheet.getByLabel(L('week.reviewScore')).fill(lang === 'nl' ? '9,4' : '9.4')
       await sheet.getByLabel(L('week.quotes')).fill('Best skipper ever\nGreat week')
       await shots(page, 'week-afronden', lang)
@@ -89,7 +93,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       const wire = github.requests.map((r) => r.body ?? '').join('\n')
-      for (const secret of ['Nepanna', 'Nepgebied', 'Best skipper']) expect(wire).not.toContain(secret)
+      for (const secret of ['Nepanna', 'Nepgebied', 'Best skipper', 'eerder reven']) expect(wire).not.toContain(secret)
       expect(errors).toEqual([])
     })
   })

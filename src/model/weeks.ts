@@ -277,7 +277,14 @@ export function dayCountOf(week: Pick<WeekView, 'startDate' | 'endDate'>): numbe
 export async function closeWeek(store: Store, trip: Trip, review: WeekReview, today: string, settings: Settings): Promise<Undo> {
   const before = trip
   const quotes = review.quotes.map((q) => q.trim()).filter(Boolean).slice(0, 50)
-  const cleanReview: WeekReview = { quotes, ...(review.score !== undefined && Number.isFinite(review.score) ? { score: review.score } : {}) }
+  const rating = review.rating !== undefined && Number.isInteger(review.rating) && review.rating >= 1 && review.rating <= 10 ? review.rating : undefined
+  const lesson = review.lesson?.trim().slice(0, 300)
+  const cleanReview: WeekReview = {
+    quotes,
+    ...(review.score !== undefined && Number.isFinite(review.score) ? { score: review.score } : {}),
+    ...(rating !== undefined ? { rating } : {}),
+    ...(lesson ? { lesson } : {}),
+  }
   await store.put('trips.json.enc', { ...trip, review: cleanReview, closedAt: today, updatedAt: new Date().toISOString() })
   const wasActive = settings.activeWeekId === trip.id
   if (wasActive) await saveSettings(store, { activeWeekId: null })

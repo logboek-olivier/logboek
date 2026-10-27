@@ -1,10 +1,10 @@
 import { Plus, Repeat, Route, Trash2, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { formatDate, formatDateRange, formatNm, formatNumber } from '../format'
+import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from '../format'
 import { getLang, t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { deleteTrip } from '../model/edit'
-import { addDays, parseAmount } from '../model/money'
+import { addDays, parseAmount, totals } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
 import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
@@ -350,22 +350,34 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   )
 }
 
-/** Week afronden: dagen, nm, deelnemers met resultaat, en de review (score en citaten). */
+/**
+ * Trip afsluiten in een minuut: automatische samenvatting (dagen, nm, inkomsten in euro, studenten met resultaat), een
+ * cijfer en één zin "wat leerde ik". De review van gasten (score en citaten) staat eronder, ingeklapt.
+ */
 export function CloseWeekSheet({ store, trip, notify, onClose }: { store: Store; trip: Trip; notify: Notify; onClose: () => void }) {
   const view = weekView(trip, store.get('legs.json.enc'))
   const students = store.get('students.json.enc')
   const curricula = effectiveCurricula(store.get('curricula.json.enc'))
+  const transactions = store.get('transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.tripId === trip.id)
+  const money = totals(transactions)
   const lang = useLang()
+  const [rating, setRating] = useState<number | undefined>(trip.review?.rating)
+  const [lesson, setLesson] = useState(trip.review?.lesson ?? '')
   const [score, setScore] = useState(trip.review?.score !== undefined ? formatNumber(trip.review.score) : '')
   const [quotes, setQuotes] = useState((trip.review?.quotes ?? []).join('\n'))
+  const [guests, setGuests] = useState(trip.review?.score !== undefined || (trip.review?.quotes ?? []).length > 0)
   const parsedScore = score.trim() === '' ? undefined : parseAmount(score)
   const ok = parsedScore !== null
+  // Studenten van de trip: deelnemers met cursus en studenten die bij de trip horen.
+  const participants = trip.participants ?? []
+  const extra = students.filter((s) => s.deletedAt === null && s.weekId === trip.id && !participants.some((p) => p.id === s.id))
+  const people = [...participants.map((p) => ({ id: p.id, firstName: p.firstName, level: p.level, curriculumId: p.curriculumId })), ...extra.map((s) => ({ id: s.id, firstName: s.firstName, level: s.level, curriculumId: s.curriculumId }))]
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!ok) return
     const settings = currentSettings(store.get('settings.json.enc'))
-    const undo = await closeWeek(store, trip, { score: parsedScore ?? undefined, quotes: quotes.split('\n') }, todayIso(), settings)
+    const undo = await closeWeek(store, trip, { score: parsedScore ?? undefined, quotes: quotes.split('\n'), rating, lesson }, todayIso(), settings)
     onClose()
     notify(t('week.closed'), undo)
   }
@@ -389,12 +401,18 @@ export function CloseWeekSheet({ store, trip, notify, onClose }: { store: Store;
             <dt>{t('week.nm')}</dt>
             <dd className="stat-value">{formatNm(view.nm)}</dd>
           </div>
+          {transactions.length > 0 && (
+            <div className="stat">
+              <dt>{t('week.income')}</dt>
+              <dd className="stat-value">{formatMoney(money.incomeEur, 'EUR')}</dd>
+            </div>
+          )}
         </dl>
-        {(trip.participants ?? []).length > 0 && (
+        {people.length > 0 && (
           <div className="stack-sm">
             <span className="label">{t('week.participants')}</span>
             <ul className="rows">
-              {(trip.participants ?? []).map((p) => {
+              {people.map((p) => {
                 const student = students.find((s) => s.id === p.id && s.deletedAt === null)
                 const course = curricula.find((c) => c.id === (student?.curriculumId ?? p.curriculumId))
                 const result = student?.exam ? t(student.exam.passed ? 'week.passed' : 'week.notPassed') : p.level ? t(`level.${p.level}`) : ''
@@ -410,15 +428,37 @@ export function CloseWeekSheet({ store, trip, notify, onClose }: { store: Store;
             </ul>
           </div>
         )}
+        <div className="stack-sm">
+          <span className="label">{t('close.rating')}</span>
+          <div className="rating-buttons" role="radiogroup" aria-label={t('close.rating')}>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <button key={n} type="button" role="radio" aria-checked={rating === n} className={`chip${rating === n ? ' active' : ''}`} onClick={() => setRating(rating === n ? undefined : n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
         <label>
-          {t('week.reviewScore')}
-          <input inputMode="decimal" autoComplete="off" placeholder="9,4" value={score} onChange={(e) => setScore(e.target.value)} />
+          {t('close.lesson')}
+          <input type="text" autoComplete="off" maxLength={300} placeholder={t('close.lessonPlaceholder')} value={lesson} onChange={(e) => setLesson(e.target.value)} />
         </label>
-        <label>
-          {t('week.quotes')}
-          <textarea rows={4} value={quotes} onChange={(e) => setQuotes(e.target.value)} />
-        </label>
-        <p className="muted small">{t('week.quotesHint')}</p>
+        {guests ? (
+          <>
+            <label>
+              {t('week.reviewScore')}
+              <input inputMode="decimal" autoComplete="off" placeholder="9,4" value={score} onChange={(e) => setScore(e.target.value)} />
+            </label>
+            <label>
+              {t('week.quotes')}
+              <textarea rows={4} value={quotes} onChange={(e) => setQuotes(e.target.value)} />
+            </label>
+            <p className="muted small">{t('week.quotesHint')}</p>
+          </>
+        ) : (
+          <button type="button" className="btn link" onClick={() => setGuests(true)}>
+            {t('close.guestReview')}
+          </button>
+        )}
         <button className="btn primary" type="submit" disabled={!ok}>
           {t('week.closeSave')}
         </button>
