@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { dateAfter, dueItems, doneReminders, QUICK_OFFSETS } from '../src/model/reminders'
+import { alarmTrigger, buildIcs } from '../src/model/ics'
+import { dateAfter, dueItems, doneReminders, nextOccurrence, QUICK_OFFSETS } from '../src/model/reminders'
 import type { Reminder } from '../src/model/types'
 
 // Termijnen: deadlines en vervaldatums samen. Alle gegevens zijn verzonnen.
@@ -28,5 +29,33 @@ describe('termijnen', () => {
     const due = dueItems(list, [{ title: 'GitHub-token', date: '2027-01-01', kind: 'vervalt', source: 'token' }])
     expect(due.map((d) => d.title)).toEqual(['Te laat', 'Nepticket boeken', 'GitHub-token', 'Neppas'])
     expect(doneReminders(list).map((d) => d.id)).toEqual(['c'])
+  })
+
+  it('terugkerend: de volgende keer een maand of een jaar later (laatste dag van de maand als die korter is)', () => {
+    expect(nextOccurrence({ date: '2026-01-31', repeat: 'maandelijks' })).toBe('2026-02-28')
+    expect(nextOccurrence({ date: '2026-10-27', repeat: 'jaarlijks' })).toBe('2027-10-27')
+  })
+
+  it('agenda-bestand: hele dag, herinnering vooraf om 9:00, herhalen, tekst geëscaped en gevouwen', () => {
+    const ics = buildIcs(
+      { id: 'abc', title: 'Neppas; verlengen, nu', date: '2026-12-31', note: 'regel 1\nregel 2', repeat: 'jaarlijks', alarmDays: 7 },
+      new Date('2026-10-27T10:00:00Z'),
+    )
+    const lines = ics.split('\r\n')
+    expect(lines).toContain('BEGIN:VCALENDAR')
+    expect(lines).toContain('UID:abc@logboek')
+    expect(lines).toContain('DTSTAMP:20261027T100000Z')
+    expect(lines).toContain('DTSTART;VALUE=DATE:20261231')
+    expect(lines).toContain('DTEND;VALUE=DATE:20270101')
+    expect(lines).toContain('SUMMARY:Neppas\\; verlengen\\, nu')
+    expect(lines).toContain('DESCRIPTION:regel 1\\nregel 2')
+    expect(lines).toContain('RRULE:FREQ=YEARLY')
+    expect(lines).toContain('TRIGGER:-P6DT15H')
+    expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true)
+    expect(alarmTrigger(0)).toBe('PT9H')
+    expect(alarmTrigger(1)).toBe('-P0DT15H')
+    const long = buildIcs({ id: 'x', title: 'N'.repeat(200), date: '2026-12-31', alarmDays: 7 })
+    expect(long.split('\r\n').every((l) => l.length <= 75)).toBe(true)
+    expect(buildIcs({ id: 'x', title: 'Nep', date: '2026-12-31', alarmDays: 7 })).not.toContain('RRULE')
   })
 })

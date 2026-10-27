@@ -7,6 +7,7 @@ import { Toast, type ToastMessage } from '../components/Toast'
 import { setScreen } from '../errors'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
+import type { AddTab } from '../model/types'
 import { Money } from './Money'
 import { BackToMore, More, type MoreScreen } from './More'
 import { QuickAdd, type AddInit } from './QuickAdd'
@@ -41,8 +42,20 @@ const SCREEN_NAMES: Record<Screen, string> = {
 }
 
 
+/**
+ * Snelkoppeling op het app-icoon (?toevoegen=dag|inkomsten|uitgave): opent Toevoegen op dat tabblad. De parameter
+ * verdwijnt direct uit de adresbalk, zodat verversen niet opnieuw Toevoegen opent.
+ */
+function shortcutTab(): AddTab | null {
+  const value = new URLSearchParams(window.location.search).get('toevoegen')
+  if (value === null) return null
+  window.history.replaceState(null, '', window.location.pathname)
+  return value === 'inkomsten' || value === 'uitgave' || value === 'dag' ? value : null
+}
+
 export function Home({ store }: { store: Store }) {
-  const [screen, setScreenState] = useState<Screen>('vandaag')
+  const [shortcut] = useState(shortcutTab)
+  const [screen, setScreenState] = useState<Screen>(shortcut ? 'toevoegen' : 'vandaag')
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [addInit, setAddInit] = useState<AddInit | undefined>(undefined)
   const counter = useRef(0)
@@ -106,7 +119,7 @@ export function Home({ store }: { store: Store }) {
         />
       )}
       {screen === 'logboek' && <Sailing store={store} notify={notify} />}
-      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}-${addInit.from ?? ''}-${addInit.to ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} />}
+      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}-${addInit.from ?? ''}-${addInit.to ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} tab={addInit ? 'dag' : (shortcut ?? 'dag')} />}
       {screen === 'meer' && <More onOpen={select} />}
       {screen === 'geld' && (
         <>

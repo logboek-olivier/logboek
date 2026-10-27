@@ -148,6 +148,8 @@ export interface Settings extends SyncRecord {
   activeWeekId?: string | null
   /** Boten (naam|model) die Olivier na een import bevestigd of overgeslagen heeft; die vraagt de app niet opnieuw. */
   boatsChecked?: string[]
+  /** Herinnering in het agenda-bestand van een termijn: zoveel dagen vooraf (standaard 7). */
+  reminderAlarmDays?: number
 }
 
 // Training (release 2). Bond-onafhankelijk: ASA, RYA, CWO of een eigen cursus.
@@ -275,6 +277,10 @@ export interface Place extends SyncRecord {
 export type ReminderKind = 'deadline' | 'vervalt'
 export const REMINDER_KINDS: readonly ReminderKind[] = ['deadline', 'vervalt']
 
+/** Terugkerende termijn: afronden zet de datum een maand of een jaar verder. */
+export type ReminderRepeat = 'maandelijks' | 'jaarlijks'
+export const REMINDER_REPEATS: readonly ReminderRepeat[] = ['maandelijks', 'jaarlijks']
+
 /** Termijn: bijvoorbeeld "Vliegticket boeken" (deadline) of "Pinpas" (vervalt). */
 export interface Reminder extends SyncRecord {
   title: string
@@ -284,6 +290,7 @@ export interface Reminder extends SyncRecord {
   /** jjjj-mm-dd waarop afgerond, of null. */
   doneAt: string | null
   note?: string
+  repeat?: ReminderRepeat
 }
 
 /** Versleutelde bestanden in logboek-data en hun recordtype. */

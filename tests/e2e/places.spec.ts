@@ -18,8 +18,10 @@ test('Mijlenvoorstel uit de historie: spaties en spelvarianten, samenvoegen, pla
 
   await logDay(page, 'Nep Baai Tiha', 'Nepalimizana', '10')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   await logDay(page, 'nepbaaitiha', 'Nepalmizana', '14')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
 
   // Andere spelling, andere spaties: toch hetzelfde voorstel (gemiddelde van 10 en 14).
   await logDay(page, 'Nepalmizana', 'Nepbaai tiha')

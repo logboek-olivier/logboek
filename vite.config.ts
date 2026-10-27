@@ -56,6 +56,12 @@ export default defineConfig({
           { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
+        // Lang indrukken op het app-icoon: direct naar Toevoegen (na ontgrendelen of binnen de 5 minuten van de sessie).
+        shortcuts: [
+          { name: 'Dag loggen', short_name: 'Dag', url: '/logboek/?toevoegen=dag', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Inkomsten', short_name: 'Inkomsten', url: '/logboek/?toevoegen=inkomsten', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Uitgave', short_name: 'Uitgave', url: '/logboek/?toevoegen=uitgave', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
+        ],
       },
       workbox: {
         // Een nieuwe versie neemt direct over, ruimt oude caches op en herlaadt open vensters (public/sw-vensters.js),

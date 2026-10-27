@@ -60,8 +60,8 @@ export interface AddInit {
   to?: string
 }
 
-export function QuickAdd({ store, onDone, init, notify }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify }) {
-  const [tab, setTab] = useState<AddTab>('dag')
+export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify; tab?: AddTab }) {
+  const [tab, setTab] = useState<AddTab>(initialTab)
   const choose = (next: AddTab) => setTab(next)
   return (
     <section className="stack">

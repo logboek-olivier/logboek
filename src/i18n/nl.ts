@@ -774,6 +774,16 @@ export const nl = {
   'route.today': 'Gepland vandaag',
   'route.asPlanned': 'Zoals gepland',
   'route.adjust': 'Aanpassen',
+  // Termijnen herhalen en in de agenda
+  'reminder.repeat': 'Herhalen',
+  'reminderRepeat.eenmalig': 'Eenmalig',
+  'reminderRepeat.maandelijks': 'Maandelijks',
+  'reminderRepeat.jaarlijks': 'Jaarlijks',
+  'reminder.nextTime': (p: { date: string }) => `Volgende keer: ${p.date}`,
+  'reminder.alarm': 'Herinnering',
+  'reminder.alarmSameDay': 'Op de dag zelf',
+  'reminder.alarmBefore': (p: { n: number }) => (p.n === 1 ? '1 dag vooraf' : p.n === 7 ? '1 week vooraf' : p.n === 14 ? '2 weken vooraf' : p.n === 30 ? '1 maand vooraf' : `${p.n} dagen vooraf`),
+  'reminder.toCalendar': 'Zet in agenda',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

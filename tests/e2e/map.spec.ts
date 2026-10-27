@@ -47,10 +47,12 @@ test('Kaart offline: punt zetten, huidige locatie, bekende plaats kiezen; afstan
   await expect(page.getByLabel('Zeemijlen')).toHaveValue('')
   await page.getByLabel('Zeemijlen').fill('30')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
 
   // Nog twee keer dezelfde route (ook andersom), dan het voorstel: gemiddelde.
   await logDay(page, 'Nepbarths', 'Nepstatia', '26')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   await logDay(page, 'Nepstatia', 'Nepbarths')
   await expect(page.getByLabel('Zeemijlen')).toHaveValue('28')
   await expect(page.getByText('Voorstel 28 nm: gemiddelde van de laatste 2 keer deze route')).toBeVisible()
