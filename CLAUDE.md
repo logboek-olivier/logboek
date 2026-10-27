@@ -87,6 +87,7 @@ logboek-data/
   students.json.enc
   plans.json.enc
   places.json.enc        # plaatsen met een punt op de kaart
+  reminders.json.enc     # termijnen: deadlines en vervaldatums
   documents/index.json.enc   # release 3
   documents/<uuid>.bin       # release 3
 ```
@@ -124,6 +125,10 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 `id, name, lat, lon, country?, updatedAt, deletedAt`
 - Een plaats krijgt een punt door op de kaart te tikken of "Huidige locatie" te kiezen, plus een naam; dezelfde naam (zonder hoofdletters en accenten) is dezelfde plaats. Dagen verwijzen via de naam naar een plaats; plaatsen zonder punt (bijvoorbeeld uit de import) blijven gewoon namen.
 - **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen), wat Olivier echt gevaren heeft. Het vult het nm-veld voor zolang Olivier niets typt. Zonder eerdere keren alleen een hint "Hemelsbreed …" (grootcirkel), nooit als voorstel.
+
+**Reminder** = termijn (`reminders.json.enc`, `src/model/reminders.ts`)
+`id, title, date, kind (deadline|vervalt), doneAt (jjjj-mm-dd of null), note?, updatedAt, deletedAt`
+- Deadlines ("Vliegticket boeken, uiterlijk over 3 weken") en vervaldatums ("Pinpas verloopt over een jaar") staan samen in één lijst, met de vervaldatum van de token en de start van de volgende trip erbij. Toevoegen: wat, soort en wanneer (snelle keuzes over 1 week, 3 weken, 1 maand, 3 maanden, 1 jaar, of een datum). Afronden en verwijderen met ongedaan maken. De kluis voegt later documenten met een vervaldatum toe.
 
 **Afgeleiden** (`src/model/derive.ts`, met tests): totaal nm, nm per rol, nm per watertype (binnenwater / zee / getijdenwater), nachturen, aantal dagen, aantal tochten, nm dit kalenderjaar, laatste tocht.
 
@@ -193,7 +198,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Termijnen, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -201,7 +206,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - de planning van vandaag uit de lopende weekplanning (alleen als er vandaag iets gepland is; tik op een onderwerp = geoefend voor de hele groep);
    - de knop "Dag van vandaag loggen" (opent Toevoegen → Dag, voorgevuld);
    - nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`);
-   - dagen tot de volgende vervaldatum (nu de token; de kluis voegt documenten toe).
+   - Termijnen: de eerstvolgende drie (eigen deadlines en vervaldatums, de token, de start van de volgende trip; te laat of verlopen bovenaan), "Termijn toevoegen" en "Alle" (Meer → Termijnen).
 4. **Deze trip:** de lopende trip; zonder lopende trip "Nieuwe trip". Onderaan de komende trips met het aantal dagen tot de start (tikken = bewerken).
    - Kop met naam, type, datums, boot (naam · model · lengte in ft en m · soort), basis, gebied, charterbedrijf en organisatie (tikken = bewerken). Ontbrekende bootgegevens: melding met "Aanvullen".
    - Vergeten dagen (binnen de trip, tot en met vandaag, zonder gelogde dag): melding met één knop die Toevoegen → Dag op die datum opent.
@@ -225,6 +230,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
 6. **Logboek:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, trips). Grafiek nm per maand (12 maanden). "Nieuwe trip". Daaronder trips per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen; "Trip bewerken" opent het tripscherm. Knop "Importeren" (Excel of CSV).
 7. **Geld** (onder Meer): alles in euro, het originele bedrag klein eronder ("voorlopig" bij een voorlopige koers). Saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met bewerken (ook het werkelijk ontvangen eurobedrag) en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).
+8. **Termijnen** (onder Meer): alle openstaande termijnen, eerstvolgende eerst, toevoegen, en de afgeronde.
 8. **Cursussen** (onder Meer): per bond, met import (JSON), per cursus bewerken (groepen en onderwerpen toevoegen, wijzigen, verplaatsen, examenkritisch) en delen.
 9. **Studentenarchief** (onder Meer): studenten zonder trip en gearchiveerde studenten; terugzetten en wissen.
 10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash).
@@ -246,10 +252,10 @@ logboek/
     crypto/          keys.ts, encrypt.ts, passphrase.ts, recovery.ts, webauthn.ts
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
-    model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, expiry.ts,
+    model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
                      weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
-    screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek),
+    screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), Deadlines,
                      Money, QuickAdd, More, Settings
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, MapSheet, Sheet, EditSheets, WeekSheet, CurriculumSheets,
                      SyncStatusLine, Icon, Toast, …)

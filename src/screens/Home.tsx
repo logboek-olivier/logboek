@@ -16,6 +16,7 @@ import { StudentArchive } from './StudentArchive'
 import { ThisWeek } from './ThisWeek'
 import { Today } from './Today'
 import { Courses } from './Courses'
+import { Deadlines } from './Deadlines'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -29,6 +30,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   logboek: 'Logboek',
   meer: 'Meer',
   geld: 'Geld',
+  termijnen: 'Termijnen',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -78,13 +80,13 @@ export function Home({ store }: { store: Store }) {
     select('vandaag')
   }
 
-  const activeTab: Tab = screen === 'geld' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
+  const activeTab: Tab = screen === 'geld' || screen === 'termijnen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
 
   return (
     <main className="app with-bar">
       <SyncStatusLine store={store} />
       {screen === 'vandaag' && (
-        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={() => select('toevoegen')} />
+        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={() => select('toevoegen')} onReminders={() => select('termijnen')} />
       )}
       {screen === 'week' && (
         <ThisWeek
@@ -103,6 +105,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Money store={store} notify={notify} onAdd={() => select('toevoegen')} />
+        </>
+      )}
+      {screen === 'termijnen' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Deadlines store={store} notify={notify} onToken={() => select('instellingen')} />
         </>
       )}
       {screen === 'cursussen' && (

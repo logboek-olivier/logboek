@@ -1,6 +1,5 @@
-import { CalendarClock, CalendarDays, LoaderCircle, NotebookPen } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { useRef, useState, type ReactNode, type TouchEvent } from 'react'
+import { CalendarDays, ChevronRight, LoaderCircle, NotebookPen, Plus } from 'lucide-react'
+import { useRef, useState, type TouchEvent } from 'react'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
@@ -8,7 +7,8 @@ import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
 import { nmInYear } from '../model/derive'
-import { nextExpiry } from '../model/expiry'
+import { ReminderSheet } from '../components/ReminderSheet'
+import { DueList, useDueItems } from './Deadlines'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil, useSession } from '../session'
@@ -16,8 +16,8 @@ import { describeStatus, type Store } from '../storage/store'
 import { TodayPlan } from './Planning'
 import { t } from '../i18n'
 
-// Vandaag: planning van vandaag (als er een lopende weekplanning is), "Dag van vandaag loggen", nm dit jaar met
-// voortgang naar het jaardoel en dagen tot de volgende vervaldatum. De week zelf staat onder Deze week.
+// Vandaag: planning van vandaag (als er een lopende planning is), "Dag van vandaag loggen", nm dit jaar met
+// voortgang naar het jaardoel en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
 // Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
 
 const TOKEN_WARNING_DAYS = 30
@@ -29,11 +29,13 @@ export function Today({
   notify,
   onSettings,
   onAdd,
+  onReminders,
 }: {
   store: Store
   notify: Notify
   onSettings: () => void
   onAdd: () => void
+  onReminders: () => void
 }) {
   const session = useSession()
   const legs = useCollection(store, 'legs.json.enc')
@@ -48,8 +50,9 @@ export function Today({
   const share = Math.min(1, nmYear / goal)
   const tokenDays = daysUntil(session.tokenExpiresAt, today)
   const tokenInvalid = status.kind === 'error' && status.code === 'token'
-  // Vervaldatums die de app kent; de kluis voegt later documenten toe.
-  const expiry = nextExpiry([{ label: t('expiry.token'), date: session.tokenExpiresAt }], today)
+  // Termijnen: eigen deadlines en vervaldatums, de token en de volgende trip. De kluis voegt later documenten toe.
+  const due = useDueItems(store)
+  const [addingReminder, setAddingReminder] = useState(false)
 
   return (
     <section className="stack" onTouchStart={pull.onTouchStart} onTouchMove={pull.onTouchMove} onTouchEnd={pull.onTouchEnd}>
@@ -117,23 +120,21 @@ export function Today({
           <span className="progress-fill" ref={(el) => setWidth(el, share)} />
         </span>
       </button>
-      {expiry && (
-        <dl className="grid">
-          <Card
-            icon={CalendarClock}
-            label={t('today.nextExpiry')}
-            value={
-              expiry.days < 0
-                ? t('expiry.expired')
-                : expiry.days === 0
-                  ? t('expiry.today')
-                  : t('expiry.inDays', { n: expiry.days })
-            }
-            extra={[`${expiry.label} · ${formatDate(expiry.date)}`]}
-            wide
-          />
-        </dl>
-      )}
+      <div className="section">
+        <div className="section-head">
+          <h2>{t('reminder.screen')}</h2>
+          <button className="btn link small" onClick={onReminders}>
+            {t('reminder.all')}
+            <Icon icon={ChevronRight} />
+          </button>
+        </div>
+        {due.length > 0 && <DueList store={store} items={due.slice(0, 3)} notify={notify} onToken={onSettings} />}
+        <button className="btn" onClick={() => setAddingReminder(true)}>
+          <Icon icon={Plus} />
+          {t('reminder.new')}
+        </button>
+      </div>
+      {addingReminder && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAddingReminder(false)} />}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}
     </section>
   )
@@ -186,38 +187,6 @@ function Notice({ text, onSettings }: { text: string; onSettings: () => void }) 
       <button className="btn link" onClick={onSettings}>
         {t('settings.replaceToken')}
       </button>
-    </div>
-  )
-}
-
-function Card({
-  icon,
-  label,
-  value,
-  extra = [],
-  wide = false,
-  children,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-  extra?: string[]
-  wide?: boolean
-  children?: ReactNode
-}) {
-  return (
-    <div className={`stat${wide ? ' wide' : ''}`}>
-      <dt>
-        <Icon icon={icon} />
-        {label}
-      </dt>
-      <dd>{value}</dd>
-      {extra.map((e) => (
-        <dd key={e} className="small muted">
-          {e}
-        </dd>
-      ))}
-      {children}
     </div>
   )
 }

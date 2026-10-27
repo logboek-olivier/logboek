@@ -35,9 +35,9 @@ test('onderbalk Vandaag · Deze week · + · Logboek · Meer; onder Meer Geld, C
   const today = page.locator('main')
   await expect(today).not.toContainText('€')
   await expect(today).not.toContainText('85')
-  await expect(page.locator('.grid')).toContainText('Volgende vervaldatum')
-  await expect(page.locator('.grid')).toContainText('over 40 dagen')
-  await expect(page.locator('.grid')).toContainText('GitHub-token')
+  const due = page.locator('.due-list')
+  await expect(due).toContainText('over 40 dagen')
+  await expect(due).toContainText('GitHub-token')
   await expectNoHorizontalOverflow(page)
 
   // Meer: Geld en Instellingen, met terug naar Meer.
