@@ -61,6 +61,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             />
             <Stat label={t('money.income')} value={formatMoney(all.incomeEur, 'EUR')} />
             <Stat label={t('money.costs')} value={formatMoney(all.costsEur, 'EUR')} />
+            {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
             <OtherStat other={all.other} />
           </dl>
 

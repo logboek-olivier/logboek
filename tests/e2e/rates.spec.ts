@@ -39,7 +39,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       for (const [amount, currency] of [['100', 'USD'], ['40', 'EUR']] as const) {
         await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
-        await page.getByRole('tab', { name: L('quick.tabTip') }).click()
+        await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
         await page.getByLabel(L('field.amount')).fill(amount)
         await page.getByRole('combobox', { name: L('field.currency') }).selectOption(currency)
         await page.getByRole('button', { name: L('common.save') }).click()

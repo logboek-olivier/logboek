@@ -125,13 +125,13 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` in `transactions.json.enc`, zodat de latere volledige geldmodule (rekeningen, bankimports, netto waarde) zonder migratie kan aansluiten.
 
 **Transaction** (velden voor vandaag)
-`id, date, kind (fooi|loon|kosten|investering), amount (positief getal), currency (EUR|USD|GBP|CHF|SEK|DKK|NOK|XCD|HRK), amountEur?, rate?, rateDate?, receivedEur?, source (yacht-week|sailing-virgins|delivery|overig), tripId?, note?, updatedAt, deletedAt`
-- `fooi` en `loon` zijn inkomsten; `kosten` en `investering` uitgaven. Richting volgt uit `kind`, niet uit het teken.
+`id, date, kind (fooi|loon|bonus|terugbetaling|overig-inkomen|kosten|investering), amount (positief getal), currency (EUR|USD|GBP|CHF|SEK|DKK|NOK|XCD|HRK), amountEur?, rate?, rateDate?, receivedEur?, source (yacht-week|sailing-virgins|delivery|overig), tripId?, note?, updatedAt, deletedAt`
+- `fooi`, `loon` (of dagtarief), `bonus` (of provisie), `terugbetaling` (van voorgeschoten onkosten) en `overig-inkomen` zijn inkomsten; `kosten` en `investering` uitgaven. Richting volgt uit `kind`, niet uit het teken. Een terugbetaling telt niet als verdiend (apart als "Terugbetaald"), wel in het saldo.
 - `investering` = uitgaven die het zeiljaar mogelijk maken (cursussen, examens, uitrusting).
 - Alles wordt in euro getoond (`src/model/rates.ts`). Volgorde: `receivedEur` (werkelijk ontvangen, optioneel), dan de opgeslagen koers (`amountEur = amount / rate`, `rate` = valuta per 1 EUR, `rateDate`), dan de ECB-koers uit `public/rates.json` van de transactiedatum of de laatste werkdag daarvoor.
 - Een koers wordt opgeslagen zodra hij definitief is: bij nieuwe transacties direct, bij bestaande één keer per sessie na een geslaagde sync. Is de datum nieuwer dan het koersbestand (of is de app offline), dan geldt tijdelijk de laatst bekende koers, gemarkeerd als "voorlopig"; die wordt nooit opgeslagen. Zonder koersbestand staat een bedrag apart per valuta, nooit omgerekend met een verzonnen koers.
 - `public/rates.json` (`{format: 'logboek-rates', source, dates[], rates: {USD: [...], …}}`) bouwt `scripts/build-rates.mjs` in `deploy.yml` uit de ECB-referentiekoersen (volledige historie); XCD = USD × 2,70. Het bestand staat in `.gitignore` en wordt door de service worker "eerst netwerk, offline uit de cache" geladen, niet geprecachet. De bouwdatum is de commitdatum, zodat de dagelijkse build geen update meldt.
-- `tripId` wordt automatisch gezet als de datum binnen een trip valt (opgeslagen tripdatums gaan voor); Olivier kiest dit niet zelf.
+- Inkomsten horen bij een trip: Toevoegen → Inkomsten kiest standaard de trip waarin de datum valt (anders de lopende trip) en volgt de datum zolang Olivier niets anders kiest; alleen zonder enige trip mag het leeg blijven. Bij uitgaven volgt de trip uit de datum (te wijzigen onder "Meer velden"). In het bewerkblad is de trip te kiezen.
 - Later toe te voegen (release 4): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
 
 ### Training
@@ -211,10 +211,10 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - naam, type als knoppen, startdatum (vandaag), aantal dagen (7, tot 120);
    - boot: naam, model, lengte en basis (verplicht), soort en charterbedrijf, met suggesties uit eerdere trips; gebied, organisatie;
    - deelnemers één per regel met optioneel niveau en cursus.
-5. **Toevoegen (+):** tabs **Dag · Fooi · Kosten**, opent op Dag.
+5. **Toevoegen (+):** tabs **Dag · Inkomsten · Uitgave**, opent op Dag.
    - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar, nm, watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Alleen naar en nm zijn nodig.
-   - Fooi: bedrag (groot numeriek toetsenbord), soort, bron, valuta, datum.
-   - Kosten: bedrag, omschrijving, soort (kosten/investering); bron, valuta en datum onder "Meer velden".
+   - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bron, valuta, datum, notitie.
+   - Uitgave: bedrag, omschrijving, soort (kosten/investering); bron, valuta, datum en trip onder "Meer velden".
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
 6. **Logboek:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, trips). Grafiek nm per maand (12 maanden). "Nieuwe trip". Daaronder trips per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen; "Trip bewerken" opent het tripscherm. Knop "Importeren" (Excel of CSV).
 7. **Geld** (onder Meer): alles in euro, het originele bedrag klein eronder ("voorlopig" bij een voorlopige koers). Saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met bewerken (ook het werkelijk ontvangen eurobedrag) en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).

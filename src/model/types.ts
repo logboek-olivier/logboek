@@ -87,7 +87,10 @@ export interface Leg extends SyncRecord {
   source: 'import' | 'manual'
 }
 
-export type TransactionKind = 'fooi' | 'loon' | 'kosten' | 'investering'
+/** Inkomsten: fooi, loon (of dagtarief), bonus (of provisie), terugbetaling van onkosten, overig; uitgaven: kosten, investering. */
+export type TransactionKind = 'fooi' | 'loon' | 'bonus' | 'terugbetaling' | 'overig-inkomen' | 'kosten' | 'investering'
+export const INCOME_KIND_LIST = ['fooi', 'loon', 'bonus', 'terugbetaling', 'overig-inkomen'] as const
+export type IncomeKind = (typeof INCOME_KIND_LIST)[number]
 export type TransactionSource = 'yacht-week' | 'sailing-virgins' | 'delivery' | 'overig'
 export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | 'NOK' | 'XCD'
 
@@ -109,12 +112,12 @@ export interface Transaction extends SyncRecord {
   /** Werkelijk ontvangen eurobedrag, optioneel; gaat voor de omrekening. */
   receivedEur?: number
   source: TransactionSource
-  /** Automatisch gezet als de datum binnen een tocht valt. */
+  /** De trip; bij inkomsten gekozen (standaard de trip van de datum), bij uitgaven automatisch op datum. */
   tripId?: string
   note?: string
 }
 
-export type AddTab = 'fooi' | 'kosten' | 'dag'
+export type AddTab = 'dag' | 'inkomsten' | 'uitgave'
 export type Water = 'zee' | 'getij' | 'binnen'
 
 export interface Settings extends SyncRecord {
@@ -125,7 +128,7 @@ export interface Settings extends SyncRecord {
   lastSource: TransactionSource
   lastTripId?: string
   // Optionele velden (release 1): oudere data zonder deze velden blijft geldig; oudere apps laten ze staan.
-  lastIncomeKind?: 'fooi' | 'loon'
+  lastIncomeKind?: IncomeKind
   lastCostKind?: 'kosten' | 'investering'
   lastWater?: Water
   /** Jaardoel in nm voor de kaart op Vandaag; standaard 2.500. */

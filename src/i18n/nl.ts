@@ -37,7 +37,7 @@ export const nl = {
   'role.trainee': 'Trainee',
   'role.instructeur': 'Instructeur',
   'kind.fooi': 'Fooi',
-  'kind.loon': 'Loon',
+  'kind.loon': 'Loon of dagtarief',
   'kind.kosten': 'Kosten',
   'kind.investering': 'Investering',
   'source.yacht-week': 'Yacht Week',
@@ -226,8 +226,6 @@ export const nl = {
   'trip.deleteWithDays': 'Trip en dagen verwijderen',
 
   // Snel toevoegen
-  'quick.tabTip': 'Fooi',
-  'quick.tabCost': 'Kosten',
   'quick.tabDay': 'Dag',
   'quick.amountPlaceholder': '0,00',
   'quick.today': 'vandaag',
@@ -588,12 +586,12 @@ export const nl = {
   'week.addParticipants': 'Deelnemers toevoegen',
   'week.checklists': 'Checklists',
   'week.noDays': 'Nog geen dagen in deze trip.',
-  'week.money': 'Fooien en kosten',
+  'week.money': 'Inkomsten en uitgaven',
   'week.showAmounts': 'Toon bedragen',
   'week.hideAmounts': 'Verberg bedragen',
   'week.amountsHidden': (p: { n: number }) => `${p.n} ${plural(p.n, 'transactie', 'transacties')} in deze trip; bedragen verborgen.`,
   'week.income': 'Inkomsten',
-  'week.costs': 'Kosten',
+  'week.costs': 'Uitgaven',
 
   // Geld in euro
   'money.receivedEur': 'Werkelijk ontvangen in euro (optioneel)',
@@ -667,6 +665,14 @@ export const nl = {
   'trip.logMissing': (p: { date: string }) => `${p.date} loggen`,
   'trip.editDay': (p: { date: string }) => `Dag ${p.date} bewerken`,
   'trip.inDays': (p: { n: number }) => (p.n === 0 ? 'vandaag' : `over ${p.n} ${plural(p.n, 'dag', 'dagen')}`),
+  // Toevoegen: Dag · Inkomsten · Uitgave
+  'quick.tabIncome': 'Inkomsten',
+  'quick.tabExpense': 'Uitgave',
+  'quick.noTrip': 'Geen trip',
+  'kind.bonus': 'Bonus of provisie',
+  'kind.terugbetaling': 'Terugbetaling onkosten',
+  'kind.overig-inkomen': 'Overig',
+  'money.reimbursed': 'Terugbetaald',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

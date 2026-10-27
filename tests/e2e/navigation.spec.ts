@@ -23,12 +23,12 @@ test('onderbalk Vandaag · Deze week · + · Logboek · Meer; onder Meer Geld, C
 
   // Fooi toevoegen: de bevestiging noemt geen bedrag, en Vandaag toont geen geld.
   await bar.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Fooi' }).click()
+  await page.getByRole('tab', { name: 'Inkomsten' }).click()
   await page.getByLabel('Bedrag').fill('85,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Fooi opgeslagen')
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await page.getByRole('tab', { name: 'Kosten' }).click()
+  await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByLabel('Bedrag').fill('12')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Kosten opgeslagen')
