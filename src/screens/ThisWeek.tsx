@@ -1,4 +1,6 @@
-import { CalendarPlus, ChevronRight, Eye, EyeOff, Pencil, Plus, Users } from 'lucide-react'
+import { CalendarPlus, ChevronRight, Eye, EyeOff, ListChecks, Pencil, Plus, Users } from 'lucide-react'
+import { ChecklistSheet, NewChecklistButton } from '../components/ChecklistSheet'
+import { addChecklist, checkedItems, checklistsFor, effectiveChecklists } from '../model/checklists'
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { LegSheet, type Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
@@ -7,7 +9,7 @@ import { useCollection } from '../components/useCollection'
 import { CloseWeekSheet, organisationLabel, WeekSheet, weekTypeLabel } from '../components/WeekSheet'
 import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
-import { courseLabel, effectiveCurricula } from '../model/curricula'
+import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
 import { totalNm } from '../model/derive'
 import { totals } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
@@ -17,7 +19,7 @@ import { daysUntil } from '../session'
 import { legGaps, tripIncomplete } from '../model/gaps'
 import { IncompleteBadge } from '../components/Incomplete'
 import { activeWeek, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
-import type { Leg, Trip } from '../model/types'
+import type { Leg, Trip, WeekType } from '../model/types'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { PlansView } from './Planning'
@@ -163,6 +165,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
       )}
       {!detail && (
         <>
+          <TripChecklists store={store} notify={notify} trip={week} type={view.type} />
           <SailedDays store={store} notify={notify} legs={view.legs} nm={view.nm} onAdd={() => onAddDay({ date: nextDay, tripId: week.id })} />
           <WeekMoney store={store} weekId={week.id} />
           {upcomingSection}
@@ -171,6 +174,43 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
       {sheet === 'edit' && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
       {sheet === 'close' && <CloseWeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
     </section>
+  )
+}
+
+/** Vaste checklists bij deze soort trip (safety briefing, check-in en check-out, paklijst), met voortgang. */
+function TripChecklists({ store, notify, trip, type }: { store: Store; notify: Notify; trip: Trip; type: WeekType }) {
+  const lang = useLang()
+  const lists = checklistsFor(effectiveChecklists(useCollection(store, 'checklists.json.enc')), type)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const open = lists.find((l) => l.id === openId)
+  return (
+    <div className="section">
+      <h2>{t('checklist.section')}</h2>
+      <ul className="rows">
+        {lists.map((list) => {
+          const done = checkedItems(trip, list).size
+          return (
+            <li key={list.id}>
+              <button className="row-button" onClick={() => setOpenId(list.id)}>
+                <Icon icon={ListChecks} />
+                <span className="row-main">
+                  <span>{localized(list.title, lang)}</span>
+                </span>
+                <span className={`row-value small${done === list.items.length && done > 0 ? ' positive' : ''}`}>
+                  {t('checklist.count', { done, n: list.items.length })}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <NewChecklistButton
+        onAdd={() =>
+          void addChecklist(store, t('checklist.newTitle'), type).then((list) => setOpenId(list.id))
+        }
+      />
+      {open && <ChecklistSheet store={store} trip={trip} list={open} notify={notify} onClose={() => setOpenId(null)} />}
+    </div>
   )
 }
 

@@ -1,4 +1,4 @@
-import { CalendarPlus, ChevronDown, FileSpreadsheet, LoaderCircle, Pencil, Sailboat, Upload } from 'lucide-react'
+import { CalendarPlus, ChevronDown, FileText, FileSpreadsheet, LoaderCircle, Pencil, Sailboat, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { BarChart } from '../components/BarChart'
 import { LegSheet, type Notify } from '../components/EditSheets'
@@ -18,6 +18,7 @@ import { ROLES, todayIso, type Leg, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 import { BoatCheck } from './Boats'
+import { SailingExport } from './SailingExport'
 import { boatList, uncheckedBoats } from '../model/boats'
 import { currentSettings } from '../model/settings'
 import { t } from '../i18n'
@@ -35,6 +36,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   const [busy, setBusy] = useState(false)
   const [reading, setReading] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   // Boten uit de import (ook eerder geïmporteerde data) die Olivier nog niet bevestigd of overgeslagen heeft.
@@ -76,6 +78,8 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       setBusy(false)
     }
   }
+
+  if (exporting) return <SailingExport store={store} onBack={() => setExporting(false)} />
 
   if (checking && unchecked.length > 0) {
     return (
@@ -150,10 +154,18 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
         <h1>{t('nav.logbook')}</h1>
         {summary.days > 0 && importButton(false)}
       </header>
-      <button className="btn small quiet new-week" onClick={() => setEditing({ kind: 'new-week' })}>
-        <Icon icon={CalendarPlus} />
-        {t('week.new')}
-      </button>
+      <div className="row wrap">
+        <button className="btn small quiet new-week" onClick={() => setEditing({ kind: 'new-week' })}>
+          <Icon icon={CalendarPlus} />
+          {t('week.new')}
+        </button>
+        {summary.days > 0 && (
+          <button className="btn small quiet" onClick={() => setExporting(true)}>
+            <Icon icon={FileText} />
+            {t('export.title')}
+          </button>
+        )}
+      </div>
       {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
       <input ref={fileInput} type="file" hidden aria-label={t('import.file')} onChange={(e) => void onFile(e.target.files?.[0])} />
       <ErrorLine error={error} />

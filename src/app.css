@@ -2324,3 +2324,127 @@ body.presenting .bottom-bar {
   gap: var(--s-3);
   align-items: end;
 }
+
+/* Vaste checklists bij een trip */
+.check-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.check-items li + li {
+  border-top: 1px solid var(--border);
+}
+
+.check-item {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.check-item.on .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.check-item.on > span:last-child {
+  color: var(--text-muted);
+}
+
+.participant-row.checklist-row {
+  grid-template-columns: minmax(0, 1fr) 40px;
+}
+
+/* Trip afsluiten: cijfer 1–10 */
+.rating-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--s-2);
+}
+
+.rating-buttons .chip {
+  justify-content: center;
+}
+
+/* Zeiltijd exporteren: tabellen (op het scherm horizontaal te scrollen, afgedrukt op A4) */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.sailtime {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sailtime caption {
+  padding: var(--s-2) var(--s-3);
+  text-align: left;
+  font-weight: var(--fw-bold);
+}
+
+.sailtime th,
+.sailtime td {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.sailtime th {
+  color: var(--text-muted);
+  font-weight: var(--fw-medium);
+}
+
+.sailtime .num {
+  text-align: right;
+}
+
+.sailtime .total-row td {
+  font-weight: var(--fw-bold);
+  border-bottom: none;
+}
+
+@media print {
+  .sailtime-print .table-scroll {
+    overflow: visible;
+    border: none;
+    margin-bottom: 8mm;
+    background: none;
+  }
+
+  .sailtime-print .sailtime {
+    font-size: 9pt;
+  }
+
+  .sailtime-print .sailtime th,
+  .sailtime-print .sailtime td {
+    padding: 1.5mm 2mm;
+    border-bottom: 0.5pt solid #999;
+    white-space: normal;
+    color: #000;
+  }
+
+  .sailtime-print .sailtime tr {
+    break-inside: avoid;
+  }
+}
