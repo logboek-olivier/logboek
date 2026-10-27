@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { translate, type Lang } from '../../../src/i18n'
 
 // Verzonnen testgegevens; dit is geen echte token en geen echte wachtzin.
@@ -82,4 +82,13 @@ export async function storedLastUsed(page: Page): Promise<number | null> {
 export async function openMore(page: Page, item: string, more = 'Meer'): Promise<void> {
   await page.getByRole('navigation').getByRole('button', { name: more, exact: true }).click()
   await page.getByRole('button', { name: new RegExp(`^${item}`) }).click()
+}
+
+/** Vult de verplichte bootgegevens van een trip in (naam, model, lengte, basis). Verzonnen waarden. */
+export async function fillBoat(scope: Locator, lang: Lang = 'nl', boat = 'Nepboot'): Promise<void> {
+  const L = (key: Parameters<typeof translate>[1]) => translate(lang, key as 'common.next')
+  await scope.getByLabel(L('boat.name'), { exact: true }).fill(boat)
+  await scope.getByLabel(L('boat.model'), { exact: true }).fill('Nepmodel 40')
+  await scope.getByLabel(L('boat.length'), { exact: true }).fill('40')
+  await scope.getByLabel(L('boat.base'), { exact: true }).fill('Nepbasis')
 }

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, fillBoat } from './helpers/logbook'
 import { mockRates } from './helpers/rates'
 
 async function shots(page: Page, name: string, lang: Lang) {
@@ -34,6 +34,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('navigation').getByRole('button', { name: L('nav.week'), exact: true }).click()
       await page.getByRole('main').getByRole('button', { name: L('week.new') }).click()
       await page.getByRole('dialog').getByRole('radio', { name: L('weekType.skipper-charter') }).click()
+      await fillBoat(page.getByRole('dialog'), lang)
       await page.getByRole('dialog').getByRole('button', { name: L('week.start') }).click()
 
       for (const [amount, currency] of [['100', 'USD'], ['40', 'EUR']] as const) {

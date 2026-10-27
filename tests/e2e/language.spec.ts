@@ -33,7 +33,7 @@ test('Instellingen → Taal: Engels voor de hele app, met Engelse notatie, en bl
 
   for (const [tab, heading] of [
     ['Today', 'Today'],
-    ['This week', 'This week'],
+    ['This trip', 'This trip'],
     ['Logbook', 'Logbook'],
     ['Add', 'Add'],
     ['More', 'More'],

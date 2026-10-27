@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat } from './helpers/logbook'
 
 function isoDaysAgo(days: number): string {
   const d = new Date()
@@ -37,13 +37,13 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const card = page.locator('main')
       await expect(card).toContainText(L('week.noActive'))
 
-      // Nieuwe week starten, in één scherm.
+      // Nieuwe trip, in één scherm.
       await card.getByRole('button', { name: L('week.new') }).click()
       const sheet = page.getByRole('dialog')
-      await expect(sheet.getByLabel(L('field.name'), { exact: true })).toHaveAttribute('placeholder', /^Week \d+$/)
+      await expect(sheet.getByLabel(L('field.name'), { exact: true })).toHaveAttribute('placeholder', new RegExp(`^${L('field.trip')} `))
       await expect(sheet.getByRole('radio', { name: L('weekType.training-geven') })).toHaveAttribute('aria-checked', 'true')
       await expect(sheet.getByLabel(L('week.dayCount'))).toHaveValue('7')
-      await sheet.getByLabel(L('field.boat'), { exact: true }).fill('Nepboot')
+      await fillBoat(sheet, lang)
       await sheet.getByLabel(L('week.area')).fill('Nepgebied')
       await sheet.getByRole('combobox', { name: L('week.organisation') }).selectOption({ label: 'Sailing Virgins' })
       await sheet.getByLabel(L('week.participantName', { n: 1 }), { exact: true }).fill('Nepanna')
@@ -60,7 +60,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
       await expect(page.getByRole('combobox', { name: L('field.role'), exact: true })).toHaveValue('instructeur')
       await expect(page.getByLabel(L('field.boat'), { exact: true })).toHaveValue('Nepboot')
-      await expect(page.getByRole('combobox', { name: L('field.week'), exact: true }).locator('option:checked')).toHaveText(/^Week \d+$/)
+      await expect(page.getByRole('combobox', { name: L('field.week'), exact: true }).locator('option:checked')).toHaveText(/^Nepbasis /)
       await page.getByLabel(L('field.to'), { exact: true }).fill('Nephaven')
       await page.getByLabel(L('field.nm')).fill('12')
       await page.getByRole('button', { name: L('common.save') }).click()
@@ -68,7 +68,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await nav.getByRole('button', { name: L('nav.week'), exact: true }).click()
       await expect(card).toContainText('Nephaven')
 
-      // Week bewerken: tien dagen geleden begonnen, dus voorbij; Vandaag vraagt om afronden.
+      // Trip bewerken: tien dagen geleden begonnen, dus voorbij; Vandaag vraagt om afronden.
       await card.getByRole('button', { name: new RegExp(L('week.edit')) }).click()
       await sheet.getByLabel(L('week.startDate')).fill(isoDaysAgo(10))
       await sheet.getByRole('button', { name: L('common.save') }).click()
@@ -85,7 +85,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(card).toContainText(L('week.noActive'))
       // De afgeronde week staat in het logboek met zijn dag.
       await nav.getByRole('button', { name: L('nav.logbook'), exact: true }).click()
-      await expect(page.locator('.trip').first()).toContainText(/Week \d+/)
+      await expect(page.locator('.trip').first()).toContainText(/Nepbasis /)
 
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       const wire = github.requests.map((r) => r.body ?? '').join('\n')

@@ -16,7 +16,7 @@ test('onderbalk Vandaag · Deze week · + · Logboek · Meer; onder Meer Geld, C
   await createNewLogbook(page)
 
   const bar = page.getByRole('navigation', { name: 'Hoofdnavigatie' })
-  for (const name of ['Vandaag', 'Deze week', 'Toevoegen', 'Logboek', 'Meer']) {
+  for (const name of ['Vandaag', 'Deze trip', 'Toevoegen', 'Logboek', 'Meer']) {
     await expect(bar.getByRole('button', { name, exact: true })).toBeVisible()
   }
   await expect(bar.getByRole('button', { name: 'Geld' })).toHaveCount(0)

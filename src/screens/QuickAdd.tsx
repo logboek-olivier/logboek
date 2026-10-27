@@ -42,7 +42,13 @@ function confirmVibration() {
   }
 }
 
-export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
+/** Voorinvulling vanuit een ander scherm, bijvoorbeeld "Dag toevoegen" bij een trip. */
+export interface AddInit {
+  date: string
+  tripId?: string
+}
+
+export function QuickAdd({ store, onDone, init }: { store: Store; onDone: (message: string) => void; init?: AddInit }) {
   const [tab, setTab] = useState<AddTab>('dag')
   const choose = (next: AddTab) => setTab(next)
   return (
@@ -64,7 +70,7 @@ export function QuickAdd({ store, onDone }: { store: Store; onDone: (message: st
           </button>
         ))}
       </div>
-      {tab === 'dag' && <DayForm store={store} onDone={onDone} />}
+      {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} />}
       {tab === 'fooi' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'kosten' && <CostForm store={store} onDone={onDone} />}
     </section>
@@ -291,7 +297,7 @@ function waterOf(leg: Leg | undefined): Water {
   return 'zee'
 }
 
-function DayForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
+function DayForm({ store, onDone, init }: { store: Store; onDone: (message: string) => void; init?: AddInit }) {
   const { settings, trips, legs } = useDefaults(store)
   const today = todayIso()
   const lastLeg = useMemo(() => [...active(legs)].sort(compareLegs).at(-1), [legs])
@@ -308,13 +314,18 @@ function DayForm({ store, onDone }: { store: Store; onDone: (message: string) =>
     return active(trips).find((trip) => trip.id === id)
   }, [trips, lastLeg, settings.lastTripId])
   // De lopende week gaat voor; anders dezelfde week als de vorige dag kort geleden was; anders een nieuwe week.
-  const current = activeWeek(trips, settings)
+  const requested = init?.tripId ? active(trips).find((trip) => trip.id === init.tripId) : undefined
+  const current = requested ?? activeWeek(trips, settings)
   const sameTripDefault = !!lastTrip && !!lastLeg && lastLeg.date >= addDays(today, -3)
   const defaultTripId = current?.id ?? (sameTripDefault && lastTrip ? lastTrip.id : NEW_WEEK)
+  // Van: de vorige bestemming binnen deze trip; de eerste dag van een trip begint op de basis van de boot.
+  const startDate = init?.date ?? today
+  const previousInTrip = current ? [...active(legs)].filter((l) => l.tripId === current.id && l.date <= startDate).sort(compareLegs).at(-1) : undefined
+  const defaultFrom = previousInTrip?.toPlace ?? (current && current.base && !previousInTrip ? current.base : (lastLeg?.toPlace ?? ''))
   const weekRole = (trip: Trip | undefined) => (trip?.type ? roleForType(trip.type) : null)
 
-  const [date, setDate] = useState(today)
-  const [fromPlace, setFromPlace] = useState(lastLeg?.toPlace ?? '')
+  const [date, setDate] = useState(startDate)
+  const [fromPlace, setFromPlace] = useState(defaultFrom)
   const [toPlace, setToPlace] = useState('')
   const [nm, setNm] = useState('')
   const [water, setWater] = useState<Water>(settings.lastWater ?? waterOf(lastLeg))

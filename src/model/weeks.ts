@@ -4,13 +4,15 @@ import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
 import type { Undo } from './edit'
 import { addDays } from './money'
 import { saveSettings } from './settings'
-import { newId, type Leg, type Organisation, type Participant, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { newId, todayIso, type BoatKind, type Leg, type Organisation, type Participant, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 
-// Weken: een tocht met type, datums, boot, gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een
-// naam; dan worden type (voorstel uit de naam) en datums (uit de dagen) afgeleid zonder iets op te slaan.
+// Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
+// charterbedrijf), gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een naam; dan worden type
+// (voorstel uit de naam) en datums (uit de dagen) afgeleid zonder iets op te slaan.
 
 export const DEFAULT_WEEK_DAYS = 7
-export const MAX_WEEK_DAYS = 31
+export const MAX_WEEK_DAYS = 120
+export const FEET_PER_METRE = 3.28084
 const MAX_TEXT = 120
 
 /** ISO-weeknummer (maandag eerste dag, week 1 bevat de eerste donderdag). */
@@ -23,8 +25,46 @@ export function isoWeek(date: string): number {
   return 1 + Math.round(((day.getTime() - firstThursday.getTime()) / 86_400_000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7)
 }
 
-export function defaultWeekName(startDate: string, lang: Lang): string {
-  return translate(lang, 'week.defaultName', { n: isoWeek(startDate) })
+/** Standaardnaam van een trip: basis en maand, bijvoorbeeld "Nanny Cay okt 2026"; zonder basis "Trip okt 2026". */
+export function defaultWeekName(startDate: string, lang: Lang, base = ''): string {
+  const [y, m] = startDate.split('-').map(Number)
+  const month = new Date(Date.UTC(y!, (m ?? 1) - 1, 15)).toLocaleDateString(lang === 'nl' ? 'nl-NL' : 'en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+  return translate(lang, 'trip.defaultName', { place: base.trim() || translate(lang, 'field.trip'), month: month.replace('.', '') })
+}
+
+/** Lengte in meters (één decimaal) bij een lengte in voet. */
+export function feetToMetres(ft: number): number {
+  return Math.round((ft / FEET_PER_METRE) * 10) / 10
+}
+
+/** Naam, model, lengte en basis zijn nodig voor een volledige trip (Olivier vult ontbrekende gegevens aan). */
+export function boatComplete(trip: Trip): boolean {
+  return !!trip.boat?.trim() && !!trip.boatModel?.trim() && !!trip.boatLengthFt && trip.boatLengthFt > 0 && !!trip.base?.trim()
+}
+
+export interface BoatProfile {
+  boatModel?: string
+  boatLengthFt?: number
+  boatKind?: BoatKind
+  base?: string
+  charter?: string
+}
+
+/** De bootgegevens van de laatste trip met deze boot, om een nieuwe trip met één keuze in te vullen. */
+export function boatProfile(trips: readonly Trip[], boat: string, exceptId?: string): BoatProfile | null {
+  const name = boat.trim().toLowerCase()
+  if (!name) return null
+  const match = active(trips)
+    .filter((t) => t.id !== exceptId && t.boat?.trim().toLowerCase() === name && (t.boatModel || t.boatLengthFt || t.base))
+    .sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))[0]
+  if (!match) return null
+  return {
+    ...(match.boatModel ? { boatModel: match.boatModel } : {}),
+    ...(match.boatLengthFt ? { boatLengthFt: match.boatLengthFt } : {}),
+    ...(match.boatKind ? { boatKind: match.boatKind } : {}),
+    ...(match.base ? { base: match.base } : {}),
+    ...(match.charter ? { charter: match.charter } : {}),
+  }
 }
 
 /** Voorstel voor het type uit de naam van een (geïmporteerde) tocht. */
@@ -85,9 +125,31 @@ export function weekView(trip: Trip, legs: readonly Leg[]): WeekView {
   }
 }
 
-export function activeWeek(trips: readonly Trip[], settings: Settings): Trip | null {
-  if (!settings.activeWeekId) return null
-  return trips.find((t) => t.id === settings.activeWeekId && t.deletedAt === null && !t.closedAt) ?? null
+/**
+ * De lopende trip: de trip die Olivier als lopend heeft gestart, anders de trip waarin vandaag valt (vooraf ingevoerde
+ * trips worden zo vanzelf lopend). Afgeronde trips nooit.
+ */
+export function activeWeek(trips: readonly Trip[], settings: Settings, today: string = todayIso()): Trip | null {
+  const open = trips.filter((t) => t.deletedAt === null && !t.closedAt)
+  const chosen = settings.activeWeekId ? open.find((t) => t.id === settings.activeWeekId) : undefined
+  if (chosen) return chosen
+  return open.find((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate) ?? null
+}
+
+/** Komende trips (start na vandaag), eerstvolgende eerst. */
+export function upcomingTrips(trips: readonly Trip[], today: string = todayIso()): Trip[] {
+  return active(trips)
+    .filter((t) => !t.closedAt && !!t.startDate && t.startDate > today)
+    .sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))
+}
+
+/** Dagen binnen de trip (tot en met vandaag) zonder gelogde dag, oudste eerst. */
+export function missingDays(view: WeekView, today: string = todayIso()): string[] {
+  if (!view.startDate || !view.endDate) return []
+  const logged = new Set(view.legs.map((l) => l.date))
+  const result: string[] = []
+  for (let d = view.startDate; d <= view.endDate && d <= today; d = addDays(d, 1)) if (!logged.has(d)) result.push(d)
+  return result
 }
 
 /** Voorbij de einddatum en nog niet afgerond: Deze week vraagt om "Week afronden". */
@@ -95,17 +157,22 @@ export function needsClosing(week: WeekView, today: string): boolean {
   return !week.trip.closedAt && !!week.endDate && week.endDate < today
 }
 
-/** Eerdere boten en gebieden, nieuwste eerst, voor suggesties. */
-export function suggestions(trips: readonly Trip[], legs: readonly Leg[]): { boats: string[]; areas: string[] } {
+/** Eerdere boten, gebieden, bases en charterbedrijven, nieuwste eerst, voor suggesties. */
+export function suggestions(trips: readonly Trip[], legs: readonly Leg[]): { boats: string[]; areas: string[]; bases: string[]; charters: string[] } {
   const boats = new Set<string>()
   const areas = new Set<string>()
+  const bases = new Set<string>()
+  const charters = new Set<string>()
   const sorted = [...active(trips)].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
   for (const t of sorted) {
     if (t.boat) boats.add(t.boat)
     if (t.area) areas.add(t.area)
+    if (t.base) bases.add(t.base)
+    if (t.charter) charters.add(t.charter)
   }
   for (const l of [...active(legs)].sort(compareLegs).reverse()) if (l.boat) boats.add(l.boat)
-  return { boats: [...boats].slice(0, 20), areas: [...areas].slice(0, 20) }
+  const top = (set: Set<string>) => [...set].slice(0, 20)
+  return { boats: top(boats), areas: top(areas), bases: top(bases), charters: top(charters) }
 }
 
 // ---------- Opslaan ----------
@@ -123,6 +190,12 @@ export interface WeekInput {
   startDate: string
   dayCount: number
   boat: string
+  boatModel: string
+  /** Lengte in voet. */
+  boatLengthFt: number | null
+  boatKind?: BoatKind
+  base: string
+  charter: string
   area: string
   organisation?: Organisation
   participants: ParticipantInput[]
@@ -145,12 +218,18 @@ export function cleanParticipants(rows: readonly ParticipantInput[]): Participan
 export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'updatedAt' | 'deletedAt'> {
   const days = Math.max(1, Math.min(MAX_WEEK_DAYS, Math.round(input.dayCount) || DEFAULT_WEEK_DAYS))
   const text = (v: string) => v.trim().slice(0, MAX_TEXT)
+  const length = input.boatLengthFt !== null && Number.isFinite(input.boatLengthFt) && input.boatLengthFt > 0 ? Math.round(input.boatLengthFt * 10) / 10 : null
   return {
-    name: text(input.name) || defaultWeekName(input.startDate, lang),
+    name: text(input.name) || defaultWeekName(input.startDate, lang, input.base),
     type: input.type,
     startDate: input.startDate,
     endDate: addDays(input.startDate, days - 1),
     ...(text(input.boat) ? { boat: text(input.boat) } : {}),
+    ...(text(input.boatModel) ? { boatModel: text(input.boatModel) } : {}),
+    ...(length !== null ? { boatLengthFt: length } : {}),
+    ...(input.boatKind ? { boatKind: input.boatKind } : {}),
+    ...(text(input.base) ? { base: text(input.base) } : {}),
+    ...(text(input.charter) ? { charter: text(input.charter) } : {}),
     ...(text(input.area) ? { area: text(input.area) } : {}),
     ...(input.organisation ? { organisation: input.organisation } : {}),
     participants: cleanParticipants(input.participants),
@@ -158,20 +237,21 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
   }
 }
 
-/** Nieuwe week: opslaan maakt hem actief. */
-export async function startWeek(store: Store, input: WeekInput, lang: Lang): Promise<Trip> {
+/** Nieuwe trip: opslaan maakt hem lopend als vandaag erin valt; eerdere en komende trips laten de lopende staan. */
+export async function startWeek(store: Store, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
   const trip: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
   await store.put('trips.json.enc', trip)
   await syncParticipants(store, trip)
-  await saveSettings(store, { activeWeekId: trip.id, ...(trip.boat ? { lastBoat: trip.boat } : {}) })
+  const current = trip.startDate! <= today && today <= trip.endDate!
+  await saveSettings(store, { ...(current ? { activeWeekId: trip.id } : {}), ...(trip.boat ? { lastBoat: trip.boat } : {}) })
   void store.sync()
   return trip
 }
 
 /** Bestaande week bijwerken; review en afronding blijven staan. */
 export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lang: Lang): Promise<void> {
-  const { boat: _b, area: _a, organisation: _o, note: _n, ...rest } = trip
-  void [_b, _a, _o, _n]
+  const { boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, ...rest } = trip
+  void [_b, _m, _l, _k, _ba, _c, _a, _o, _n]
   const next: Trip = { ...rest, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
   await store.put('trips.json.enc', next)
   await syncParticipants(store, next)

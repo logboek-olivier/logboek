@@ -34,14 +34,27 @@ export interface WeekReview {
   quotes: string[]
 }
 
+export type BoatKind = 'catamaran' | 'eenromp' | 'motor' | 'overig'
+export const BOAT_KINDS: readonly BoatKind[] = ['catamaran', 'eenromp', 'motor', 'overig']
+
 export interface Trip extends SyncRecord {
   name: string
   type?: WeekType
   /** jjjj-mm-dd */
   startDate?: string
-  /** jjjj-mm-dd, inclusief; standaard startDate + 6 dagen. */
+  /** jjjj-mm-dd, inclusief; standaard startDate + 6 dagen. Een trip kan elke lengte hebben. */
   endDate?: string
+  /** Naam van de boot. */
   boat?: string
+  /** Merk en model, bijvoorbeeld "Lagoon 42". */
+  boatModel?: string
+  /** Lengte over alles in voet (zoals in charter- en RYA-logboeken); de app toont ook meters. */
+  boatLengthFt?: number
+  boatKind?: BoatKind
+  /** Thuishaven of basis van de boot, bijvoorbeeld "Nanny Cay"; vult het startpunt van de eerste dag voor. */
+  base?: string
+  /** Charterbedrijf of eigenaar. */
+  charter?: string
   area?: string
   organisation?: Organisation
   participants?: Participant[]
