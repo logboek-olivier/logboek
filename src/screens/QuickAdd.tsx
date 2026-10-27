@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
 import { MapSheet } from '../components/MapSheet'
 import { formatNm, formatNumber } from '../format'
-import { findPlace, greatCircleNm, knownPlaceNames, suggestDistance } from '../model/places'
+import { findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
+import { MergeProposal } from './Places'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
@@ -34,6 +35,7 @@ import {
   type Trip,
 } from '../model/types'
 import type { Store } from '../storage/store'
+import type { Notify } from '../components/EditSheets'
 import { t } from '../i18n'
 
 // Snel toevoegen: Dag · Inkomsten · Uitgave, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
@@ -54,7 +56,7 @@ export interface AddInit {
   tripId?: string
 }
 
-export function QuickAdd({ store, onDone, init }: { store: Store; onDone: (message: string) => void; init?: AddInit }) {
+export function QuickAdd({ store, onDone, init, notify }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify }) {
   const [tab, setTab] = useState<AddTab>('dag')
   const choose = (next: AddTab) => setTab(next)
   return (
@@ -76,7 +78,7 @@ export function QuickAdd({ store, onDone, init }: { store: Store; onDone: (messa
           </button>
         ))}
       </div>
-      {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} />}
+      {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} notify={notify} />}
       {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}
     </section>
@@ -373,7 +375,7 @@ function waterOf(leg: Leg | undefined): Water {
   return 'zee'
 }
 
-function DayForm({ store, onDone, init }: { store: Store; onDone: (message: string) => void; init?: AddInit }) {
+function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify }) {
   const { settings, trips, legs } = useDefaults(store)
   const today = todayIso()
   const lastLeg = useMemo(() => [...active(legs)].sort(compareLegs).at(-1), [legs])
@@ -408,6 +410,12 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
   const [mapFor, setMapFor] = useState<'from' | 'to' | null>(null)
   const places = useCollection(store, 'places.json.enc')
   const placeNames = useMemo(() => knownPlaceNames(legs, places), [legs, places])
+  // Spelvarianten: "Bedoel je …?" bij een nieuwe naam, en een voorstel om bekende varianten samen te voegen.
+  const uses = useMemo(() => placeUses(legs, places), [legs, places])
+  const merges = useMemo(() => mergeCandidates(uses), [uses])
+  const routeMerge = merges.find((c) => [c.into, ...c.others].some((u) => u.key === placeKey(fromPlace) || u.key === placeKey(toPlace)))
+  const fromAlike = similarKnown(uses, fromPlace)
+  const toAlike = similarKnown(uses, toPlace)
   // Voorstel uit wat Olivier echt gevaren heeft: gemiddelde van de laatste vijf keer deze route.
   const suggestion = useMemo(() => suggestDistance(legs, fromPlace, toPlace), [legs, fromPlace, toPlace])
   const straight = useMemo(() => {
@@ -529,6 +537,23 @@ function DayForm({ store, onDone, init }: { store: Store; onDone: (message: stri
         ) : straight !== null ? (
           <p className="muted small route-hint">{t('route.straight', { nm: formatNm(straight) })}</p>
         ) : null}
+        {fromAlike && (
+          <p className="muted small">
+            {t('places.didYouMean', { name: fromAlike.name })}{' '}
+            <button type="button" className="btn link inline" onClick={() => setFromPlace(fromAlike.name)}>
+              {t('places.use', { name: fromAlike.name })}
+            </button>
+          </p>
+        )}
+        {toAlike && (
+          <p className="muted small">
+            {t('places.didYouMean', { name: toAlike.name })}{' '}
+            <button type="button" className="btn link inline" onClick={() => setToPlace(toAlike.name)}>
+              {t('places.use', { name: toAlike.name })}
+            </button>
+          </p>
+        )}
+        {routeMerge && <MergeProposal store={store} candidate={routeMerge} notify={notify} />}
         <div className="segments small" role="radiogroup" aria-label={t('field.water')}>
           {(['zee', 'getij', 'binnen'] as Water[]).map((w) => (
             <button

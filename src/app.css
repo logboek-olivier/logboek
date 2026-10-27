@@ -2288,3 +2288,13 @@ body.presenting .bottom-bar {
   align-self: end;
   padding-bottom: var(--s-3);
 }
+
+.row-value.pinned {
+  color: var(--accent);
+}
+
+.row-value .icon {
+  --icon: 16px;
+  vertical-align: -3px;
+  margin-right: 2px;
+}

@@ -749,6 +749,22 @@ export const nl = {
   'boats.saved': (p: { n: number }) => (p.n === 1 ? '1 boot opgeslagen' : `${p.n} boten opgeslagen`),
   'boats.empty': 'Nog geen boten. Boten komen uit je trips en de import.',
   'more.boatsHint': 'Naam, model, soort en lengte per boot',
+  // Plaatsen: samenvoegen en vastzetten
+  'places.screen': 'Plaatsen',
+  'places.empty': 'Nog geen plaatsen. Plaatsen komen uit je dagen en de kaart.',
+  'places.alike': (p: { names: string }) => `Lijken dezelfde plaats: ${p.names}`,
+  'places.merge': 'Samenvoegen',
+  'places.merged': (p: { name: string }) => `Samengevoegd tot ${p.name}`,
+  'places.didYouMean': (p: { name: string }) => `Bedoel je ${p.name}?`,
+  'places.use': (p: { name: string }) => `${p.name} gebruiken`,
+  'places.unpinnedHint': (p: { n: number }) => (p.n === 1 ? '1 plaats staat nog niet op de kaart. Tik erop en tik op de kaart om hem vast te zetten.' : `${p.n} plaatsen staan nog niet op de kaart. Tik erop en tik op de kaart om ze vast te zetten.`),
+  'places.pin': (p: { name: string }) => `${p.name} op de kaart zetten`,
+  'places.movePin': (p: { name: string }) => `${p.name} verplaatsen op de kaart`,
+  'places.pinHint': (p: { name: string }) => `Tik op de kaart waar ${p.name} ligt. Slepen en knijpen verschuift en zoomt.`,
+  'places.pinned': (p: { name: string }) => `${p.name} staat op de kaart`,
+  'places.onMap': 'Op de kaart',
+  'places.notOnMap': 'Geen punt',
+  'more.placesHint': 'Op de kaart zetten en samenvoegen',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

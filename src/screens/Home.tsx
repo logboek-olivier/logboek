@@ -18,6 +18,7 @@ import { Today } from './Today'
 import { Courses } from './Courses'
 import { Deadlines } from './Deadlines'
 import { Boats } from './Boats'
+import { Places } from './Places'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -33,6 +34,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   geld: 'Geld',
   termijnen: 'Termijnen',
   boten: 'Boten',
+  plaatsen: 'Plaatsen',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -82,7 +84,7 @@ export function Home({ store }: { store: Store }) {
     select('vandaag')
   }
 
-  const activeTab: Tab = screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
+  const activeTab: Tab = screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
 
   return (
     <main className="app with-bar">
@@ -101,7 +103,7 @@ export function Home({ store }: { store: Store }) {
         />
       )}
       {screen === 'logboek' && <Sailing store={store} notify={notify} />}
-      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} />}
+      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} />}
       {screen === 'meer' && <More onOpen={select} />}
       {screen === 'geld' && (
         <>
@@ -119,6 +121,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Boats store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'plaatsen' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Places store={store} notify={notify} />
         </>
       )}
       {screen === 'cursussen' && (
