@@ -721,6 +721,14 @@ export const nl = {
   'reminder.late': (p: { n: number }) => `${p.n} ${plural(p.n, 'dag', 'dagen')} te laat`,
   'reminder.tripStart': (p: { name: string }) => `Start ${p.name}`,
   'more.remindersHint': 'Deadlines en vervaldatums',
+  // Planning met thema's
+  'plan.earlier': (p: { slot: string; day: string }) => `Blok ${p.slot.toLowerCase()} ${p.day} een dag eerder`,
+  'plan.later': (p: { slot: string; day: string }) => `Blok ${p.slot.toLowerCase()} ${p.day} een dag later`,
+  'plan.moved': 'Blok verplaatst',
+  'plan.themes': "Thema's",
+  'plan.themesHint': "Tik een thema aan of uit. Elk thema is een onderdeel van de cursus met al zijn onderwerpen.",
+  'plan.themeDone': (p: { theme: string }) => `${p.theme}: geoefend door de hele groep`,
+  'plan.themeOpen': (p: { theme: string }) => `${p.theme}: tik om af te vinken voor de hele groep`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
