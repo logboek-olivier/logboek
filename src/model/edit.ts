@@ -37,6 +37,8 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'plans.json.enc':
       return store.put(item.path, item.record)
+    case 'places.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 

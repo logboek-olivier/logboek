@@ -247,6 +247,14 @@ export interface WeekPlan extends SyncRecord {
   days: PlanDay[]
 }
 
+/** Een plaats met een punt op de kaart (places.json.enc); dagen verwijzen er via de naam naar. */
+export interface Place extends SyncRecord {
+  name: string
+  lat: number
+  lon: number
+  country?: string
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -256,6 +264,7 @@ export interface Collections {
   'curricula.json.enc': Curriculum
   'students.json.enc': Student
   'plans.json.enc': WeekPlan
+  'places.json.enc': Place
 }
 
 export type CollectionPath = keyof Collections
@@ -268,6 +277,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'curricula.json.enc',
   'students.json.enc',
   'plans.json.enc',
+  'places.json.enc',
 ]
 
 export function newId(): string {

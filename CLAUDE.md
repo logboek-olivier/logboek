@@ -20,6 +20,7 @@ Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code
 |---|---|
 | App | React 18 + Vite + TypeScript, PWA (vite-plugin-pwa, Workbox). Een nieuwe versie neemt zelf over, ruimt oude caches op en herlaadt open vensters (`public/sw-vensters.js`), zodat er nooit twee versies tegelijk draaien |
 | Styling | Eén CSS-bestand (`src/app.css`) met het ontwerpsysteem als variabelen: kleuren (marineblauw, zeegroen accent, warm lichte achtergrond), typografie (systeemlettertype, tabular-nums voor getallen), ruimtes, hoekradius, schaduwen. Geen UI-framework. Licht/donker via `prefers-color-scheme`. Iconen: lucide-react, één lijndikte (1,75) en maat via `--icon`. Grafieken in eigen SVG (`src/components/BarChart.tsx`) |
+| Kaart | Offline, in eigen SVG (`src/components/SeaMap.tsx`): alleen land uit Natural Earth (publiek domein), vooraf vereenvoudigd door `scripts/build-coast.mjs` tot `public/coast/` (grof wereldbestand plus fijne vakken van 10 × 10 graden, ca. 3,5 MB) en in de precache. Geen kaartdienst, geen tegels van buiten; GPS via `navigator.geolocation` (geen netwerk) |
 | Opslag telefoon | IndexedDB via `idb` |
 | Opslag bron | Private GitHub-repo `logboek-olivier/logboek-data`, via GitHub REST API (`api.github.com`) |
 | Hosting | GitHub Pages vanuit publieke repo `logboek-olivier/logboek`. URL: `https://logboek-olivier.github.io/logboek/`. Vite `base: '/logboek/'`, PWA-scope en start_url `/logboek/`. Geen aparte testorganisatie |
@@ -85,6 +86,7 @@ logboek-data/
   curricula.json.enc     # alleen eigen en bewerkte cursussen; meegeleverde staan in de code
   students.json.enc
   plans.json.enc
+  places.json.enc        # plaatsen met een punt op de kaart
   documents/index.json.enc   # release 3
   documents/<uuid>.bin       # release 3
 ```
@@ -117,6 +119,11 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 `id, tripId, date, fromPlace, fromCountry, toPlace, toCountry, role (schipper|co-schipper|bemanningslid|trainee|instructeur), boat, skipperName?, coSkipperName?, windBft? (tekst, bijv. "2-3"), nmInland, nmSea, nmTidal, nightHours, notes?, dateEstimated (boolean), source (import|manual), updatedAt, deletedAt`
 - Totaal nm = `nmInland + nmSea + nmTidal`, altijd berekend.
 - Rollen tonen zoals Olivier ze schrijft: Schipper, Co-schipper, Bemanningslid, Trainee, Instructeur.
+
+**Place** (`places.json.enc`, `src/model/places.ts`)
+`id, name, lat, lon, country?, updatedAt, deletedAt`
+- Een plaats krijgt een punt door op de kaart te tikken of "Huidige locatie" te kiezen, plus een naam; dezelfde naam (zonder hoofdletters en accenten) is dezelfde plaats. Dagen verwijzen via de naam naar een plaats; plaatsen zonder punt (bijvoorbeeld uit de import) blijven gewoon namen.
+- **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen), wat Olivier echt gevaren heeft. Het vult het nm-veld voor zolang Olivier niets typt. Zonder eerdere keren alleen een hint "Hemelsbreed …" (grootcirkel), nooit als voorstel.
 
 **Afgeleiden** (`src/model/derive.ts`, met tests): totaal nm, nm per rol, nm per watertype (binnenwater / zee / getijdenwater), nachturen, aantal dagen, aantal tochten, nm dit kalenderjaar, laatste tocht.
 
@@ -212,7 +219,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - boot: naam, model, lengte en basis (verplicht), soort en charterbedrijf, met suggesties uit eerdere trips; gebied, organisatie;
    - deelnemers één per regel met optioneel niveau en cursus.
 5. **Toevoegen (+):** tabs **Dag · Inkomsten · Uitgave**, opent op Dag.
-   - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar, nm, watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Alleen naar en nm zijn nodig.
+   - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar (beide met suggesties uit eerdere plaatsen en een kaartknop: offline kaart, bekende plaatsen als stip, tik = nieuw punt met naam, "Huidige locatie"), nm (voorgevuld met het afstandsvoorstel), watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Alleen naar en nm zijn nodig.
    - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bron, valuta, datum, notitie.
    - Uitgave: bedrag, omschrijving, soort (kosten/investering); bron, valuta, datum en trip onder "Meer velden".
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
@@ -234,17 +241,17 @@ logboek/
   README.md
   index.html
   vite.config.ts
-  public/            manifest-iconen, bip39-nl/en woordenlijst
+  public/            manifest-iconen, bip39-nl/en woordenlijst, coast/ (offline kaart)
   src/
     crypto/          keys.ts, encrypt.ts, passphrase.ts, recovery.ts, webauthn.ts
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, expiry.ts,
-                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts
+                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts
     import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek),
                      Money, QuickAdd, More, Settings
-    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, Sheet, EditSheets, WeekSheet, CurriculumSheets,
+    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, MapSheet, Sheet, EditSheets, WeekSheet, CurriculumSheets,
                      SyncStatusLine, Icon, Toast, …)
     session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10)
     repair.ts        Logboek herstellen: diagnose en herstel van onleesbare bestanden
@@ -257,7 +264,8 @@ logboek/
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
   .github/workflows/ deploy.yml (alleen vanaf main, plus dagelijks voor de koersen), test.yml (bij elke PR en push;
                      uploadt schermafbeeldingen)
-  scripts/           generate-fake-data.ts, fake-xlsx.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json)
+  scripts/           generate-fake-data.ts, fake-xlsx.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json),
+                     build-coast.mjs (Natural Earth → public/coast/)
 ```
 
 ## Werkwijze
