@@ -1,4 +1,4 @@
-import { Plus, Trash2, X } from 'lucide-react'
+import { Plus, Repeat, Route, Trash2, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatNm, formatNumber } from '../format'
 import { getLang, t, useLang } from '../i18n'
@@ -6,7 +6,8 @@ import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { deleteTrip } from '../model/edit'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings } from '../model/settings'
-import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type BoatKind, type Organisation, type StudentLevel, type Trip, type WeekType } from '../model/types'
+import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
+import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
   boatProfile,
   closeWeek,
@@ -59,6 +60,12 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
   const [note, setNote] = useState(trip?.note ?? '')
+  // Geplande etappes: undefined = ongewijzigd (bij bewerken blijft de bestaande planning staan).
+  const [route, setRoute] = useState<PlannedLeg[] | undefined>(undefined)
+  const [startedFrom, setStartedFrom] = useState<string | null>(null)
+  const shownRoute = route ?? trip?.route ?? []
+  const templates = trip ? [] : routeTemplates(trips, legs)
+  const previous = trip ? null : previousTrip(trips, legs, todayIso())
   const [busy, setBusy] = useState(false)
   // Niets is verplicht: een leeg of ongeldig aantal dagen wordt de standaard, ontbrekende bootgegevens geven "Onvolledig".
   const typedDays = Math.round(parseAmount(dayCount) ?? 0)
@@ -91,6 +98,23 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
     setFilledFrom(filled)
   }
 
+  /** Herhaal vorige trip of start vanuit een sjabloon: boot, gebied, organisatie, type en de geplande etappes. */
+  function startFrom(source: Trip, plan: PlannedLeg[], label: string) {
+    setStartedFrom(label)
+    setRoute(plan)
+    if (source.type) setType(source.type)
+    setBoat(source.boat ?? '')
+    setBoatModel(source.boatModel ?? '')
+    setBoatLength(source.boatLengthFt ? formatNumber(source.boatLengthFt) : '')
+    setBoatKind(source.boatKind)
+    setBase(source.base ?? plan[0]?.from ?? '')
+    setCharter(source.charter ?? '')
+    setArea(source.area ?? '')
+    setOrganisation(source.organisation ?? '')
+    const planDays = routeDays(plan)
+    if (planDays > 0) setDayCount(String(planDays))
+  }
+
   const setRow = (i: number, patch: Partial<ParticipantInput>) => {
     const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r))
     // Altijd één lege regel onderaan: deelnemers één per regel invoeren.
@@ -102,7 +126,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
     e.preventDefault()
     if (busy) return
     setBusy(true)
-    const input = { name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note }
+    const input = { name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route }
     try {
       if (trip) {
         await updateWeek(store, trip, input, getLang())
@@ -127,6 +151,30 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   return (
     <Sheet title={trip ? t('week.edit') : t('week.new')} onClose={onClose}>
       <form className="stack week-form" onSubmit={(e) => void submit(e)}>
+        {(previous || templates.length > 0) && (
+          <div className="stack-sm">
+            <span className="label">{t('route.quickStart')}</span>
+            <div className="type-buttons" role="group" aria-label={t('route.quickStart')}>
+              {previous && (
+                <button type="button" className={`chip${startedFrom === 'vorige' ? ' active' : ''}`} onClick={() => startFrom(previous, tripRoute(previous, legs), 'vorige')}>
+                  <Icon icon={Repeat} />
+                  {t('route.repeat')}
+                </button>
+              )}
+              {templates.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  className={`chip${startedFrom === tpl.id ? ' active' : ''}`}
+                  onClick={() => startFrom(tpl.source, tpl.route, tpl.id)}
+                >
+                  <Icon icon={Route} />
+                  {t('route.template', { label: tpl.label, n: tpl.times })}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <label>
           {t('field.name')}
           <input type="text" autoComplete="off" maxLength={120} placeholder={defaultWeekName(startDate || todayIso(), lang, base)} value={name} onChange={(e) => setName(e.target.value)} />
@@ -265,6 +313,16 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
             </div>
           ))}
         </fieldset>
+        {shownRoute.length > 0 && (
+          <div className="notice-quiet route-plan">
+            <span className="small">
+              {t('route.planned', { n: shownRoute.length })}: {routeLine(shownRoute)}
+            </span>
+            <button type="button" className="btn link small" onClick={() => setRoute([])}>
+              {t('route.clear')}
+            </button>
+          </div>
+        )}
         <label>
           {t('field.note')}
           <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />

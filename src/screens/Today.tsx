@@ -1,4 +1,7 @@
-import { CalendarDays, ChevronRight, LoaderCircle, NotebookPen, Plus } from 'lucide-react'
+import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plus } from 'lucide-react'
+import { logPlanned, plannedFor, plannedNm } from '../model/routes'
+import { activeWeek } from '../model/weeks'
+import type { AddInit } from './QuickAdd'
 import { useMemo, useRef, useState, type TouchEvent } from 'react'
 import { FillSheet } from '../components/FillSheet'
 import { collectGaps, isSunday } from '../model/gaps'
@@ -36,7 +39,7 @@ export function Today({
   store: Store
   notify: Notify
   onSettings: () => void
-  onAdd: () => void
+  onAdd: (init?: AddInit) => void
   onReminders: () => void
 }) {
   const session = useSession()
@@ -59,6 +62,20 @@ export function Today({
   const trips = useCollection(store, 'trips.json.enc')
   const gaps = useMemo(() => (isSunday(today) ? collectGaps(trips, legs) : []), [trips, legs, today])
   const [filling, setFilling] = useState(false)
+  // Geplande etappe van vandaag in de lopende trip (sjabloon of vorige trip): "Zoals gepland" logt hem met één tik.
+  const running = activeWeek(trips, settings, today)
+  const planned = plannedFor(running, legs, today)
+  const plannedDistance = planned ? plannedNm(legs, planned) : null
+  async function logAsPlanned() {
+    if (!running || !planned) return
+    await logPlanned(store, running, planned, today, settings)
+    try {
+      navigator.vibrate?.(30)
+    } catch {
+      // Niet beschikbaar.
+    }
+    notify(t('toast.daySaved'))
+  }
 
   return (
     <section className="stack" onTouchStart={pull.onTouchStart} onTouchMove={pull.onTouchMove} onTouchEnd={pull.onTouchEnd}>
@@ -96,7 +113,26 @@ export function Today({
         />
       )}
       <TodayPlan store={store} notify={notify} />
-      <button className="btn primary log-day" onClick={onAdd}>
+      {planned && running && (
+        <div className="card card-body planned-today">
+          <span className="label">{t('route.today')}</span>
+          <strong>
+            {[planned.from, planned.to].filter(Boolean).join(' → ')}
+            {plannedDistance !== null ? ` · ${formatNm(plannedDistance)}` : ''}
+          </strong>
+          <div className="two">
+            <button className="btn primary" onClick={() => void logAsPlanned()}>
+              <Icon icon={Check} />
+              {t('route.asPlanned')}
+            </button>
+            <button className="btn" onClick={() => onAdd({ date: today, tripId: running.id, from: planned.from, to: planned.to })}>
+              <Icon icon={Pencil} />
+              {t('route.adjust')}
+            </button>
+          </div>
+        </div>
+      )}
+      <button className={`btn${planned ? '' : ' primary'} log-day`} onClick={() => onAdd()}>
         <Icon icon={NotebookPen} />
         {t('today.logDay')}
       </button>

@@ -728,4 +728,13 @@ export const en: Messages = {
   'places.onMap': 'On the map',
   'places.notOnMap': 'No pin',
   'more.placesHint': 'Pin on the map and merge',
+  // Route templates and repeating
+  'route.quickStart': 'Quick start',
+  'route.repeat': 'Repeat last trip',
+  'route.template': (p) => `${p.label} (${p.n}×)`,
+  'route.planned': (p) => (p.n === 1 ? '1 leg planned' : `${p.n} legs planned`),
+  'route.clear': 'Clear plan',
+  'route.today': 'Planned today',
+  'route.asPlanned': 'As planned',
+  'route.adjust': 'Adjust',
 }

@@ -90,7 +90,10 @@ export function Home({ store }: { store: Store }) {
     <main className="app with-bar">
       <SyncStatusLine store={store} />
       {screen === 'vandaag' && (
-        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={() => select('toevoegen')} onReminders={() => select('termijnen')} />
+        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {
+            select('toevoegen')
+            setAddInit(init)
+          }} onReminders={() => select('termijnen')} />
       )}
       {screen === 'week' && (
         <ThisWeek
@@ -103,7 +106,7 @@ export function Home({ store }: { store: Store }) {
         />
       )}
       {screen === 'logboek' && <Sailing store={store} notify={notify} />}
-      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} />}
+      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}-${addInit.from ?? ''}-${addInit.to ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} />}
       {screen === 'meer' && <More onOpen={select} />}
       {screen === 'geld' && (
         <>
