@@ -2189,3 +2189,49 @@ body.presenting .bottom-bar {
 .route-hint {
   margin-top: calc(-1 * var(--s-2));
 }
+
+/* Planning met thema's: grote onderdelen van de cursus in plaats van losse onderwerpen */
+.plan-themes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-theme {
+  display: block;
+  padding: var(--s-1) 0;
+  font-weight: var(--fw-medium);
+}
+
+.plan-theme.tick {
+  display: flex;
+  width: 100%;
+  min-height: var(--tap);
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-1) 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-theme.tick.done > span:last-child {
+  color: var(--text-muted);
+}
+
+.plan-theme.tick.done .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.presentation .plan-theme {
+  font-size: var(--fs-lg);
+}

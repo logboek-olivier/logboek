@@ -684,4 +684,12 @@ export const en: Messages = {
   'reminder.late': (p) => `${p.n} ${plural(p.n, 'day', 'days')} late`,
   'reminder.tripStart': (p) => `Start of ${p.name}`,
   'more.remindersHint': 'Deadlines and expiry dates',
+  // Plan with themes
+  'plan.earlier': (p) => `Move ${p.slot.toLowerCase()} block ${p.day} one day earlier`,
+  'plan.later': (p) => `Move ${p.slot.toLowerCase()} block ${p.day} one day later`,
+  'plan.moved': 'Block moved',
+  'plan.themes': 'Themes',
+  'plan.themesHint': 'Tap a theme on or off. Each theme is a part of the course with all its topics.',
+  'plan.themeDone': (p) => `${p.theme}: practised by the whole group`,
+  'plan.themeOpen': (p) => `${p.theme}: tap to tick off for the whole group`,
 }

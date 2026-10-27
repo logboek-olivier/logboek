@@ -163,8 +163,10 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 - Groepsafvinken verlaagt nooit een status.
 
 **WeekPlan** (`plans.json.enc`)
-`id, title, startDate, dayCount, tripId?, groups: [{id, name, curriculumId, level, studentIds}], days: [{date, blocks: [{id, slot (ochtend|middag|avond), groupIds, topicIds, location?, note?}]}], updatedAt, deletedAt`
-- Concept (`src/model/plans.ts`, zonder netwerk): theorie 's ochtends, praktijk 's middags, examenkritisch eerst, beginners gelijk verdeeld over alle lesdagen, gemiddeld/gevorderd minstens 3/4 onderwerpen per blok, laatste dag herhaling van de examenkritische onderwerpen en examen.
+`id, title, startDate, dayCount, tripId?, groups: [{id, name, curriculumId, level, studentIds}], days: [{date, blocks: [{id, slot (ochtend|middag|avond), groupIds, topicIds, themeIds?, location?, note?}]}], updatedAt, deletedAt`
+- Grote thema's in plaats van losse onderwerpen: een thema is een onderdeel (groep) van de cursus; `themeIds` zijn die onderdelen en `topicIds` hun onderwerpen. Oudere planningen zonder `themeIds` tonen gewoon hun onderwerpen.
+- Concept (`src/model/plans.ts`, zonder netwerk): per dagdeel een of twee thema's; theorie-thema's 's ochtends, praktijk-thema's 's middags, thema's met examenkritische onderwerpen eerst, elk thema één keer over de lesdagen verdeeld (meer dagen dan thema's laat dagdelen vrij om te oefenen), laatste dag herhaling (de examenkritische onderwerpen) en examen.
+- Snel veranderen tijdens de trip: een blok met één tik een dag eerder of later (met ongedaan maken), thema's aan of uit met een tik in het blokblad; een thema afvinken = al zijn onderwerpen geoefend voor de hele groep (verlaagt nooit).
 - Groepen verwijzen naar studenten via id; gedeelde tekst, printweergave en "Toon aan studenten" tonen groepsnamen, nooit studentnamen of voortgang.
 - Een planning hoort bij een trip via `tripId`; zonder `tripId` (oudere planningen) bij de trip waarin `startDate` valt. Een nieuwe planning vanuit Deze trip krijgt de trip, de startdatum, het aantal dagen en groepen per cursus van de deelnemers mee.
 
@@ -203,7 +205,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
 3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Onderdelen:
-   - de planning van vandaag uit de lopende weekplanning (alleen als er vandaag iets gepland is; tik op een onderwerp = geoefend voor de hele groep);
+   - de planning van vandaag uit de lopende planning (alleen als er vandaag iets gepland is; tik op een thema = al zijn onderwerpen geoefend voor de hele groep);
    - de knop "Dag van vandaag loggen" (opent Toevoegen → Dag, voorgevuld);
    - nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`);
    - Termijnen: de eerstvolgende drie (eigen deadlines en vervaldatums, de token, de start van de volgende trip; te laat of verlopen bovenaan), "Termijn toevoegen" en "Alle" (Meer → Termijnen).
@@ -212,7 +214,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - Vergeten dagen (binnen de trip, tot en met vandaag, zonder gelogde dag): melding met één knop die Toevoegen → Dag op die datum opent.
    - Na de einddatum "Trip afronden": samenvatting (dagen, nm, deelnemers met resultaat) en reviewscore met citaten (Engelstalige citaten blijven Engels).
    - Deelnemers.
-   - Planning (bij training geven): wizard in drie schermen (dagen, groepen, concept), bewerken met tikken, "Toon aan studenten" (alleen de planning volledig scherm, zonder onderbalk of andere gegevens, terug met één knop), delen als tekst via `navigator.share` of als PDF via de printfunctie, in een exporttaal los van de app-taal.
+   - Planning (bij training geven): wizard in drie schermen (dagen, groepen, concept) met grote thema's per dagdeel, blok met één tik een dag eerder of later, bewerken met tikken, "Toon aan studenten" (alleen de planning volledig scherm, zonder onderbalk of andere gegevens, terug met één knop), delen als tekst via `navigator.share` of als PDF via de printfunctie, in een exporttaal los van de app-taal.
    - Checklists per deelnemer: grote vinkvakken (één tik = volgende status), examenkritische onderwerpen op "nieuw" bovenaan, voortgangsbalk per groep, "Alles geoefend/beheerst" per groep, "Groep afvinken" voor één onderwerp voor meerdere studenten.
    - Gezeilde dagen met nm-totaal; elke dag is aan te tikken en te bewerken; "Dag toevoegen" opent Dag op de eerstvolgende vergeten dag. De eerste dag van een trip begint op de basis.
    - Inkomsten en uitgaven van de trip in euro, standaard verborgen achter "Toon bedragen".

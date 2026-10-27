@@ -76,21 +76,29 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   await expect(page.locator('.toast')).toContainText('Geoefend voor 1 student')
   await expect(page.getByRole('button', { name: `${topicName}: geoefend door de hele groep` }).first()).toHaveAttribute('aria-pressed', 'true')
 
-  // Blok bewerken: naar dag 2, avond, met plaats; een onderwerp eruit.
+  // Blok bewerken: naar dag 2, avond, met plaats; thema's met een tik aan of uit.
   const firstDay = page.locator('.plan-day').first()
   const firstBlock = firstDay.locator('.plan-block').first()
-  const count = await firstBlock.locator('.plan-topics li').count()
+  await expect(firstBlock.locator('.plan-themes li')).toHaveCount(1)
   await firstBlock.getByRole('button', { name: /^Blok ochtend .* bewerken$/ }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('combobox', { name: 'Dag', exact: true }).selectOption({ index: 1 })
   await dialog.getByLabel('Dagdeel').selectOption({ label: 'Avond' })
   await dialog.getByLabel('Plaats').fill('Nephaven')
-  await dialog.getByRole('button', { name: /uit dit blok halen$/ }).first().click()
+  const themes = dialog.getByRole('group', { name: "Thema's" })
+  await themes.locator('button[aria-pressed="false"]').first().click()
   await dialog.getByRole('button', { name: 'Opslaan' }).click()
   const moved = page.locator('.plan-day').nth(1).locator('.plan-block.slot-avond')
   await expect(moved).toContainText('Nephaven')
-  await expect(moved.locator('.plan-topics li')).toHaveCount(count - 1)
+  await expect(moved.locator('.plan-themes li')).toHaveCount(2)
   await expectNoHorizontalOverflow(page)
+
+  // Snel schuiven tijdens de week: één tik een dag later, met ongedaan maken.
+  await moved.getByRole('button', { name: /een dag later$/ }).click()
+  await expect(page.locator('.toast')).toContainText('Blok verplaatst')
+  await expect(page.locator('.plan-day').nth(2).locator('.plan-block.slot-avond')).toContainText('Nephaven')
+  await page.locator('.toast').getByRole('button', { name: 'Ongedaan maken' }).click()
+  await expect(page.locator('.plan-day').nth(1).locator('.plan-block.slot-avond')).toContainText('Nephaven')
 
   // Tonen aan studenten: alleen de planning, terug met één knop.
   await page.getByRole('button', { name: 'Toon aan studenten' }).click()

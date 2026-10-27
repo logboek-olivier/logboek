@@ -226,7 +226,10 @@ export interface PlanBlock {
   id: string
   slot: DaySlot
   groupIds: string[]
+  /** Onderwerpen van het blok (bij thema's: alle onderwerpen van die thema's). */
   topicIds: string[]
+  /** Thema's: onderdelen (groepen) van de cursus. Een planning met thema's toont die in plaats van losse onderwerpen. */
+  themeIds?: string[]
   location?: string
   note?: string
 }

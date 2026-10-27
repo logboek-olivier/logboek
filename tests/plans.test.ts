@@ -17,6 +17,11 @@ import {
   splitPlans,
   studentsFor,
   tickForGroup,
+  tickItemForGroup,
+  itemDone,
+  blockItems,
+  shiftBlock,
+  themeChoices,
   topicChoices,
   topicDone,
   updateBlock,
@@ -46,7 +51,6 @@ async function device(github = new FakeGithub()) {
 const asa101 = SEED_CURRICULA.find((c) => c.id === 'seed-asa-101')!
 const asa103 = SEED_CURRICULA.find((c) => c.id === 'seed-asa-103')!
 const topics = allTopics(asa101)
-const byId = new Map(topics.map((t) => [t.id, t]))
 
 function group(patch: Partial<PlanGroup> = {}): PlanGroup {
   return { ...newGroup('Groep A', asa101.id), ...patch }
@@ -61,37 +65,41 @@ function student(id: string, patch: Partial<Student> = {}): Student {
 }
 
 describe('concept', () => {
-  it('theorie in de ochtend, praktijk in de middag, examenkritisch eerst, alles ingepland, laatste dag herhaling en examen', () => {
+  it("grote thema's: theorie-thema's 's ochtends, praktijk 's middags, examenkritische thema's eerst, elk thema één keer, laatste dag herhaling en examen", () => {
     const plan = draft([group()])
     expect(plan.days.map((d) => d.date)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30'])
     const teach = plan.days.slice(0, 4).flatMap((d) => d.blocks)
+    const themeById = new Map(asa101.groups.map((g) => [g.id, g]))
     for (const b of teach) {
-      const kinds = new Set(b.topicIds.map((id) => byId.get(id)!.kind))
-      expect([...kinds]).toEqual([b.slot === 'ochtend' ? 'theorie' : 'praktijk'])
+      expect(b.themeIds!.length).toBeGreaterThan(0)
+      expect(b.themeIds!.length).toBeLessThanOrEqual(2)
+      // De onderwerpen van een blok zijn precies die van zijn thema's.
+      expect(b.topicIds.sort()).toEqual(b.themeIds!.flatMap((id) => themeById.get(id)!.topics.map((t) => t.id)).sort())
+      for (const id of b.themeIds!) {
+        const th = themeById.get(id)!
+        const theory = th.topics.filter((t) => t.kind === 'theorie').length * 2 > th.topics.length
+        expect(b.slot).toBe(theory ? 'ochtend' : 'middag')
+      }
     }
-    // Elk onderwerp precies één keer in de lesdagen.
-    expect(teach.flatMap((b) => b.topicIds).sort()).toEqual(topics.map((t) => t.id).sort())
-    // Examenkritisch eerst: binnen theorie en praktijk komt geen kritisch onderwerp na een niet-kritisch.
-    for (const kind of ['theorie', 'praktijk'] as const) {
-      const order = teach
-        .filter((b) => b.slot === (kind === 'theorie' ? 'ochtend' : 'middag'))
-        .flatMap((b) => b.topicIds)
-        .map((id) => byId.get(id)!.examCritical)
+    // Elk thema met onderwerpen precies één keer in de lesdagen.
+    expect(teach.flatMap((b) => b.themeIds!).sort()).toEqual(asa101.groups.filter((g) => g.topics.length > 0).map((g) => g.id).sort())
+    // Thema's met examenkritische onderwerpen eerst (per dagdeel).
+    for (const slot of ['ochtend', 'middag'] as const) {
+      const order = teach.filter((b) => b.slot === slot).flatMap((b) => b.themeIds!).map((id) => themeById.get(id)!.topics.some((t) => t.examCritical))
       expect(order.indexOf(false) === -1 || order.lastIndexOf(true) < order.indexOf(false)).toBe(true)
     }
     const last = plan.days[4]!.blocks
     expect(last.map((b) => b.slot)).toEqual(['ochtend', 'middag'])
     expect(last[0]!.topicIds.sort()).toEqual(topics.filter((t) => t.examCritical).map((t) => t.id).sort())
+    expect(last[0]!.themeIds!.length).toBeGreaterThan(0)
     expect(last[1]!.note).toBe('Examen')
   })
 
-  it('beginners gelijk verdeeld over alle dagen; gevorderden meer per blok en eerder klaar', () => {
-    const beginner = draft([group({ level: 'beginner' })], 8)
-    const advanced = draft([group({ level: 'gevorderd' })], 8)
-    const busiest = (p: WeekPlan) => Math.max(...p.days.slice(0, -1).flatMap((d) => d.blocks.map((b) => b.topicIds.length)))
-    const usedDays = (p: WeekPlan) => p.days.slice(0, -1).filter((d) => d.blocks.length > 0).length
-    expect(busiest(beginner)).toBeLessThan(busiest(advanced))
-    expect(usedDays(beginner)).toBeGreaterThan(usedDays(advanced))
+  it('meer dagen dan thema\'s laat dagdelen vrij om te oefenen; nooit tientallen onderwerpen in een lijst', () => {
+    const plan = draft([group()], 10)
+    const teach = plan.days.slice(0, -1)
+    expect(teach.some((d) => d.blocks.length === 0)).toBe(true)
+    for (const d of teach) for (const b of d.blocks) expect(blockItems(b, SEED_CURRICULA, 'nl').length).toBeLessThanOrEqual(2)
   })
 
   it('twee groepen krijgen eigen blokken; één dag heeft geen aparte herhalingsdag', () => {
@@ -181,7 +189,8 @@ describe('delen', () => {
     expect(en).toContain('Nepweek')
     expect(en).toContain('Morning · Groep A')
     expect(en).toContain('Exam')
-    expect(en).toContain(`- ${topics.find((t) => t.kind === 'theorie')!.title.en}`)
+    expect(en).toContain(`- ${asa101.groups[0]!.title.en}`)
+    expect(en).not.toContain(`- ${topics[0]!.title.en}`)
     expect(en).not.toContain('Ochtend')
     const nl = planText(plan, SEED_CURRICULA, 'nl')
     expect(nl).toContain('Ochtend · Groep A')
@@ -205,5 +214,39 @@ describe('opslag', () => {
     const b = await device(github)
     await b.store.sync()
     expect(b.store.get('plans.json.enc')[0]!.title).toBe('Nepweek')
+  })
+})
+
+describe('thema\'s snel veranderen', () => {
+  it('één tik een dag eerder of later; aan de rand blijft het blok staan', () => {
+    const plan = draft([group()])
+    const first = plan.days[0]!.blocks[0]!
+    const later = shiftBlock(plan, first.id, 1)
+    expect(findBlock(later, first.id)).toMatchObject({ date: '2026-10-27', block: { slot: first.slot } })
+    expect(shiftBlock(plan, first.id, -1)).toBe(plan)
+  })
+
+  it("thema's aan en uit: onderwerpen volgen; thema afvinken = alle onderwerpen geoefend voor de groep", () => {
+    let plan = draft([group({ studentIds: ['s1', 's2'] })])
+    const b = plan.days[0]!.blocks[0]!
+    const choices = themeChoices(plan, b.groupIds, SEED_CURRICULA)
+    expect(choices.map((c) => c.id)).toEqual(asa101.groups.map((g) => g.id))
+    const other = choices.find((c) => !b.themeIds!.includes(c.id))!
+    plan = updateBlock(plan, b.id, { groupIds: b.groupIds, topicIds: other.topicIds, themeIds: [other.id] })
+    const items = blockItems(findBlock(plan, b.id)!.block, SEED_CURRICULA, 'nl')
+    expect(items).toEqual([{ id: other.id, title: asa101.groups.find((g) => g.id === other.id)!.title.nl, topicIds: other.topicIds, theme: true }])
+
+    const done = withStatus(student('s1'), other.topicIds[0]!, 'beheerst', NOW)
+    const group1 = [done, student('s2')]
+    expect(itemDone(group1, other.topicIds)).toBe(false)
+    const changed = tickItemForGroup(group1, other.topicIds, NOW)
+    expect(changed.map((s) => s.id).sort()).toEqual(['s1', 's2'])
+    expect(statusOf(changed.find((s) => s.id === 's1')!, other.topicIds[0]!)).toBe('beheerst')
+    expect(itemDone(changed, other.topicIds)).toBe(true)
+  })
+
+  it('een oudere planning met losse onderwerpen blijft gewoon werken', () => {
+    const old: WeekPlan = { ...draft([group()]), days: [{ date: '2026-10-26', blocks: [{ id: 'x', slot: 'ochtend', groupIds: [], topicIds: [topics[0]!.id] }] }] }
+    expect(blockItems(old.days[0]!.blocks[0]!, SEED_CURRICULA, 'nl')).toEqual([{ id: topics[0]!.id, title: topics[0]!.title.nl, topicIds: [topics[0]!.id], theme: false }])
   })
 })

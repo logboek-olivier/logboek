@@ -29,14 +29,18 @@ import {
   slotLabel,
   sortBlocks,
   splitPlans,
+  shiftBlock,
   studentsFor,
-  tickForGroup,
+  themeChoices,
+  tickItemForGroup,
+  itemDone,
+  blockItems,
   topicChoices,
-  topicDone,
   topicIndex,
   updateBlock,
   updateGroups,
   type BlockPatch,
+  type PlanItem,
 } from '../model/plans'
 import { activeStudents, saveStudents } from '../model/students'
 import { dayCountOf, planWeek, weekView } from '../model/weeks'
@@ -412,8 +416,12 @@ function PlanView({
         plan={plan}
         curricula={curricula}
         lang={lang}
-        renderTopic={(b, topicId, title) => <TopicTick store={store} notify={notify} plan={plan} block={b} topicId={topicId} title={title} curricula={curricula} students={students} />}
+        renderItem={(b, item) => <TopicTick store={store} notify={notify} plan={plan} block={b} item={item} curricula={curricula} students={students} />}
         onEditBlock={(id) => setEditingBlock(id)}
+        onShiftBlock={(id, delta) => {
+          const before = plan
+          void savePlan(store, shiftBlock(plan, id, delta)).then(() => notify(t('plan.moved'), () => savePlan(store, before)))
+        }}
         onAddBlock={(date) => {
           const { plan: next, blockId } = addBlock(plan, date, 'ochtend', plan.groups.length === 1 ? [plan.groups[0]!.id] : [])
           void savePlan(store, next).then(() => setEditingBlock(blockId))
@@ -483,18 +491,19 @@ function PlanDays({
   plan,
   curricula,
   lang,
-  renderTopic,
+  renderItem,
   onEditBlock,
+  onShiftBlock,
   onAddBlock,
 }: {
   plan: WeekPlan
   curricula: readonly Curriculum[]
   lang: Lang
-  renderTopic?: (block: PlanBlock, topicId: string, title: string) => ReactNode
+  renderItem?: (block: PlanBlock, item: PlanItem) => ReactNode
   onEditBlock?: (blockId: string) => void
+  onShiftBlock?: (blockId: string, delta: -1 | 1) => void
   onAddBlock?: (date: string) => void
 }) {
-  const topics = topicIndex(curricula)
   return (
     <div className="plan-days">
       {plan.days.map((day) => {
@@ -503,7 +512,10 @@ function PlanDays({
         return (
           <section key={day.date} className="section plan-day">
             <h2>{capitalize(formatWeekday(day.date, lang))}</h2>
-            {blocks.map((b) => (
+            {blocks.map((b) => {
+              const index = plan.days.findIndex((d) => d.date === day.date)
+              const where = { slot: slotLabel(b.slot, lang), day: formatWeekday(day.date, lang) }
+              return (
               <article key={b.id} className={`card plan-block slot-${b.slot}`}>
                 <header className="plan-block-head">
                   <span className="plan-slot">{slotLabel(b.slot, lang)}</span>
@@ -513,8 +525,18 @@ function PlanDays({
                       .map((g) => g.name)
                       .join(', ')}
                   </span>
+                  {onShiftBlock && index > 0 && (
+                    <button className="btn icon" aria-label={translate(lang, 'plan.earlier', where)} onClick={() => onShiftBlock(b.id, -1)}>
+                      <Icon icon={ChevronLeft} />
+                    </button>
+                  )}
+                  {onShiftBlock && index < plan.days.length - 1 && (
+                    <button className="btn icon" aria-label={translate(lang, 'plan.later', where)} onClick={() => onShiftBlock(b.id, 1)}>
+                      <Icon icon={ChevronRight} />
+                    </button>
+                  )}
                   {onEditBlock && (
-                    <button className="btn icon" aria-label={translate(lang, 'plan.editBlock', { slot: slotLabel(b.slot, lang), day: formatWeekday(day.date, lang) })} onClick={() => onEditBlock(b.id)}>
+                    <button className="btn icon" aria-label={translate(lang, 'plan.editBlock', where)} onClick={() => onEditBlock(b.id)}>
                       <Icon icon={Pencil} />
                     </button>
                   )}
@@ -525,19 +547,11 @@ function PlanDays({
                     {b.location}
                   </p>
                 )}
-                {b.topicIds.length > 0 && (
-                  <ul className="plan-topics">
-                    {b.topicIds.map((id) => {
-                      const found = topics.get(id)
-                      if (!found) return null
-                      const title = localized(found.topic.title, lang)
-                      return <li key={id}>{renderTopic ? renderTopic(b, id, title) : <span className="plan-topic">{title}</span>}</li>
-                    })}
-                  </ul>
-                )}
+                <PlanItems block={b} curricula={curricula} lang={lang} renderItem={renderItem} />
                 {b.note && <p className="small plan-note">{noteIn(b.note, lang)}</p>}
               </article>
-            ))}
+              )
+            })}
             {onAddBlock && (
               <button className="btn link" onClick={() => onAddBlock(day.date)}>
                 <Icon icon={Plus} />
@@ -551,14 +565,27 @@ function PlanDays({
   )
 }
 
-/** Tik op een onderwerp = geoefend voor de hele groep (verlaagt nooit), met ongedaan maken. */
+/** De thema's (of losse onderwerpen) van een blok. Zonder renderItem alleen lezen (tonen, printen). */
+function PlanItems({ block, curricula, lang, renderItem }: { block: PlanBlock; curricula: readonly Curriculum[]; lang: Lang; renderItem?: (block: PlanBlock, item: PlanItem) => ReactNode }) {
+  const items = blockItems(block, curricula, lang)
+  if (items.length === 0) return null
+  const themes = items[0]!.theme
+  return (
+    <ul className={themes ? 'plan-themes' : 'plan-topics'}>
+      {items.map((item) => (
+        <li key={item.id}>{renderItem ? renderItem(block, item) : <span className={themes ? 'plan-theme' : 'plan-topic'}>{item.title}</span>}</li>
+      ))}
+    </ul>
+  )
+}
+
+/** Tik op een thema of onderwerp = geoefend voor de hele groep (verlaagt nooit), met ongedaan maken. */
 function TopicTick({
   store,
   notify,
   plan,
   block,
-  topicId,
-  title,
+  item,
   curricula,
   students,
 }: {
@@ -566,18 +593,18 @@ function TopicTick({
   notify: Notify
   plan: WeekPlan
   block: PlanBlock
-  topicId: string
-  title: string
+  item: PlanItem
   curricula: readonly Curriculum[]
   students: readonly Student[]
 }) {
-  const found = topicIndex(curricula).get(topicId)
+  const title = item.title
+  const found = topicIndex(curricula).get(item.topicIds[0] ?? '')
   const group = found ? studentsFor(plan, block, found.course.id, students) : []
-  const done = topicDone(group, topicId)
-  if (done === null) return <span className="plan-topic">{title}</span>
+  const done = itemDone(group, item.topicIds)
+  if (done === null) return <span className={item.theme ? 'plan-theme' : 'plan-topic'}>{title}</span>
   const tick = () => {
     const latest = found ? studentsFor(plan, block, found.course.id, store.get('students.json.enc')) : []
-    const changed = tickForGroup(latest, topicId, new Date().toISOString())
+    const changed = tickItemForGroup(latest, item.topicIds, new Date().toISOString())
     if (changed.length === 0) {
       notify(t('plan.alreadyDone'))
       return
@@ -586,7 +613,7 @@ function TopicTick({
     void saveStudents(store, changed).then(() => notify(t('plan.ticked', { n: changed.length }), () => saveStudents(store, before)))
   }
   return (
-    <button className={`plan-topic tick${done ? ' done' : ''}`} onClick={tick} aria-pressed={done} aria-label={t(done ? 'plan.topicDone' : 'plan.topicOpen', { topic: title })}>
+    <button className={`${item.theme ? 'plan-theme' : 'plan-topic'} tick${done ? ' done' : ''}`} onClick={tick} aria-pressed={done} aria-label={item.theme ? t(done ? 'plan.themeDone' : 'plan.themeOpen', { theme: title }) : t(done ? 'plan.topicDone' : 'plan.topicOpen', { topic: title })}>
       <span className="check-box small" aria-hidden="true">
         {done && <Icon icon={Check} />}
       </span>
@@ -615,6 +642,9 @@ function BlockSheet({
   const lang = useLang()
   const [groupIds, setGroupIds] = useState(block.groupIds)
   const [topicIds, setTopicIds] = useState(block.topicIds)
+  const themeMode = block.themeIds !== undefined
+  const [themeIds, setThemeIds] = useState(block.themeIds ?? [])
+  const themes = themeChoices(plan, groupIds, curricula)
   const [location, setLocation] = useState(block.location ?? '')
   const [note, setNote] = useState(block.note ? noteIn(block.note, lang) : '')
   const [date, setDate] = useState(initialDate)
@@ -624,7 +654,15 @@ function BlockSheet({
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    onSave({ groupIds, topicIds, location, note }, date, slot)
+    if (themeMode) {
+      // Onderwerpen volgen uit de gekozen thema's (bij herhaling blijven alleen de al gekozen onderwerpen van een thema).
+      const chosen = themes.filter((th) => themeIds.includes(th.id))
+      const topics = chosen.flatMap((th) => {
+        const kept = th.topicIds.filter((id) => block.topicIds.includes(id))
+        return block.themeIds?.includes(th.id) && kept.length > 0 ? kept : th.topicIds
+      })
+      onSave({ groupIds, topicIds: topics, themeIds, location, note }, date, slot)
+    } else onSave({ groupIds, topicIds, location, note }, date, slot)
   }
 
   return (
@@ -663,6 +701,23 @@ function BlockSheet({
             ))}
           </fieldset>
         )}
+        {themeMode && (
+          <div className="stack-sm">
+            <span className="label">{t('plan.themes')}</span>
+            <span className="muted small">{t('plan.themesHint')}</span>
+            <div className="type-buttons" role="group" aria-label={t('plan.themes')}>
+              {themes.map((th) => {
+                const on = themeIds.includes(th.id)
+                return (
+                  <button key={th.id} type="button" aria-pressed={on} className={`chip${on ? ' active' : ''}`} onClick={() => setThemeIds(on ? themeIds.filter((id) => id !== th.id) : [...themeIds, th.id])}>
+                    {localized(th.title, lang)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {!themeMode && (
         <div className="stack-sm">
           <span className="label">{t('plan.topics')}</span>
           {topicIds.length === 0 && <span className="muted small">{t('plan.noTopics')}</span>}
@@ -699,6 +754,7 @@ function BlockSheet({
             </label>
           )}
         </div>
+        )}
         <label>
           {t('plan.location')}
           <input type="text" autoComplete="off" maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} />
@@ -928,7 +984,6 @@ export function TodayPlan({ store, notify }: { store: Store; notify: Notify }) {
   const blocks = blocksOn(plan, today)
   if (blocks.length === 0) return null
   const curricula = effectiveCurricula(stored)
-  const topics = topicIndex(curricula)
   return (
     <section className="stat wide today-plan" aria-label={t('plan.today')}>
       <span className="stat-label">
@@ -942,19 +997,7 @@ export function TodayPlan({ store, notify }: { store: Store; notify: Notify }) {
             {b.groupIds.length > 0 && ` · ${plan.groups.filter((g) => b.groupIds.includes(g.id)).map((g) => g.name).join(', ')}`}
             {b.location && ` · ${b.location}`}
           </span>
-          {b.topicIds.length > 0 && (
-            <ul className="plan-topics">
-              {b.topicIds.map((id) => {
-                const found = topics.get(id)
-                if (!found) return null
-                return (
-                  <li key={id}>
-                    <TopicTick store={store} notify={notify} plan={plan} block={b} topicId={id} title={localized(found.topic.title, lang)} curricula={curricula} students={students} />
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          <PlanItems block={b} curricula={curricula} lang={lang} renderItem={(block, item) => <TopicTick store={store} notify={notify} plan={plan} block={block} item={item} curricula={curricula} students={students} />} />
           {b.note && <span className="small muted">{noteIn(b.note, lang)}</span>}
         </div>
       ))}
