@@ -24,7 +24,13 @@ export async function loadToken(db: Db, masterKey: CryptoKey): Promise<StoredTok
   const text = decoder.decode(await decryptObject(masterKey, TOKEN_AAD, blob))
   // Oudere opslag: alleen de token als tekst.
   if (!text.startsWith('{')) return { token: text, expiresAt: null }
-  const raw: unknown = JSON.parse(text)
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    // Wel ontsleuteld maar ongeldig: alsof er geen token is (het herstelscherm vraagt er dan één, met de wachtzin).
+    return null
+  }
   if (typeof raw !== 'object' || raw === null || typeof (raw as StoredToken).token !== 'string') return null
   const expiresAt = (raw as StoredToken).expiresAt
   return { token: (raw as StoredToken).token, expiresAt: typeof expiresAt === 'string' ? expiresAt : null }

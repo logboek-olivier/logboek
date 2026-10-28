@@ -267,6 +267,19 @@ function isBase64Of(value: unknown, length: number): value is string {
 }
 
 /** meta.json.enc komt van het netwerk en wordt volledig gecontroleerd voordat iets het gebruikt. */
+/**
+ * Lijkt deze tekst op een meta.json.enc (JSON met format logboek-meta)? Zo niet, dan is hij kapot en hoort hij bij geen
+ * enkel logboek. Wel een meta die deze app niet kan lezen (nieuwer, of zonder geldige velden): mogelijk een ander logboek.
+ */
+export function looksLikeMeta(json: string): boolean {
+  try {
+    const raw: unknown = JSON.parse(json)
+    return isRecord(raw) && raw.format === 'logboek-meta'
+  } catch {
+    return false
+  }
+}
+
 export function parseMeta(json: string): Meta {
   let raw: unknown
   try {

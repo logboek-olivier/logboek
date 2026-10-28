@@ -5,7 +5,7 @@ import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from './model/
 import { ConflictError, type GithubClient } from './storage/github'
 import { deleteIfUnchanged, getLocal, getObject, type Db } from './storage/idb'
 import { loadOutbox, OUTBOX_NAME } from './storage/outbox'
-import { decryptRecords, encryptRecords } from './storage/sync'
+import { decryptRecords, encryptRecords, InvalidDataError } from './storage/sync'
 import { loadToken } from './storage/token'
 
 // Logboek herstellen: gegevens die met de sleutel uit meta.json.enc (de wachtzin) niet te lezen zijn, opruimen.
@@ -28,7 +28,8 @@ export interface RepairReport {
   tokenNeeded: boolean
 }
 
-type LocalState = 'absent' | 'readable' | 'unreadable'
+/** invalid: wel met deze sleutel ontsleuteld, maar ongeldig of van een nieuwere app: nooit wissen, geen bron voor herstel. */
+type LocalState = 'absent' | 'readable' | 'unreadable' | 'invalid'
 
 export interface LocalDiagnosis {
   state: Map<CollectionPath, LocalState>
@@ -51,13 +52,19 @@ function assertKnownFormat(blob: Bytes): void {
   if (blob.length > 0 && blob[0]! > FORMAT_VERSION && blob[0]! < 16) throw new NewerSchemaError(blob[0]!)
 }
 
+/**
+ * Is `blob` met deze sleutel te lezen? Ook een bestand dat wel ontsleutelt maar ongeldig is, of van een nieuwere app
+ * komt, telt hier als leesbaar: het is geen sleutelprobleem, het herstelscherm laat het staan en blijft er niet op
+ * hangen (de app toont daarna per onderdeel een melding, of "Werk de app bij").
+ */
 async function readable(blob: Bytes, run: () => Promise<unknown>): Promise<boolean> {
-  assertKnownFormat(blob)
   try {
+    assertKnownFormat(blob)
     await run()
     return true
   } catch (error) {
     if (error instanceof DecryptError) return false
+    if (error instanceof InvalidDataError || error instanceof NewerSchemaError) return true
     throw error
   }
 }
@@ -73,11 +80,15 @@ export async function diagnoseLocal(db: Db, masterKey: CryptoKey): Promise<Local
       state.set(path, 'absent')
       continue
     }
-    assertKnownFormat(stored.blob)
     try {
       records.set(path, await decryptRecords(masterKey, path, stored.blob))
       state.set(path, 'readable')
     } catch (error) {
+      // Wel met deze sleutel ontsleuteld (ongeldig, of van een nieuwere app): geen sleutelprobleem, nooit wissen.
+      if (error instanceof InvalidDataError || error instanceof NewerSchemaError) {
+        state.set(path, 'invalid')
+        continue
+      }
       if (!(error instanceof DecryptError)) throw error
       state.set(path, 'unreadable')
       blobs.set(path, stored.blob)

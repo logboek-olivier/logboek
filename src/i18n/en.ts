@@ -482,6 +482,8 @@ export const en: Messages = {
   'sync.otherKeyHint': 'This device is unlocked with a different master key than the one logboek-data is encrypted with, for example because logboek-data was recreated. Nothing is written to GitHub and nothing is deleted. Link this device to the logbook again (clear site data, then Link existing logbook); changes that exist only here will be lost.',
   'sync.repairHint': (p) => `${p.path} on GitHub cannot be decrypted. This device has a readable copy. Saving again puts that copy on GitHub; the unreadable version stays in the history of logboek-data.`,
   'sync.repair': 'Save local version to GitHub again',
+  'sync.updateHint': 'Data on this device was saved by a newer version of the app. Reloading gets the latest version; until then you can view everything but change nothing. Nothing will be lost.',
+  'sync.setAsideHint': (p) => `A damaged copy of ${p.path} on this device has been kept aside (not deleted); the version on GitHub is used.`,
   'sync.resetHint': (p) => `${p.path} on GitHub cannot be decrypted, and saving again did not stick or this device has no copy. The rest of the app works as usual. Emptying puts an empty version on GitHub; whatever this device can still read stays and is synced again. The old version stays in the history of logboek-data.`,
   'sync.reset': 'Empty this file on GitHub and start again',
   'sync.resetDone': 'File on GitHub emptied',
@@ -572,6 +574,9 @@ export const en: Messages = {
   'money.provisionalHint': 'Some amounts are converted provisionally with the last known rate.',
   // Key does not match the logbook
   'key.mismatchTitle': 'Key does not match your logbook',
+  'key.metaRestoreTitle': 'Put logbook back on GitHub',
+  'key.metaRestoreText': 'meta.json.enc on GitHub is missing or damaged, but does not belong to another logbook. This device still has your logbook and puts it back on GitHub with your passphrase. Nothing will be lost.',
+  'key.metaRestore': 'Put the logbook from this device back on GitHub',
   'key.mismatchText': 'The key the app is using on this device does not belong to meta.json.enc of your logbook. Nothing was written and the stored session key has been deleted.',
   'key.mismatchNext': 'Unlock again with your passphrase or recovery code.',
   'key.unlockAgain': 'Unlock with passphrase',

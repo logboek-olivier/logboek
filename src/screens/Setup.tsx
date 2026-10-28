@@ -1,5 +1,5 @@
 import { Anchor, ChevronLeft } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
 import { isUserMistake, lastError } from '../errors'
@@ -28,6 +28,12 @@ export function Setup() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const session = useSession()
+  // Voorbij het keuzescherm niet zomaar herladen voor een nieuwe versie (dan staat de balk "Herladen" er).
+  const inProgress = step.kind !== 'choose'
+  useEffect(() => {
+    session.setSetupInProgress(inProgress)
+    return () => session.setSetupInProgress(false)
+  }, [session, inProgress])
 
   async function run(action: () => Promise<void>) {
     setBusy(true)

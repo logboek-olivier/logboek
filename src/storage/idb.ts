@@ -95,6 +95,23 @@ export async function putObjectIfVault(db: Db, metaPath: string, expectedCheck: 
   return ok
 }
 
+/**
+ * Een lokaal bestand apart zetten onder `toKey` (nooit weggooien), in één transactie: alleen als de lokale meta nog bij
+ * `expectedCheck` hoort (null: geen controle, alleen tests van de opslaglaag) en het bestand intussen niet veranderd is.
+ */
+export async function setAsideIfVault(db: Db, metaPath: string, expectedCheck: string | null, path: string, blob: Bytes, toKey: string): Promise<boolean> {
+  const tx = db.transaction('objects', 'readwrite')
+  const store = tx.objectStore('objects')
+  const current = await store.get(path)
+  const ok = (expectedCheck === null || storedCheck(await store.get(metaPath)) === expectedCheck) && sameBytes(current?.blob, blob)
+  if (ok && current) {
+    await store.put({ ...current, path: toKey })
+    await store.delete(path)
+  }
+  await tx.done
+  return ok
+}
+
 function sameBytes(a: Bytes | undefined, b: Bytes): boolean {
   return a !== undefined && a.length === b.length && a.every((v, i) => v === b[i])
 }
