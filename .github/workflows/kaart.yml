@@ -1,0 +1,60 @@
+name: kaart
+
+# Bouwt de gedetailleerde OpenStreetMap-kaartdata (public/osm/) met scripts/build-osm.mjs en legt die vast op dezelfde
+# branch. Alleen buiten main (main is beschermd; de data komt via de PR mee). Een push met GITHUB_TOKEN start geen nieuwe
+# workflows, dus dit loopt nooit in een kring.
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - scripts/build-osm.mjs
+      - scripts/osm-lib.mjs
+      - .github/workflows/kaart.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kaart-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - id: month
+        run: echo "month=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
+      # De landpolygonen (uit de OSM-kustlijnen, ca. 1 GB) één keer per maand downloaden.
+      - uses: actions/cache@v4
+        with:
+          path: osm-bron
+          key: land-polygons-split-4326-${{ steps.month.outputs.month }}
+      - name: Landpolygonen downloaden
+        run: |
+          mkdir -p osm-bron
+          if [ ! -f osm-bron/land_polygons.shp ]; then
+            curl -fsSL --retry 3 -o osm-bron/land.zip https://osmdata.openstreetmap.de/download/land-polygons-split-4326.zip
+            unzip -j -o osm-bron/land.zip '*.shp' -d osm-bron
+            rm osm-bron/land.zip
+          fi
+          ls -la osm-bron
+      - name: Kaartdata bouwen
+        run: node scripts/build-osm.mjs osm-bron/land_polygons.shp
+      - name: Kaartdata vastleggen
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/osm
+          if git diff --cached --quiet; then
+            echo 'Kaartdata ongewijzigd'
+            exit 0
+          fi
+          git commit -m 'Kaartdata: OpenStreetMap-kustlijnen, meren en labels'
+          git push
