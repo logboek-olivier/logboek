@@ -34,7 +34,14 @@ export function pendingCount(outbox: Outbox): number {
 export async function loadOutbox(db: Db, masterKey: CryptoKey): Promise<Outbox> {
   const blob = await getLocal(db, OUTBOX_NAME)
   if (!blob) return {}
-  const raw: unknown = JSON.parse(decoder.decode(await decryptObject(masterKey, OUTBOX_AAD, blob)))
+  const plain = await decryptObject(masterKey, OUTBOX_AAD, blob)
+  // Wel ontsleuteld maar geen geldige outbox: leeg beginnen (de gegevens zelf staan in de bestanden en blijven).
+  let raw: unknown
+  try {
+    raw = JSON.parse(decoder.decode(plain))
+  } catch {
+    return {}
+  }
   return isOutbox(raw) ? raw : {}
 }
 

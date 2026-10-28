@@ -1459,6 +1459,11 @@ button.sync-status {
   font-size: var(--fs-sm);
 }
 
+/* Een link die eruitziet als knop (bijvoorbeeld naar de noodpagina reset.html): zonder onderstreping. */
+a.btn {
+  text-decoration: none;
+}
+
 .error-details .icon {
   --icon: 16px;
 }

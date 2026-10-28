@@ -17,6 +17,12 @@ import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from
  */
 const SEED_PATHS: ReadonlySet<CollectionPath> = new Set(['curricula.json.enc', 'checklists.json.enc'])
 
+/**
+ * Soorten fout waarbij een bestand op GitHub vervangen mag worden (na een tik, of vanzelf bij seedbestanden): niet te
+ * ontsleutelen, of wel ontsleuteld maar geen geldig logboekbestand. Een nieuwere schemaversie nooit: "Werk de app bij".
+ */
+const REPLACEABLE: ReadonlySet<string> = new Set(['DecryptError', 'InvalidDataError'])
+
 /** Wat de app per onleesbaar bestand aanbiedt: de lokale kopie opnieuw opslaan, of leegmaken en opnieuw beginnen. */
 export interface RepairOption {
   path: CollectionPath
@@ -75,9 +81,19 @@ export class OtherKeyError extends Error {
  * ander tabblad of een andere versie van de app maakte of koppelde een logboek) of hoort bij een andere sleutel;
  * remote: meta.json.enc op GitHub hoort bij een andere sleutel, ontbreekt of is niet te controleren.
  */
+/**
+ * Waarom meta.json.enc op GitHub niet bij de sleutel past: missing = ontbreekt (repo leeg of opnieuw aangemaakt);
+ * unreadable = geen geldige meta (kapotte inhoud); other = hoort bij een andere sleutel, of is niet te controleren
+ * (oude meta zonder check-veld). Alleen bij missing en unreadable kan dit apparaat zijn eigen meta terugzetten.
+ */
+export type RemoteMetaProblem = 'missing' | 'unreadable' | 'other'
+
 export class KeyMismatchError extends Error {
-  constructor(readonly where: 'local' | 'remote') {
-    super(`Sleutel past niet bij meta.json.enc (${where})`)
+  constructor(
+    readonly where: 'local' | 'remote',
+    readonly remote: RemoteMetaProblem = 'other',
+  ) {
+    super(`Sleutel past niet bij meta.json.enc (${where}${where === 'remote' ? `, ${remote}` : ''})`)
     this.name = 'KeyMismatchError'
   }
 }
@@ -118,10 +134,14 @@ export class Store {
   private locked = false
   /** logboek-data bevat een bestand van een nieuwere schemaversie: niets meer naar GitHub schrijven. */
   private outdated = false
+  /** Lokale bestanden van een nieuwere app: nooit overschrijven (alleen in het geheugen bij te werken). */
+  private readonly frozen = new Set<CollectionPath>()
   /** Minstens één sync is in deze sessie zonder fouten afgerond (de lokale kopie is bijgewerkt). */
   private syncedOnce = false
   /** Bestanden die op GitHub onleesbaar waren bij de laatste sync, met de soort fout. */
   private unreadable = new Map<CollectionPath, string>()
+  /** De laatste meta-controle vond op GitHub een meta.json.enc die geen geldige meta is. */
+  private remoteMetaUnreadable = false
   /** Uitkomst van de laatste meta-controle; herstellen mag alleen na een bevestigde 'match'. */
   private metaVerdict: MetaCheck = 'unknown'
   /** De sleutel past niet (meer) bij meta.json.enc: deze Store schrijft nooit meer iets. */
@@ -146,10 +166,27 @@ export class Store {
     const store = new Store(db, masterKey, client, vaultCheck)
     for (const path of COLLECTION_PATHS) {
       const stored = await getObject(db, path)
-      store.collections.set(path, stored ? await decryptRecords(masterKey, path, stored.blob) : [])
+      let records: SyncRecord[] = []
+      if (stored) {
+        try {
+          records = await decryptRecords(masterKey, path, stored.blob)
+        } catch (error) {
+          // Niet te ontsleutelen: een andere sleutel, dat is "Logboek herstellen" (de sessie).
+          if (error instanceof DecryptError) throw error
+          recordError(error)
+          // Van een nieuwere app: nooit overschrijven, niets naar GitHub, "Werk de app bij". De rest werkt gewoon.
+          if (error instanceof NewerSchemaError) {
+            store.outdated = true
+            store.frozen.add(path)
+          }
+          // Wel ontsleuteld maar ongeldig: niets van te gebruiken; de versie van GitHub komt er bij de sync overheen.
+          else if (!(error instanceof InvalidDataError)) throw error
+        }
+      }
+      store.collections.set(path, records)
     }
     store.outbox = await loadOutbox(db, masterKey)
-    store.status = store.idleStatus()
+    store.status = store.outdated ? { kind: 'error', code: 'update', count: store.pendingCount() } : store.idleStatus()
     return store
   }
 
@@ -269,7 +306,7 @@ export class Store {
       // Sleutel-invariant: alleen schrijven als meta.json.enc op GitHub aantoonbaar bij deze sleutel hoort.
       if (this.vaultCheck !== null && meta !== 'match') {
         this.unreadable = new Map()
-        this.tripMismatch('remote')
+        this.tripMismatch('remote', this.remoteProblem(meta))
       }
       if (meta === 'mismatch' || meta === 'missing') {
         this.unreadable = new Map()
@@ -301,7 +338,7 @@ export class Store {
             await decryptRecords(this.masterKey, path, file.content)
           } catch (error) {
             // Een versie die dit apparaat al verving: GitHub toont nog even de oude. Deze ronde overslaan, niets melden.
-            if (error instanceof DecryptError && wasReplaced(this.db.name, path, file.sha)) {
+            if ((error instanceof DecryptError || error instanceof InvalidDataError) && wasReplaced(this.db.name, path, file.sha)) {
               waiting = true
               continue
             }
@@ -341,7 +378,7 @@ export class Store {
     if (this.vaultCheck !== null && meta === 'match' && !this.outdated) {
       for (const [path, reason] of [...unreadable]) {
         if (this.locked) return
-        if (reason !== 'DecryptError' || !SEED_PATHS.has(path)) continue
+        if (!REPLACEABLE.has(reason) || !SEED_PATHS.has(path)) continue
         if (repairAttempts(this.db.name, path) >= MAX_REPAIRS) continue
         try {
           await this.replaceRemote(path, this.collections.get(path) ?? [], remoteSha.get(path) ?? null)
@@ -390,6 +427,7 @@ export class Store {
    * De lokale meta zegt niets over de sleutel in het geheugen; alleen het check-veld telt.
    */
   private async checkMeta(): Promise<MetaCheck> {
+    this.remoteMetaUnreadable = false
     const remote = await this.client.getFile(META_PATH)
     if (!remote) return (await Store.loadMeta(this.db).catch(() => null)) ? 'missing' : 'unknown'
     let meta: Meta
@@ -397,6 +435,7 @@ export class Store {
       meta = parseMeta(new TextDecoder().decode(remote.content))
     } catch (error) {
       if (error instanceof NewerSchemaError) throw error
+      this.remoteMetaUnreadable = true
       return 'unknown'
     }
     if (await verifyMetaCheck(meta, this.masterKey)) return 'match'
@@ -404,16 +443,16 @@ export class Store {
   }
 
   /**
-   * Wat de app per onleesbaar bestand aanbiedt (DecryptError op GitHub, meta.json.enc bevestigd bij deze sleutel):
-   * 'repair' zet de leesbare kopie van dit apparaat terug; 'reset' maakt het bestand leeg en begint opnieuw, als er
-   * geen lokale kopie is of herstellen al twee keer niet bleef staan. Een bestand dat wel ontsleutelt maar ongeldig is,
-   * wordt nooit overschreven ("Werk de app bij").
+   * Wat de app per onleesbaar bestand aanbiedt (op GitHub niet te ontsleutelen of ongeldig, meta.json.enc bevestigd
+   * bij deze sleutel): 'repair' zet de leesbare kopie van dit apparaat terug; 'reset' maakt het bestand leeg en begint
+   * opnieuw, als er geen lokale kopie is of herstellen al twee keer niet bleef staan. Een bestand van een nieuwere
+   * schemaversie wordt nooit overschreven ("Werk de app bij").
    */
   async repairOptions(): Promise<RepairOption[]> {
     if (this.outdated || this.metaVerdict !== 'match') return []
     const result: RepairOption[] = []
     for (const [path, reason] of this.unreadable) {
-      if (reason !== 'DecryptError') continue
+      if (!REPLACEABLE.has(reason)) continue
       const local = await getObject(this.db, path)
       const tooOften = repairAttempts(this.db.name, path) >= MAX_REPAIRS
       result.push({ path, action: local && !tooOften ? 'repair' : 'reset' })
@@ -461,7 +500,10 @@ export class Store {
   private async replaceRemote(path: CollectionPath, records: readonly SyncRecord[], knownSha: string | null): Promise<void> {
     if (this.metaVerdict !== 'match' || this.outdated) return
     await this.assertVault()
-    if (this.vaultCheck !== null && (await this.checkMeta()) !== 'match') this.tripMismatch('remote')
+    if (this.vaultCheck !== null) {
+      const meta = await this.checkMeta()
+      if (meta !== 'match') this.tripMismatch('remote', this.remoteProblem(meta))
+    }
     let sha = knownSha
     for (let attempt = 0; attempt < 2; attempt++) {
       // Vlak voor het schrijven opnieuw kijken (behalve de eerste keer met een net gelezen SHA): misschien heeft een
@@ -478,7 +520,7 @@ export class Store {
               this.outdated = true
               throw error
             }
-            if (!(error instanceof DecryptError)) throw error
+            if (!(error instanceof DecryptError) && !(error instanceof InvalidDataError)) throw error
           }
           sha = remote.sha
         }
@@ -532,6 +574,10 @@ export class Store {
   private async persist(path: CollectionPath): Promise<void> {
     // Na vergrendelen niets meer schrijven: het geheugen is gewist en de outbox zou leeg worden opgeslagen.
     // lock() kan tijdens elke await komen, daarom na elke await opnieuw controleren.
+    if (this.frozen.has(path)) {
+      this.notify()
+      return
+    }
     const records = this.collections.get(path) ?? []
     const outbox = this.outbox
     const blob = await encryptRecords(this.masterKey, path, records)
@@ -583,9 +629,14 @@ export class Store {
     this.tripMismatch('local')
   }
 
+  private remoteProblem(meta: MetaCheck): RemoteMetaProblem {
+    if (meta === 'missing') return 'missing'
+    return meta === 'unknown' && this.remoteMetaUnreadable ? 'unreadable' : 'other'
+  }
+
   /** Stopt deze Store voorgoed: niets meer schrijven, de sessie laten weten dat de sleutel niet past. */
-  private tripMismatch(where: 'local' | 'remote'): never {
-    const error = new KeyMismatchError(where)
+  private tripMismatch(where: 'local' | 'remote', remote: RemoteMetaProblem = 'other'): never {
+    const error = new KeyMismatchError(where, remote)
     if (!this.mismatch) {
       this.mismatch = true
       recordError(error)

@@ -111,6 +111,35 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       expect(errors).toEqual([])
     })
 
+    test(`meta.json.enc op GitHub weg of kapot: met de wachtzin zet dit apparaat het logboek terug (${lang})`, async ({ page }) => {
+      const errors = collectConsoleErrors(page)
+      const github = await mockGithub(page)
+      await createNewLogbook(page, lang)
+      const status = page.getByRole('status').first()
+      await expect(status).toHaveText(L('sync.synced'), { timeout: 15_000 })
+      // Kapotte meta.json.enc op GitHub (geen ander logboek): niets schrijven zonder tik.
+      github.files.set('meta.json.enc', { sha: 'sha-kapot', content: Buffer.from('{"kapot').toString('base64') })
+      await page.getByRole('button', { name: new RegExp(L('sync.now')) }).click()
+      const restore = page.getByRole('button', { name: L('key.metaRestore') })
+      await expect(restore).toBeVisible({ timeout: 15_000 })
+      expect(github.files.get('meta.json.enc')!.sha).toBe('sha-kapot')
+      await shots(page, 'meta-terugzetten', lang)
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await restore.click()
+      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible({ timeout: 30_000 })
+      await expect(status).toHaveText(L('sync.synced'), { timeout: 15_000 })
+      expect(github.files.get('meta.json.enc')!.sha).not.toBe('sha-kapot')
+      // Repo helemaal leeg (bijvoorbeeld per ongeluk opnieuw aangemaakt): ook dan alles terug, met dezelfde knop.
+      github.files.clear()
+      await status.click()
+      await expect(restore).toBeVisible({ timeout: 15_000 })
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await restore.click()
+      await expect(status).toHaveText(L('sync.synced'), { timeout: 30_000 })
+      expect([...github.files.keys()]).toEqual(expect.arrayContaining(['meta.json.enc', 'trips.json.enc', 'legs.json.enc']))
+      expect(errors).toEqual([])
+    })
+
     test(`nieuwe versies ruimen zelf oude versies, caches en vensters op (${lang})`, async ({ page }) => {
       const sw = await (await page.request.get('sw.js')).text()
       expect(sw).toContain('sw-vensters.js')

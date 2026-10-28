@@ -609,6 +609,9 @@ export const nl = {
   'money.provisionalHint': 'Sommige bedragen zijn voorlopig omgerekend met de laatst bekende koers.',
   // Sleutel past niet bij het logboek
   'key.mismatchTitle': 'Sleutel past niet bij je logboek',
+  'key.metaRestoreTitle': 'Logboek terugzetten op GitHub',
+  'key.metaRestoreText': 'meta.json.enc op GitHub ontbreekt of is beschadigd, maar hoort niet bij een ander logboek. Dit apparaat heeft je logboek nog en zet het met je wachtzin terug op GitHub. Er gaat niets verloren.',
+  'key.metaRestore': 'Logboek van dit apparaat terugzetten op GitHub',
   'key.mismatchText': 'De sleutel waarmee de app op dit apparaat werkt, hoort niet bij meta.json.enc van je logboek. Er is niets geschreven en de opgeslagen sessiesleutel is gewist.',
   'key.mismatchNext': 'Ontgrendel opnieuw met je wachtzin of herstelcode.',
   'key.unlockAgain': 'Ontgrendelen met wachtzin',

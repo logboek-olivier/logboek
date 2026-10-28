@@ -398,7 +398,7 @@ describe('Logboek herstellen: bevindingen review', () => {
     expect(await getObject(db, 'transactions.json.enc')).toBeDefined()
   }, 60_000)
 
-  it('een bestand in een nieuwer objectformaat wordt nooit vervangen: "Werk de app bij"', async () => {
+  it('een bestand in een nieuwer objectformaat wordt nooit vervangen en blokkeert het herstel niet: "Werk de app bij"', async () => {
     const { name, db } = await phone({ token: 'k1', sessionKey: 'none' })
     const blob = await encryptRecords(k1.masterKey, 'students.json.enc', [student])
     blob[0] = 2
@@ -406,11 +406,15 @@ describe('Logboek herstellen: bevindingen review', () => {
     const s = new Session(name)
     sessions.push(s)
     await s.init()
-    await s.unlockLocal({ passphrase: PASSPHRASE }).catch(() => undefined)
-    if (s.getState().phase === 'repair') await expect(s.repair({})).rejects.toMatchObject({ name: 'NewerSchemaError' })
-    expect(puts()).toEqual([])
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    // Het herstel van de rest blijft er niet op hangen; het nieuwere bestand zelf wordt nooit aangeraakt.
+    if (s.getState().phase === 'repair') await s.repair({})
+    expect(s.getState().phase).toBe('unlocked')
+    expect(puts().map((p) => p.path)).not.toContain('students.json.enc')
     expect(github.files.get('students.json.enc')!.sha).toBe(sha)
-    expect(await getObject(db, 'transactions.json.enc')).toBeDefined()
+    await unlockedStore(s).sync()
+    expect(unlockedStore(s).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
+    void db
   }, 60_000)
 
   it('een ander apparaat zet tijdens het herstellen een leesbare versie op GitHub: die blijft staan', async () => {

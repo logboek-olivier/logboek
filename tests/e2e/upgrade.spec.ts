@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { META_PATH, parseMeta, unlock } from '../../src/crypto/keys'
@@ -7,94 +7,253 @@ import { COLLECTION_PATHS } from '../../src/model/types'
 import { decryptRecords } from '../../src/storage/sync'
 import { UPGRADE_SAMPLES } from '../upgrade/upgrade-samples'
 import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
-import { enterToken, PASSPHRASE } from './helpers/logbook'
-import { startStaticServer } from './helpers/static-server'
+import { enterToken, lock, PASSPHRASE } from './helpers/logbook'
+import { startStaticServer, type SwitchableServer } from './helpers/static-server'
 
-// Verplichte upgradetest (harde regel): gegevens van de vorige release, bijwerken in dezelfde browseropslag,
+// Verplichte upgradetest (harde regel 16): gegevens van de vorige release, bijwerken in dezelfde browseropslag,
 // synchroniseren, en daarna op een schoon apparaat koppelen met de wachtzin. Alle bestanden moeten leesbaar zijn en
-// het herstelscherm mag nergens verschijnen. De vorige release staat in .vorige/ (npm run upgrade:vorige; CI doet dat
-// vóór de Playwright-tests).
+// het herstelscherm mag nergens blijven hangen. Daarnaast: de vorige release werkt zich vanuit elk scherm bij
+// (eerste keer, ontgrendelen, herstellen), en de toestand van Oliviers telefoon van 28 oktober 2026 (lus op het
+// herstelscherm) komt met de nieuwe versie in hoogstens drie tikken weer in de app.
+// De vorige release staat in .vorige/ (npm run upgrade:vorige; CI doet dat vóór de Playwright-tests).
 
 const previous = fileURLToPath(new URL('../../.vorige/', import.meta.url))
 const current = fileURLToPath(new URL('../../dist/', import.meta.url))
 const L = (key: Parameters<typeof translate>[1]) => translate('nl', key)
+let portCounter = 0
+/** Eigen poort per test en worker; elke server is een eigen origin, dus een eigen browseropslag. */
+const nextPort = () => 4200 + test.info().workerIndex * 20 + portCounter++
 
 test.skip(!process.env.CI && !existsSync(`${previous}data.json`), 'Vorige release ontbreekt; eerst npm run upgrade:vorige')
 
-function mainScript(html: string): string | null {
-  return /<script type="module"[^>]*src="([^"]+)"/.exec(html)?.[1] ?? null
+interface UpgradeData {
+  paths: string[]
+  files: Record<string, string>
 }
+
+function readData(): UpgradeData {
+  return JSON.parse(readFileSync(`${previous}data.json`, 'utf8')) as UpgradeData
+}
+
+function githubWith(data: UpgradeData): E2eGithub {
+  const github = newGithub()
+  let n = 0
+  for (const [path, content] of Object.entries(data.files)) github.files.set(path, { sha: `sha-vorige-${++n}`, content })
+  return github
+}
+
+/** Geldige vorm (versie 1, iv, tag) maar onder een andere sleutel: ontsleutelen faalt. */
+function foreignCiphertext(): string {
+  const bytes = new Uint8Array(1 + 12 + 64 + 16)
+  bytes[0] = 1
+  for (let i = 1; i < bytes.length; i++) bytes[i] = (i * 37) % 256
+  return Buffer.from(bytes).toString('base64')
+}
+
+const NEW_SCRIPT = (() => /<script type="module"[^>]*src="([^"]+)"/.exec(readFileSync(`${current}index.html`, 'utf8'))?.[1] ?? null)()
+
+function loadedScript(page: Page): Promise<string | null> {
+  return page.evaluate(() => document.querySelector('script[type="module"]')?.getAttribute('src') ?? null)
+}
+
+const repairHeading = (page: Page) => page.getByRole('heading', { name: L('repair.title') })
+const todayHeading = (page: Page) => page.getByRole('heading', { name: L('nav.today') })
+const unlockButton = (page: Page) => page.getByRole('button', { name: L('unlock.unlock') })
 
 async function link(page: Page): Promise<void> {
   await page.getByRole('button', { name: L('setup.link') }).click()
   await enterToken(page)
   await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
   await page.getByRole('button', { name: L('setup.linkButton') }).click()
-  await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible({ timeout: 30_000 })
+  await expect(todayHeading(page).or(repairHeading(page))).toBeVisible({ timeout: 30_000 })
 }
 
 async function expectSynced(page: Page): Promise<void> {
   await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 20_000 })
-  await expect(page.getByRole('heading', { name: L('repair.title') })).toHaveCount(0)
+  await expect(repairHeading(page)).toHaveCount(0)
+}
+
+/**
+ * Deploy van deze release terwijl de pagina open is, dan de app sluiten en openen (herladen). De vorige release moet
+ * zichzelf bijwerken; staat er een balk "Herladen" (bijvoorbeeld tijdens de eerste keer), dan telt die tik mee.
+ */
+async function deployAndReopen(page: Page, server: SwitchableServer): Promise<number> {
+  await page.evaluate(() => navigator.serviceWorker.ready)
+  server.root = current
+  await page.reload()
+  let taps = 0
+  const bar = page.getByRole('button', { name: L('update.reload') })
+  await expect
+    .poll(
+      async () => {
+        if ((await loadedScript(page)) === NEW_SCRIPT) return true
+        if (taps === 0 && (await bar.isVisible().catch(() => false))) {
+          taps++
+          await bar.click()
+        }
+        return false
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true)
+  return taps
+}
+
+async function newContext(browser: Browser) {
+  return browser.newContext({ viewport: { width: 360, height: 740 }, locale: 'nl-NL' })
+}
+
+/** Een schoon apparaat koppelt met de wachtzin; elk bestand op GitHub is te lezen en elk voorbeeld staat er nog. */
+async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, github: E2eGithub, data: UpgradeData): Promise<void> {
+  const clean = await newContext(browser)
+  const page = await clean.newPage()
+  await mockGithub(page, github)
+  await page.goto(server.url)
+  await link(page)
+  await expectSynced(page)
+  await clean.close()
+  const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
+  const key = await unlock(meta, { passphrase: PASSPHRASE })
+  for (const path of COLLECTION_PATHS) {
+    if (!data.paths.includes(path)) continue
+    const file = github.files.get(path)
+    expect(file, path).toBeDefined()
+    const records = await decryptRecords(key, path, Uint8Array.from(Buffer.from(file!.content, 'base64')))
+    for (const sample of UPGRADE_SAMPLES[path] ?? []) {
+      // Checklists die door herstel opnieuw beginnen, mogen het voorbeeld missen; elders moet het er nog staan.
+      if (path === 'checklists.json.enc' && records.length === 0) continue
+      expect(records.map((r) => r.id), path).toContain(sample.id)
+    }
+  }
 }
 
 test('upgrade: vorige release → deze release in dezelfde opslag → schoon apparaat leest alles', async ({ browser }) => {
   test.setTimeout(180_000)
-  const data = JSON.parse(readFileSync(`${previous}data.json`, 'utf8')) as { paths: string[]; files: Record<string, string> }
-  const github: E2eGithub = newGithub()
-  let n = 0
-  for (const [path, content] of Object.entries(data.files)) github.files.set(path, { sha: `sha-vorige-${++n}`, content })
-  const server = await startStaticServer(4175, `${previous}src/dist/`)
+  const data = readData()
+  const github = githubWith(data)
+  const server = await startStaticServer(nextPort(), `${previous}src/dist/`)
   try {
-    // 1. De vorige release koppelt het logboek: lokale opslag in het formaat van die release.
-    const phone = await browser.newContext({ viewport: { width: 360, height: 740 }, locale: 'nl-NL' })
+    const phone = await newContext(browser)
     const page = await phone.newPage()
     await mockGithub(page, github)
     await page.goto(server.url)
     await link(page)
     await expectSynced(page)
-    await page.evaluate(() => navigator.serviceWorker.ready)
 
-    // 2. Deploy van deze release; de app werkt zichzelf bij in dezelfde browseropslag.
-    server.root = current
-    const newScript = mainScript(readFileSync(`${current}index.html`, 'utf8'))
-    expect(newScript).not.toBeNull()
-    await page.reload()
-    await expect
-      .poll(async () => page.evaluate(() => document.querySelector('script[type="module"]')?.getAttribute('src') ?? null), { timeout: 60_000 })
-      .toBe(newScript)
+    await deployAndReopen(page, server)
     // Binnen 5 minuten hervat de sessie; anders ontgrendelen met de wachtzin.
-    const unlockButton = page.getByRole('button', { name: L('unlock.unlock') })
-    await expect(page.getByRole('heading', { name: L('nav.today') }).or(unlockButton)).toBeVisible({ timeout: 30_000 })
-    if (await unlockButton.isVisible()) {
+    await expect(todayHeading(page).or(unlockButton(page))).toBeVisible({ timeout: 30_000 })
+    if (await unlockButton(page).isVisible()) {
       await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
-      await unlockButton.click()
+      await unlockButton(page).click()
     }
-    // 3. Synchroniseren met deze release.
     await page.getByRole('status').first().click()
     await expectSynced(page)
     await phone.close()
-
-    // 4. Een schoon apparaat koppelt met de wachtzin.
-    const clean = await browser.newContext({ viewport: { width: 360, height: 740 }, locale: 'nl-NL' })
-    const second = await clean.newPage()
-    await mockGithub(second, github)
-    await second.goto(server.url)
-    await link(second)
-    await expectSynced(second)
-    await clean.close()
-
-    // Elk bestand op GitHub is met de wachtzin te lezen, en elk voorbeeld van de vorige release staat er nog.
-    const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
-    const key = await unlock(meta, { passphrase: PASSPHRASE })
-    for (const path of COLLECTION_PATHS) {
-      const file = github.files.get(path)
-      if (!data.paths.includes(path)) continue
-      expect(file, path).toBeDefined()
-      const records = await decryptRecords(key, path, Uint8Array.from(Buffer.from(file!.content, 'base64')))
-      for (const sample of UPGRADE_SAMPLES[path] ?? []) expect(records.map((r) => r.id), path).toContain(sample.id)
-    }
+    await cleanDeviceReadsAll(browser, server, github, data)
   } finally {
     await server.close()
   }
 })
+
+test('telefoon van 28 oktober: checklists onleesbaar op GitHub, lus op het herstelscherm → nieuwe versie, weer in de app', async ({ browser }) => {
+  test.setTimeout(180_000)
+  const data = readData()
+  const github = githubWith(data)
+  github.files.set('checklists.json.enc', { sha: 'sha-onleesbaar', content: foreignCiphertext() })
+  // GitHub geeft vlak na schrijven nog de oude versie terug: zo ontstond de lus.
+  github.staleReadsAfterPut = 2
+  const server = await startStaticServer(nextPort(), `${previous}src/dist/`)
+  try {
+    const phone = await newContext(browser)
+    const page = await phone.newPage()
+    await mockGithub(page, github)
+    await page.goto(server.url)
+    await link(page)
+    // Een release van vóór de fix toont het herstelscherm, en "Herstellen" komt terug op hetzelfde scherm.
+    await page.waitForTimeout(1500)
+    if (await repairHeading(page).isVisible()) {
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await page.getByRole('button', { name: L('repair.button') }).click()
+      await expect(repairHeading(page)).toBeVisible({ timeout: 20_000 })
+      test.info().annotations.push({ type: 'vorige release', description: 'lus op het herstelscherm nagebootst' })
+    }
+
+    // Tik 1: de app sluiten en opnieuw openen. De nieuwe versie neemt het over, ook vanaf het herstelscherm.
+    const taps = await deployAndReopen(page, server)
+    expect(taps).toBe(0)
+    // Tik 2 (plus de wachtzin typen): ontgrendelen. Geen herstelscherm meer.
+    await expect(todayHeading(page).or(unlockButton(page))).toBeVisible({ timeout: 30_000 })
+    await expect(repairHeading(page)).toHaveCount(0)
+    if (await unlockButton(page).isVisible()) {
+      await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+      await unlockButton(page).click()
+    }
+    await expect(todayHeading(page)).toBeVisible({ timeout: 30_000 })
+    // Checklists herstelt de app vanzelf; de rest werkt gewoon.
+    await expectSynced(page)
+    await page.getByRole('status').first().click()
+    await expectSynced(page)
+    await phone.close()
+    github.staleReadsAfterPut = 0
+    await cleanDeviceReadsAll(browser, server, github, data)
+  } finally {
+    await server.close()
+  }
+})
+
+for (const state of ['eerste keer', 'ontgrendelen', 'herstellen'] as const) {
+  test(`de vorige release werkt zich bij vanuit het scherm ${state}`, async ({ browser }) => {
+    test.setTimeout(120_000)
+    const data = readData()
+    const github = githubWith(data)
+    const server = await startStaticServer(nextPort(), `${previous}src/dist/`)
+    try {
+      const context = await newContext(browser)
+      const page = await context.newPage()
+      await mockGithub(page, github)
+      await page.goto(server.url)
+      if (state !== 'eerste keer') {
+        await link(page)
+        await expectSynced(page)
+        if (state === 'herstellen') {
+          // Lokale dagen onleesbaar (andere sleutel): na ontgrendelen het herstelscherm over de hele app.
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve, reject) => {
+                const open = indexedDB.open('logboek')
+                open.onerror = () => reject(open.error)
+                open.onsuccess = () => {
+                  const tx = open.result.transaction('objects', 'readwrite')
+                  const store = tx.objectStore('objects')
+                  const get = store.get('legs.json.enc')
+                  get.onsuccess = () => {
+                    const blob = new Uint8Array(get.result.blob as Uint8Array)
+                    blob[20] = blob[20]! ^ 0xff
+                    store.put({ ...get.result, blob })
+                  }
+                  tx.oncomplete = () => {
+                    open.result.close()
+                    resolve()
+                  }
+                }
+              }),
+          )
+        }
+        await lock(page)
+        if (state === 'herstellen') {
+          await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
+          await unlockButton(page).click()
+          await expect(repairHeading(page)).toBeVisible({ timeout: 20_000 })
+        }
+      }
+      const taps = await deployAndReopen(page, server)
+      // Vanaf de eerste keer hoogstens de tik op "Herladen" (oudere releases hielden daar een update tegen tot je
+      // weer bij het keuzescherm was); vanaf ontgrendelen en herstellen helemaal vanzelf.
+      expect(taps, state).toBeLessThanOrEqual(state === 'eerste keer' ? 1 : 0)
+      await context.close()
+    } finally {
+      await server.close()
+    }
+  })
+}

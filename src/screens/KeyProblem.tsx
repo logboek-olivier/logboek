@@ -10,7 +10,7 @@ import { ErrorLine, Screen } from './Setup'
 // Sleutel past niet bij het logboek (fase 'mismatch'), of gegevens die niet met de sleutel uit meta.json.enc te lezen
 // zijn (fase 'repair'). Nooit stil verder: niets geschreven, niets gewist zonder tik en wachtzin.
 
-export function KeyMismatch({ where }: { where: 'local' | 'remote' }) {
+export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' | 'remote'; metaRestorable?: boolean }) {
   const session = useSession()
   const [copies, setCopies] = useState<CollectionPath[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -37,13 +37,21 @@ export function KeyMismatch({ where }: { where: 'local' | 'remote' }) {
   }
 
   return (
-    <Screen title={t('key.mismatchTitle')}>
-      <p>{t('key.mismatchText')}</p>
-      <p className="muted">{t(where === 'remote' ? 'key.mismatchRemote' : 'key.mismatchNext')}</p>
-      <button className="btn primary" onClick={() => void session.backToUnlock()}>
-        {t('key.unlockAgain')}
-      </button>
-      {where === 'remote' && copies !== null && (
+    <Screen title={t(metaRestorable ? 'key.metaRestoreTitle' : 'key.mismatchTitle')}>
+      {metaRestorable ? (
+        <RestoreMeta />
+      ) : (
+        <>
+          <p>{t('key.mismatchText')}</p>
+          <p className="muted">{t(where === 'remote' ? 'key.mismatchRemote' : 'key.mismatchNext')}</p>
+          <button className="btn primary" onClick={() => void session.backToUnlock()}>
+            {t('key.unlockAgain')}
+          </button>
+        </>
+      )}
+      {/* Wissen en opnieuw koppelen alleen bij een ander logboek op GitHub; bij een ontbrekende of kapotte meta is
+          terugzetten de uitweg en gaat er niets verloren. */}
+      {where === 'remote' && !metaRestorable && copies !== null && (
         <div className="section">
           <h2>{t('key.relinkLost')}</h2>
           {copies.length > 0 ? (
@@ -68,6 +76,63 @@ export function KeyMismatch({ where }: { where: 'local' | 'remote' }) {
       )}
       <CopyErrorDetails />
     </Screen>
+  )
+}
+
+/**
+ * meta.json.enc op GitHub ontbreekt of is kapot (geen ander logboek): met de wachtzin zet dit apparaat zijn eigen meta
+ * terug, en de sync daarna de rest. Er gaat niets verloren; zonder tik wordt niets geschreven.
+ */
+function RestoreMeta() {
+  const session = useSession()
+  const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
+  const [secret, setSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await session.restoreRemoteMeta(mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret })
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={(e) => void submit(e)}>
+      <p>{t('key.metaRestoreText')}</p>
+      {mode === 'passphrase' ? (
+        <label>
+          {t('passphrase.label')}
+          <input type="password" autoComplete="current-password" value={secret} onChange={(e) => setSecret(e.target.value)} />
+        </label>
+      ) : (
+        <label>
+          {t('setup.recoveryField', { n: RECOVERY_WORD_COUNT })}
+          <textarea rows={4} autoComplete="off" autoCapitalize="none" value={secret} onChange={(e) => setSecret(e.target.value)} />
+        </label>
+      )}
+      <ErrorLine error={error} />
+      <button className="btn primary" type="submit" disabled={busy || secret.trim().length === 0}>
+        {t('key.metaRestore')}
+      </button>
+      <button
+        className="btn link"
+        type="button"
+        onClick={() => {
+          setMode(mode === 'passphrase' ? 'recovery' : 'passphrase')
+          setSecret('')
+        }}
+      >
+        {mode === 'passphrase' ? t('setup.useRecovery') : t('setup.usePassphrase')}
+      </button>
+    </form>
   )
 }
 

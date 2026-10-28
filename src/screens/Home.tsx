@@ -8,6 +8,7 @@ import { setScreen } from '../errors'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
 import type { AddTab } from '../model/types'
+import { SCREEN_FILES } from '../screen-files'
 import { Money } from './Money'
 import { BackToMore, More, type MoreScreen } from './More'
 import { QuickAdd, type AddInit } from './QuickAdd'
@@ -101,7 +102,7 @@ export function Home({ store }: { store: Store }) {
 
   return (
     <main className="app with-bar">
-      <SyncStatusLine store={store} />
+      <SyncStatusLine store={store} files={SCREEN_FILES[screen]} />
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {
             select('toevoegen')

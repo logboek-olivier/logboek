@@ -572,6 +572,9 @@ export const en: Messages = {
   'money.provisionalHint': 'Some amounts are converted provisionally with the last known rate.',
   // Key does not match the logbook
   'key.mismatchTitle': 'Key does not match your logbook',
+  'key.metaRestoreTitle': 'Put logbook back on GitHub',
+  'key.metaRestoreText': 'meta.json.enc on GitHub is missing or damaged, but does not belong to another logbook. This device still has your logbook and puts it back on GitHub with your passphrase. Nothing will be lost.',
+  'key.metaRestore': 'Put the logbook from this device back on GitHub',
   'key.mismatchText': 'The key the app is using on this device does not belong to meta.json.enc of your logbook. Nothing was written and the stored session key has been deleted.',
   'key.mismatchNext': 'Unlock again with your passphrase or recovery code.',
   'key.unlockAgain': 'Unlock with passphrase',

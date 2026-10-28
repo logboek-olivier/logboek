@@ -22,15 +22,19 @@ const ICONS = {
   error: TriangleAlert,
 } as const
 
-/** Sync-status bovenaan; tikken synchroniseert (handmatig verversen). */
-export function SyncStatusLine({ store }: { store: Store }) {
+/**
+ * Sync-status bovenaan; tikken synchroniseert (handmatig verversen). `files`: de databestanden van het huidige scherm.
+ * Een onleesbaar bestand blokkeert alleen zijn eigen onderdeel: de melding met de herstelknop staat alleen op de
+ * schermen van dat bestand; de status bovenaan noemt het pad overal.
+ */
+export function SyncStatusLine({ store, files }: { store: Store; files?: readonly CollectionPath[] }) {
   const status: SyncStatus = useSyncStatus(store)
+  const here = status.kind === 'error' && status.code === 'unreadable' ? (status.paths ?? []).filter((p) => !files || files.includes(p)) : []
   return (
     <>
       <StatusButton store={store} status={status} />
-      {status.kind === 'error' && (status.code === 'unreadable' || status.code === 'otherKey' || status.code === 'noMeta') && (
-        <SyncProblem store={store} status={status} />
-      )}
+      {status.kind === 'error' && status.code === 'unreadable' && here.length > 0 && <SyncProblem store={store} status={{ ...status, paths: here }} />}
+      {status.kind === 'error' && (status.code === 'otherKey' || status.code === 'noMeta') && <SyncProblem store={store} status={status} />}
     </>
   )
 }
@@ -41,7 +45,8 @@ function StatusButton({ store, status }: { store: Store; status: SyncStatus }) {
       type="button"
       className={`sync-status sync-${status.kind}`}
       aria-label={`${describeStatus(status)} · ${t('sync.now')}`}
-      onClick={() => void store.sync()}
+      // "Werk de app bij": herladen haalt de nieuwste versie op (de app-pagina komt altijd van het netwerk).
+      onClick={() => (status.kind === 'error' && status.code === 'update' ? window.location.reload() : void store.sync())}
       disabled={status.kind === 'syncing'}
     >
       <Icon icon={ICONS[status.kind]} className={status.kind === 'syncing' ? 'spin' : ''} />

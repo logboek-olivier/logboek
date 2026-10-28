@@ -22,6 +22,7 @@ import { t, type MessageKey } from './i18n'
 import { AuthError, ConflictError, GithubClient, GithubError, NetworkError } from './storage/github'
 import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKeyIfVault, type Db } from './storage/idb'
 import { clearMarker, covers, diagnose, diagnoseLocal, executeRepair, localReport, readMarker, writeMarker, type RepairReport } from './repair'
+import { NewerSchemaError } from './model/schema'
 import { KeyMismatchError, Store } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
@@ -48,8 +49,12 @@ export type SessionState =
   | { phase: 'setup' }
   | { phase: 'locked'; meta: Meta; fingerprint: boolean }
   | { phase: 'unlocked'; store: Store }
-  /** De sleutel hoort niet bij meta.json.enc: niets geschreven, sessiesleutel gewist. Nooit stil verder. */
-  | { phase: 'mismatch'; where: 'local' | 'remote' }
+  /**
+   * De sleutel hoort niet bij meta.json.enc: niets geschreven, sessiesleutel gewist. Nooit stil verder.
+   * `metaRestorable`: meta.json.enc op GitHub ontbreekt of is kapot (geen ander logboek); met de wachtzin kan dit
+   * apparaat zijn eigen meta terugzetten (restoreRemoteMeta).
+   */
+  | { phase: 'mismatch'; where: 'local' | 'remote'; metaRestorable?: true }
   /**
    * Logboek herstellen: gegevens die niet met de sleutel uit meta.json.enc te lezen zijn (src/repair.ts). `report`: wat
    * er verloren gaat (null = nog onbekend, eerst de wachtzin). `needsSecret`: herstellen vraagt de wachtzin.
@@ -484,9 +489,19 @@ export class Session {
   /** Lopende bewerking die niet door een herlaad (nieuwe versie) onderbroken mag worden. */
   private busyCount = 0
 
-  /** True zolang herladen een stap halverwege zou afbreken (eerste keer, wachtzin wijzigen, herstellen). */
+  /** Eerste keer voorbij het keuzescherm (token, wachtzin of herstelcode ingevuld of getoond); gezet door Setup. */
+  private setupInProgress = false
+
+  setSetupInProgress(inProgress: boolean): void {
+    this.setupInProgress = inProgress
+  }
+
+  /**
+   * True zolang herladen een stap halverwege zou afbreken (eerste keer voorbij het keuzescherm, wachtzin wijzigen,
+   * herstellen). Op het keuzescherm van de eerste keer is niets halverwege: daar laadt een nieuwe versie direct.
+   */
   isBusy(): boolean {
-    return this.busyCount > 0 || this.state.phase === 'setup'
+    return this.busyCount > 0 || (this.state.phase === 'setup' && this.setupInProgress)
   }
 
   private async busy<T>(run: () => Promise<T>): Promise<T> {
@@ -552,7 +567,8 @@ export class Session {
     this.tokenExpiresAt = null
     this.pendingRepair = null
     recordError(error)
-    this.setState({ phase: 'mismatch', where: error.where })
+    const restorable = error.where === 'remote' && (error.remote === 'missing' || error.remote === 'unreadable')
+    this.setState(restorable ? { phase: 'mismatch', where: 'remote', metaRestorable: true } : { phase: 'mismatch', where: error.where })
     store?.lock()
     return error
   }
@@ -625,8 +641,15 @@ export class Session {
   /** meta.json.enc op GitHub moet bij de sleutel horen; anders het scherm 'mismatch' (ander logboek, opnieuw koppelen). */
   private async assertRemoteMeta(client: GithubClient, masterKey: CryptoKey): Promise<void> {
     const remote = await client.getFile(META_PATH)
-    const meta = remote ? parseMeta(new TextDecoder().decode(remote.content)) : null
-    if (!meta || !(await verifyMetaCheck(meta, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
+    if (!remote) throw this.keyMismatch(new KeyMismatchError('remote', 'missing'))
+    let meta: Meta
+    try {
+      meta = parseMeta(new TextDecoder().decode(remote.content))
+    } catch (error) {
+      if (error instanceof NewerSchemaError) throw error
+      throw this.keyMismatch(new KeyMismatchError('remote', 'unreadable'))
+    }
+    if (!(await verifyMetaCheck(meta, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
   }
 
   /**
@@ -724,6 +747,57 @@ export class Session {
     const result: CollectionPath[] = []
     for (const path of COLLECTION_PATHS) if (await getObject(db, path)) result.push(path)
     return result
+  }
+
+  /**
+   * meta.json.enc op GitHub ontbreekt of is kapot, en hoort dus niet bij een ander logboek: na een tik plus wachtzin
+   * of herstelcode zet dit apparaat zijn eigen meta.json.enc terug (met de SHA als voorwaarde) en opent het logboek;
+   * de sync zet daarna ontbrekende bestanden terug. Alleen als de lokale meta via het check-veld bij de sleutel hoort.
+   * Een meta van een ander logboek wordt nooit overschreven.
+   */
+  restoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }): Promise<void> {
+    return this.busy(() => this.doRestoreRemoteMeta(secret))
+  }
+
+  private async doRestoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }): Promise<void> {
+    if (this.state.phase !== 'mismatch' || !this.state.metaRestorable) throw new Error('Niet van toepassing')
+    const db = this.requireDb()
+    const generation = this.generation
+    const meta = await Store.loadMeta(db)
+    if (!meta) throw new SetupError('error.metaMissing')
+    const masterKey = await unlock(meta, await withWordlist(secret))
+    this.assertSameSession(generation)
+    if ((await this.boundCheck(masterKey)) === null) throw this.keyMismatch(new KeyMismatchError('local'))
+    const stored = await loadToken(db, masterKey).catch((error: unknown) => {
+      if (error instanceof DecryptError) return null
+      throw error
+    })
+    if (!stored) throw new SetupError('error.tokenMissing')
+    const client = new GithubClient(stored.token)
+    const remote = await client.getFile(META_PATH)
+    let sha = remote?.sha ?? null
+    let write = true
+    if (remote) {
+      let theirs: Meta | null = null
+      try {
+        theirs = parseMeta(new TextDecoder().decode(remote.content))
+      } catch (error) {
+        if (error instanceof NewerSchemaError) throw error
+      }
+      // Intussen weer een geldige meta: van deze sleutel dan gewoon openen, van een andere nooit overschrijven.
+      if (theirs) {
+        if (!(await verifyMetaCheck(theirs, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
+        write = false
+      }
+    }
+    this.assertSameSession(generation)
+    if (write) {
+      this.channel?.postMessage('lock')
+      sha = await client.putFile(META_PATH, new TextEncoder().encode(serializeMeta(meta)), sha)
+      await Store.storeMeta(db, meta, sha)
+    }
+    this.tokenExpiresAt = stored.expiresAt
+    await this.open(client, null, masterKey, 'secret')
   }
 
   /**

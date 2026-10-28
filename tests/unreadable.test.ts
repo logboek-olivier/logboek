@@ -126,17 +126,20 @@ describe('herstellen is voorzichtig', () => {
     expect(github.files.get('plans.json.enc')!.sha).toBe(repairedSha)
   })
 
-  it('een bestand dat wel ontsleutelt maar ongeldig is, wordt nooit overschreven', async () => {
+  it('een bestand dat wel ontsleutelt maar ongeldig is: nooit vanzelf overschreven, wel met één tik (geen doodlopende melding)', async () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
     const a = await device(github)
     await a.store.put('plans.json.enc', plan('p1'))
     await a.store.sync()
     const { encryptObject } = await import('../src/crypto/encrypt')
-    github.write('plans.json.enc', toBase64(await encryptObject(ours.masterKey, 'plans.json.enc', utf8('{"geen":"logboek"}'))))
+    const sha = github.write('plans.json.enc', toBase64(await encryptObject(ours.masterKey, 'plans.json.enc', utf8('{"geen":"logboek"}'))))
     await a.store.sync()
     expect(a.store.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable', paths: ['plans.json.enc'] })
-    expect(await a.store.repairable()).toEqual([])
+    expect(github.files.get('plans.json.enc')!.sha).toBe(sha)
+    expect(await a.store.repairable()).toEqual(['plans.json.enc'])
+    await a.store.repair('plans.json.enc')
+    expect(a.store.getStatus()).toEqual({ kind: 'synced' })
   })
 
   it('geen herstel zonder bevestigde meta (geen meta-controle mogelijk)', async () => {

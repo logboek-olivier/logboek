@@ -37,13 +37,16 @@ for (const lang of ['nl', 'en'] as Lang[]) {
           await page.screenshot({ path: `screenshots/onleesbaar/${width}-${scheme}-${lang}.png` })
         }
       }
-      // De rest van de app werkt gewoon.
+      // De rest van de app werkt gewoon, zonder de melding: die hoort alleen bij het onderdeel planning.
       await page.getByRole('navigation').getByRole('button', { name: translate(lang, 'nav.logbook'), exact: true }).click()
       await expect(page.getByRole('heading', { name: translate(lang, 'nav.logbook') })).toBeVisible()
+      await expect(repair).toHaveCount(0)
+      await expect(status).toHaveText(translate(lang, 'sync.unreadable', { paths: 'plans.json.enc' }))
       // Niets automatisch overschreven (planning is geen meegeleverd bestand).
       expect(github.files.get('plans.json.enc')!.sha).toBe(`${plans.sha}-vreemd`)
 
-      // Eén tik: de lokale versie gaat naar GitHub (met de oude SHA als voorwaarde).
+      // Bij Deze trip (waar de planning staat): één tik, de lokale versie gaat naar GitHub (met de oude SHA als voorwaarde).
+      await page.getByRole('navigation').getByRole('button', { name: translate(lang, 'nav.week'), exact: true }).click()
       await page.getByRole('button', { name: translate(lang, 'sync.repair') }).click()
       await expect(status).toHaveText(translate(lang, 'sync.synced'), { timeout: 15_000 })
       expect(github.files.get('plans.json.enc')!.sha).not.toBe(`${plans.sha}-vreemd`)
