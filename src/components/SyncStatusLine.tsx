@@ -35,7 +35,12 @@ export function SyncStatusLine({ store, files }: { store: Store; files?: readonl
       <StatusButton store={store} status={status} />
       {status.kind === 'error' && status.code === 'unreadable' && here.length > 0 && <SyncProblem store={store} status={{ ...status, paths: here }} />}
       {status.kind === 'error' && (status.code === 'otherKey' || status.code === 'noMeta') && <SyncProblem store={store} status={status} />}
-      {status.kind === 'error' && status.code === 'update' && (status.paths ?? []).some((p) => !files || files.includes(p)) && (
+      {store.setAside().some((p) => !files || files.includes(p)) && (
+        <div className="notice sync-problem" role="status">
+          <p>{t('sync.setAsideHint', { path: store.setAside().filter((p) => !files || files.includes(p)).join(', ') })}</p>
+        </div>
+      )}
+      {status.kind === 'error' && status.code === 'update' && (status.paths ?? []).length > 0 && (
         <div className="notice sync-problem" role="alert">
           <p>{t('sync.updateHint')}</p>
           <button type="button" className="btn small" onClick={() => window.location.reload()}>

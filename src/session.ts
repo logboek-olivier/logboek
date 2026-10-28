@@ -786,6 +786,7 @@ export class Session {
     }
     // Alleen een token kan Olivier zelf geven: het scherm vraagt erom.
     if (!token) throw new SetupError('error.tokenRequired')
+    this.tokenExpiresAt = token.expiresAt
     const client = new GithubClient(token.token)
     const remote = await client.getFile(META_PATH)
     if (remote) {
@@ -802,16 +803,23 @@ export class Session {
       if (theirs) return this.openAfterRestore(client, typedToken ? token : null, masterKey)
     }
     // Databestanden van een ander logboek op GitHub (bijvoorbeeld een opnieuw aangemaakte repo met een nieuw logboek
-    // zonder meta): nooit een meta van dit apparaat ernaast zetten.
+    // zonder meta): nooit een meta van dit apparaat ernaast zetten. Zelfde maatstaf als de sync: geen enkel bestand met
+    // deze sleutel te lezen en minstens twee niet te ontsleutelen. Eén kapot bestand houdt het terugzetten niet tegen;
+    // dat toont de app daarna gewoon bij zijn onderdeel.
+    let readable = 0
+    let undecryptable = 0
     for (const path of COLLECTION_PATHS) {
       const file = await client.getFile(path)
       if (!file) continue
       try {
         await decryptRecords(masterKey, path, file.content)
+        readable++
       } catch (error) {
-        if (error instanceof DecryptError) throw this.keyMismatch(new KeyMismatchError('remote'))
+        if (error instanceof DecryptError) undecryptable++
+        else readable++
       }
     }
+    if (readable === 0 && undecryptable >= 2) throw this.keyMismatch(new KeyMismatchError('remote'))
     this.assertSameSession(generation)
     // Vlak voor het schrijven nog eens: de lokale meta moet dezelfde zijn (geen ander tabblad dat intussen koppelde).
     const vaultCheck = await this.boundCheck(masterKey)

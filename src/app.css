@@ -2453,13 +2453,3 @@ body.presenting .bottom-bar {
     break-inside: avoid;
   }
 }
-
-/* Tweede keus, ingeklapt (bijvoorbeeld "opnieuw koppelen" naast "terugzetten op GitHub"). */
-details.section > summary {
-  min-height: var(--tap);
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}

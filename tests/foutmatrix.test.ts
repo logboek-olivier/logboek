@@ -150,6 +150,22 @@ async function remoteKey(): Promise<CryptoKey> {
   return unlock(meta, { passphrase: PASSPHRASE })
 }
 
+const SEED = new Set<CollectionPath>(['curricula.json.enc', 'checklists.json.enc'])
+
+function putsTo(path: string): number {
+  return github.requests.filter((r) => r.method === 'PUT' && r.url.endsWith(`/contents/${path}`)).length
+}
+
+/** Elk voorbeeldrecord staat nog op GitHub, behalve in `except` (daar was niets leesbaars meer). */
+async function expectSamplesOnGithub(except: CollectionPath[] = []): Promise<void> {
+  const key = await remoteKey()
+  for (const p of COLLECTION_PATHS) {
+    if (except.includes(p)) continue
+    const records = await decryptRecords(key, p, Uint8Array.from(Buffer.from(github.files.get(p)!.content, 'base64')))
+    expect(records.map((r) => r.id), p).toEqual(expect.arrayContaining(samples(p).map((r) => r.id)))
+  }
+}
+
 const FAULTS: Fault[] = ['andere sleutel', 'afgekapt', 'ongeldig', 'nieuwere versie', 'nieuwer objectformaat']
 const WHERE: Where[] = ['GitHub', 'apparaat', 'beide']
 
@@ -172,6 +188,11 @@ describe('Foutmatrix: één defect bestand blokkeert alleen zijn eigen onderdeel
           }
           // De andere onderdelen werken.
           if (path !== 'trips.json.enc') expect(store(s).list('trips.json.enc').map((t) => t.id)).toContain(TRIP_ID)
+          // Vóór de tik niets naar GitHub voor dit bestand; alleen echt onleesbare cursussen en checklists vanzelf (en
+          // het herstelscherm, waar openApp al tikte).
+          const auto = SEED.has(path) && (fault === 'andere sleutel' || fault === 'afgekapt') && where !== 'apparaat'
+          if (!auto && !(keyProblem && where === 'beide')) expect(putsTo(path), 'PUT vóór de tik').toBe(0)
+          if (fault === 'ongeldig' && where === 'apparaat') expect(store(s).setAside()).toEqual([path])
           // Uitweg: hoogstens één tik per bestand.
           for (const option of await store(s).repairOptions()) {
             if (option.action === 'repair') await store(s).repair(option.path)
@@ -215,6 +236,7 @@ describe('Foutmatrix: outbox en token op het apparaat', () => {
       await store(s).sync()
       expect(store(s).getStatus()).toEqual({ kind: 'synced' })
       await cleanDevice()
+      await expectSamplesOnGithub()
     }, 60_000)
 
     it(`token · ${fault}`, async () => {
@@ -233,6 +255,7 @@ describe('Foutmatrix: outbox en token op het apparaat', () => {
       await store(s).sync()
       expect(store(s).getStatus()).toEqual({ kind: 'synced' })
       await cleanDevice()
+      await expectSamplesOnGithub()
     }, 60_000)
   }
 })
@@ -263,6 +286,8 @@ describe('Foutmatrix: combinaties met het herstelscherm', () => {
       if (newer) expect(store(s).getStatus()).toMatchObject({ code: 'update' })
       else expect(store(s).getStatus()).toEqual({ kind: 'synced' })
       await cleanDevice()
+      // Wat op GitHub leesbaar was, of op het apparaat, is er nog; alleen een nieuwere versie op GitHub blijft staan.
+      await expectSamplesOnGithub(combo.remote.filter(([, f]) => f === 'nieuwere versie').map(([p]) => p))
     }, 60_000)
   }
 })
@@ -373,20 +398,23 @@ describe('Foutmatrix: randgevallen uit de review', () => {
     expect(store(s).getStatus()).toEqual({ kind: 'synced' })
   }, 60_000)
 
-  it('een lokaal bestand van een nieuwere app: wijzigen wordt geweigerd (nooit stil verloren), de rest werkt', async () => {
+  it('een lokaal bestand van een nieuwere app: alleen kijken tot bijwerken, nooit iets half of stil verloren', async () => {
     const { name, db } = await phone()
     await putObject(db, { path: 'legs.json.enc', blob: await broken('nieuwere versie', 'legs.json.enc'), sha: 'lokaal' })
     const s = await openApp(name, false)
     expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'update', paths: ['legs.json.enc'] })
     await expect(store(s).put('legs.json.enc', { ...(samples('legs.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuw' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
-    await store(s).put('reminders.json.enc', { ...(samples('reminders.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuwe-termijn' } as never)
-    expect(store(s).list('reminders.json.enc').map((r) => r.id)).toContain('nieuwe-termijn')
+    // Tot bijwerken nergens wijzigen (ook niet in andere bestanden), zodat niets half wordt opgeslagen; kijken kan wel.
+    await expect(store(s).put('reminders.json.enc', { ...(samples('reminders.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuwe-termijn' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
+    expect(store(s).list('reminders.json.enc').map((r) => r.id)).not.toContain('nieuwe-termijn')
+    expect(store(s).list('trips.json.enc').map((t) => t.id)).toContain(TRIP_ID)
   }, 60_000)
 
   it('terugzetten weigert als er databestanden van een ander logboek op GitHub staan (opnieuw aangemaakte repo)', async () => {
     const { name } = await phone()
     github.files.clear()
-    github.write('trips.json.enc', toBase64(await encryptRecords(k2.masterKey, 'trips.json.enc', [])))
+    // Een ander logboek zonder meta: al zijn databestanden onder een andere sleutel.
+    for (const path of COLLECTION_PATHS) github.write(path, toBase64(await encryptRecords(k2.masterKey, path, [])))
     const s = new Session(name)
     sessions.push(s)
     await s.init()
@@ -455,5 +483,25 @@ describe('Foutmatrix: randgevallen uit de review', () => {
     await store(s).sync()
     expect(store(s).getStatus()).toEqual({ kind: 'synced' })
     await cleanDevice()
+  }, 60_000)
+
+  it('meta weg én één databestand kapot: terugzetten lukt, het kapotte bestand krijgt zijn eigen melding', async () => {
+    const { name } = await phone()
+    github.files.delete(META_PATH)
+    github.write('plans.json.enc', toBase64((await encryptRecords(k1.masterKey, 'plans.json.enc', [])).slice(0, 10)))
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    await new Promise((r) => setTimeout(r, 200))
+    expect(s.getState()).toMatchObject({ phase: 'mismatch', metaRestorable: true })
+    await s.restoreRemoteMeta({ passphrase: PASSPHRASE })
+    expect(s.getState().phase).toBe('unlocked')
+    await store(s).sync()
+    expect(await store(s).repairOptions()).toEqual([{ path: 'plans.json.enc', action: 'repair' }])
+    await store(s).repair('plans.json.enc')
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+    await cleanDevice()
+    await expectSamplesOnGithub()
   }, 60_000)
 })

@@ -137,8 +137,10 @@ export class Store {
   private locked = false
   /** logboek-data bevat een bestand van een nieuwere schemaversie: niets meer naar GitHub schrijven. */
   private outdated = false
-  /** Lokale bestanden van een nieuwere app: nooit overschrijven (alleen in het geheugen bij te werken). */
+  /** Lokale bestanden van een nieuwere app: nooit overschrijven; tot bijwerken is de hele Store alleen-lezen. */
   private readonly frozen = new Set<CollectionPath>()
+  /** Lokale bestanden die bij openen ongeldig bleken en apart zijn bewaard (de melding staat bij dat onderdeel). */
+  private readonly setAsidePaths: CollectionPath[] = []
   /** Minstens één sync is in deze sessie zonder fouten afgerond (de lokale kopie is bijgewerkt). */
   private syncedOnce = false
   /** Bestanden die op GitHub onleesbaar waren bij de laatste sync, met de soort fout. */
@@ -182,7 +184,8 @@ export class Store {
           // versie van GitHub komt bij de sync in de plaats. Lukt apart zetten niet, dan net als een nieuwere versie.
           const setAside = error instanceof InvalidDataError && (await setAsideIfVault(db, META_PATH, vaultCheck, path, stored.blob, `${SET_ASIDE_PREFIX}${path}/${new Date().toISOString()}`))
           // Van een nieuwere app: nooit overschrijven, niets naar GitHub, "Werk de app bij". De rest werkt gewoon.
-          if (!setAside) {
+          if (setAside) store.setAsidePaths.push(path)
+          else {
             store.outdated = true
             store.frozen.add(path)
           }
@@ -216,6 +219,11 @@ export class Store {
     return () => this.listeners.delete(listener)
   }
 
+  /** Lokale bestanden die bij openen ongeldig bleken en apart bewaard zijn (niet gewist). */
+  setAside(): readonly CollectionPath[] {
+    return this.setAsidePaths
+  }
+
   /** True zodra een sync in deze sessie geslaagd is; daarna zijn beslissingen op basis van alle apparaten veilig. */
   hasSynced(): boolean {
     return this.syncedOnce
@@ -242,8 +250,9 @@ export class Store {
   /** Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). */
   async putMany<P extends CollectionPath>(path: P, records: readonly Collections[P][]): Promise<void> {
     this.assertUnlocked()
-    // Een lokaal bestand van een nieuwere app: wijzigen kan pas na bijwerken; nooit stil in het geheugen laten.
-    if (this.frozen.has(path)) throw new NewerSchemaError(0)
+    // Een lokaal bestand van een nieuwere app: tot bijwerken alleen kijken, nergens wijzigen. Vóór elke wijziging
+    // weigeren (ook in andere bestanden), zodat een handeling die meerdere bestanden raakt nooit half wordt opgeslagen.
+    if (this.frozen.size > 0) throw new NewerSchemaError(0)
     const ids = new Set(records.map((r) => r.id))
     const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
     this.collections.set(path, [...kept, ...records])
@@ -385,7 +394,9 @@ export class Store {
     if (this.vaultCheck !== null && meta === 'match' && !this.outdated) {
       for (const [path, reason] of [...unreadable]) {
         if (this.locked) return
-        if (!REPLACEABLE.has(reason) || !SEED_PATHS.has(path)) continue
+        // Vanzelf alleen als het bestand echt niet te ontsleutelen is; een ongeldig bestand dat wel ontsleutelt, kan
+        // nog leesbare records bevatten: dat vervangt de app alleen na een tik.
+        if (reason !== 'DecryptError' || !SEED_PATHS.has(path)) continue
         if (repairAttempts(this.db.name, path) >= MAX_REPAIRS) continue
         try {
           await this.replaceRemote(path, this.collections.get(path) ?? [], remoteSha.get(path) ?? null)

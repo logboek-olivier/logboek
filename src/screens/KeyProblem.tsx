@@ -5,6 +5,7 @@ import type { CollectionPath } from '../model/types'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import type { RepairReport } from '../repair'
 import { describeError, SetupError, useSession } from '../session'
+import { AuthError } from '../storage/github'
 import { ErrorLine, Screen } from './Setup'
 
 // Sleutel past niet bij het logboek (fase 'mismatch'), of gegevens die niet met de sleutel uit meta.json.enc te lezen
@@ -49,10 +50,10 @@ export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' 
           </button>
         </>
       )}
-      {/* Wissen en opnieuw koppelen: bij een ander logboek op GitHub de uitweg; bij een ontbrekende of kapotte meta
-          ingeklapt als tweede keus (bijvoorbeeld bij de live-gang, als logboek-data bewust opnieuw is aangemaakt). */}
-      {where === 'remote' && copies !== null && (
-        <Collapsible collapsed={metaRestorable} summary={t('key.relinkInstead')}>
+      {/* Wissen en opnieuw koppelen alleen bij een ander logboek op GitHub. Bij een ontbrekende of kapotte meta is
+          terugzetten de uitweg: wissen zou de laatste kopie van de versleutelde hoofdsleutel weggooien, en daarna
+          lukt koppelen niet (geen geldige meta op GitHub). */}
+      {where === 'remote' && !metaRestorable && copies !== null && (
         <div className="section">
           <h2>{t('key.relinkLost')}</h2>
           {copies.length > 0 ? (
@@ -74,7 +75,6 @@ export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' 
           </button>
           <ErrorLine error={error} />
         </div>
-        </Collapsible>
       )}
       <CopyErrorDetails />
     </Screen>
@@ -103,7 +103,7 @@ function RestoreMeta() {
       await session.restoreRemoteMeta(mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret }, tokenNeeded ? token : undefined)
     } catch (err) {
       // De token op dit apparaat ontbreekt of is onleesbaar: alleen Olivier kan een nieuwe geven.
-      if (err instanceof SetupError && err.key === 'error.tokenRequired') setTokenNeeded(true)
+      if ((err instanceof SetupError && err.key === 'error.tokenRequired') || err instanceof AuthError) setTokenNeeded(true)
       setError(describeError(err))
     } finally {
       setBusy(false)
@@ -149,17 +149,6 @@ function RestoreMeta() {
         {t('key.unlockAgain')}
       </button>
     </form>
-  )
-}
-
-/** Ingeklapt (als tweede keus) of gewoon zichtbaar. */
-function Collapsible({ collapsed, summary, children }: { collapsed: boolean; summary: string; children: React.ReactNode }) {
-  if (!collapsed) return <>{children}</>
-  return (
-    <details className="section">
-      <summary>{summary}</summary>
-      {children}
-    </details>
   )
 }
 
