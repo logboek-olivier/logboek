@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -13,7 +13,7 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   await createNewLogbook(page)
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
   await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture.pathname)
 
@@ -65,7 +65,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
 
   // Geen accept-filter: Android en Google Drive grijzen anders bestanden uit.
   await expect(page.getByLabel('Mijlenbestand')).not.toHaveAttribute('accept')
@@ -97,7 +97,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
 test('een onleesbaar bestand geeft een melding in gewone taal', async ({ page }) => {
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
   await page.getByLabel('Mijlenbestand').setInputFiles({ name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]) })
   await expect(page.getByRole('alert')).toHaveText('Dit is geen CSV- of Excel-bestand.')
   await page

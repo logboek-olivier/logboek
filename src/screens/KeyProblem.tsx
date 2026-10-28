@@ -163,6 +163,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'places.json.enc': 'key.file.places',
   'reminders.json.enc': 'key.file.reminders',
   'checklists.json.enc': 'key.file.checklists',
+  'calendar.json.enc': 'key.file.calendar',
 }
 
 /** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */

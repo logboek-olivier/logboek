@@ -1,12 +1,14 @@
-import { Archive, BookOpen, CalendarClock, ChevronLeft, ChevronRight, MapPin, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { Archive, BookOpen, CalendarClock, ChevronLeft, ChevronRight, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { t, type MessageKey } from '../i18n'
 
-// Meer: de onderdelen die niet dagelijks nodig zijn. Later komt de kluis hier ook.
+// Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
+// hier ook.
 
-export type MoreScreen = 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'cursussen' | 'archief' | 'instellingen'
+export type MoreScreen = 'logboek' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'cursussen' | 'archief' | 'instellingen'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
+  { id: 'logboek', label: 'nav.logbook', hint: 'more.logbookHint', icon: NotebookPen },
   { id: 'geld', label: 'nav.money', hint: 'more.moneyHint', icon: Wallet },
   { id: 'termijnen', label: 'reminder.screen', hint: 'more.remindersHint', icon: CalendarClock },
   { id: 'boten', label: 'boats.screen', hint: 'more.boatsHint', icon: Sailboat },
@@ -40,12 +42,12 @@ export function More({ onOpen }: { onOpen: (screen: MoreScreen) => void }) {
   )
 }
 
-/** Terug naar Meer, boven een scherm dat via Meer geopend is. */
-export function BackToMore({ onBack }: { onBack: () => void }) {
+/** Terug naar Meer (of de Agenda), boven een scherm dat daar geopend is. */
+export function BackToMore({ onBack, to = 'nav.more' }: { onBack: () => void; to?: 'nav.more' | 'nav.calendar' }) {
   return (
-    <button className="btn link back-link" onClick={onBack} aria-label={t('more.back')}>
+    <button className="btn link back-link" onClick={onBack} aria-label={to === 'nav.more' ? t('more.back') : t('common.back')}>
       <Icon icon={ChevronLeft} />
-      {t('nav.more')}
+      {t(to)}
     </button>
   )
 }

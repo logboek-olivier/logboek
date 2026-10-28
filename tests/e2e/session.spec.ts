@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, storedLastUsed } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, storedLastUsed, openLogbook } from './helpers/logbook'
 
 // Beveiligingsregel 10: verversen of kort naar een andere app gaan vergrendelt niet; 5 minuten zonder gebruik wel.
 
@@ -23,7 +23,7 @@ test('wisselen van app en verversen vergrendelen niet; de opgeslagen sleutel is 
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
   await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   expect(errors).toEqual([])
 })

@@ -78,6 +78,12 @@ export async function storedLastUsed(page: Page): Promise<number | null> {
   )
 }
 
+/** Het Logboek (archief) zit onder Meer; de onderbalk heeft nu de Agenda. */
+export async function openLogbook(page: Page, lang: Lang = 'nl'): Promise<void> {
+  await openMore(page, translate(lang, 'nav.logbook'), translate(lang, 'nav.more'))
+  await expect(page.getByRole('heading', { name: translate(lang, 'nav.logbook'), exact: true })).toBeVisible()
+}
+
 /** Geld en Instellingen zitten onder Meer in de onderbalk. */
 export async function openMore(page: Page, item: string, more = 'Meer'): Promise<void> {
   await page.getByRole('navigation').getByRole('button', { name: more, exact: true }).click()

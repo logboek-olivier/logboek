@@ -21,6 +21,7 @@ import { Courses } from './Courses'
 import { Deadlines } from './Deadlines'
 import { Boats } from './Boats'
 import { Places } from './Places'
+import { Agenda } from './Agenda'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -31,6 +32,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   vandaag: 'Vandaag',
   week: 'Deze trip',
   toevoegen: 'Toevoegen',
+  agenda: 'Agenda',
   logboek: 'Logboek',
   meer: 'Meer',
   geld: 'Geld',
@@ -59,6 +61,8 @@ export function Home({ store }: { store: Store }) {
   const [screen, setScreenState] = useState<Screen>(shortcut ? 'toevoegen' : 'vandaag')
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [addInit, setAddInit] = useState<AddInit | undefined>(undefined)
+  // Het Logboek staat onder Meer en is ook vanuit de Agenda te openen; terug gaat naar waar het vandaan kwam.
+  const [logbookFrom, setLogbookFrom] = useState<'meer' | 'agenda'>('meer')
   const counter = useRef(0)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -89,6 +93,7 @@ export function Home({ store }: { store: Store }) {
 
   function select(next: Screen) {
     if (next !== 'toevoegen') setAddInit(undefined)
+    if (next === 'logboek' && screen !== 'agenda') setLogbookFrom('meer')
     setScreenState(next)
     window.scrollTo(0, 0)
   }
@@ -98,7 +103,12 @@ export function Home({ store }: { store: Store }) {
     select('vandaag')
   }
 
-  const activeTab: Tab = screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' ? 'meer' : screen
+  const activeTab: Tab =
+    screen === 'logboek'
+      ? logbookFrom
+      : screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen'
+        ? 'meer'
+        : screen
 
   return (
     <main className="app with-bar">
@@ -119,7 +129,26 @@ export function Home({ store }: { store: Store }) {
           }}
         />
       )}
-      {screen === 'logboek' && <Sailing store={store} notify={notify} />}
+      {screen === 'agenda' && (
+        <Agenda
+          store={store}
+          notify={notify}
+          onAdd={(init) => {
+            select('toevoegen')
+            setAddInit(init)
+          }}
+          onLogbook={() => {
+            setLogbookFrom('agenda')
+            select('logboek')
+          }}
+        />
+      )}
+      {screen === 'logboek' && (
+        <>
+          <BackToMore onBack={() => select(logbookFrom)} to={logbookFrom === 'agenda' ? 'nav.calendar' : 'nav.more'} />
+          <Sailing store={store} notify={notify} />
+        </>
+      )}
       {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}-${addInit.from ?? ''}-${addInit.to ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} tab={addInit ? 'dag' : (shortcut ?? 'dag')} />}
       {screen === 'meer' && <More onOpen={select} />}
       {screen === 'geld' && (

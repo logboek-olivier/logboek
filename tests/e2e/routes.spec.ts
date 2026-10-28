@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -23,7 +23,7 @@ test('Route-sjabloon uit de historie: nieuwe trip neemt boot en etappes over; op
   const github = await mockGithub(page)
   await createNewLogbook(page)
   const nav = page.getByRole('navigation')
-  await nav.getByRole('button', { name: 'Logboek', exact: true }).click()
+  await openLogbook(page)
   await page.getByLabel('Mijlenbestand').setInputFiles({ name: 'mijlen.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV) })
   await page.getByRole('button', { name: 'Importeren' }).click()
   await page.getByRole('button', { name: 'Overslaan' }).click()

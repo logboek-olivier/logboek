@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
 import { mockRates } from './helpers/rates'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, fillBoat } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook, openMore, fillBoat } from './helpers/logbook'
 
 // Schermafbeeldingen van elk scherm op 360 en 412 px, licht en donker, in het Nederlands en het Engels.
 // CI uploadt de map screenshots/ als artifact. Elk scherm wordt ook op horizontale overloop gecontroleerd.
@@ -76,7 +76,9 @@ for (const { width, scheme, lang } of RUNS) {
       await createNewLogbook(page, lang)
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       await shot('vandaag-leeg')
-      await button('nav.logbook').click()
+      await button('nav.calendar').click()
+      await shot('agenda-leeg')
+      await openLogbook(page, lang)
       await shot('zeilen-leeg')
       await page.getByRole('navigation').getByRole('button', { name: L('nav.more'), exact: true }).click()
       await shot('meer')
@@ -84,7 +86,7 @@ for (const { width, scheme, lang } of RUNS) {
       await shot('geld-leeg')
 
       // Gegevens: import van de nep-werkmap, een paar fooien en kosten, twee dagen.
-      await button('nav.logbook').click()
+      await openLogbook(page, lang)
       await page.getByLabel(L('import.file')).setInputFiles(fixture)
       await expect(page.getByRole('heading', { name: L('import.check') })).toBeVisible()
       await shot('import-controle')
@@ -182,7 +184,7 @@ for (const { width, scheme, lang } of RUNS) {
       await shot('onderwerp-bewerken')
       await button('common.close').click()
       await button('curriculum.done').click()
-      await button('nav.logbook').click()
+      await openLogbook(page, lang)
       await page.locator('.trip').first().getByRole('button').first().click()
       await shot('zeilen')
       await page.locator('.leg-button').first().click()

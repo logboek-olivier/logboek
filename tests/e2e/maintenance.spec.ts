@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { createNewLogbook, lock, openMore } from './helpers/logbook'
+import { createNewLogbook, lock, openMore, openLogbook } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
@@ -18,7 +18,7 @@ test('Kopieer foutdetails: versie, scherm en foutcode, zonder inhoud; niet bij e
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
   await page
     .getByLabel('Mijlenbestand')
     .setInputFiles({ name: 'mijlen.csv', mimeType: 'text/csv', buffer: Buffer.from('Datum;Van (plaats)\n1-1-2024;Geheimhaven') })

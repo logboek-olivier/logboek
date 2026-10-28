@@ -329,6 +329,7 @@ export const nl = {
 
   // Navigatie (release 2)
   'nav.more': 'Meer',
+  'more.logbookHint': 'Alle trips en dagen, totalen, importeren, zeiltijd',
   'more.moneyHint': 'Zeilgeld, fooi en kosten',
   'more.settingsHint': 'Vergrendelen, taal, wachtzin, token',
 
@@ -808,6 +809,7 @@ export const nl = {
   'checklist.new': 'Nieuwe checklist',
   'checklist.newTitle': 'Nieuwe checklist',
   'key.file.checklists': 'Checklists',
+  'key.file.calendar': 'Agenda (zelf ingestelde dagen)',
   // Trip afsluiten
   'close.rating': 'Cijfer voor deze trip',
   'close.lesson': 'Wat leerde ik',
@@ -834,6 +836,37 @@ export const nl = {
   'export.totals': 'Totalen per rol',
   'export.total': 'Totaal',
   'export.printTitle': 'Zeiltijd',
+  'nav.calendar': 'Agenda',
+  'calendar.prev': 'Vorige maand',
+  'calendar.next': 'Volgende maand',
+  'calendar.chooseMonth': 'Kies een maand',
+  'calendar.toToday': 'Naar vandaag',
+  'calendar.reminder': 'termijn',
+  'calendar.summaryTitle': 'Deze maand',
+  'dayType.werk': 'Werk',
+  'dayType.rust': 'Rust',
+  'dayType.reis': 'Reis',
+  'dayType.thuis': 'Thuis',
+  'dayType.beschikbaar': 'Beschikbaar',
+  'dayType.optie': 'Optie',
+  'dayType.leeg': 'Leeg',
+  'day.kind': 'Dagsoort',
+  'day.auto': 'Automatisch',
+  'day.source.eigen': 'Zelf ingesteld',
+  'day.source.trip': 'Volgt uit de trip',
+  'day.source.etappe': 'Volgt uit een gelogde dag',
+  'day.source.tussen': 'Rust tussen twee trips',
+  'day.source.toekomst': 'Nog niets gepland',
+  'day.source.leeg': 'Niets vastgelegd',
+  'day.boat': 'Boot op deze dag',
+  'day.log': 'Dag loggen',
+  'day.from': 'Van',
+  'day.to': 'Naar',
+  'day.flight': 'Vlucht',
+  'day.location': 'Plaats',
+  'day.tips': 'Fooien',
+  'day.noTips': 'Geen fooien op deze dag',
+  'day.trips': 'Trip',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto'
+import { COLLECTION_PATHS } from '../src/model/types'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { encryptObject, fromBase64, toBase64, utf8 } from '../src/crypto/encrypt'
 import { NewerSchemaError, SCHEMA_VERSION } from '../src/model/schema'
@@ -92,8 +93,8 @@ describe('GithubClient', () => {
     await a.store.put('trips.json.enc', trip('t1', 'eerste'))
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'synced' })
-    // meta, trips, legs, transactions, settings, curricula, students, plans, places, reminders
-    expect(empty.files.size).toBe(11)
+    // meta plus elk databestand
+    expect(empty.files.size).toBe(1 + COLLECTION_PATHS.length)
 
     // Alleen een README: meta ontbreekt (404), nieuw logboek mag.
     const readme = new FakeGithub()

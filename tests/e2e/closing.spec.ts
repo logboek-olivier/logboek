@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat, openLogbook } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -68,7 +68,7 @@ test('Vaste checklists per trip, sjabloon bewerken; trip afsluiten in een minuut
   await expect(page.getByText('Trip afgerond')).toBeVisible()
 
   // Zeiltijd exporteren: per dag en per trip, filter op rol, afdrukken.
-  await nav.getByRole('button', { name: 'Logboek', exact: true }).click()
+  await openLogbook(page)
   await page.getByRole('button', { name: 'Zeiltijd exporteren' }).click()
   const day = page.locator('table.sailtime').first()
   await expect(day).toContainText('Nepster · Nepmodel 40 · 40 ft')

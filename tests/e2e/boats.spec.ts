@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, openLogbook } from './helpers/logbook'
 
 const fixture = fileURLToPath(new URL('../fixtures/boten-nep.csv', import.meta.url))
 
@@ -11,7 +11,7 @@ test('Boten uit de import: naam en model uit Schip, lengte als voorstel, alles i
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
-  await page.getByRole('navigation').getByRole('button', { name: 'Logboek', exact: true }).click()
+  await openLogbook(page)
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture)
   await page.getByRole('button', { name: 'Importeren' }).click()
 

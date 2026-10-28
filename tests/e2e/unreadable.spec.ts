@@ -38,8 +38,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
         }
       }
       // De rest van de app werkt gewoon, zonder de melding: die hoort alleen bij het onderdeel planning.
-      await page.getByRole('navigation').getByRole('button', { name: translate(lang, 'nav.logbook'), exact: true }).click()
-      await expect(page.getByRole('heading', { name: translate(lang, 'nav.logbook') })).toBeVisible()
+      await page.getByRole('navigation').getByRole('button', { name: translate(lang, 'nav.calendar'), exact: true }).click()
+      await expect(page.getByRole('heading', { name: translate(lang, 'nav.calendar') })).toBeVisible()
       await expect(repair).toHaveCount(0)
       await expect(status).toHaveText(translate(lang, 'sync.unreadable', { paths: 'plans.json.enc' }))
       // Niets automatisch overschreven (planning is geen meegeleverd bestand).
