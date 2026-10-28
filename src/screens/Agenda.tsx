@@ -1,20 +1,28 @@
-import { ChevronLeft, ChevronRight, NotebookPen } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, FileUp, ListOrdered, NotebookPen, Share2, X } from 'lucide-react'
 import { useMemo, useRef, useState, type TouchEvent } from 'react'
 import { DaySheet } from '../components/DaySheet'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
+import { PeriodSheet, PlanningImportSheet } from '../components/PeriodSheets'
 import { useCollection } from '../components/useCollection'
+import { WeekSheet } from '../components/WeekSheet'
+import { recordError } from '../errors'
 import { formatDate, formatMonth, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
+import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
 import { buildIndex, dayInfo, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
 import { todayIso } from '../model/types'
 import type { Store } from '../storage/store'
+import { AgendaShare } from './AgendaShare'
 import type { AddInit } from './QuickAdd'
+import { Season } from './Season'
+import { ErrorLine } from './Setup'
 
 // Agenda: het overzicht van het seizoen. Maandraster met een kleur per dagsoort (optie gestreept), een balk met de
 // tripnaam over de dagen van elke trip, nm klein in het vakje en een stip voor termijnen. Vegen of de pijlen voor de
 // vorige en volgende maand, "Naar vandaag", en onderaan de werk-, rust-, reis- en thuisdagen en nm van de maand.
-// Tik op een dag: het dagblad. Het Logboek (archief) is hier ook te openen.
+// Tik op een dag: het dagblad. Periode markeren (begindag, einddag, dagsoort; werk = nieuwe trip met die datums),
+// planning importeren, seizoensoverzicht en delen. Het Logboek (archief) is hier ook te openen.
 
 export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; notify: Notify; onAdd: (init: AddInit) => void; onLogbook: () => void }) {
   const lang = useLang()
@@ -26,9 +34,26 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const index = useMemo(() => buildIndex(calendar, trips, legs, reminders), [calendar, trips, legs, reminders])
   const [month, setMonth] = useState(monthOf(today))
   const [open, setOpen] = useState<string | null>(null)
+  const [view, setView] = useState<'maand' | 'seizoen' | 'delen'>('maand')
+  // Periode markeren: eerste tik = begindag, tweede tik = einddag, dan de dagsoort kiezen.
+  const [marking, setMarking] = useState<{ start: string | null } | null>(null)
+  const [period, setPeriod] = useState<{ from: string; to: string } | null>(null)
+  const [newTrip, setNewTrip] = useState<{ startDate: string; dayCount: number } | null>(null)
+  const [plan, setPlan] = useState<PlanItem[] | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const touch = useRef<{ x: number; y: number } | null>(null)
+  const weekdays = useMemo(() => {
+    const names = new Intl.DateTimeFormat(lang === 'nl' ? 'nl-NL' : 'en-GB', { weekday: 'narrow' })
+    // 5 januari 2026 is een maandag.
+    return Array.from({ length: 7 }, (_, i) => names.format(new Date(2026, 0, 5 + i)))
+  }, [lang])
+
+  if (view === 'seizoen') return <Season store={store} onBack={() => setView('maand')} />
+  if (view === 'delen') return <AgendaShare store={store} onBack={() => setView('maand')} />
+
   const weeks = monthWeeks(month)
   const summary = monthSummary(index, month, today)
-  const touch = useRef<{ x: number; y: number } | null>(null)
 
   function onTouchStart(e: TouchEvent) {
     const p = e.touches[0]
@@ -45,11 +70,33 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
     if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) setMonth(shiftMonth(month, dx < 0 ? 1 : -1))
   }
 
-  const weekdays = useMemo(() => {
-    const names = new Intl.DateTimeFormat(lang === 'nl' ? 'nl-NL' : 'en-GB', { weekday: 'narrow' })
-    // 5 januari 2026 is een maandag.
-    return Array.from({ length: 7 }, (_, i) => names.format(new Date(2026, 0, 5 + i)))
-  }, [lang])
+  function onDay(date: string) {
+    if (!marking) {
+      setOpen(date)
+      return
+    }
+    if (!marking.start) {
+      setMarking({ start: date })
+      return
+    }
+    const [from, to] = marking.start <= date ? [marking.start, date] : [date, marking.start]
+    setMarking(null)
+    setPeriod({ from, to })
+  }
+
+  async function onPlanningFile(file: File | undefined) {
+    if (!file) return
+    setImportError(null)
+    try {
+      // Inhoud bepaalt het formaat (CSV of .xlsx), niet de naam of het MIME-type van de bestandskiezer.
+      setPlan(planImport(parsePlanning(new Uint8Array(await file.arrayBuffer())), index))
+    } catch (error) {
+      recordError(error)
+      setImportError(error instanceof PlanningError ? error.message : t('import.unreadable'))
+    } finally {
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
 
   return (
     <section className="stack agenda">
@@ -78,28 +125,37 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           </button>
         )}
       </div>
-      <div className="cal" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      {marking && (
+        <div className="notice marking" role="status">
+          <span>{t(marking.start ? 'calendar.markEnd' : 'calendar.markStart')}</span>
+          <button className="btn link small" onClick={() => setMarking(null)}>
+            <Icon icon={X} />
+            {t('common.cancel')}
+          </button>
+        </div>
+      )}
+      <div className={`cal${marking ? ' marking' : ''}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <div className="cal-weekdays" aria-hidden="true">
           {weekdays.map((d, i) => (
             <span key={i}>{d}</span>
           ))}
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} onOpen={setOpen} />
+          <Week key={week[0]} index={index} week={week} month={month} today={today} rangeStart={marking?.start ?? null} onDay={onDay} />
         ))}
       </div>
       <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>
         {(
           [
-            ['dayType.werk', 'werk', formatNumber(summary.werk)],
-            ['dayType.rust', 'rust', formatNumber(summary.rust)],
-            ['dayType.reis', 'reis', formatNumber(summary.reis)],
-            ['dayType.thuis', 'thuis', formatNumber(summary.thuis)],
+            ['dayType.werk', 'werk', summary.werk],
+            ['dayType.rust', 'rust', summary.rust],
+            ['dayType.reis', 'reis', summary.reis],
+            ['dayType.thuis', 'thuis', summary.thuis],
           ] as const
         ).map(([label, type, value]) => (
           <div key={type} className={`agenda-stat day-${type}`}>
             <dt>{t(label)}</dt>
-            <dd>{value}</dd>
+            <dd>{formatNumber(value)}</dd>
           </div>
         ))}
         <div className="agenda-stat">
@@ -107,6 +163,27 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           <dd>{formatNumber(summary.nm)}</dd>
         </div>
       </dl>
+      <div className="agenda-actions">
+        <button className={`btn small${marking ? ' active' : ''}`} aria-pressed={!!marking} onClick={() => setMarking(marking ? null : { start: null })}>
+          <Icon icon={CalendarRange} />
+          {t('calendar.markPeriod')}
+        </button>
+        <button className="btn small" onClick={() => setView('seizoen')}>
+          <Icon icon={ListOrdered} />
+          {t('calendar.season')}
+        </button>
+        <button className="btn small" onClick={() => setView('delen')}>
+          <Icon icon={Share2} />
+          {t('calendar.share')}
+        </button>
+        <button className="btn small" onClick={() => fileInput.current?.click()}>
+          <Icon icon={FileUp} />
+          {t('planning.import')}
+        </button>
+        {/* Geen accept-filter: Android en Google Drive grijzen anders bestanden uit. */}
+        <input ref={fileInput} type="file" hidden aria-label={t('planning.file')} onChange={(e) => void onPlanningFile(e.target.files?.[0])} />
+      </div>
+      <ErrorLine error={importError} />
       {open && (
         <DaySheet
           store={store}
@@ -120,20 +197,35 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           }}
         />
       )}
+      {period && (
+        <PeriodSheet
+          store={store}
+          from={period.from}
+          to={period.to}
+          notify={notify}
+          onClose={() => setPeriod(null)}
+          onWork={(startDate, dayCount) => {
+            setPeriod(null)
+            setNewTrip({ startDate, dayCount })
+          }}
+        />
+      )}
+      {newTrip && <WeekSheet store={store} trip={null} initial={newTrip} notify={notify} onClose={() => setNewTrip(null)} />}
+      {plan && <PlanningImportSheet store={store} items={plan} notify={notify} onClose={() => setPlan(null)} />}
     </section>
   )
 }
 
-function Week({ index, week, month, today, onOpen }: { index: CalendarIndex; week: string[]; month: string; today: string; onOpen: (date: string) => void }) {
+function Week({ index, week, month, today, rangeStart, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; rangeStart: string | null; onDay: (date: string) => void }) {
   const bars = tripBars(index, week)
   return (
     <div className="cal-week">
       {week.map((date, column) => {
         const info = dayInfo(index, date, today)
         const label = [formatDate(date), t(`dayType.${info.type ?? 'leeg'}`), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', info.reminders.length > 0 ? t('calendar.reminder') : ''].filter(Boolean).join(', ')
-        const classes = ['cal-day', `col-${column + 1}`, `day-${info.type ?? 'leeg'}`, monthOf(date) !== month ? 'other-month' : '', date === today ? 'today' : '', info.source === 'eigen' ? 'own' : ''].filter(Boolean).join(' ')
+        const classes = ['cal-day', `col-${column + 1}`, `day-${info.type ?? 'leeg'}`, monthOf(date) !== month ? 'other-month' : '', date === today ? 'today' : '', info.source === 'eigen' ? 'own' : '', date === rangeStart ? 'range-start' : ''].filter(Boolean).join(' ')
         return (
-          <button key={date} type="button" className={classes} aria-label={label} aria-current={date === today ? 'date' : undefined} onClick={() => onOpen(date)}>
+          <button key={date} type="button" className={classes} aria-label={label} aria-current={date === today ? 'date' : undefined} aria-pressed={date === rangeStart ? true : undefined} onClick={() => onDay(date)}>
             <span className="cal-num" aria-hidden="true">
               {Number(date.slice(8))}
             </span>

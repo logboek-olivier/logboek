@@ -148,7 +148,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     }
     await page.getByRole('status').first().click()
     await expectSynced(page)
-    // Nieuw databestand in deze release (calendar.json.enc): een dag instellen in de agenda, synchroniseren.
+    // Agenda (calendar.json.enc, nieuw sinds de agenda-release): een dag instellen, synchroniseren.
     await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
     await page.locator('.cal-day.today').click()
     await page.getByRole('dialog').getByRole('radio', { name: L('dayType.thuis') }).click()
@@ -157,11 +157,11 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
-    // Het schone apparaat leest ook de agenda.
+    // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
     const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
     const key = await unlock(meta, { passphrase: PASSPHRASE })
     const calendar = await decryptRecords(key, 'calendar.json.enc', Uint8Array.from(Buffer.from(github.files.get('calendar.json.enc')!.content, 'base64')))
-    expect(calendar).toEqual([expect.objectContaining({ type: 'thuis' })])
+    expect(calendar).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'thuis', deletedAt: null })]))
   } finally {
     await server.close()
   }
