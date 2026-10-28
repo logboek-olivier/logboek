@@ -33,6 +33,8 @@ import { defaultTripName } from '../import/mileage-csv'
 import { Icon } from './Icon'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
+import { TipFromPicker } from './TipFromPicker'
+import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { t } from '../i18n'
 
 // Onderbladen om een transactie, dag of tocht te bewerken. Verwijderen zonder bevestigingsvraag; de aanroeper toont
@@ -68,7 +70,12 @@ export function TransactionSheet({
   const [tripId, setTripId] = useState(tx.tripId ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
-  const parsed = parseAmount(amount)
+  // Fooi: van wie, achteraf te wijzigen; een andere trip begint weer bij onbekend.
+  const people = kind === 'fooi' ? (trips.find((x) => x.id === tripId)?.participants ?? []) : []
+  const [tip, setTip] = useState<{ tripId: string; draft: TipDraft }>(() => ({ tripId: tx.tripId ?? '', draft: draftFromTip(tx.tipFrom, trips.find((x) => x.id === tx.tripId)?.participants ?? []) }))
+  const draft = tip.tripId === tripId ? tip.draft : EMPTY_TIP
+  const total = people.length > 0 ? draftTotal(draft) : undefined
+  const parsed = total !== undefined ? total : parseAmount(amount)
   const parsedReceived = received.trim() === '' ? undefined : parseAmount(received)
   const converted = currency === 'EUR' || parsed === null ? null : eurValue({ ...tx, currency, amount: parsed, date, receivedEur: undefined, amountEur: undefined })
 
@@ -86,6 +93,7 @@ export function TransactionSheet({
         note: note.trim() || undefined,
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
         tripId: tripId || null,
+        tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
       })
       onClose()
       notify(t('toast.saved'))
@@ -109,7 +117,8 @@ export function TransactionSheet({
             className="amount"
             inputMode="decimal"
             autoComplete="off"
-            value={amount}
+            value={total !== undefined ? (total === null ? '' : formatAmountInput(total)) : amount}
+            readOnly={total !== undefined}
             onChange={(e) => setAmount(e.target.value)}
           />
         </label>
@@ -176,6 +185,18 @@ export function TransactionSheet({
             ))}
           </select>
         </label>
+        {people.length > 0 && (
+          <TipFromPicker
+            participants={people}
+            value={draft}
+            currency={currency}
+            onChange={(next) => {
+              const kept = totalWhenLeavingSplit(draft, next)
+              if (kept !== null) setAmount(formatAmountInput(kept))
+              setTip({ tripId, draft: next })
+            }}
+          />
+        )}
         <label>
           {t('field.description')}
           <input type="text" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />

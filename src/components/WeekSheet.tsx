@@ -4,6 +4,7 @@ import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from
 import { getLang, t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { deleteTrip } from '../model/edit'
+import { MAX_COUNTRY, MAX_TAG, needsDistinction, norm, participantName, usedCountries } from '../model/guests'
 import { addDays, parseAmount, totals } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
@@ -63,6 +64,9 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
+  // Dubbele voornamen: om land of kenmerk vragen ("Nick B." of "Nick (VS)").
+  const unclear = needsDistinction(rows)
+  const countries = usedCountries(trips)
   const [note, setNote] = useState(trip?.note ?? '')
   // Geplande etappes: undefined = ongewijzigd (bij bewerken blijft de bestaande planning staan).
   const [route, setRoute] = useState<PlannedLeg[] | undefined>(undefined)
@@ -121,7 +125,13 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   }
 
   const setRow = (i: number, patch: Partial<ParticipantInput>) => {
-    const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r))
+    const next = rows.map((r, j) => {
+      if (j !== i) return r
+      const merged = { ...r, ...patch }
+      // Andere naam of ander land: niet meer dezelfde gast; de vraag over een terugkerende gast komt dan opnieuw.
+      if (r.guestId && (norm(merged.firstName) !== norm(r.firstName) || norm(merged.country) !== norm(r.country))) delete merged.guestId
+      return merged
+    })
     // Altijd één lege regel onderaan: deelnemers één per regel invoeren.
     if (next.at(-1)?.firstName.trim()) next.push({ firstName: '' })
     setRows(next)
@@ -311,12 +321,42 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
                 ))}
               </select>
               {r.firstName.trim() !== '' && (
-                <button type="button" className="btn icon" aria-label={t('week.removeParticipant', { name: r.firstName })} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
-                  <Icon icon={X} />
-                </button>
+                <>
+                  <input
+                    type="text"
+                    className="participant-country"
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    maxLength={MAX_COUNTRY}
+                    list="guest-countries"
+                    aria-label={t('week.participantCountry', { n: i + 1 })}
+                    placeholder={t('guest.country')}
+                    value={r.country ?? ''}
+                    onChange={(e) => setRow(i, { country: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    className="participant-tag"
+                    autoComplete="off"
+                    maxLength={MAX_TAG}
+                    aria-label={t('week.participantTag', { n: i + 1 })}
+                    placeholder={t('guest.tag')}
+                    value={r.tag ?? ''}
+                    onChange={(e) => setRow(i, { tag: e.target.value })}
+                  />
+                  <button type="button" className="btn icon" aria-label={t('week.removeParticipant', { name: r.firstName })} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+                    <Icon icon={X} />
+                  </button>
+                </>
               )}
+              {unclear.has(i) && <p className="warning small participant-warning">{t('guest.duplicate', { name: r.firstName.trim() })}</p>}
             </div>
           ))}
+          <datalist id="guest-countries">
+            {countries.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
         </fieldset>
         {shownRoute.length > 0 && (
           <div className="notice-quiet route-plan">
@@ -376,7 +416,7 @@ export function CloseWeekSheet({ store, trip, notify, onClose }: { store: Store;
   // Studenten van de trip: deelnemers met cursus en studenten die bij de trip horen.
   const participants = trip.participants ?? []
   const extra = students.filter((s) => s.deletedAt === null && s.weekId === trip.id && !participants.some((p) => p.id === s.id))
-  const people = [...participants.map((p) => ({ id: p.id, firstName: p.firstName, level: p.level, curriculumId: p.curriculumId })), ...extra.map((s) => ({ id: s.id, firstName: s.firstName, level: s.level, curriculumId: s.curriculumId }))]
+  const people = [...participants.map((p) => ({ id: p.id, firstName: participantName(p, participants), level: p.level, curriculumId: p.curriculumId })), ...extra.map((s) => ({ id: s.id, firstName: s.firstName, level: s.level, curriculumId: s.curriculumId }))]
 
   async function submit(e: FormEvent) {
     e.preventDefault()

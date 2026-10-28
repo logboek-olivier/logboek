@@ -17,6 +17,7 @@ import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil } from '../session'
 import { legGaps, tripIncomplete } from '../model/gaps'
+import { answerReturning, guestLabel, participantName, returningGuests } from '../model/guests'
 import { IncompleteBadge } from '../components/Incomplete'
 import { activeWeek, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
 import type { Leg, Trip, WeekType } from '../model/types'
@@ -84,6 +85,8 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
   const view = weekView(week, legs)
   const detail = planOpen || studentOpen
   const participants = week.participants ?? []
+  // Terugkerende gasten: zelfde voornaam en land als in een eerdere trip; pas koppelen na "ja".
+  const returning = returningGuests(week, trips, legs)
   const missing = missingDays(view, todayIso())
   const nextDay = missing[0] ?? (view.endDate && todayIso() > view.endDate ? view.endDate : todayIso())
 
@@ -139,7 +142,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
                   return (
                     <li key={p.id} className="chip-static">
                       <Icon icon={Users} />
-                      <span>{p.firstName}</span>
+                      <span>{participantName(p, participants)}</span>
                       {(p.level || course) && (
                         <span className="muted small">{[p.level ? t(`level.${p.level}`) : '', course ? courseLabel(course, lang) : ''].filter(Boolean).join(' · ')}</span>
                       )}
@@ -148,6 +151,34 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
                 })}
               </ul>
             )}
+            {returning.map((r) => {
+              const name = participantName(r.participant, participants)
+              return (
+                <div key={r.participant.id} className="notice returning-guest">
+                  <span>{t('guest.same', { name, previous: guestLabel(r.previous), trip: r.previousTrip.name })}</span>
+                  <span className="notice-actions">
+                    <button
+                      className="btn small primary"
+                      onClick={async () => {
+                        await answerReturning(store, week.id, r.participant.id, r.previous)
+                        notify(t('guest.linked', { name }))
+                      }}
+                    >
+                      {t('guest.yes')}
+                    </button>
+                    <button
+                      className="btn small"
+                      onClick={async () => {
+                        await answerReturning(store, week.id, r.participant.id, null)
+                        notify(t('guest.notLinked', { name }))
+                      }}
+                    >
+                      {t('guest.no')}
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </>
       )}

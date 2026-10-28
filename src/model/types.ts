@@ -19,13 +19,32 @@ export const WEEK_TYPES: readonly WeekType[] = ['training-geven', 'skipper-chart
 export type Organisation = 'sailing-virgins' | 'yacht-week' | 'eigen' | 'overig'
 export const ORGANISATIONS: readonly Organisation[] = ['sailing-virgins', 'yacht-week', 'eigen', 'overig']
 
-/** Deelnemer van een week: alleen voornaam, eventueel niveau en cursus (beveiligingsregel 14). */
+/**
+ * Deelnemer van een trip (student of gast, regel 14): alleen voornaam, optioneel land en optioneel kort kenmerk
+ * (initiaal of bijnaam, geen achternaam), met niveau en cursus voor studenten. Geen contactgegevens.
+ */
 export interface Participant {
   id: string
   firstName: string
   level?: StudentLevel
   curriculumId?: string
+  /** Land zoals Olivier het schrijft ("VS", "Duitsland"). */
+  country?: string
+  /** Kort kenmerk om dubbele voornamen uit elkaar te houden: initiaal of bijnaam. */
+  tag?: string
+  /**
+   * Terugkerende gast: zelfde id als de deelnemer van een eerdere trip (na "ja" op "Is dit dezelfde persoon?"). Gelijk
+   * aan het eigen id na "nee", zodat de vraag niet terugkomt. Ontbreekt = nog niet gevraagd.
+   */
+  guestId?: string
 }
+
+/** Van wie een fooi komt. Ontbreekt = onbekend (ook bij oudere fooien). */
+export type TipFrom =
+  | { kind: 'onbekend' }
+  | { kind: 'groep' }
+  /** Eén of meer deelnemers van de trip; `amounts` per persoon, zonder = samen gegeven. */
+  | { kind: 'personen'; participantIds: string[]; amounts?: Record<string, number> }
 
 export interface WeekReview {
   /** Reviewscore zoals de organisatie die geeft, bijvoorbeeld 9,4. */
@@ -132,6 +151,8 @@ export interface Transaction extends SyncRecord {
   /** De trip; bij inkomsten gekozen (standaard de trip van de datum), bij uitgaven automatisch op datum. */
   tripId?: string
   note?: string
+  /** Alleen bij een fooi: van wie. */
+  tipFrom?: TipFrom
 }
 
 export type AddTab = 'dag' | 'inkomsten' | 'uitgave'

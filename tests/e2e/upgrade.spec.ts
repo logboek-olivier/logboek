@@ -155,6 +155,14 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
     await expect(page.locator('.cal-day.today')).toHaveClass(/day-thuis/)
     await expectSynced(page)
+    // Fooi per persoon (nieuwe velden in trips en transacties): een fooi van één deelnemer van de voorbeeldtrip.
+    await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
+    await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
+    await page.getByLabel(L('field.amount')).fill('25')
+    await page.getByRole('combobox', { name: new RegExp(`^${L('field.trip')}`) }).selectOption({ label: 'Nepweek upgrade' })
+    await page.getByRole('button', { name: 'Nepnick', exact: true }).click()
+    await page.getByRole('button', { name: L('common.save') }).click()
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -162,6 +170,17 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     const key = await unlock(meta, { passphrase: PASSPHRASE })
     const calendar = await decryptRecords(key, 'calendar.json.enc', Uint8Array.from(Buffer.from(github.files.get('calendar.json.enc')!.content, 'base64')))
     expect(calendar).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'thuis', deletedAt: null })]))
+    // En de fooi per persoon: de voorbeelden (per persoon, hele groep) en de nieuwe fooi van één deelnemer.
+    const transactions = await decryptRecords(key, 'transactions.json.enc', Uint8Array.from(Buffer.from(github.files.get('transactions.json.enc')!.content, 'base64')))
+    expect(transactions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'upg-tx-1', tipFrom: { kind: 'personen', participantIds: ['upg-p-1', 'upg-p-2'], amounts: { 'upg-p-1': 30, 'upg-p-2': 20 } } }),
+        expect.objectContaining({ id: 'upg-tx-2', tipFrom: { kind: 'groep' } }),
+        expect.objectContaining({ amount: 25, tripId: 'upg-trip-1', tipFrom: { kind: 'personen', participantIds: ['upg-p-1'] } }),
+      ]),
+    )
+    const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
+    expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
   } finally {
     await server.close()
   }

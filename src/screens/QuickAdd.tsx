@@ -2,6 +2,8 @@ import { Coins, MapPin, Receipt, Sailboat } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
 import { MapSheet } from '../components/MapSheet'
+import { TipFromPicker } from '../components/TipFromPicker'
+import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { formatNm, formatNumber } from '../format'
 import { findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
 import { MergeProposal } from './Places'
@@ -167,17 +169,23 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
   const [date, setDate] = useState(todayIso())
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const parsed = parseAmount(amount)
   const { tripId, setTripId, options } = useTripChoice(store, date)
   // Inkomsten horen bij een trip; alleen zonder enige trip mag het leeg blijven.
   const tripOk = tripId !== '' || options.length === 0
+  // Fooi: van wie (deelnemers van de gekozen trip); een andere trip begint weer bij onbekend.
+  const people = kind === 'fooi' ? (options.find((x) => x.id === tripId)?.participants ?? []) : []
+  const [tip, setTip] = useState<{ tripId: string; draft: TipDraft }>({ tripId, draft: EMPTY_TIP })
+  const draft = tip.tripId === tripId ? tip.draft : EMPTY_TIP
+  const total = people.length > 0 ? draftTotal(draft) : undefined
+  const parsed = total !== undefined ? total : parseAmount(amount)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (parsed === null || !tripOk || busy) return
     setBusy(true)
     try {
-      await saveTransaction(store, { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}) }, { lastIncomeKind: kind }, tripId || undefined)
+      const tipFrom = people.length > 0 ? tipFromDraft(draft, people) : undefined
+      await saveTransaction(store, { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}) }, { lastIncomeKind: kind }, tripId || undefined)
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
       setBusy(false)
@@ -195,7 +203,8 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
           enterKeyHint="done"
           autoComplete="off"
           placeholder={t('quick.amountPlaceholder')}
-          value={amount}
+          value={total !== undefined ? (total === null ? '' : formatAmountInput(total)) : amount}
+          readOnly={total !== undefined}
           onChange={(e) => setAmount(e.target.value)}
         />
       </label>
@@ -207,6 +216,18 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
         ))}
       </div>
       <TripField value={tripId} options={options} onChange={setTripId} required={options.length > 0} />
+      {people.length > 0 && (
+        <TipFromPicker
+          participants={people}
+          value={draft}
+          currency={currency}
+          onChange={(next) => {
+            const kept = totalWhenLeavingSplit(draft, next)
+            if (kept !== null) setAmount(formatAmountInput(kept))
+            setTip({ tripId, draft: next })
+          }}
+        />
+      )}
       <div className="two">
         <label>
           {t('field.source')}

@@ -2,6 +2,7 @@ import { translate, type Lang } from '../i18n'
 import type { Store } from '../storage/store'
 import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
 import { followTrip, tripRange } from './calendar'
+import { MAX_COUNTRY, MAX_TAG } from './guests'
 import type { Undo } from './edit'
 import { addDays } from './money'
 import { saveSettings } from './settings'
@@ -178,6 +179,9 @@ export interface ParticipantInput {
   firstName: string
   level?: StudentLevel
   curriculumId?: string
+  country?: string
+  tag?: string
+  guestId?: string
 }
 
 export interface WeekInput {
@@ -208,17 +212,24 @@ export function cleanRoute(route: readonly PlannedLeg[]): PlannedLeg[] {
     .map((r) => ({ day: r.day, from: r.from.trim().slice(0, 80), to: r.to.trim().slice(0, 80), ...(r.nm !== undefined && Number.isFinite(r.nm) && r.nm >= 0 ? { nm: r.nm } : {}) }))
 }
 
-/** Alleen voornaam, niveau en cursus; lege regels vallen weg (regel 14). */
+/** Alleen voornaam, niveau, cursus, land, kort kenmerk en de koppeling met een eerdere gast; lege regels vallen weg (regel 14). */
 export function cleanParticipants(rows: readonly ParticipantInput[]): Participant[] {
   return rows
     .map((r) => ({ ...r, firstName: r.firstName.trim().slice(0, 40) }))
     .filter((r) => r.firstName !== '')
-    .map((r) => ({
-      id: r.id ?? newId(),
-      firstName: r.firstName,
-      ...(r.level ? { level: r.level } : {}),
-      ...(r.curriculumId ? { curriculumId: r.curriculumId } : {}),
-    }))
+    .map((r) => {
+      const country = (r.country ?? '').trim().slice(0, MAX_COUNTRY)
+      const tag = (r.tag ?? '').trim().slice(0, MAX_TAG)
+      return {
+        id: r.id ?? newId(),
+        firstName: r.firstName,
+        ...(r.level ? { level: r.level } : {}),
+        ...(r.curriculumId ? { curriculumId: r.curriculumId } : {}),
+        ...(country ? { country } : {}),
+        ...(tag ? { tag } : {}),
+        ...(r.guestId ? { guestId: r.guestId } : {}),
+      }
+    })
 }
 
 export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'updatedAt' | 'deletedAt'> {

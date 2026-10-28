@@ -2,7 +2,7 @@ import type { Store } from '../storage/store'
 import { tripForDate } from './derive'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CollectionPath, Collections, Leg, Reminder, Transaction, Trip } from './types'
+import type { CollectionPath, Collections, Leg, Reminder, TipFrom, Transaction, Trip } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -86,12 +86,19 @@ export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'c
   receivedEur?: number
   /** Gekozen trip; null = geen trip; ontbreekt het, dan volgt de trip uit de datum. */
   tripId?: string | null
+  /** Van wie een fooi komt; null = onbekend; ontbreekt het, dan blijft het zoals het was. */
+  tipFrom?: TipFrom | null
 }
 
 /** Werkt een transactie bij; amountEur volgt uit valuta en datum, de trip uit de keuze of anders de datum. */
 export async function updateTransaction(store: Store, tx: Transaction, patch: TransactionPatch): Promise<void> {
-  const { tripId: chosenTrip, ...fields } = patch
+  const { tripId: chosenTrip, tipFrom, ...fields } = patch
   const next: Transaction = { ...tx, ...fields, amount: round2(patch.amount), updatedAt: new Date().toISOString() }
+  if (tipFrom) next.tipFrom = tipFrom
+  // Geen fooi meer, van onbekend, of een andere trip zonder nieuwe keuze: geen personen bewaren.
+  if (tipFrom === null || next.kind !== 'fooi') delete next.tipFrom
+  const trip = chosenTrip !== undefined ? (chosenTrip ? { id: chosenTrip } : null) : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)
+  if (tipFrom === undefined && (trip?.id ?? undefined) !== tx.tripId) delete next.tipFrom
   if (!patch.note) delete next.note
   if (!patch.receivedEur) delete next.receivedEur
   if (next.currency === 'EUR') {
@@ -106,7 +113,6 @@ export async function updateTransaction(store: Store, tx: Transaction, patch: Tr
     delete next.rateDate
     Object.assign(next, finalRateFields(next) ?? {})
   }
-  const trip = chosenTrip !== undefined ? (chosenTrip ? { id: chosenTrip } : null) : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)
   if (trip) next.tripId = trip.id
   else delete next.tripId
   await store.put('transactions.json.enc', next)
