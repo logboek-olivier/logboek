@@ -2037,6 +2037,26 @@ body.presenting .bottom-bar {
   font-size: var(--fs-sm);
 }
 
+/* Land en kenmerk (initiaal of bijnaam) op een derde regel. */
+.participant-row > .participant-country,
+.participant-row > .participant-tag {
+  grid-row: 3;
+  font-size: var(--fs-sm);
+}
+
+.participant-row > .participant-country {
+  grid-column: 1;
+}
+
+.participant-row > .participant-tag {
+  grid-column: 2;
+}
+
+.participant-row > .participant-warning {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .new-week {
   align-self: flex-start;
 }
@@ -2969,4 +2989,42 @@ body.presenting .bottom-bar {
 
 .workday-table td:first-child {
   white-space: nowrap;
+}
+
+/* Fooi per persoon en terugkerende gasten */
+.returning-guest {
+  flex-wrap: wrap;
+  margin-top: var(--s-2);
+}
+
+.notice-actions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.tip-from {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.tip-from legend {
+  margin-bottom: var(--s-1);
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.tip-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+
+.tip-overview .table td:first-child {
+  overflow-wrap: anywhere;
 }

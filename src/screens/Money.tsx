@@ -7,11 +7,13 @@ import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
 import { buildIndex, incomePerWorkday } from '../model/calendar'
+import { tipsPerCountry, tipsPerGuest, tipsPerTrip, tipsPerTripType } from '../model/guests'
+import { weekTypeLabel } from '../components/WeekSheet'
 import { active } from '../model/derive'
-import { isIncome, monthSeries, perMonth, perSource, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
+import { eurOf, isIncome, monthSeries, perMonth, perSource, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
 import { kindLabel, sourceLabel } from '../i18n/labels'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
-import { todayIso, type Transaction } from '../model/types'
+import { todayIso, type Leg, type Transaction, type Trip, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
@@ -40,6 +42,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const legs = useCollection(store, 'legs.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
   const workdays = incomePerWorkday(index, live, today).filter((m) => m.workdays > 0 || m.eur > 0)
+  const [tipView, setTipView] = useState<TipView>('gast')
 
   return (
     <section className="stack-lg">
@@ -174,6 +177,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             </div>
           )}
 
+          <TipOverview trips={trips} transactions={live} legs={legs} view={tipView} onView={setTipView} />
+
           <div className="section">
             <h2>{t('money.perSource')}</h2>
             <ul className="rows">
@@ -234,6 +239,77 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
       )}
       {editing && <TransactionSheet store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
     </section>
+  )
+}
+
+type TipView = 'gast' | 'trip' | 'soort' | 'land'
+
+const TIP_VIEWS: { view: TipView; label: Parameters<typeof t>[0] }[] = [
+  { view: 'gast', label: 'money.tipsByGuest' },
+  { view: 'trip', label: 'money.tipsByTrip' },
+  { view: 'soort', label: 'money.tipsByType' },
+  { view: 'land', label: 'money.tipsByCountry' },
+]
+
+/**
+ * Fooi per gast, gemiddeld per gast per trip, per soort trip en per land (alleen fooien met een trip). Weergaven zonder
+ * regels zijn niet te kiezen; zonder enige fooi bij een trip met deelnemers staat het blok er niet.
+ */
+function TipOverview({ trips, transactions, legs, view, onView }: { trips: readonly Trip[]; transactions: readonly Transaction[]; legs: readonly Leg[]; view: TipView; onView: (view: TipView) => void }) {
+  const perTrip = tipsPerTrip(trips, transactions, legs).filter((x) => x.guests > 0)
+  const countries = tipsPerCountry(trips, transactions)
+  const all: Record<TipView, { key: string; label: string; detail: string; eur: number; perGuest: number | null }[]> = {
+    gast: tipsPerGuest(trips, transactions).map((g) => ({ key: g.key, label: g.label, detail: t('money.trips', { n: g.trips }), eur: g.eur, perGuest: null })),
+    trip: perTrip.map((x) => ({ key: x.trip.id, label: x.trip.name, detail: t('money.guestsCount', { n: x.guests }), eur: x.eur, perGuest: x.perGuest })),
+    soort: tipsPerTripType(perTrip).map((g) => ({ key: g.key, label: weekTypeLabel(g.key as WeekType), detail: t('money.trips', { n: g.trips }), eur: g.eur, perGuest: g.perGuest })),
+    // Alleen gasten zonder land: geen overzicht per land.
+    land: countries.some((g) => g.key !== '') ? countries.map((g) => ({ key: g.key, label: g.label || t('money.noCountry'), detail: t('money.guestsCount', { n: g.guests }), eur: g.eur, perGuest: g.perGuest })) : [],
+  }
+  const views = TIP_VIEWS.filter((v) => all[v.view].length > 0)
+  if (views.length === 0) return null
+  const shown = all[view].length > 0 ? view : views[0]!.view
+  const rows = all[shown]
+  const noRate = active(transactions).some((tx) => tx.kind === 'fooi' && tx.tripId && eurOf(tx) === null)
+  return (
+    <div className="section card card-body tip-overview">
+      <div className="section-head">
+        <h2>{t('money.tipsGuests')}</h2>
+        <span className="muted">EUR</span>
+      </div>
+      {views.length > 1 && (
+        <div className="segments small" role="radiogroup" aria-label={t('money.tipsGuests')}>
+          {views.map((v) => (
+            <button key={v.view} type="button" role="radio" aria-checked={shown === v.view} className={`segment${shown === v.view ? ' active' : ''}`} onClick={() => onView(v.view)}>
+              {t(v.label)}
+            </button>
+          ))}
+        </div>
+      )}
+      <table className="table">
+        <thead>
+          <tr>
+            <th>{t(TIP_VIEWS.find((v) => v.view === shown)!.label)}</th>
+            <th className="num">{t('money.tips')}</th>
+            {shown !== 'gast' && <th className="num">{t('money.perGuest')}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key}>
+              <td>
+                {r.label}
+                <br />
+                <span className="muted small">{r.detail}</span>
+              </td>
+              <td className="num">{formatMoney(r.eur, 'EUR')}</td>
+              {shown !== 'gast' && <td className="num">{r.perGuest === null ? '–' : formatMoney(r.perGuest, 'EUR')}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">{t('money.tipsHint')}</p>
+      {noRate && <p className="muted small">{t('money.tipsNoRate')}</p>}
+    </div>
   )
 }
 
