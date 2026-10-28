@@ -52,6 +52,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 13. **Nooit een tweede GitHub Pages-site in organisatie logboek-olivier: die deelt opslag en vingerafdruk met Logboek.**
 14. **Studentgegevens: alleen voornaam, cursus, niveau, voortgang en examenuitslag. Geen contactgegevens, geen gezondheids- of identiteitsgegevens. Nooit in logs of foutdetails. Na 12 maanden automatisch archiveren; archief is te wissen.** Deelnemers van een trip vallen hier ook onder: alleen voornaam (met optioneel niveau en cursus).
 15. **Wisselkoersen komen alleen uit public/rates.json, gebouwd door deploy.yml uit de ECB-bron; de app haalt zelf nooit externe data op.**
+16. **Updates zijn in elke toestand mogelijk. Herstel raakt nooit in een lus. Een onleesbaar bestand blokkeert alleen zijn eigen onderdeel. Elke PR die een databestand toevoegt of wijzigt, heeft een upgradetest.** De upgradetest (`tests/e2e/upgrade.spec.ts`, verplicht in CI) maakt met de vorige release (`npm run upgrade:vorige`, in `.vorige/`) een logboek met een voorbeeld in elk databestand (`tests/upgrade/upgrade-samples.ts`), werkt bij in dezelfde browseropslag, synchroniseert en koppelt daarna een schoon apparaat met de wachtzin: alle bestanden moeten leesbaar zijn. De storingstests (`tests/storingen.test.ts`: twee vensters tegelijk, update tijdens herstel, verbinding weg midden in een sync, sluiten tijdens schrijven, herstel twee keer achter elkaar) eindigen elk met dezelfde controle op een schoon apparaat.
 
 ## Cryptografisch ontwerp
 
@@ -286,13 +287,15 @@ logboek/
     share.ts         lokaal gemaakt bestand delen of downloaden
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
-                     students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists) + playwright (setup, unlock, sessie, import, boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen,
+                     students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
+                     upgrade-samples) + playwright (upgrade, updates, setup, unlock, sessie, import, boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
+    upgrade/         voorbeeld per databestand en de generator die in de vorige release draait
   .github/workflows/ deploy.yml (alleen vanaf main, plus dagelijks voor de koersen), test.yml (bij elke PR en push;
                      uploadt schermafbeeldingen)
-  scripts/           generate-fake-data.ts, fake-xlsx.ts, fake-boats-csv.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json),
+  scripts/           build-previous.mjs (vorige release voor de upgradetest), generate-fake-data.ts, fake-xlsx.ts, fake-boats-csv.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json),
                      build-coast.mjs (Natural Earth → public/coast/)
 ```
 
@@ -308,8 +311,8 @@ logboek/
 - Olivier werkt alleen vanaf zijn telefoon via cloud-sessies. Elke release in losse PR's; schermafbeeldingen uit CI bekijken vóór mergen.
 - Olivier doet geen handwerk buiten de app. Herstel, migraties en opruimen gebeuren in de app zelf, met hoogstens een paar tikken. Alleen wat echt alleen hij kan (wachtzin, bestand kiezen, GitHub-rechten) vraagt de app aan hem.
 - **Reviews en wachten:** reviews met hoogstens één review-agent tegelijk, op de voorgrond. Bij werk zonder Olivier nooit wachten op achtergrondmeldingen; CI volgen met `gh pr checks --watch` en deploys met `gh run watch`.
-- **Definition of done:** tests groen, werkt offline, werkt op 360 px breed, geen nieuwe netwerkbestemmingen, geen nieuwe afhankelijkheden zonder reden in de PR.
-- **Dataformaat:** wijzigingen altijd achterwaarts compatibel. Een nieuwe `schemaVersion` alleen met migratie en een test die data van de vorige versie inleest. Ziet de app een hogere `schemaVersion` dan hij kent, dan schrijft hij niets naar GitHub en toont hij "Werk de app bij".
+- **Definition of done:** tests groen (ook de upgradetest), werkt offline, werkt op 360 px breed, geen nieuwe netwerkbestemmingen, geen nieuwe afhankelijkheden zonder reden in de PR.
+- **Dataformaat:** wijzigingen altijd achterwaarts compatibel. Een nieuw of gewijzigd databestand krijgt een voorbeeld in `tests/upgrade/upgrade-samples.ts` (regel 16). Een nieuwe `schemaVersion` alleen met migratie en een test die data van de vorige versie inleest. Ziet de app een hogere `schemaVersion` dan hij kent, dan schrijft hij niets naar GitHub en toont hij "Werk de app bij".
 - **Afhankelijkheden:** toegestaan zonder overleg: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa`, `idb`, `typescript`, `vitest`, `@playwright/test`, `fake-indexeddb`, eslint, `lucide-react` (iconen), `fflate` (uitpakken van .xlsx). Al het andere: eerst vragen.
 - **Beveiligingsreview (verplicht vóór live):** een aparte sessie die de code niet geschreven heeft, krijgt de code en deze scenario's: gestolen ontgrendelde telefoon, gestolen vergrendelde telefoon, gelekte GitHub-token, gelekte `logboek-data`, gecompromitteerde `logboek`-repo, kwaadaardige npm-afhankelijkheid. Per scenario: wat kan een aanvaller wel, wat niet, en welke regel dat garandeert. Daarna Oliviers handtest: `logboek-data` clonen op een andere computer en proberen data te lezen zonder wachtzin.
 

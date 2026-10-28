@@ -15,6 +15,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          # De upgradetest bouwt de vorige release (main vóór deze wijziging).
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -28,6 +31,9 @@ jobs:
         run: npm test
       - name: Playwright-browsers installeren
         run: npx playwright install --with-deps chromium
+      # Verplichte upgradetest: de vorige release bouwen en daarmee nepgegevens maken (tests/e2e/upgrade.spec.ts).
+      - name: Vorige release bouwen
+        run: npm run upgrade:vorige
       - name: Playwright
         run: npm run test:e2e
       # Schermafbeeldingen van elk scherm (360 en 412 px, licht en donker) om vóór het mergen te bekijken.

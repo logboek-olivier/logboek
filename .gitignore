@@ -29,3 +29,6 @@ Thumbs.db
 
 # Schermafbeeldingen uit tests/e2e/screenshots.spec.ts (artifact in CI)
 screenshots/
+
+# Vorige release voor de upgradetest (npm run upgrade:vorige)
+.vorige/
