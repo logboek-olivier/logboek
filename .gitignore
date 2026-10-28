@@ -32,3 +32,6 @@ screenshots/
 
 # Vorige release voor de upgradetest (npm run upgrade:vorige)
 .vorige/
+
+# Bron voor de OpenStreetMap-kaartdata (scripts/build-osm.mjs, alleen in GitHub Actions)
+osm-bron/

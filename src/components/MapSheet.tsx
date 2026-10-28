@@ -1,6 +1,8 @@
 import { LocateFixed } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { formatNumber } from '../format'
 import { t } from '../i18n'
+import { estimateWater, type WaterEstimate } from '../model/estimate'
 import { findPlace, nearestPlace, savePlace } from '../model/places'
 import type { Place } from '../model/types'
 import type { Store } from '../storage/store'
@@ -9,7 +11,8 @@ import { SeaMap, type LatLon, type MapPlace } from './SeaMap'
 import { Sheet } from './Sheet'
 
 // Plaats kiezen op de offline kaart: tik op een bekende plaats (direct gekozen) of zet een nieuw punt, geef het een
-// naam en kies. "Huidige locatie" gebruikt de GPS van de telefoon (geen internet nodig).
+// naam en kies. "Huidige locatie" gebruikt de GPS van de telefoon (geen internet nodig). Met een vertrek- of
+// aankomstplaats met punt staat de waterroute naar het gekozen punt op de kaart, met de schatting in nm.
 
 const FALLBACK: LatLon = { lat: 18, lon: -63 }
 
@@ -18,6 +21,7 @@ export function MapSheet({
   title,
   name,
   around,
+  routeFrom,
   onChoose,
   onClose,
 }: {
@@ -27,6 +31,8 @@ export function MapSheet({
   name: string
   /** Andere bekende punten om op te centreren als het veld nog geen punt heeft (bijvoorbeeld het andere veld). */
   around: readonly string[]
+  /** De andere plaats van de dag: de waterroute daarvandaan naar het gekozen punt staat op de kaart. */
+  routeFrom?: string
   onChoose: (name: string) => void
   onClose: () => void
 }) {
@@ -40,6 +46,17 @@ export function MapSheet({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const mapPlaces: MapPlace[] = places.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lon: p.lon }))
+  const other = routeFrom ? findPlace(places, routeFrom) : null
+  const [estimate, setEstimate] = useState<WaterEstimate | null>(null)
+  useEffect(() => {
+    setEstimate(null)
+    if (!other || !point) return
+    let active = true
+    void estimateWater(other, point, store.list('legs.json.enc'), places).then((e) => active && setEstimate(e))
+    return () => {
+      active = false
+    }
+  }, [other?.id, other?.lat, other?.lon, point?.lat, point?.lon])
 
   function pick(p: LatLon) {
     setPoint(p)
@@ -89,6 +106,7 @@ export function MapSheet({
           center={point ?? (start ? { lat: start.lat, lon: start.lon } : FALLBACK)}
           places={mapPlaces}
           selected={point}
+          route={estimate?.path}
           onPick={pick}
           onSelectPlace={(p) => onChoose(p.name)}
         />
@@ -101,6 +119,7 @@ export function MapSheet({
             {error}
           </p>
         )}
+        {estimate && <p className="muted small">{t('route.water', { nm: formatNumber(estimate.nm), water: formatNumber(estimate.water), factor: formatNumber(estimate.factor) })}</p>}
         {point && (
           <>
             {near && (

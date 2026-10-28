@@ -689,9 +689,10 @@ export const en: Messages = {
   'map.hereFailed': 'Location not available. Allow location access for this app or tap the map.',
   'map.nearKnown': (p) => `Close to ${p.name}`,
   'route.average': (p) => `Suggestion ${p.nm}: average of the last ${p.n === 1 ? 'time' : `${p.n} times`} on this route`,
-  'route.straight': (p) => `Straight line ${p.nm}; the actual distance is usually longer`,
+  'route.water': (p) => `± ${p.nm} nm (water ${p.water} nm × your factor ${p.factor})`,
+  'map.osmAttribution': '© OpenStreetMap contributors',
   'settings.mapSource': 'Map',
-  'settings.mapSourceValue': 'Natural Earth (public domain), offline',
+  'settings.mapSourceValue': 'Natural Earth (public domain) and © OpenStreetMap contributors (ODbL), offline',
   // Deadlines
   'key.file.reminders': 'Deadlines',
   'reminder.screen': 'Deadlines',

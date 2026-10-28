@@ -91,6 +91,9 @@ export default defineConfig({
           },
           // Koersen niet in de precache (die verandert dagelijks): eerst het netwerk, offline de laatst opgehaalde.
           { urlPattern: /\/logboek\/rates\.json$/, handler: 'NetworkFirst', options: { cacheName: 'koersen', networkTimeoutSeconds: 5 } },
+          // Gedetailleerde kaartdata (public/osm/, tientallen MB): niet in de precache, maar per vak bij het eerste gebruik
+          // opgehaald en daarna offline uit de cache (op de achtergrond bijgewerkt als er verbinding is).
+          { urlPattern: /\/logboek\/osm\//, handler: 'StaleWhileRevalidate', options: { cacheName: 'kaart-osm' } },
         ],
       },
     }),
