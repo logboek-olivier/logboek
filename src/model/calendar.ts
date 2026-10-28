@@ -230,3 +230,152 @@ export async function clearDay(store: Store, date: string): Promise<void> {
   await store.remove('calendar.json.enc', calendarId(date))
   void store.sync()
 }
+
+/** Een periode in één keer dezelfde dagsoort geven (periode markeren); bestaande gegevens van die dagen blijven. */
+export async function setDays(store: Store, dates: readonly string[], type: DayType): Promise<void> {
+  const now = new Date().toISOString()
+  const existing = new Map(store.list('calendar.json.enc').map((d) => [d.date, d]))
+  const records: CalendarDay[] = dates.map((date) => {
+    const old = existing.get(date)
+    return { ...(old ?? {}), id: calendarId(date), date, type, updatedAt: now, deletedAt: null }
+  })
+  if (records.length > 0) await store.putMany('calendar.json.enc', records)
+  void store.sync()
+}
+
+/** Alle datums van `from` tot en met `to`. */
+export function datesBetween(from: string, to: string): string[] {
+  const [a, b] = from <= to ? [from, to] : [to, from]
+  const out: string[] = []
+  for (let d = a; d <= b; d = addDays(d, 1)) out.push(d)
+  return out
+}
+
+/** Maandag van de week van `date`. */
+export function weekStart(date: string): string {
+  const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7
+  return addDays(date, -weekday)
+}
+
+/** Laatste geplande dag: einde van de laatste trip of de laatste zelf ingestelde dag. */
+export function planningEnd(index: CalendarIndex): string | null {
+  const ends = [...index.views.map((v) => v.endDate), ...index.own.keys()]
+  return ends.length > 0 ? ends.reduce((a, b) => (a > b ? a : b)) : null
+}
+
+// ---------- Seizoensoverzicht ----------
+
+export type SeasonItem =
+  | { kind: 'trip'; view: WeekView }
+  | { kind: 'days'; type: DayType; from: string; to: string; travel?: DayTravel }
+
+export interface SeasonWeek {
+  start: string
+  end: string
+  items: SeasonItem[]
+}
+
+/**
+ * Eén regel per week (maandag tot en met zondag): de trips die in die week vallen, en de andere dagsoorten als
+ * aaneengesloten stukken ("Beschikbaar: 3–5 mrt"). Werkdagen binnen een trip staan bij die trip; lege dagen in het
+ * verleden niet.
+ */
+export function seasonWeeks(index: CalendarIndex, from: string, to: string, today: string = todayIso()): SeasonWeek[] {
+  const weeks: SeasonWeek[] = []
+  for (let start = weekStart(from); start <= to; start = addDays(start, 7)) {
+    const end = addDays(start, 6)
+    const items: SeasonItem[] = []
+    const seen = new Set<string>()
+    let run: Extract<SeasonItem, { kind: 'days' }> | null = null
+    for (let d = start; d <= end; d = addDays(d, 1)) {
+      const info = dayInfo(index, d, today)
+      const inTrip = info.type === 'werk' && info.source !== 'eigen' && info.trips.length > 0
+      if (inTrip) {
+        run = null
+        for (const v of info.trips) {
+          if (seen.has(v.trip.id)) continue
+          seen.add(v.trip.id)
+          items.push({ kind: 'trip', view: v })
+        }
+        continue
+      }
+      if (!info.type) {
+        run = null
+        continue
+      }
+      const travel = info.type === 'reis' ? info.own?.travel : undefined
+      if (run && run.type === info.type && !travel && !run.travel && run.to === addDays(d, -1)) run.to = d
+      else {
+        run = { kind: 'days', type: info.type, from: d, to: d, ...(travel ? { travel } : {}) }
+        items.push(run)
+      }
+    }
+    weeks.push({ start, end, items })
+  }
+  return weeks
+}
+
+// ---------- Delen ----------
+
+export type Availability = 'beschikbaar' | 'bezet' | 'optie'
+
+export interface Run<T> {
+  from: string
+  to: string
+  value: T
+}
+
+/** Aaneengesloten stukken met dezelfde waarde; `null` breekt een stuk af en wordt weggelaten. */
+function runs<T>(from: string, to: string, valueOf: (date: string) => T | null, same: (a: T, b: T) => boolean): Run<T>[] {
+  const out: Run<T>[] = []
+  for (const d of datesBetween(from, to)) {
+    const value = valueOf(d)
+    const last = out.at(-1)
+    if (value === null) continue
+    if (last && last.to === addDays(d, -1) && same(last.value, value)) last.to = d
+    else out.push({ from: d, to: d, value })
+  }
+  return out
+}
+
+/** Alleen beschikbaarheid: beschikbaar, bezet of optie. Geen namen, boten of bedragen. */
+export function availabilityRuns(index: CalendarIndex, from: string, to: string, today: string = todayIso()): Run<Availability>[] {
+  return runs(
+    from,
+    to,
+    (d) => {
+      const type = dayInfo(index, d, today).type
+      if (type === 'beschikbaar' || (type === null && d >= today)) return 'beschikbaar'
+      if (type === 'optie') return 'optie'
+      return type === null ? null : 'bezet'
+    },
+    (a, b) => a === b,
+  )
+}
+
+export interface PlanEntry {
+  type: DayType
+  /** Bij werk binnen een trip: naam, type en gebied van de trip (nooit deelnemers of bedragen). */
+  trip?: { id: string; name: string; tripType: WeekView['type']; area?: string }
+  /** Bij reis: van en naar (geen vlucht). */
+  travel?: { from: string; to: string }
+}
+
+/** Volledige planning: trips met gebied, reisdagen en de andere dagsoorten. Geen bedragen, gastnamen of notities. */
+export function planningRuns(index: CalendarIndex, from: string, to: string, today: string = todayIso()): Run<PlanEntry>[] {
+  return runs(
+    from,
+    to,
+    (d) => {
+      const info = dayInfo(index, d, today)
+      if (!info.type) return null
+      const view = info.type === 'werk' ? info.trips.at(-1) : undefined
+      return {
+        type: info.type,
+        ...(view ? { trip: { id: view.trip.id, name: view.trip.name, tripType: view.type, ...(view.trip.area ? { area: view.trip.area } : {}) } } : {}),
+        ...(info.type === 'reis' && info.own?.travel ? { travel: { from: info.own.travel.from, to: info.own.travel.to } } : {}),
+      }
+    },
+    (a, b) => a.type === b.type && a.trip?.id === b.trip?.id && a.travel?.from === b.travel?.from && a.travel?.to === b.travel?.to,
+  )
+}

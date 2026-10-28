@@ -1,0 +1,16 @@
+// Gegenereerde nep-planning (verzonnen namen, boten en gebieden) voor de import van de planning.
+// Zelfde kolommen als Oliviers planning: start, eind, soort, naam, type, organisatie, boot, gebied, notitie.
+
+const ROWS: string[][] = [
+  ['start', 'eind', 'soort', 'naam', 'type', 'organisatie', 'boot', 'gebied', 'notitie'],
+  ['2027-03-06', '2027-03-13', 'werk', 'Nepweek Een', 'skipper-charter', 'yacht-week', 'Nepboot Vijf', 'Nepgebied Noord', ''],
+  ['2027-03-14', '2027-03-14', 'rust', '', '', '', '', '', 'Wasdag'],
+  ['2027-03-15', '2027-03-21', 'werk', 'Nepcursus Twee', 'training-geven', 'sailing-virgins', 'Nepboot Zes', 'Nepgebied Zuid', ''],
+  ['2027-03-22', '2027-03-23', 'reis', '', '', '', '', '', ''],
+  ['2027-03-24', '2027-03-30', 'thuis', '', '', '', '', '', ''],
+  ['2027-04-03', '2027-04-10', 'optie', 'Nepoptie', '', '', '', '', ''],
+]
+
+export function buildFakePlanningCsv(): string {
+  return ROWS.map((r) => r.map((v) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)).join(';')).join('\n') + '\n'
+}

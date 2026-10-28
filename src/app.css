@@ -2724,3 +2724,171 @@ body.presenting .bottom-bar {
   font-variant-numeric: tabular-nums;
 }
 
+
+/* Periode markeren, planning importeren, seizoen en delen */
+.agenda-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.agenda-actions .btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.cal.marking .cal-day {
+  cursor: crosshair;
+}
+
+.cal-day.range-start {
+  outline: 3px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.warning {
+  color: var(--warning);
+  font-weight: var(--fw-medium);
+}
+
+.check-inline {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+}
+
+.check-inline input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.planning-rows .row-item {
+  flex-wrap: wrap;
+}
+
+.planning-rows .row-item.overlap {
+  border-left: 3px solid var(--warning);
+}
+
+.season {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.season-week {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.season-week.current {
+  border-color: var(--accent);
+}
+
+.season-week.past {
+  opacity: 0.7;
+}
+
+.season-week > p {
+  margin: var(--s-1) 0 0;
+}
+
+.season-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.season-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.season-item {
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--day-leeg);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.season-item.day-werk { background: var(--day-werk); }
+.season-item.day-rust { background: var(--day-rust); }
+.season-item.day-reis { background: var(--day-reis); }
+.season-item.day-thuis { background: var(--day-thuis); }
+.season-item.day-beschikbaar { background: var(--day-beschikbaar); }
+.season-item.day-optie { background: repeating-linear-gradient(135deg, var(--day-optie) 0 6px, var(--surface) 6px 12px); }
+
+.share-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.share-table td {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.share-table td:first-child {
+  white-space: nowrap;
+}
+
+.share-table .share-kind,
+.share-table .share-detail {
+  display: block;
+}
+
+.share-table .share-detail {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.share-table .share-beschikbaar td:last-child {
+  color: var(--positive);
+  font-weight: var(--fw-bold);
+}
+
+.share-table .share-optie td:last-child {
+  font-style: italic;
+}
+
+@media print {
+  .share-print .table-scroll {
+    overflow: visible;
+    border: none;
+    background: none;
+  }
+
+  .share-print .share-table td {
+    padding: 1.5mm 2mm;
+    border-bottom: 0.5pt solid #999;
+    color: #000;
+  }
+
+  .share-print .share-table tr {
+    break-inside: avoid;
+  }
+
+  .share-print .share-beschikbaar td:last-child,
+  .share-print .share-detail {
+    color: #000;
+  }
+}

@@ -38,7 +38,11 @@ export function organisationLabel(org: Organisation): string {
   return t(`organisation.${org}`)
 }
 
-export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip: Trip | null; notify: Notify; onClose: () => void }) {
+/**
+ * `initial`: datums van een nieuwe trip (periode markeren in de agenda). Snel starten neemt dan alles over behalve de
+ * datums.
+ */
+export function WeekSheet({ store, trip, notify, onClose, initial }: { store: Store; trip: Trip | null; notify: Notify; onClose: () => void; initial?: { startDate: string; dayCount: number } }) {
   const lang = useLang()
   const legs = store.get('legs.json.enc')
   const view = trip ? weekView(trip, legs) : null
@@ -47,8 +51,8 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   const { boats, areas, bases, charters } = suggestions(trips, legs)
   const [name, setName] = useState(trip?.name ?? '')
   const [type, setType] = useState<WeekType>(view?.type ?? 'training-geven')
-  const [startDate, setStartDate] = useState(view?.startDate || todayIso())
-  const [dayCount, setDayCount] = useState(String(view ? dayCountOf(view) : DEFAULT_WEEK_DAYS))
+  const [startDate, setStartDate] = useState(view?.startDate || initial?.startDate || todayIso())
+  const [dayCount, setDayCount] = useState(String(view ? dayCountOf(view) : (initial?.dayCount ?? DEFAULT_WEEK_DAYS)))
   const [boat, setBoat] = useState(view?.boat ?? '')
   const [boatModel, setBoatModel] = useState(trip?.boatModel ?? '')
   const [boatLength, setBoatLength] = useState(trip?.boatLengthFt ? formatNumber(trip.boatLengthFt) : '')
@@ -65,7 +69,8 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
   const [startedFrom, setStartedFrom] = useState<string | null>(null)
   const shownRoute = route ?? trip?.route ?? []
   const templates = trip ? [] : routeTemplates(trips, legs)
-  const previous = trip ? null : previousTrip(trips, legs, todayIso())
+  // Bij een gemarkeerde periode: de trip vóór die periode (ook als die nog moet komen).
+  const previous = trip ? null : previousTrip(trips, legs, initial ? addDays(initial.startDate, -1) : todayIso())
   const [busy, setBusy] = useState(false)
   // Niets is verplicht: een leeg of ongeldig aantal dagen wordt de standaard, ontbrekende bootgegevens geven "Onvolledig".
   const typedDays = Math.round(parseAmount(dayCount) ?? 0)
@@ -112,7 +117,7 @@ export function WeekSheet({ store, trip, notify, onClose }: { store: Store; trip
     setArea(source.area ?? '')
     setOrganisation(source.organisation ?? '')
     const planDays = routeDays(plan)
-    if (planDays > 0) setDayCount(String(planDays))
+    if (planDays > 0 && !initial) setDayCount(String(planDays))
   }
 
   const setRow = (i: number, patch: Partial<ParticipantInput>) => {
