@@ -33,6 +33,12 @@ export class FakeGithub {
   emptyRepo = false
   /** Wordt vlak vóór elke PUT aangeroepen; handig om een gelijktijdige schrijver na te bootsen. */
   beforePut: ((path: string) => void) | null = null
+  /**
+   * Na een PUT geeft GitHub soms nog even de vorige versie terug (lezen vlak na schrijven, of een gecachet antwoord).
+   * Zolang dit aantal > 0 is, krijgt elke GET van een net geschreven pad de versie van vóór de PUT.
+   */
+  staleReadsAfterPut = 0
+  private readonly stale = new Map<string, { file: StoredFile; remaining: number }>()
   private shaCounter = 0
 
   /** Schrijft direct in de nagebootste repo, zoals een ander apparaat dat zou doen. */
@@ -77,6 +83,11 @@ export class FakeGithub {
 
     if (method === 'GET') {
       if (this.emptyRepo && this.files.size === 0) return json(409, { message: 'Git Repository is empty.' })
+      const old = this.stale.get(path)
+      if (old && old.remaining > 0) {
+        old.remaining--
+        return json(200, { sha: old.file.sha, content: `${old.file.content}\n`, encoding: 'base64', size: 1 })
+      }
       if (!file) return json(404, { message: 'Not Found' })
       return json(200, { sha: file.sha, content: `${file.content}\n`, encoding: 'base64', size: 1 })
     }
@@ -88,6 +99,7 @@ export class FakeGithub {
       const current = this.files.get(path)
       if (current && req.sha !== current.sha) return json(409, { message: 'is at ... but expected ...' })
       if (!current && req.sha) return json(422, { message: 'sha wasn’t supplied' })
+      if (current && this.staleReadsAfterPut > 0) this.stale.set(path, { file: current, remaining: this.staleReadsAfterPut })
       const sha = this.write(path, req.content)
       return json(current ? 200 : 201, { content: { sha, path }, commit: { message: req.message } })
     }

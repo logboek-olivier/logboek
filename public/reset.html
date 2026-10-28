@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' blob: data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Logboek opnieuw laden</title>
+    <script src="reset.js" defer></script>
+  </head>
+  <body>
+    <!-- Noodpagina: meldt de service worker af en wist de app-caches, nooit IndexedDB of andere gegevens. Staat buiten
+         de precache en buiten de navigatie-route, zodat hij ook werkt als de app zelf kapot is. -->
+    <p id="status">Logboek wordt opnieuw geladen · Reloading Logboek …</p>
+  </body>
+</html>

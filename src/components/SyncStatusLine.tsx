@@ -1,8 +1,8 @@
-import { CircleCheck, CloudOff, CloudUpload, LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-react'
+import { CircleCheck, CloudOff, CloudUpload, LoaderCircle, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { recordError } from '../errors'
 import type { CollectionPath } from '../model/types'
-import { describeStatus, type Store, type SyncStatus } from '../storage/store'
+import { describeStatus, type RepairOption, type Store, type SyncStatus } from '../storage/store'
 import { CopyErrorDetails } from './ErrorDetails'
 import { Icon } from './Icon'
 import { t } from '../i18n'
@@ -51,11 +51,11 @@ function StatusButton({ store, status }: { store: Store; status: SyncStatus }) {
 }
 
 /**
- * Uitleg bij een onleesbaar bestand of een andere sleutel. Herstellen (de lokale kopie opnieuw op GitHub zetten)
- * gebeurt alleen na een tik; zonder lokale kopie zegt de app dat eerlijk en wist hij niets.
+ * Uitleg bij een onleesbaar bestand of een andere sleutel. Herstellen (de lokale kopie opnieuw op GitHub zetten) of
+ * leegmaken en opnieuw beginnen gebeurt alleen na een tik; de rest van de app werkt intussen gewoon.
  */
 function SyncProblem({ store, status }: { store: Store; status: Extract<SyncStatus, { kind: 'error' }> }) {
-  const [repairable, setRepairable] = useState<CollectionPath[] | null>(null)
+  const [options, setOptions] = useState<RepairOption[] | null>(null)
   const [busy, setBusy] = useState<CollectionPath | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const paths = status.paths ?? []
@@ -63,20 +63,21 @@ function SyncProblem({ store, status }: { store: Store; status: Extract<SyncStat
 
   useEffect(() => {
     let live = true
-    void store.repairable().then((list) => {
-      if (live) setRepairable(list)
+    void store.repairOptions().then((list) => {
+      if (live) setOptions(list)
     })
     return () => {
       live = false
     }
   }, [store, key])
 
-  async function repair(path: CollectionPath) {
-    setBusy(path)
+  async function run(option: RepairOption) {
+    setBusy(option.path)
     setMessage(null)
     try {
-      await store.repair(path)
-      setMessage(t('sync.repaired'))
+      if (option.action === 'repair') await store.repair(option.path)
+      else await store.resetFile(option.path)
+      setMessage(t(option.action === 'repair' ? 'sync.repaired' : 'sync.resetDone'))
     } catch (error) {
       recordError(error)
       setMessage(t('sync.repairFailed'))
@@ -90,19 +91,19 @@ function SyncProblem({ store, status }: { store: Store; status: Extract<SyncStat
       {status.code === 'otherKey' || status.code === 'noMeta' ? (
         <p>{t(status.code === 'otherKey' ? 'sync.otherKeyHint' : 'sync.noMetaHint')}</p>
       ) : (
-        paths.map((path) =>
-          repairable?.includes(path) ? (
+        paths.map((path) => {
+          const option = options?.find((o) => o.path === path)
+          if (!option) return options ? <p key={path}>{t('sync.unreadableHint', { path })}</p> : null
+          return (
             <div key={path} className="stack-sm">
-              <p>{t('sync.repairHint', { path })}</p>
-              <button type="button" className="btn small" disabled={busy !== null} onClick={() => void repair(path)}>
-                <Icon icon={CloudUpload} />
-                {t('sync.repair')}
+              <p>{t(option.action === 'repair' ? 'sync.repairHint' : 'sync.resetHint', { path })}</p>
+              <button type="button" className={`btn small${option.action === 'reset' ? ' danger' : ''}`} disabled={busy !== null} onClick={() => void run(option)}>
+                <Icon icon={option.action === 'repair' ? CloudUpload : RotateCcw} />
+                {t(option.action === 'repair' ? 'sync.repair' : 'sync.reset')}
               </button>
             </div>
-          ) : repairable ? (
-            <p key={path}>{t('sync.noLocalCopy', { path })}</p>
-          ) : null,
-        )
+          )
+        })
       )}
       {message && <p className="small">{message}</p>}
       <CopyErrorDetails />

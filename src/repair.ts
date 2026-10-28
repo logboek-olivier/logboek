@@ -160,7 +160,14 @@ export async function executeRepair(db: Db, masterKey: CryptoKey, client: Github
   // GitHub eerst: mislukt dat (geen verbinding), dan is er lokaal nog niets gewist en kan Olivier het opnieuw proberen.
   for (const [path, sha] of diagnosis.remoteUnreadable) {
     const records = local.state.get(path) === 'readable' ? (local.records.get(path) ?? []) : []
-    await replaceUnreadable(client, masterKey, path, sha, records)
+    try {
+      await replaceUnreadable(client, masterKey, path, sha, records)
+      rememberReplaced(db.name, path, sha)
+    } catch (error) {
+      // Blijft een bestand op GitHub wijzigen (een ander apparaat, of GitHub toont nog een oudere versie), dan pakt de
+      // app het daarna per onderdeel op; het herstelscherm blijft er niet op hangen.
+      if (!(error instanceof ConflictError)) throw error
+    }
   }
   const items = [...local.blobs].map(([key, blob]) => ({ store: key === OUTBOX_NAME ? ('local' as const) : ('objects' as const), key, blob }))
   if (items.length > 0 && !(await deleteIfUnchanged(db, META_PATH, vaultCheck, items))) throw new LocalChangedError()
@@ -188,12 +195,16 @@ function markerKey(dbName: string | undefined): string {
   return `logboek-herstel:${dbName ?? 'logboek'}`
 }
 
+const MARKER_VERSION = 2
+
 export function readMarker(dbName: string | undefined): RepairReport | null {
   try {
     const raw: unknown = JSON.parse(globalThis.localStorage?.getItem(markerKey(dbName)) ?? 'null')
     if (typeof raw !== 'object' || raw === null) return null
     const paths = (value: unknown) => (Array.isArray(value) ? COLLECTION_PATHS.filter((p) => value.includes(p)) : [])
     const r = raw as Record<string, unknown>
+    // Verslagen van vóór versie 2 konden ook alleen over bestanden op GitHub gaan; die blokkeren de app niet meer.
+    if (r.v !== MARKER_VERSION) return null
     return { lost: paths(r.lost), localOnly: paths(r.localOnly), replaced: paths(r.replaced), tokenNeeded: r.tokenNeeded === true }
   } catch {
     return null
@@ -202,7 +213,7 @@ export function readMarker(dbName: string | undefined): RepairReport | null {
 
 export function writeMarker(dbName: string | undefined, report: RepairReport): void {
   try {
-    globalThis.localStorage?.setItem(markerKey(dbName), JSON.stringify(report))
+    globalThis.localStorage?.setItem(markerKey(dbName), JSON.stringify({ v: MARKER_VERSION, ...report }))
   } catch {
     // Geen localStorage: dan vraagt het herstelscherm eerst de wachtzin en toont daarna wat er verloren gaat.
   }
@@ -214,4 +225,71 @@ export function clearMarker(dbName: string | undefined): void {
   } catch {
     // Zie writeMarker.
   }
+}
+
+/**
+ * Herstelpogingen per bestand (alleen paden en tellers, regel 9). Na MAX_REPAIRS herstelpogingen die niet blijven staan
+ * stopt de app met opnieuw proberen en biedt hij één knop: het bestand op GitHub leegmaken en opnieuw beginnen.
+ * Zo raakt herstel nooit in een lus.
+ */
+export const MAX_REPAIRS = 2
+
+function attemptsKey(dbName: string): string {
+  return `logboek-herstelpogingen:${dbName}`
+}
+
+function readJson(key: string): Record<string, unknown> {
+  try {
+    const raw: unknown = JSON.parse(globalThis.localStorage?.getItem(key) ?? '{}')
+    return typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeJson(key: string, value: Record<string, unknown>): void {
+  try {
+    if (Object.keys(value).length === 0) globalThis.localStorage?.removeItem(key)
+    else globalThis.localStorage?.setItem(key, JSON.stringify(value))
+  } catch {
+    // Geen localStorage: dan telt alleen deze sessie (in het geheugen van de Store).
+  }
+}
+
+/** Pogingen tellen een dag; daarna begint de teller opnieuw (een nieuw probleem is dan geen lus). */
+const ATTEMPTS_TTL_MS = 24 * 60 * 60 * 1000
+
+export function repairAttempts(dbName: string, path: CollectionPath, now = Date.now()): number {
+  const value = readJson(attemptsKey(dbName))[path]
+  if (typeof value !== 'object' || value === null) return 0
+  const { n, at } = value as { n?: unknown; at?: unknown }
+  if (typeof n !== 'number' || typeof at !== 'number' || now - at >= ATTEMPTS_TTL_MS || now < at) return 0
+  return n
+}
+
+export function setRepairAttempts(dbName: string, path: CollectionPath, count: number, now = Date.now()): void {
+  const all = readJson(attemptsKey(dbName))
+  if (count > 0) all[path] = { n: count, at: now }
+  else delete all[path]
+  writeJson(attemptsKey(dbName), all)
+}
+
+/**
+ * SHA's van onleesbare versies die dit apparaat al verving. GitHub geeft vlak na het schrijven soms nog even de oude
+ * versie terug; die is dan geen nieuw probleem en geen reden om opnieuw te herstellen.
+ */
+function replacedKey(dbName: string): string {
+  return `logboek-vervangen:${dbName}`
+}
+
+export function rememberReplaced(dbName: string, path: CollectionPath, sha: string): void {
+  const all = readJson(replacedKey(dbName))
+  const list = Array.isArray(all[path]) ? (all[path] as unknown[]).filter((s): s is string => typeof s === 'string') : []
+  all[path] = [...list.filter((s) => s !== sha), sha].slice(-5)
+  writeJson(replacedKey(dbName), all)
+}
+
+export function wasReplaced(dbName: string, path: CollectionPath, sha: string): boolean {
+  const list = readJson(replacedKey(dbName))[path]
+  return Array.isArray(list) && list.includes(sha)
 }
