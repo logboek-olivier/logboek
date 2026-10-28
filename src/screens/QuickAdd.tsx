@@ -5,9 +5,10 @@ import { MapSheet } from '../components/MapSheet'
 import { TipFromPicker } from '../components/TipFromPicker'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { formatNm, formatNumber } from '../format'
-import { findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
+import { findPlace, knownPlaceNames, mergeCandidates, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
 import { MergeProposal } from './Places'
 import { plannedFor } from '../model/routes'
+import { estimateWater, type WaterEstimate } from '../model/estimate'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../import/mileage-csv'
@@ -445,14 +446,22 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const toAlike = similarKnown(uses, toPlace)
   // Voorstel uit wat Olivier echt gevaren heeft: gemiddelde van de laatste vijf keer deze route.
   const suggestion = useMemo(() => suggestDistance(legs, fromPlace, toPlace), [legs, fromPlace, toPlace])
-  const straight = useMemo(() => {
-    const a = findPlace(places, fromPlace)
-    const b = findPlace(places, toPlace)
-    return a && b ? Math.round(greatCircleNm(a, b) * 10) / 10 : null
-  }, [places, fromPlace, toPlace])
+  // Geen eerdere keren: de waterroute om land heen maal de persoonlijke factor (nooit hemelsbreed).
+  const fromPoint = findPlace(places, fromPlace)
+  const toPoint = findPlace(places, toPlace)
+  const [estimate, setEstimate] = useState<WaterEstimate | null>(null)
   useEffect(() => {
-    if (!nmTouched) setNm(suggestion ? formatNumber(suggestion.nm) : '')
-  }, [suggestion, nmTouched])
+    setEstimate(null)
+    if (suggestion || !fromPoint || !toPoint || fromPoint.id === toPoint.id) return
+    let active = true
+    void estimateWater(fromPoint, toPoint, legs, places).then((e) => active && setEstimate(e))
+    return () => {
+      active = false
+    }
+  }, [suggestion, fromPoint?.id, fromPoint?.lat, fromPoint?.lon, toPoint?.id, toPoint?.lat, toPoint?.lon, legs])
+  useEffect(() => {
+    if (!nmTouched) setNm(suggestion ? formatNumber(suggestion.nm) : estimate ? formatNumber(estimate.nm) : '')
+  }, [suggestion, estimate, nmTouched])
   const [water, setWater] = useState<Water>(settings.lastWater ?? waterOf(lastLeg))
   const [nightHours, setNightHours] = useState('')
   const [wind, setWind] = useState('')
@@ -561,8 +570,8 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
         </datalist>
         {suggestion ? (
           <p className="muted small route-hint">{t('route.average', { nm: formatNm(suggestion.nm), n: suggestion.count })}</p>
-        ) : straight !== null ? (
-          <p className="muted small route-hint">{t('route.straight', { nm: formatNm(straight) })}</p>
+        ) : estimate ? (
+          <p className="muted small route-hint">{t('route.water', { nm: formatNumber(estimate.nm), water: formatNumber(estimate.water), factor: formatNumber(estimate.factor) })}</p>
         ) : null}
         {fromAlike && (
           <p className="muted small">
@@ -658,6 +667,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
           title={t(mapFor === 'from' ? 'map.titleFrom' : 'map.titleTo')}
           name={mapFor === 'from' ? fromPlace : toPlace}
           around={mapFor === 'from' ? [toPlace, current?.base ?? ''] : [fromPlace, current?.base ?? '']}
+          routeFrom={mapFor === 'from' ? toPlace : fromPlace}
           onChoose={(name) => {
             if (mapFor === 'from') setFromPlace(name)
             else setToPlace(name)

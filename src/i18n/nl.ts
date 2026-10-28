@@ -726,9 +726,10 @@ export const nl = {
   'map.hereFailed': 'Locatie niet beschikbaar. Zet locatietoegang aan voor deze app of tik op de kaart.',
   'map.nearKnown': (p: { name: string }) => `Dicht bij ${p.name}`,
   'route.average': (p: { nm: string; n: number }) => `Voorstel ${p.nm}: gemiddelde van de laatste ${p.n === 1 ? 'keer' : `${p.n} keer`} deze route`,
-  'route.straight': (p: { nm: string }) => `Hemelsbreed ${p.nm}; de werkelijke afstand is meestal groter`,
+  'route.water': (p: { nm: string; water: string; factor: string }) => `± ${p.nm} nm (water ${p.water} nm × jouw factor ${p.factor})`,
+  'map.osmAttribution': '© OpenStreetMap-bijdragers',
   'settings.mapSource': 'Kaart',
-  'settings.mapSourceValue': 'Natural Earth (publiek domein), offline',
+  'settings.mapSourceValue': 'Natural Earth (publiek domein) en © OpenStreetMap-bijdragers (ODbL), offline',
   // Termijnen
   'key.file.reminders': 'Termijnen',
   'reminder.screen': 'Termijnen',

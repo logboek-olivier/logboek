@@ -11,7 +11,7 @@ async function logDay(page: Page, from: string, to: string, nm?: string) {
   if (nm !== undefined) await page.getByLabel('Zeemijlen').fill(nm)
 }
 
-test('Kaart offline: punt zetten, huidige locatie, bekende plaats kiezen; afstandsvoorstel uit de laatste vijf keer dezelfde route', async ({ page }) => {
+test('Kaart offline: punt zetten, huidige locatie, bekende plaats kiezen; waterroute, daarna afstandsvoorstel uit de laatste vijf keer dezelfde route', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   const external: string[] = []
@@ -26,6 +26,9 @@ test('Kaart offline: punt zetten, huidige locatie, bekende plaats kiezen; afstan
   await page.getByRole('button', { name: 'Naar op de kaart kiezen' }).click()
   const sheet = page.getByRole('dialog', { name: 'Naar: plaats op de kaart' })
   await expect(sheet.locator('.map-land').first()).toBeAttached({ timeout: 15_000 })
+  // Gedetailleerde OpenStreetMap-kustlijn in de Bovenwindse Eilanden, met naamsvermelding.
+  await expect(sheet.locator('.map-osm').first()).toBeAttached({ timeout: 15_000 })
+  await expect(sheet.locator('.map-attribution')).toHaveText('© OpenStreetMap-bijdragers')
   await sheet.getByRole('button', { name: 'Huidige locatie' }).click()
   await sheet.getByLabel('Naam van de plaats').fill('Nepbarths')
   await expectNoHorizontalOverflow(page)
@@ -38,13 +41,18 @@ test('Kaart offline: punt zetten, huidige locatie, bekende plaats kiezen; afstan
   const fromSheet = page.getByRole('dialog', { name: 'Van: plaats op de kaart' })
   const canvas = fromSheet.locator('.sea-map-canvas')
   const box = (await canvas.boundingBox())!
-  await canvas.click({ position: { x: box.width / 2, y: box.height - 20 } })
+  await canvas.click({ position: { x: box.width / 2, y: box.height * 0.75 } })
+  // De waterroute vanaf de andere plaats van de dag staat op de kaart, met de schatting.
+  await expect(fromSheet.locator('.map-route')).toBeAttached({ timeout: 15_000 })
+  await expect(fromSheet.getByText(/^± [\d,]+ nm \(water [\d,]+ nm × jouw factor 1,2\)$/)).toBeVisible()
+  await page.screenshot({ path: 'screenshots/trips/kaart-route.png', fullPage: true })
   await fromSheet.getByLabel('Naam van de plaats').fill('Nepstatia')
   await fromSheet.getByRole('button', { name: 'Kiezen' }).click()
   await expect(page.getByLabel('Van', { exact: true })).toHaveValue('Nepstatia')
-  // Zonder eerdere keren: alleen hemelsbreed als hint, geen voorgestelde afstand.
-  await expect(page.getByText(/^Hemelsbreed /)).toBeVisible()
-  await expect(page.getByLabel('Zeemijlen')).toHaveValue('')
+  // Zonder eerdere keren: de waterroute om land heen maal de persoonlijke factor (nog 1,2), voorgevuld; nooit hemelsbreed.
+  await expect(page.getByText(/^± [\d,]+ nm \(water [\d,]+ nm × jouw factor 1,2\)$/)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByLabel('Zeemijlen')).toHaveValue(/^\d+(,5)?$/)
+  await expect(page.getByText(/Hemelsbreed/)).toHaveCount(0)
   await page.getByLabel('Zeemijlen').fill('30')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
