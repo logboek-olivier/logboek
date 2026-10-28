@@ -1,11 +1,12 @@
 import { ChevronRight, Coins, Receipt, Wallet } from 'lucide-react'
-import { useState, useSyncExternalStore } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
 import { TransactionSheet, type Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
+import { buildIndex, incomePerWorkday } from '../model/calendar'
 import { active } from '../model/derive'
 import { isIncome, monthSeries, perMonth, perSource, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
 import { kindLabel, sourceLabel } from '../i18n/labels'
@@ -15,7 +16,8 @@ import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
 // Geld: alles in euro (ECB-koers van de transactiedatum, of het ontvangen eurobedrag), het originele bedrag klein
-// eronder. Zeilgeld per maand, per bron, fooi per week (12 weken), lijst per maand met verwijderen. Geen netto waarde.
+// eronder. Zeilgeld per maand, per werkdag (uit de agenda), per bron, fooi per week (12 weken), lijst per maand met
+// verwijderen. Geen netto waarde.
 
 export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -32,6 +34,12 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const weeks = tipsPerWeek(live, today)
   const series = monthSeries(live, today)
   const weekOther = mergeOther(weeks.map((w) => w.other))
+  // Per werkdag: verdiend per maand gedeeld door de werkdagen in de agenda.
+  const calendar = useCollection(store, 'calendar.json.enc')
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
+  const workdays = incomePerWorkday(index, live, today).filter((m) => m.workdays > 0 || m.eur > 0)
 
   return (
     <section className="stack-lg">
@@ -133,6 +141,38 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
               </tbody>
             </table>
           </div>
+
+          {workdays.length > 0 && (
+            <div className="section card card-body">
+              <div className="section-head">
+                <h2>{t('money.perWorkday')}</h2>
+                <span className="muted">EUR</span>
+              </div>
+              <table className="table workday-table">
+                <thead>
+                  <tr>
+                    <th>{t('money.month')}</th>
+                    <th className="num">{t('money.workdays')}</th>
+                    <th className="num">{t('money.income')}</th>
+                    <th className="num">{t('money.perDay')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workdays.map((m) => (
+                    <tr key={m.month}>
+                      <td>
+                        {formatMonthShort(m.month)} {m.month.slice(0, 4)}
+                      </td>
+                      <td className="num">{m.workdays}</td>
+                      <td className="num">{formatMoney(m.eur, 'EUR')}</td>
+                      <td className="num">{m.perWorkday === null ? '–' : formatMoney(m.perWorkday, 'EUR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="muted small">{t('money.perWorkdayHint')}</p>
+            </div>
+          )}
 
           <div className="section">
             <h2>{t('money.perSource')}</h2>

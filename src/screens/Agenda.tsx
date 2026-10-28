@@ -1,19 +1,22 @@
-import { CalendarRange, ChevronLeft, ChevronRight, FileUp, ListOrdered, NotebookPen, Share2, X } from 'lucide-react'
-import { useMemo, useRef, useState, type TouchEvent } from 'react'
+import { CalendarRange, ChevronLeft, ChevronRight, Eye, EyeOff, FileUp, ListOrdered, NotebookPen, Share2, X } from 'lucide-react'
+import { useMemo, useRef, useState, useSyncExternalStore, type TouchEvent } from 'react'
 import { DaySheet } from '../components/DaySheet'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { PeriodSheet, PlanningImportSheet } from '../components/PeriodSheets'
+import { ReminderSheet } from '../components/ReminderSheet'
 import { useCollection } from '../components/useCollection'
 import { WeekSheet } from '../components/WeekSheet'
 import { recordError } from '../errors'
-import { formatDate, formatMonth, formatNm, formatNumber } from '../format'
+import { formatDate, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
-import { buildIndex, dayInfo, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
-import { todayIso } from '../model/types'
+import { buildIndex, dayInfo, monthIncome, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
+import { getRates, subscribeRates } from '../model/rates'
+import { todayIso, type Reminder } from '../model/types'
 import type { Store } from '../storage/store'
 import { AgendaShare } from './AgendaShare'
+import { useDueItems } from './Deadlines'
 import type { AddInit } from './QuickAdd'
 import { Season } from './Season'
 import { ErrorLine } from './Setup'
@@ -41,8 +44,16 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [newTrip, setNewTrip] = useState<{ startDate: string; dayCount: number } | null>(null)
   const [plan, setPlan] = useState<PlanItem[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  // Termijn bewerken of toevoegen vanuit het dagblad (reminder null = nieuwe termijn op die dag).
+  const [reminder, setReminder] = useState<{ reminder: Reminder | null; date: string } | null>(null)
+  const [showAmounts, setShowAmounts] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const touch = useRef<{ x: number; y: number } | null>(null)
+  const transactions = useCollection(store, 'transactions.json.enc')
+  useSyncExternalStore(subscribeRates, getRates)
+  // Termijnen op hun dag: eigen termijnen (in de index) en de vervaldatum van de token.
+  const due = useDueItems(store)
+  const dueDates = useMemo(() => new Set(due.filter((i) => i.source !== 'trip').map((i) => i.date.slice(0, 10))), [due])
   const weekdays = useMemo(() => {
     const names = new Intl.DateTimeFormat(lang === 'nl' ? 'nl-NL' : 'en-GB', { weekday: 'narrow' })
     // 5 januari 2026 is een maandag.
@@ -54,6 +65,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
 
   const weeks = monthWeeks(month)
   const summary = monthSummary(index, month, today)
+  const income = showAmounts ? monthIncome(index, transactions, month, today) : null
 
   function onTouchStart(e: TouchEvent) {
     const p = e.touches[0]
@@ -141,7 +153,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           ))}
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} rangeStart={marking?.start ?? null} onDay={onDay} />
+          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} rangeStart={marking?.start ?? null} onDay={onDay} />
         ))}
       </div>
       <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>
@@ -163,6 +175,19 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           <dd>{formatNumber(summary.nm)}</dd>
         </div>
       </dl>
+      {/* Bedragen pas na een tik: de agenda staat soms open als gasten of studenten meekijken. */}
+      <div className="agenda-income">
+        <button className="btn link small" aria-pressed={showAmounts} onClick={() => setShowAmounts(!showAmounts)}>
+          <Icon icon={showAmounts ? EyeOff : Eye} />
+          {t(showAmounts ? 'week.hideAmounts' : 'week.showAmounts')}
+        </button>
+        {income && (
+          <span>
+            {t('calendar.income')}: <strong>{formatMoney(income.eur, 'EUR')}</strong>
+            {income.perWorkday !== null && <span className="muted"> · {t('calendar.perWorkday', { amount: formatMoney(income.perWorkday, 'EUR') })}</span>}
+          </span>
+        )}
+      </div>
       <div className="agenda-actions">
         <button className={`btn small${marking ? ' active' : ''}`} aria-pressed={!!marking} onClick={() => setMarking(marking ? null : { start: null })}>
           <Icon icon={CalendarRange} />
@@ -195,11 +220,17 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             setOpen(null)
             onAdd(init)
           }}
+          onReminder={(r) => {
+            setReminder({ reminder: r, date: open })
+            setOpen(null)
+          }}
         />
       )}
+      {reminder && <ReminderSheet store={store} reminder={reminder.reminder} initialDate={reminder.date} notify={notify} onClose={() => setReminder(null)} />}
       {period && (
         <PeriodSheet
           store={store}
+          index={index}
           from={period.from}
           to={period.to}
           notify={notify}
@@ -216,20 +247,21 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   )
 }
 
-function Week({ index, week, month, today, rangeStart, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; rangeStart: string | null; onDay: (date: string) => void }) {
+function Week({ index, week, month, today, dueDates, rangeStart, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; rangeStart: string | null; onDay: (date: string) => void }) {
   const bars = tripBars(index, week)
   return (
     <div className="cal-week">
       {week.map((date, column) => {
         const info = dayInfo(index, date, today)
-        const label = [formatDate(date), t(`dayType.${info.type ?? 'leeg'}`), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', info.reminders.length > 0 ? t('calendar.reminder') : ''].filter(Boolean).join(', ')
+        const hasDue = dueDates.has(date)
+        const label = [formatDate(date), t(`dayType.${info.type ?? 'leeg'}`), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', hasDue ? t('calendar.reminder') : ''].filter(Boolean).join(', ')
         const classes = ['cal-day', `col-${column + 1}`, `day-${info.type ?? 'leeg'}`, monthOf(date) !== month ? 'other-month' : '', date === today ? 'today' : '', info.source === 'eigen' ? 'own' : '', date === rangeStart ? 'range-start' : ''].filter(Boolean).join(' ')
         return (
           <button key={date} type="button" className={classes} aria-label={label} aria-current={date === today ? 'date' : undefined} aria-pressed={date === rangeStart ? true : undefined} onClick={() => onDay(date)}>
             <span className="cal-num" aria-hidden="true">
               {Number(date.slice(8))}
             </span>
-            {info.reminders.length > 0 && <span className="cal-dot" aria-hidden="true" />}
+            {hasDue && <span className="cal-dot" aria-hidden="true" />}
             {info.nm > 0 && (
               <span className="cal-nm" aria-hidden="true">
                 {formatNumber(info.nm)}

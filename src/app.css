@@ -2892,3 +2892,81 @@ body.presenting .bottom-bar {
     color: #000;
   }
 }
+
+/* Vandaag volgt de dagsoort; trip en agenda gelijk; geld per werkdag */
+.today-kind {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  width: 100%;
+  padding: var(--s-3) var(--s-8) var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--day-leeg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.today-kind.day-werk { background: var(--day-werk); }
+.today-kind.day-rust { background: var(--day-rust); }
+.today-kind.day-reis { background: var(--day-reis); }
+.today-kind.day-thuis { background: var(--day-thuis); }
+.today-kind.day-beschikbaar { background: var(--day-beschikbaar); }
+.today-kind.day-optie { background: repeating-linear-gradient(135deg, var(--day-optie) 0 6px, var(--surface) 6px 12px); }
+
+.today-kind-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  overflow-wrap: anywhere;
+}
+
+.today-travel {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.today-kind-chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--s-3);
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.agenda-income {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.day-reminders {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.day-reminders h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.day-reminders .rows {
+  align-self: stretch;
+}
+
+.workday-table td:first-child {
+  white-space: nowrap;
+}

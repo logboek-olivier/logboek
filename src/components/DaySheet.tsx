@@ -1,12 +1,15 @@
-import { Eye, EyeOff, NotebookPen, Route } from 'lucide-react'
+import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Plus, Route } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
-import { formatDateRange, formatMoney, formatNm, formatWeekday } from '../format'
+import { formatDateRange, formatDateShort, formatMoney, formatNm, formatWeekday } from '../format'
 import { t } from '../i18n'
-import { clearDay, dayInfo, setDay, type CalendarIndex } from '../model/calendar'
+import { clearDay, dayInfo, extendOptions, resizeTrip, setDay, shrinkFor, type CalendarIndex, type TripResize } from '../model/calendar'
+import { kindLabel } from '../i18n/labels'
+import { isEarned } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { currentSettings } from '../model/settings'
-import { DAY_TYPES, todayIso, type DayType } from '../model/types'
+import { DAY_TYPES, todayIso, type DayType, type Reminder } from '../model/types'
+import { useDueItems } from '../screens/Deadlines'
 import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -15,10 +18,29 @@ import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 
 // Dagblad: dagsoort als knoppen (één tik slaat op; "Automatisch" volgt weer de trips en dagen). Bij werk de trip, de
-// boot (van de trip, per dag te overschrijven), "Zoals gepland" of "Dag loggen", nm en fooien (bedragen pas na
-// "Toon bedragen": studenten kunnen meekijken); bij reis van, naar en vlucht; altijd een notitie.
+// boot (van de trip, per dag te overschrijven), "Zoals gepland" of "Dag loggen", nm en inkomsten (bedragen pas na
+// "Toon bedragen": studenten kunnen meekijken); bij reis van, naar en vlucht; altijd een notitie; de termijnen van de dag.
+// Trip en agenda blijven gelijk: werk naast een trip biedt "verlengen", een andere dagsoort op de eerste of laatste dag
+// maakt de trip een dag korter (met ongedaan maken).
 
-export function DaySheet({ store, index, date, onClose, onAdd, notify }: { store: Store; index: CalendarIndex; date: string; onClose: () => void; onAdd: (init: AddInit) => void; notify: Notify }) {
+export function DaySheet({
+  store,
+  index,
+  date,
+  onClose,
+  onAdd,
+  onReminder,
+  notify,
+}: {
+  store: Store
+  index: CalendarIndex
+  date: string
+  onClose: () => void
+  onAdd: (init: AddInit) => void
+  /** Termijn bewerken (of null = nieuwe termijn op deze dag); het dagblad sluit dan. */
+  onReminder: (reminder: Reminder | null) => void
+  notify: Notify
+}) {
   const today = todayIso()
   const info = dayInfo(index, date, today)
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
@@ -36,9 +58,31 @@ export function DaySheet({ store, index, date, onClose, onAdd, notify }: { store
   const plannedDistance = planned ? plannedNm(legs, planned) : null
 
   const details = () => ({ location, boat, note, travel: { from, to, flight } })
+  const extend = type === 'werk' && info.trips.length === 0 ? extendOptions(index, date, date) : []
+  const reminders = store.list('reminders.json.enc')
+  const due = useDueItems(store).filter((item) => item.date.slice(0, 10) === date && item.source !== 'trip')
 
   async function choose(next: DayType) {
+    const shrink = shrinkFor(index, date, next)
+    if (!shrink) {
+      await setDay(store, date, next, details())
+      return
+    }
+    // De eerste of laatste dag van een trip is altijd werk: een andere dagsoort maakt de trip een dag korter.
+    const before = own
+    const undoResize = await resizeTrip(store, shrink)
     await setDay(store, date, next, details())
+    notify(resized(shrink), async () => {
+      await undoResize()
+      if (before) await store.put('calendar.json.enc', { ...before, updatedAt: new Date().toISOString() })
+      else await clearDay(store, date)
+    })
+  }
+
+  async function extendTrip(option: TripResize) {
+    const undo = await resizeTrip(store, option)
+    notify(resized(option), undo)
+    onClose()
   }
 
   async function automatic() {
@@ -96,6 +140,12 @@ export function DaySheet({ store, index, date, onClose, onAdd, notify }: { store
               {t('day.boat')}
               <input type="text" autoComplete="off" maxLength={80} value={boat} placeholder={trip?.boat || info.legs.at(-1)?.boat || ''} onChange={(e) => setBoat(e.target.value)} />
             </label>
+            {extend.map((option) => (
+              <button key={option.view.trip.id} type="button" className="btn" onClick={() => void extendTrip(option)}>
+                <Icon icon={MoveHorizontal} />
+                {option.end === date ? t('day.extend', { name: option.view.trip.name, date: formatDateShort(date) }) : t('day.extendEarlier', { name: option.view.trip.name, date: formatDateShort(date) })}
+              </button>
+            ))}
             {info.nm > 0 && <p className="day-nm">{formatNm(info.nm)}</p>}
             {planned && trip ? (
               <button type="button" className="btn primary" onClick={() => void logAsPlanned()}>
@@ -109,7 +159,7 @@ export function DaySheet({ store, index, date, onClose, onAdd, notify }: { store
                 {t('day.log')}
               </button>
             )}
-            <DayTips store={store} date={date} />
+            <DayIncome store={store} date={date} />
           </div>
         )}
 
@@ -149,20 +199,60 @@ export function DaySheet({ store, index, date, onClose, onAdd, notify }: { store
           </>
         )}
       </form>
+      <div className="day-reminders">
+        {due.length > 0 && (
+          <>
+            <h3>{t('day.reminders')}</h3>
+            <ul className="rows">
+              {due.map((item) => {
+                const reminder = item.id ? reminders.find((r) => r.id === item.id) : undefined
+                const content = (
+                  <>
+                    <Icon icon={item.source === 'token' ? KeyRound : CalendarClock} />
+                    <span className="row-main">
+                      <span>{item.title}</span>
+                      <span className="muted small">{t(item.kind === 'trip' ? 'reminderKind.deadline' : `reminderKind.${item.kind}`)}</span>
+                    </span>
+                  </>
+                )
+                return (
+                  <li key={item.id ?? item.source}>
+                    {reminder ? (
+                      <button type="button" className="row-item" onClick={() => onReminder(reminder)}>
+                        {content}
+                      </button>
+                    ) : (
+                      <div className="row-item">{content}</div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </>
+        )}
+        <button type="button" className="btn small" onClick={() => onReminder(null)}>
+          <Icon icon={due.length > 0 ? Plus : CalendarPlus} />
+          {t('reminder.new')}
+        </button>
+      </div>
     </Sheet>
   )
 }
 
-/** Fooien van deze dag; bedragen pas na "Toon bedragen". */
-function DayTips({ store, date }: { store: Store; date: string }) {
-  const tips = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.kind === 'fooi' && tx.date === date)
+function resized(change: TripResize): string {
+  return t('day.tripResized', { name: change.view.trip.name, range: formatDateRange(change.start, change.end) })
+}
+
+/** Inkomsten van deze dag (fooi, loon, bonus, overig; geen terugbetalingen); bedragen pas na "Toon bedragen". */
+function DayIncome({ store, date }: { store: Store; date: string }) {
+  const income = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && isEarned(tx.kind) && tx.date === date)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
-  if (tips.length === 0) return <p className="muted small">{t('day.noTips')}</p>
+  if (income.length === 0) return <p className="muted small">{t('day.noIncome')}</p>
   return (
     <div className="day-tips">
       <div className="section-head">
-        <h3>{t('day.tips')}</h3>
+        <h3>{t('day.income')}</h3>
         <button type="button" className="btn link small" onClick={() => setShown(!shown)} aria-pressed={shown}>
           <Icon icon={shown ? EyeOff : Eye} />
           {t(shown ? 'week.hideAmounts' : 'week.showAmounts')}
@@ -170,13 +260,17 @@ function DayTips({ store, date }: { store: Store; date: string }) {
       </div>
       {shown ? (
         <ul className="day-tip-list">
-          {tips.map((tx) => {
+          {income.map((tx) => {
             const eur = eurValue(tx)
-            return <li key={tx.id}>{eur ? formatMoney(eur.eur, 'EUR') : formatMoney(tx.amount, tx.currency)}</li>
+            return (
+              <li key={tx.id}>
+                {kindLabel(tx.kind)} · {eur ? formatMoney(eur.eur, 'EUR') : formatMoney(tx.amount, tx.currency)}
+              </li>
+            )
           })}
         </ul>
       ) : (
-        <p className="muted small">{t('week.amountsHidden', { n: tips.length })}</p>
+        <p className="muted small">{t('week.amountsHidden', { n: income.length })}</p>
       )}
     </div>
   )
