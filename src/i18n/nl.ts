@@ -516,6 +516,7 @@ export const nl = {
   'sync.otherKeyHint': 'Dit apparaat is ontgrendeld met een andere hoofdsleutel dan waarmee logboek-data is versleuteld, bijvoorbeeld omdat logboek-data opnieuw is aangemaakt. Er wordt niets naar GitHub geschreven en er wordt niets gewist. Koppel dit apparaat opnieuw aan het logboek (sitegegevens wissen, dan Bestaand logboek koppelen); wijzigingen die alleen hier staan, gaan dan verloren.',
   'sync.repairHint': (p: { path: string }) => `${p.path} op GitHub is niet te ontsleutelen. Dit apparaat heeft een leesbare kopie. Opnieuw opslaan zet die kopie op GitHub; de onleesbare versie blijft in de geschiedenis van logboek-data staan.`,
   'sync.repair': 'Lokale versie opnieuw opslaan op GitHub',
+  'sync.updateHint': 'Dit onderdeel is op dit apparaat bewaard door een nieuwere versie van de app. Herladen haalt de nieuwste versie; tot dan kan dit onderdeel niet worden gewijzigd. Er gaat niets verloren.',
   'sync.resetHint': (p: { path: string }) => `${p.path} op GitHub is niet te ontsleutelen, en opnieuw opslaan bleef niet staan of dit apparaat heeft geen kopie. De rest van de app werkt gewoon. Leegmaken zet een lege versie op GitHub; wat dit apparaat nog leesbaar heeft, blijft staan en gaat daarna weer mee. De oude versie blijft in de geschiedenis van logboek-data staan.`,
   'sync.reset': 'Dit bestand op GitHub leegmaken en opnieuw beginnen',
   'sync.resetDone': 'Bestand op GitHub leeggemaakt',
@@ -610,6 +611,7 @@ export const nl = {
   // Sleutel past niet bij het logboek
   'key.mismatchTitle': 'Sleutel past niet bij je logboek',
   'key.metaRestoreTitle': 'Logboek terugzetten op GitHub',
+  'key.relinkInstead': 'Logboek op GitHub is bewust opnieuw aangemaakt? Dit apparaat wissen en opnieuw koppelen',
   'key.metaRestoreText': 'meta.json.enc op GitHub ontbreekt of is beschadigd, maar hoort niet bij een ander logboek. Dit apparaat heeft je logboek nog en zet het met je wachtzin terug op GitHub. Er gaat niets verloren.',
   'key.metaRestore': 'Logboek van dit apparaat terugzetten op GitHub',
   'key.mismatchText': 'De sleutel waarmee de app op dit apparaat werkt, hoort niet bij meta.json.enc van je logboek. Er is niets geschreven en de opgeslagen sessiesleutel is gewist.',

@@ -1,11 +1,11 @@
 import { DecryptError, utf8 } from '../crypto/encrypt'
 import { recordError } from '../errors'
-import { META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../crypto/keys'
+import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../crypto/keys'
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
-import { getObject, putObject, putObjectIfVault, type Db, type StoredObject } from './idb'
+import { getObject, putObject, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
 import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from './sync'
@@ -15,6 +15,9 @@ import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from
  * app vanzelf de kopie van dit apparaat terug (zonder kopie: leeg, dus opnieuw de meegeleverde inhoud). Na twee keer
  * stopt dat en toont de app de knop. De onleesbare versie blijft in de geschiedenis van logboek-data.
  */
+/** Sleutelvoorvoegsel in IndexedDB voor lokale bestanden die ongeldig bleken: apart bewaard, nooit weggegooid. */
+export const SET_ASIDE_PREFIX = 'apart/'
+
 const SEED_PATHS: ReadonlySet<CollectionPath> = new Set(['curricula.json.enc', 'checklists.json.enc'])
 
 /**
@@ -173,20 +176,22 @@ export class Store {
         } catch (error) {
           // Niet te ontsleutelen: een andere sleutel, dat is "Logboek herstellen" (de sessie).
           if (error instanceof DecryptError) throw error
+          if (!(error instanceof NewerSchemaError) && !(error instanceof InvalidDataError)) throw error
           recordError(error)
+          // Wel ontsleuteld maar ongeldig: apart bewaren (nooit weggooien) en verder alsof hier geen kopie is; de
+          // versie van GitHub komt bij de sync in de plaats. Lukt apart zetten niet, dan net als een nieuwere versie.
+          const setAside = error instanceof InvalidDataError && (await setAsideIfVault(db, META_PATH, vaultCheck, path, stored.blob, `${SET_ASIDE_PREFIX}${path}/${new Date().toISOString()}`))
           // Van een nieuwere app: nooit overschrijven, niets naar GitHub, "Werk de app bij". De rest werkt gewoon.
-          if (error instanceof NewerSchemaError) {
+          if (!setAside) {
             store.outdated = true
             store.frozen.add(path)
           }
-          // Wel ontsleuteld maar ongeldig: niets van te gebruiken; de versie van GitHub komt er bij de sync overheen.
-          else if (!(error instanceof InvalidDataError)) throw error
         }
       }
       store.collections.set(path, records)
     }
     store.outbox = await loadOutbox(db, masterKey)
-    store.status = store.outdated ? { kind: 'error', code: 'update', count: store.pendingCount() } : store.idleStatus()
+    store.status = store.outdated ? store.updateStatus() : store.idleStatus()
     return store
   }
 
@@ -237,6 +242,8 @@ export class Store {
   /** Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). */
   async putMany<P extends CollectionPath>(path: P, records: readonly Collections[P][]): Promise<void> {
     this.assertUnlocked()
+    // Een lokaal bestand van een nieuwere app: wijzigen kan pas na bijwerken; nooit stil in het geheugen laten.
+    if (this.frozen.has(path)) throw new NewerSchemaError(0)
     const ids = new Set(records.map((r) => r.id))
     const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
     this.collections.set(path, [...kept, ...records])
@@ -290,7 +297,7 @@ export class Store {
       return
     }
     if (this.outdated) {
-      this.setStatus({ kind: 'error', code: 'update', count: count() })
+      this.setStatus(this.updateStatus())
       return
     }
     this.setStatus({ kind: 'syncing' })
@@ -431,11 +438,13 @@ export class Store {
     const remote = await this.client.getFile(META_PATH)
     if (!remote) return (await Store.loadMeta(this.db).catch(() => null)) ? 'missing' : 'unknown'
     let meta: Meta
+    const text = new TextDecoder().decode(remote.content)
     try {
-      meta = parseMeta(new TextDecoder().decode(remote.content))
+      meta = parseMeta(text)
     } catch (error) {
       if (error instanceof NewerSchemaError) throw error
-      this.remoteMetaUnreadable = true
+      // Alleen echt kapot (geen meta-JSON) telt als terug te zetten; een onbekende meta kan van een ander logboek zijn.
+      this.remoteMetaUnreadable = !looksLikeMeta(text)
       return 'unknown'
     }
     if (await verifyMetaCheck(meta, this.masterKey)) return 'match'
@@ -574,10 +583,7 @@ export class Store {
   private async persist(path: CollectionPath): Promise<void> {
     // Na vergrendelen niets meer schrijven: het geheugen is gewist en de outbox zou leeg worden opgeslagen.
     // lock() kan tijdens elke await komen, daarom na elke await opnieuw controleren.
-    if (this.frozen.has(path)) {
-      this.notify()
-      return
-    }
+    if (this.frozen.has(path)) return
     const records = this.collections.get(path) ?? []
     const outbox = this.outbox
     const blob = await encryptRecords(this.masterKey, path, records)
@@ -644,6 +650,12 @@ export class Store {
       for (const listener of this.mismatchListeners) listener(error)
     }
     throw error
+  }
+
+  /** "Werk de app bij", met de lokale bestanden van een nieuwere app (de melding staat bij die onderdelen). */
+  private updateStatus(): SyncStatus {
+    const paths = [...this.frozen]
+    return { kind: 'error', code: 'update', count: this.pendingCount(), ...(paths.length > 0 ? { paths } : {}) }
   }
 
   private idleStatus(): SyncStatus {

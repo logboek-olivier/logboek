@@ -104,7 +104,7 @@ async function newContext(browser: Browser) {
 }
 
 /** Een schoon apparaat koppelt met de wachtzin; elk bestand op GitHub is te lezen en elk voorbeeld staat er nog. */
-async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, github: E2eGithub, data: UpgradeData): Promise<void> {
+async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, github: E2eGithub, data: UpgradeData, startedUnreadable: string[] = []): Promise<void> {
   const clean = await newContext(browser)
   const page = await clean.newPage()
   await mockGithub(page, github)
@@ -119,11 +119,10 @@ async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, g
     const file = github.files.get(path)
     expect(file, path).toBeDefined()
     const records = await decryptRecords(key, path, Uint8Array.from(Buffer.from(file!.content, 'base64')))
-    for (const sample of UPGRADE_SAMPLES[path] ?? []) {
-      // Checklists die door herstel opnieuw beginnen, mogen het voorbeeld missen; elders moet het er nog staan.
-      if (path === 'checklists.json.enc' && records.length === 0) continue
-      expect(records.map((r) => r.id), path).toContain(sample.id)
-    }
+    // Een bestand dat al onleesbaar op GitHub stond toen de vorige release koppelde, had nergens een leesbare kopie:
+    // dat begint opnieuw. Elk ander voorbeeld moet er nog staan.
+    if (startedUnreadable.includes(path)) continue
+    for (const sample of UPGRADE_SAMPLES[path] ?? []) expect(records.map((r) => r.id), path).toContain(sample.id)
   }
 }
 
@@ -170,8 +169,10 @@ test('telefoon van 28 oktober: checklists onleesbaar op GitHub, lus op het herst
     await mockGithub(page, github)
     await page.goto(server.url)
     await link(page)
-    // Een release van vóór de fix toont het herstelscherm, en "Herstellen" komt terug op hetzelfde scherm.
-    await page.waitForTimeout(1500)
+    // Een release van vóór de fix (zoals bf82158 op de telefoon) toont het herstelscherm, en "Herstellen" komt terug op
+    // hetzelfde scherm; een nieuwere release herstelt checklists vanzelf (Gesynct). Wachten tot een van beide er staat.
+    const synced = page.getByRole('status').first().getByText(L('sync.synced'), { exact: true })
+    await expect(repairHeading(page).or(synced)).toBeVisible({ timeout: 20_000 })
     if (await repairHeading(page).isVisible()) {
       await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
       await page.getByRole('button', { name: L('repair.button') }).click()
@@ -196,7 +197,7 @@ test('telefoon van 28 oktober: checklists onleesbaar op GitHub, lus op het herst
     await expectSynced(page)
     await phone.close()
     github.staleReadsAfterPut = 0
-    await cleanDeviceReadsAll(browser, server, github, data)
+    await cleanDeviceReadsAll(browser, server, github, data, ['checklists.json.enc'])
   } finally {
     await server.close()
   }

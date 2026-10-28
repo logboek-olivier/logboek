@@ -410,7 +410,8 @@ describe('Logboek herstellen: bevindingen review', () => {
     // Het herstel van de rest blijft er niet op hangen; het nieuwere bestand zelf wordt nooit aangeraakt.
     if (s.getState().phase === 'repair') await s.repair({})
     expect(s.getState().phase).toBe('unlocked')
-    expect(puts().map((p) => p.path)).not.toContain('students.json.enc')
+    // Alleen de bestanden onder de vreemde sleutel K2 zijn vervangen, met hun oude SHA als voorwaarde; niets anders.
+    expect(puts().map((p) => p.path).sort()).toEqual(['curricula.json.enc', 'settings.json.enc', 'transactions.json.enc'])
     expect(github.files.get('students.json.enc')!.sha).toBe(sha)
     await unlockedStore(s).sync()
     expect(unlockedStore(s).getStatus()).toMatchObject({ kind: 'error', code: 'update' })

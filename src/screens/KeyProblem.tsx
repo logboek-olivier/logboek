@@ -4,7 +4,7 @@ import { t, type MessageKey } from '../i18n'
 import type { CollectionPath } from '../model/types'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import type { RepairReport } from '../repair'
-import { describeError, useSession } from '../session'
+import { describeError, SetupError, useSession } from '../session'
 import { ErrorLine, Screen } from './Setup'
 
 // Sleutel past niet bij het logboek (fase 'mismatch'), of gegevens die niet met de sleutel uit meta.json.enc te lezen
@@ -49,9 +49,10 @@ export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' 
           </button>
         </>
       )}
-      {/* Wissen en opnieuw koppelen alleen bij een ander logboek op GitHub; bij een ontbrekende of kapotte meta is
-          terugzetten de uitweg en gaat er niets verloren. */}
-      {where === 'remote' && !metaRestorable && copies !== null && (
+      {/* Wissen en opnieuw koppelen: bij een ander logboek op GitHub de uitweg; bij een ontbrekende of kapotte meta
+          ingeklapt als tweede keus (bijvoorbeeld bij de live-gang, als logboek-data bewust opnieuw is aangemaakt). */}
+      {where === 'remote' && copies !== null && (
+        <Collapsible collapsed={metaRestorable} summary={t('key.relinkInstead')}>
         <div className="section">
           <h2>{t('key.relinkLost')}</h2>
           {copies.length > 0 ? (
@@ -73,6 +74,7 @@ export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' 
           </button>
           <ErrorLine error={error} />
         </div>
+        </Collapsible>
       )}
       <CopyErrorDetails />
     </Screen>
@@ -87,6 +89,8 @@ function RestoreMeta() {
   const session = useSession()
   const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
   const [secret, setSecret] = useState('')
+  const [token, setToken] = useState('')
+  const [tokenNeeded, setTokenNeeded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -96,8 +100,10 @@ function RestoreMeta() {
     setBusy(true)
     setError(null)
     try {
-      await session.restoreRemoteMeta(mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret })
+      await session.restoreRemoteMeta(mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret }, tokenNeeded ? token : undefined)
     } catch (err) {
+      // De token op dit apparaat ontbreekt of is onleesbaar: alleen Olivier kan een nieuwe geven.
+      if (err instanceof SetupError && err.key === 'error.tokenRequired') setTokenNeeded(true)
       setError(describeError(err))
     } finally {
       setBusy(false)
@@ -118,8 +124,15 @@ function RestoreMeta() {
           <textarea rows={4} autoComplete="off" autoCapitalize="none" value={secret} onChange={(e) => setSecret(e.target.value)} />
         </label>
       )}
+      {tokenNeeded && (
+        <label>
+          {t('token.label')}
+          <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" />
+          <span className="muted small">{t('repair.tokenHint')}</span>
+        </label>
+      )}
       <ErrorLine error={error} />
-      <button className="btn primary" type="submit" disabled={busy || secret.trim().length === 0}>
+      <button className="btn primary" type="submit" disabled={busy || secret.trim().length === 0 || (tokenNeeded && token.trim().length === 0)}>
         {t('key.metaRestore')}
       </button>
       <button
@@ -132,7 +145,21 @@ function RestoreMeta() {
       >
         {mode === 'passphrase' ? t('setup.useRecovery') : t('setup.usePassphrase')}
       </button>
+      <button className="btn link" type="button" onClick={() => void session.backToUnlock()}>
+        {t('key.unlockAgain')}
+      </button>
     </form>
+  )
+}
+
+/** Ingeklapt (als tweede keus) of gewoon zichtbaar. */
+function Collapsible({ collapsed, summary, children }: { collapsed: boolean; summary: string; children: React.ReactNode }) {
+  if (!collapsed) return <>{children}</>
+  return (
+    <details className="section">
+      <summary>{summary}</summary>
+      {children}
+    </details>
   )
 }
 

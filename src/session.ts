@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import { DecryptError, fromBase64, randomBytes, toBase64 } from './crypto/encrypt'
 import {
   META_PATH,
+  looksLikeMeta,
   changePassphrase,
   createVault,
   parseMeta,
@@ -20,11 +21,12 @@ import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } 
 import { recordError } from './errors'
 import { t, type MessageKey } from './i18n'
 import { AuthError, ConflictError, GithubClient, GithubError, NetworkError } from './storage/github'
-import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKeyIfVault, type Db } from './storage/idb'
+import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putObjectIfVault, putSessionKeyIfVault, type Db } from './storage/idb'
 import { clearMarker, covers, diagnose, diagnoseLocal, executeRepair, localReport, readMarker, writeMarker, type RepairReport } from './repair'
 import { NewerSchemaError } from './model/schema'
 import { KeyMismatchError, Store } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
+import { decryptRecords } from './storage/sync'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 
 // Levenscyclus van een sessie: eerste keer (nieuw of koppelen), ontgrendelen, vergrendelen.
@@ -643,11 +645,12 @@ export class Session {
     const remote = await client.getFile(META_PATH)
     if (!remote) throw this.keyMismatch(new KeyMismatchError('remote', 'missing'))
     let meta: Meta
+    const text = new TextDecoder().decode(remote.content)
     try {
-      meta = parseMeta(new TextDecoder().decode(remote.content))
+      meta = parseMeta(text)
     } catch (error) {
       if (error instanceof NewerSchemaError) throw error
-      throw this.keyMismatch(new KeyMismatchError('remote', 'unreadable'))
+      throw this.keyMismatch(new KeyMismatchError('remote', looksLikeMeta(text) ? 'other' : 'unreadable'))
     }
     if (!(await verifyMetaCheck(meta, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
   }
@@ -750,16 +753,18 @@ export class Session {
   }
 
   /**
-   * meta.json.enc op GitHub ontbreekt of is kapot, en hoort dus niet bij een ander logboek: na een tik plus wachtzin
-   * of herstelcode zet dit apparaat zijn eigen meta.json.enc terug (met de SHA als voorwaarde) en opent het logboek;
-   * de sync zet daarna ontbrekende bestanden terug. Alleen als de lokale meta via het check-veld bij de sleutel hoort.
-   * Een meta van een ander logboek wordt nooit overschreven.
+   * meta.json.enc op GitHub ontbreekt of is kapot (geen meta-JSON), en hoort dus niet bij een ander logboek: na een tik
+   * plus wachtzin of herstelcode zet dit apparaat zijn eigen meta.json.enc terug (met de SHA als voorwaarde) en opent het
+   * logboek; de sync zet daarna ontbrekende bestanden terug. Alleen als de lokale meta via het check-veld bij de sleutel
+   * hoort, en alleen als elk databestand dat al op GitHub staat met deze sleutel te ontsleutelen is (anders is het een
+   * ander logboek). Een meta van een ander logboek, of een meta die deze app niet kan lezen, wordt nooit overschreven.
+   * `token`: alleen nodig als de token op dit apparaat ontbreekt of onleesbaar is.
    */
-  restoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }): Promise<void> {
-    return this.busy(() => this.doRestoreRemoteMeta(secret))
+  restoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }, token?: string): Promise<void> {
+    return this.busy(() => this.doRestoreRemoteMeta(secret, token))
   }
 
-  private async doRestoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }): Promise<void> {
+  private async doRestoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }, typedToken?: string): Promise<void> {
     if (this.state.phase !== 'mismatch' || !this.state.metaRestorable) throw new Error('Niet van toepassing')
     const db = this.requireDb()
     const generation = this.generation
@@ -767,37 +772,67 @@ export class Session {
     if (!meta) throw new SetupError('error.metaMissing')
     const masterKey = await unlock(meta, await withWordlist(secret))
     this.assertSameSession(generation)
-    if ((await this.boundCheck(masterKey)) === null) throw this.keyMismatch(new KeyMismatchError('local'))
-    const stored = await loadToken(db, masterKey).catch((error: unknown) => {
-      if (error instanceof DecryptError) return null
-      throw error
-    })
-    if (!stored) throw new SetupError('error.tokenMissing')
-    const client = new GithubClient(stored.token)
+    if ((await this.boundCheck(masterKey)) !== meta.check) throw this.keyMismatch(new KeyMismatchError('local'))
+    let token: StoredToken | null
+    if (typedToken?.trim()) {
+      const client = new GithubClient(typedToken.trim())
+      const { expiresAt } = await client.checkAccess()
+      token = { token: typedToken.trim(), expiresAt }
+    } else {
+      token = await loadToken(db, masterKey).catch((error: unknown) => {
+        if (error instanceof DecryptError) return null
+        throw error
+      })
+    }
+    // Alleen een token kan Olivier zelf geven: het scherm vraagt erom.
+    if (!token) throw new SetupError('error.tokenRequired')
+    const client = new GithubClient(token.token)
     const remote = await client.getFile(META_PATH)
-    let sha = remote?.sha ?? null
-    let write = true
     if (remote) {
+      const text = new TextDecoder().decode(remote.content)
       let theirs: Meta | null = null
       try {
-        theirs = parseMeta(new TextDecoder().decode(remote.content))
+        theirs = parseMeta(text)
       } catch (error) {
         if (error instanceof NewerSchemaError) throw error
+        if (looksLikeMeta(text)) throw this.keyMismatch(new KeyMismatchError('remote'))
       }
       // Intussen weer een geldige meta: van deze sleutel dan gewoon openen, van een andere nooit overschrijven.
-      if (theirs) {
-        if (!(await verifyMetaCheck(theirs, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
-        write = false
+      if (theirs && !(await verifyMetaCheck(theirs, masterKey))) throw this.keyMismatch(new KeyMismatchError('remote'))
+      if (theirs) return this.openAfterRestore(client, typedToken ? token : null, masterKey)
+    }
+    // Databestanden van een ander logboek op GitHub (bijvoorbeeld een opnieuw aangemaakte repo met een nieuw logboek
+    // zonder meta): nooit een meta van dit apparaat ernaast zetten.
+    for (const path of COLLECTION_PATHS) {
+      const file = await client.getFile(path)
+      if (!file) continue
+      try {
+        await decryptRecords(masterKey, path, file.content)
+      } catch (error) {
+        if (error instanceof DecryptError) throw this.keyMismatch(new KeyMismatchError('remote'))
       }
     }
     this.assertSameSession(generation)
-    if (write) {
-      this.channel?.postMessage('lock')
-      sha = await client.putFile(META_PATH, new TextEncoder().encode(serializeMeta(meta)), sha)
-      await Store.storeMeta(db, meta, sha)
+    // Vlak voor het schrijven nog eens: de lokale meta moet dezelfde zijn (geen ander tabblad dat intussen koppelde).
+    const vaultCheck = await this.boundCheck(masterKey)
+    if (vaultCheck === null || vaultCheck !== meta.check) throw this.keyMismatch(new KeyMismatchError('local'))
+    this.channel?.postMessage('lock')
+    const sha = await client.putFile(META_PATH, new TextEncoder().encode(serializeMeta(meta)), remote?.sha ?? null)
+    if (!(await putObjectIfVault(db, META_PATH, vaultCheck, { path: META_PATH, blob: new TextEncoder().encode(serializeMeta(meta)), sha }))) {
+      throw this.keyMismatch(new KeyMismatchError('local'))
     }
-    this.tokenExpiresAt = stored.expiresAt
-    await this.open(client, null, masterKey, 'secret')
+    this.assertSameSession(generation)
+    await this.openAfterRestore(client, typedToken ? token : null, masterKey)
+  }
+
+  /** Openen na het terugzetten; lokale gegevens die niet met de sleutel te lezen zijn: "Logboek herstellen". */
+  private async openAfterRestore(client: GithubClient, token: StoredToken | null, masterKey: CryptoKey): Promise<void> {
+    try {
+      await this.open(client, token, masterKey, 'secret')
+    } catch (error) {
+      if (error instanceof DecryptError) return this.enterRepair(masterKey, client, true, error)
+      throw error
+    }
   }
 
   /**
@@ -840,6 +875,8 @@ export class Session {
       if (!this.state.needsSecret) this.setState({ ...this.state, needsSecret: true })
       return
     }
+    // Ook op het scherm "Sleutel past niet": lopende stappen (terugzetten) stoppen als een ander tabblad vergrendelt.
+    if (this.state.phase === 'mismatch') this.generation++
     if (this.state.phase !== 'unlocked') return
     const store = this.state.store
     this.generation++

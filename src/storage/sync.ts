@@ -49,10 +49,13 @@ export function decodeRecords<T extends SyncRecord>(path: string, plain: Bytes):
   const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
   if (!Number.isInteger(found) || found < 1) throw new InvalidDataError(path)
   if (found > SCHEMA_VERSION) throw new NewerSchemaError(found)
-  for (const r of raw.records) {
+  // Een record zonder deletedAt (JSON laat undefined weg) is gewoon niet verwijderd: aanvullen in plaats van het hele
+  // bestand af te keuren. Zonder id of updatedAt is een record niet samen te voegen: dan is het bestand ongeldig.
+  const records = raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r))
+  for (const r of records) {
     if (!isSyncRecord(r)) throw new InvalidDataError(path)
   }
-  return raw.records as T[]
+  return records as T[]
 }
 
 export async function encryptRecords(masterKey: CryptoKey, path: string, records: readonly SyncRecord[]): Promise<Bytes> {

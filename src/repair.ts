@@ -28,7 +28,8 @@ export interface RepairReport {
   tokenNeeded: boolean
 }
 
-type LocalState = 'absent' | 'readable' | 'unreadable'
+/** invalid: wel met deze sleutel ontsleuteld, maar ongeldig of van een nieuwere app: nooit wissen, geen bron voor herstel. */
+type LocalState = 'absent' | 'readable' | 'unreadable' | 'invalid'
 
 export interface LocalDiagnosis {
   state: Map<CollectionPath, LocalState>
@@ -85,7 +86,7 @@ export async function diagnoseLocal(db: Db, masterKey: CryptoKey): Promise<Local
     } catch (error) {
       // Wel met deze sleutel ontsleuteld (ongeldig, of van een nieuwere app): geen sleutelprobleem, nooit wissen.
       if (error instanceof InvalidDataError || error instanceof NewerSchemaError) {
-        state.set(path, 'readable')
+        state.set(path, 'invalid')
         continue
       }
       if (!(error instanceof DecryptError)) throw error

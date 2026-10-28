@@ -4,7 +4,7 @@ import { encryptObject, toBase64, utf8, type Bytes } from '../src/crypto/encrypt
 import { META_PATH, parseMeta, serializeMeta, unlock, type Meta } from '../src/crypto/keys'
 import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from '../src/model/types'
 import { Session } from '../src/session'
-import { openLogboekDb, putLocal, putObject, type Db } from '../src/storage/idb'
+import { getObject, openLogboekDb, putLocal, putObject, type Db } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
 import type { Store } from '../src/storage/store'
 import { decryptRecords, encryptRecords } from '../src/storage/sync'
@@ -71,26 +71,31 @@ afterEach(() => {
 type Fault = 'andere sleutel' | 'afgekapt' | 'ongeldig' | 'nieuwere versie' | 'nieuwer objectformaat'
 type Where = 'GitHub' | 'apparaat' | 'beide'
 
-/** Een defecte versie van `path`, zoals die op GitHub of in IndexedDB kan staan. */
-async function broken(fault: Fault, path: string): Promise<Bytes> {
+const samples = (path: CollectionPath) => (UPGRADE_SAMPLES[path] ?? []) as unknown as SyncRecord[]
+
+/**
+ * Een defecte versie van `path`, zoals die op GitHub of in IndexedDB kan staan. Elke versie bevat de echte
+ * voorbeeldrecords, zodat de test ziet of herstellen ze bewaart (en niet alles leegmaakt).
+ */
+async function broken(fault: Fault, path: CollectionPath): Promise<Bytes> {
+  const records = samples(path)
   switch (fault) {
     case 'andere sleutel':
-      return encryptRecords(k2.masterKey, path, [])
+      return encryptRecords(k2.masterKey, path, records)
     case 'afgekapt':
-      return (await encryptRecords(k1.masterKey, path, [])).slice(0, 10)
+      return (await encryptRecords(k1.masterKey, path, records)).slice(0, 10)
     case 'ongeldig':
-      return encryptObject(k1.masterKey, path, utf8('{"niet": "een logboekbestand"'))
+      // Geldige records plus één record zonder id: het bestand als geheel is ongeldig.
+      return encryptObject(k1.masterKey, path, utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 1, records: [...records, { kapot: true }] })))
     case 'nieuwere versie':
-      return encryptObject(k1.masterKey, path, utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 99, records: [] })))
+      return encryptObject(k1.masterKey, path, utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 99, records })))
     case 'nieuwer objectformaat': {
-      const blob = await encryptRecords(k1.masterKey, path, [])
+      const blob = await encryptRecords(k1.masterKey, path, records)
       blob[0] = 2
       return blob
     }
   }
 }
-
-const samples = (path: CollectionPath) => (UPGRADE_SAMPLES[path] ?? []) as unknown as SyncRecord[]
 const TRIP_ID = (UPGRADE_SAMPLES['trips.json.enc']![0] as { id: string }).id
 
 async function phone(): Promise<{ name: string; db: Db }> {
@@ -176,14 +181,23 @@ describe('Foutmatrix: één defect bestand blokkeert alleen zijn eigen onderdeel
           const status = store(s).getStatus()
           if (newer) expect(status).toMatchObject({ kind: 'error', code: 'update' })
           else expect(status, JSON.stringify(status)).toEqual({ kind: 'synced' })
-          // Een schoon apparaat koppelt; elk bestand op GitHub is te lezen (behalve een nieuwere versie, die blijft).
+          // Een lokaal bestand van een nieuwere app blijft byte voor byte staan; een ongeldig lokaal bestand staat apart.
+          if (newer && where !== 'GitHub') expect([...(await getObject(db, path))!.blob]).toEqual([...bad])
+          if (fault === 'ongeldig' && where !== 'GitHub') {
+            const aside = (await db.getAll('objects')).filter((o) => o.path.startsWith(`apart/${path}/`))
+            expect(aside.map((o) => [...o.blob])).toEqual([[...bad]])
+          }
+          // Een schoon apparaat koppelt; elk bestand op GitHub is te lezen (behalve een nieuwere versie, die blijft), en
+          // elk voorbeeldrecord staat er nog. Alleen wat op beide plekken kapot was, is echt verloren.
           const clean = await cleanDevice()
           if (!newer) expect(store(clean).getStatus()).toEqual({ kind: 'synced' })
           const key = await remoteKey()
           for (const p of COLLECTION_PATHS) {
             if (newer && p === path && where !== 'apparaat') continue
             const file = github.files.get(p)!
-            await expect(decryptRecords(key, p, Uint8Array.from(Buffer.from(file.content, 'base64'))), p).resolves.toBeDefined()
+            const records = await decryptRecords(key, p, Uint8Array.from(Buffer.from(file.content, 'base64')))
+            if (p === path && where === 'beide') continue
+            expect(records.map((r) => r.id), p).toEqual(expect.arrayContaining(samples(p).map((r) => r.id)))
           }
         }, 60_000)
       }
@@ -343,4 +357,103 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
       expect(store(s).getStatus()).toEqual({ kind: 'synced' })
     }, 60_000)
   }
+})
+
+describe('Foutmatrix: randgevallen uit de review', () => {
+  it('een record zonder deletedAt maakt het bestand niet ongeldig: alle trips blijven staan', async () => {
+    const { name, db } = await phone()
+    const trip = { ...(samples('trips.json.enc')[0] as unknown as Record<string, unknown>) }
+    delete trip.deletedAt
+    const blob = await encryptObject(k1.masterKey, 'trips.json.enc', utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 1, records: [trip] })))
+    github.write('trips.json.enc', toBase64(blob))
+    await putObject(db, { path: 'trips.json.enc', blob, sha: 'lokaal' })
+    const s = await openApp(name, false)
+    expect(store(s).list('trips.json.enc').map((t) => t.id)).toEqual([TRIP_ID])
+    await store(s).sync()
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+  }, 60_000)
+
+  it('een lokaal bestand van een nieuwere app: wijzigen wordt geweigerd (nooit stil verloren), de rest werkt', async () => {
+    const { name, db } = await phone()
+    await putObject(db, { path: 'legs.json.enc', blob: await broken('nieuwere versie', 'legs.json.enc'), sha: 'lokaal' })
+    const s = await openApp(name, false)
+    expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'update', paths: ['legs.json.enc'] })
+    await expect(store(s).put('legs.json.enc', { ...(samples('legs.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuw' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
+    await store(s).put('reminders.json.enc', { ...(samples('reminders.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuwe-termijn' } as never)
+    expect(store(s).list('reminders.json.enc').map((r) => r.id)).toContain('nieuwe-termijn')
+  }, 60_000)
+
+  it('terugzetten weigert als er databestanden van een ander logboek op GitHub staan (opnieuw aangemaakte repo)', async () => {
+    const { name } = await phone()
+    github.files.clear()
+    github.write('trips.json.enc', toBase64(await encryptRecords(k2.masterKey, 'trips.json.enc', [])))
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    await new Promise((r) => setTimeout(r, 200))
+    expect(s.getState()).toMatchObject({ phase: 'mismatch', metaRestorable: true })
+    await expect(s.restoreRemoteMeta({ passphrase: PASSPHRASE })).rejects.toMatchObject({ name: 'KeyMismatchError' })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
+  }, 60_000)
+
+  it('een meta die deze app niet kan lezen (format logboek-meta, ongeldige velden) is geen kapotte meta: nooit terugzetten', async () => {
+    const { name } = await phone()
+    github.write(META_PATH, toBase64(utf8(JSON.stringify({ format: 'logboek-meta', version: 1, passphrase: 'onbekend' }))))
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    await new Promise((r) => setTimeout(r, 200))
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+  }, 60_000)
+
+  it('een oude meta zonder check-veld wordt nooit overschreven', async () => {
+    const { name } = await phone()
+    const old = { ...(JSON.parse(serializeMeta(k1.meta)) as Record<string, unknown>) }
+    delete old.check
+    github.write(META_PATH, toBase64(utf8(JSON.stringify(old))))
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    await new Promise((r) => setTimeout(r, 200))
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
+  }, 60_000)
+
+  it('een ander apparaat zet intussen een meta van een ander logboek neer: niets overschreven', async () => {
+    const { name } = await phone()
+    github.files.delete(META_PATH)
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    await new Promise((r) => setTimeout(r, 200))
+    github.beforePut = (path) => {
+      if (path === META_PATH) github.write(META_PATH, toBase64(utf8(serializeMeta(k2.meta))))
+    }
+    await expect(s.restoreRemoteMeta({ passphrase: PASSPHRASE })).rejects.toBeDefined()
+    const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
+    expect(meta.check).toBe(k2.meta.check)
+  }, 60_000)
+
+  it('meta weg én token onleesbaar: het scherm vraagt een token en zet daarna alles terug (geen doodlopend scherm)', async () => {
+    const { name, db } = await phone()
+    github.files.delete(META_PATH)
+    const s = new Session(name)
+    sessions.push(s)
+    await s.init()
+    await s.unlockLocal({ passphrase: PASSPHRASE })
+    await new Promise((r) => setTimeout(r, 200))
+    expect(s.getState()).toMatchObject({ phase: 'mismatch', metaRestorable: true })
+    await putLocal(db, 'token', await encryptObject(k2.masterKey, 'local/token', utf8('{}')))
+    await expect(s.restoreRemoteMeta({ passphrase: PASSPHRASE })).rejects.toMatchObject({ key: 'error.tokenRequired' })
+    await s.restoreRemoteMeta({ passphrase: PASSPHRASE }, TOKEN)
+    expect(s.getState().phase).toBe('unlocked')
+    await store(s).sync()
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+    await cleanDevice()
+  }, 60_000)
 })
