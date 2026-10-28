@@ -4,7 +4,7 @@ import { Loading } from './components/Loading'
 import { setScreen } from './errors'
 import { t, useLang } from './i18n'
 import { UpdateBar } from './components/UpdateBar'
-import { setBusyCheck } from './updates'
+import { setBusyCheck, setUrgentCheck, updates } from './updates'
 import { Home } from './screens/Home'
 import { Setup } from './screens/Setup'
 import { KeyMismatch, Repair } from './screens/KeyProblem'
@@ -13,13 +13,22 @@ import { Session, SessionContext } from './session'
 
 export function App() {
   const session = useMemo(() => new Session(), [])
-  useEffect(() => setBusyCheck(() => session.isBusy()), [session])
+  useEffect(() => {
+    setBusyCheck(() => session.isBusy())
+    // Op een herstel- of sleutelscherm wordt een nieuwe versie direct actief.
+    setUrgentCheck(() => ['repair', 'mismatch'].includes(session.getState().phase))
+  }, [session])
   // De hele app tekent opnieuw als de taal wisselt (teksten en notatie volgen de taal).
   const lang = useLang()
   const state = useSyncExternalStore(
     (listener) => session.subscribe(listener),
     () => session.getState(),
   )
+
+  // Staat er al een nieuwe versie klaar als een herstel- of sleutelscherm opent: direct laden.
+  useEffect(() => {
+    if ((state.phase === 'repair' || state.phase === 'mismatch') && updates.isAvailable()) updates.reload()
+  }, [state.phase])
 
   useEffect(() => {
     document.documentElement.lang = lang

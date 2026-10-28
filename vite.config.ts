@@ -72,9 +72,28 @@ export default defineConfig({
         importScripts: ['sw-vensters.js'],
         // De offline kaart (public/coast/, ca. 3,5 MB) hoort in de precache: op zee moet de kaart werken.
         globPatterns: ['**/*.{js,css,html,svg,png,txt,webmanifest}', 'coast/*.json'],
-        navigateFallback: '/logboek/index.html',
-        // Koersen niet in de precache (die verandert dagelijks): eerst het netwerk, offline de laatst opgehaalde.
-        runtimeCaching: [{ urlPattern: /\/logboek\/rates\.json$/, handler: 'NetworkFirst', options: { cacheName: 'koersen', networkTimeoutSeconds: 5 } }],
+        // De noodpagina (public/reset.html) staat nooit in de precache en komt altijd van het netwerk.
+        globIgnores: ['**/reset.html', '**/reset.js'],
+        // De app-pagina zelf: eerst het netwerk (herladen met verbinding geeft altijd de nieuwste versie), offline de
+        // laatst opgehaalde, anders die uit de precache. Daarom geen navigateFallback en geen directoryIndex: anders
+        // komt /logboek/ altijd uit de precache.
+        navigateFallback: null,
+        directoryIndex: 'geen-mapindex',
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) => request.mode === 'navigate' && !url.pathname.endsWith('/reset.html'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pagina',
+              networkTimeoutSeconds: 4,
+              fetchOptions: { cache: 'no-cache' },
+              matchOptions: { ignoreSearch: true },
+              precacheFallback: { fallbackURL: '/logboek/index.html' },
+            },
+          },
+          // Koersen niet in de precache (die verandert dagelijks): eerst het netwerk, offline de laatst opgehaalde.
+          { urlPattern: /\/logboek\/rates\.json$/, handler: 'NetworkFirst', options: { cacheName: 'koersen', networkTimeoutSeconds: 5 } },
+        ],
       },
     }),
   ],

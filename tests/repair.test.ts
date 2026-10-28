@@ -303,20 +303,31 @@ describe('Logboek herstellen: veiligheid', () => {
     await expectRepaired(s, shas, name)
   }, 60_000)
 
-  it('na "Opnieuw beginnen vanaf GitHub" uit PR #27 (lokaal leeg, GitHub onleesbaar): de sync biedt herstellen aan, met wachtzin', async () => {
-    const { name, db, shas } = await phone({ token: 'k1', sessionKey: 'none' })
+  it('na "Opnieuw beginnen vanaf GitHub" uit PR #27 (lokaal leeg, GitHub onleesbaar): de app opent, cursussen vanzelf, de rest per bestand met één tik', async () => {
+    const { name, db } = await phone({ token: 'k1', sessionKey: 'none' })
     for (const path of COLLECTION_PATHS) await db.delete('objects', path)
     await saveOutbox(db, k1.masterKey, {})
     const s = new Session(name)
     sessions.push(s)
     await s.init()
     await s.unlockLocal({ passphrase: PASSPHRASE })
-    await vi.waitFor(() => expect(s.getState()).toMatchObject({ phase: 'repair', needsSecret: true }))
-    const state = s.getState()
-    if (state.phase !== 'repair') return
-    expect(state.report?.lost).toEqual(['transactions.json.enc', 'settings.json.enc', 'curricula.json.enc', 'students.json.enc'])
-    await s.repair({ secret: { passphrase: PASSPHRASE } })
-    await expectRepaired(s, shas, name)
+    const store = unlockedStore(s)
+    await store.sync()
+    // Onleesbare bestanden op GitHub blokkeren de app niet; cursussen (meegeleverd) staan vanzelf weer goed.
+    expect(s.getState().phase).toBe('unlocked')
+    expect(await remoteRecords('curricula.json.enc', k1.masterKey)).toEqual([])
+    expect(store.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable', paths: ['transactions.json.enc', 'settings.json.enc', 'students.json.enc'] })
+    const options = await store.repairOptions()
+    expect(options).toEqual([
+      { path: 'transactions.json.enc', action: 'reset' },
+      { path: 'settings.json.enc', action: 'reset' },
+      { path: 'students.json.enc', action: 'reset' },
+    ])
+    for (const { path } of options) await store.resetFile(path)
+    expect(store.getStatus()).toEqual({ kind: 'synced' })
+    for (const [path] of ON_GITHUB_K2) expect(await remoteRecords(path, k1.masterKey)).toEqual([])
+    expect(store.list('trips.json.enc').map((t) => t.name)).toEqual(['Nepweek'])
+    expect(github.requests.some((r) => (r.body ?? '').includes('Nep'))).toBe(false)
   }, 60_000)
 
   it('regel 10: de sleutel wacht hoogstens 5 minuten op de tik; daarna vraagt het scherm de wachtzin weer', async () => {

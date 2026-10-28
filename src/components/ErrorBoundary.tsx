@@ -4,6 +4,7 @@ import { clearError, lastError, recordError, subscribeErrors } from '../errors'
 import { CopyErrorDetails } from './ErrorDetails'
 import { Icon } from './Icon'
 import { t } from '../i18n'
+import { markCrashed } from '../updates'
 
 /** Vangt een fout tijdens tekenen: geen wit scherm, maar een melding met foutdetails en Herladen. */
 export class ErrorBoundary extends Component<{ children: ReactNode }, { crashed: boolean }> {
@@ -15,6 +16,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { crashed:
 
   componentDidCatch(error: unknown) {
     recordError(error)
+    markCrashed()
   }
 
   render() {

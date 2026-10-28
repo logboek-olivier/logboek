@@ -16,6 +16,16 @@ const updateSW = registerSW({
   onNeedRefresh() {
     updates.announce(() => void updateSW(true))
   },
+  // Ook een app die lang openstaat vindt een nieuwe versie: bij terugkomen en elk uur opnieuw kijken.
+  onRegisteredSW(_url, registration) {
+    if (!registration) return
+    const check = () => void registration.update().catch(() => undefined)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') check()
+    })
+    window.addEventListener('online', check)
+    setInterval(check, 60 * 60 * 1000)
+  },
 })
 
 createRoot(root).render(

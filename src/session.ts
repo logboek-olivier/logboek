@@ -22,7 +22,7 @@ import { t, type MessageKey } from './i18n'
 import { AuthError, ConflictError, GithubClient, GithubError, NetworkError } from './storage/github'
 import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putSessionKeyIfVault, type Db } from './storage/idb'
 import { clearMarker, covers, diagnose, diagnoseLocal, executeRepair, localReport, readMarker, writeMarker, type RepairReport } from './repair'
-import { KeyMismatchError, Store, UnreadableFileError } from './storage/store'
+import { KeyMismatchError, Store } from './storage/store'
 import { loadToken, storeToken, type StoredToken } from './storage/token'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 
@@ -591,7 +591,7 @@ export class Session {
       }
     }
     if (generation !== this.generation) return
-    if (report.lost.length === 0 && report.localOnly.length === 0 && !report.tokenNeeded && !local.outboxUnreadable && !(cause instanceof UnreadableFileError)) throw cause
+    if (report.lost.length === 0 && report.localOnly.length === 0 && !report.tokenNeeded && !local.outboxUnreadable) throw cause
     recordError(cause)
     this.dropKey()
     this.tokenExpiresAt = null
@@ -902,12 +902,8 @@ export class Session {
     store.onKeyMismatch((error) => {
       if (this.state.phase === 'unlocked' && this.state.store === store) this.keyMismatch(error)
     })
-    // Bestanden op GitHub die niet met deze sleutel te lezen zijn: "Logboek herstellen" (met de wachtzin).
-    store.onRepairNeeded((error) => {
-      const key = this.unlockedKey
-      if (this.state.phase !== 'unlocked' || this.state.store !== store || !key) return
-      void this.enterRepair(key, this.unlockedClient, false, error).catch((e: unknown) => recordError(e))
-    })
+    // Bestanden op GitHub die niet met deze sleutel te lezen zijn, blokkeren de app niet: de Store herstelt
+    // seedbestanden vanzelf en toont bij de andere een melding met een herstelknop (zie Store.repairOptions).
   }
 
   private requireDb(): Db {

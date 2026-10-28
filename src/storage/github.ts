@@ -81,6 +81,9 @@ export class GithubClient {
     try {
       response = await this.fetchImpl(`${API_BASE}${path}`, {
         ...init,
+        // Nooit uit de browsercache: GitHub stuurt max-age=60 mee, en een oudere versie van een net hersteld bestand
+        // liet de app denken dat het nog onleesbaar was.
+        cache: 'no-store',
         headers: {
           Accept: 'application/vnd.github+json',
           Authorization: `Bearer ${this.token}`,

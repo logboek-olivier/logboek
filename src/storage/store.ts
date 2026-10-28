@@ -7,7 +7,21 @@ import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecor
 import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { getObject, putObject, putObjectIfVault, type Db, type StoredObject } from './idb'
 import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
+import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
 import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from './sync'
+
+/**
+ * Bestanden met meegeleverde inhoud in de code (cursussen, checklists). Is zo'n bestand op GitHub onleesbaar, dan zet de
+ * app vanzelf de leesbare kopie van dit apparaat terug, en lukt dat twee keer niet, dan begint hij opnieuw met de
+ * meegeleverde inhoud (leeg bestand). De onleesbare versie blijft in de geschiedenis van logboek-data.
+ */
+const SEED_PATHS: ReadonlySet<CollectionPath> = new Set(['curricula.json.enc', 'checklists.json.enc'])
+
+/** Wat de app per onleesbaar bestand aanbiedt: de lokale kopie opnieuw opslaan, of leegmaken en opnieuw beginnen. */
+export interface RepairOption {
+  path: CollectionPath
+  action: 'repair' | 'reset'
+}
 
 
 // Ontsleutelde data in het geheugen, alleen na ontgrendelen. Elke wijziging gaat direct versleuteld naar
@@ -113,7 +127,6 @@ export class Store {
   /** De sleutel past niet (meer) bij meta.json.enc: deze Store schrijft nooit meer iets. */
   private mismatch = false
   private readonly mismatchListeners = new Set<(error: KeyMismatchError) => void>()
-  private readonly repairListeners = new Set<(error: UnreadableFileError) => void>()
 
   private constructor(
     private readonly db: Db,
@@ -154,15 +167,6 @@ export class Store {
   onKeyMismatch(listener: (error: KeyMismatchError) => void): () => void {
     this.mismatchListeners.add(listener)
     return () => this.mismatchListeners.delete(listener)
-  }
-
-  /**
-   * Wordt aangeroepen na een sync waarin meta.json.enc bij deze sleutel hoort maar bestanden op GitHub niet te
-   * ontsleutelen zijn: de sessie biedt dan "Logboek herstellen" aan.
-   */
-  onRepairNeeded(listener: (error: UnreadableFileError) => void): () => void {
-    this.repairListeners.add(listener)
-    return () => this.repairListeners.delete(listener)
   }
 
   subscribe(listener: Listener): () => void {
@@ -282,6 +286,7 @@ export class Store {
     // nieuwere schemaversie (geschreven door een nieuwere app) betekent: niets naar GitHub schrijven.
     const prefetched = new Map<CollectionPath, RemoteFile | null>()
     const unreadable = new Map<CollectionPath, string>()
+    const remoteSha = new Map<CollectionPath, string>()
     let decryptFailures = 0
     let readable = 0
     for (const path of COLLECTION_PATHS) {
@@ -289,7 +294,14 @@ export class Store {
       try {
         const file = await this.client.getFile(path)
         if (file) {
-          await decryptRecords(this.masterKey, path, file.content)
+          remoteSha.set(path, file.sha)
+          try {
+            await decryptRecords(this.masterKey, path, file.content)
+          } catch (error) {
+            // Een versie die dit apparaat al verving: GitHub toont nog even de oude. Deze ronde overslaan, niets melden.
+            if (error instanceof DecryptError && wasReplaced(this.db.name, path, file.sha)) continue
+            throw error
+          }
           readable++
         }
         prefetched.set(path, file)
@@ -320,6 +332,28 @@ export class Store {
       return
     }
     this.unreadable = unreadable
+    // Seedbestanden (cursussen, checklists) vanzelf herstellen; andere bestanden alleen na een tik.
+    if (this.vaultCheck !== null && meta === 'match' && !this.outdated) {
+      for (const [path, reason] of [...unreadable]) {
+        if (this.locked) return
+        if (reason !== 'DecryptError' || !SEED_PATHS.has(path)) continue
+        const attempts = repairAttempts(this.db.name, path)
+        if (attempts > MAX_REPAIRS) continue
+        try {
+          // Twee keer de lokale kopie; blijft het daarna onleesbaar, dan opnieuw beginnen met de meegeleverde inhoud.
+          if (attempts < MAX_REPAIRS) await this.replaceRemote(path, this.collections.get(path) ?? [], remoteSha.get(path) ?? null)
+          else await this.startOver(path, remoteSha.get(path) ?? null)
+          unreadable.delete(path)
+        } catch (error) {
+          if (this.locked || error instanceof KeyMismatchError) return
+          if (error instanceof NetworkError || error instanceof AuthError) {
+            this.reportFailure(error)
+            return
+          }
+          recordError(error)
+        }
+      }
+    }
     // Eén onleesbaar of blijvend conflicterend bestand houdt de andere bestanden niet tegen;
     // zonder verbinding of met een ongeldige token stoppen we wel direct.
     for (const path of COLLECTION_PATHS) {
@@ -339,11 +373,6 @@ export class Store {
     }
     if (this.locked) return
     if (failure === null && unreadable.size > 0) failure = new UnreadableFileError([...unreadable.keys()], [...new Set(unreadable.values())].join(', '))
-    const undecryptable = [...unreadable].filter(([, reason]) => reason === 'DecryptError').map(([path]) => path)
-    if (this.vaultCheck !== null && meta === 'match' && undecryptable.length > 0) {
-      const error = new UnreadableFileError(undecryptable, 'DecryptError')
-      for (const listener of this.repairListeners) listener(error)
-    }
     if (failure === null) {
       this.syncedOnce = true
       this.setStatus(this.idleStatus())
@@ -373,52 +402,101 @@ export class Store {
   }
 
   /**
-   * Paden die te herstellen zijn: op GitHub niet te ontsleutelen (DecryptError), meta.json.enc bevestigd bij deze
-   * sleutel, en hier een lokale kopie. Een bestand dat wel ontsleutelt maar ongeldig is, wordt nooit overschreven.
+   * Wat de app per onleesbaar bestand aanbiedt (DecryptError op GitHub, meta.json.enc bevestigd bij deze sleutel):
+   * 'repair' zet de leesbare kopie van dit apparaat terug; 'reset' maakt het bestand leeg en begint opnieuw, als er
+   * geen lokale kopie is of herstellen al twee keer niet bleef staan. Een bestand dat wel ontsleutelt maar ongeldig is,
+   * wordt nooit overschreven ("Werk de app bij").
    */
-  async repairable(): Promise<CollectionPath[]> {
+  async repairOptions(): Promise<RepairOption[]> {
     if (this.outdated || this.metaVerdict !== 'match') return []
-    const result: CollectionPath[] = []
+    const result: RepairOption[] = []
     for (const [path, reason] of this.unreadable) {
-      if (reason === 'DecryptError' && (await getObject(this.db, path))) result.push(path)
+      if (reason !== 'DecryptError') continue
+      const local = await getObject(this.db, path)
+      const tooOften = repairAttempts(this.db.name, path) >= MAX_REPAIRS
+      result.push({ path, action: local && !tooOften ? 'repair' : 'reset' })
     }
     return result
   }
 
+  /** Paden waarvoor 'repair' kan (zie repairOptions). */
+  async repairable(): Promise<CollectionPath[]> {
+    return (await this.repairOptions()).filter((o) => o.action === 'repair').map((o) => o.path)
+  }
+
   /**
-   * Zet de lokale versie van een onleesbaar bestand opnieuw op GitHub. Alleen na een tik van Olivier, nooit
-   * automatisch. De onleesbare versie blijft in de geschiedenis van logboek-data staan.
+   * Zet de lokale versie van een onleesbaar bestand opnieuw op GitHub. Alleen na een tik van Olivier (of vanzelf bij
+   * seedbestanden). De onleesbare versie blijft in de geschiedenis van logboek-data staan. Na twee pogingen die niet
+   * bleven staan gebeurt hier niets meer; dan biedt de app resetFile aan.
    */
   async repair(path: CollectionPath): Promise<void> {
     this.assertUnlocked()
     if (!(await this.repairable()).includes(path)) return
+    await this.replaceRemote(path, this.collections.get(path) ?? [], null)
+    this.unreadable.delete(path)
+    await this.sync()
+  }
+
+  /**
+   * Dit bestand op GitHub leegmaken en opnieuw beginnen, na een tik: ook de kopie op dit apparaat wordt leeg. Alleen
+   * als het bestand op GitHub (nog) niet te ontsleutelen is; de oude versie blijft in de geschiedenis van logboek-data.
+   */
+  async resetFile(path: CollectionPath): Promise<void> {
+    this.assertUnlocked()
+    if (!(await this.repairOptions()).some((o) => o.path === path)) return
+    await this.startOver(path, null)
+    setRepairAttempts(this.db.name, path, 0)
+    this.unreadable.delete(path)
+    await this.sync()
+  }
+
+  /** Lokaal leeg (ook de outbox voor dit pad), daarna een lege versie op GitHub. */
+  private async startOver(path: CollectionPath, knownSha: string | null): Promise<void> {
+    this.collections.set(path, [])
+    this.outbox = clearSynced(this.outbox, path, { ...(this.outbox[path] ?? {}) })
+    await this.persist(path)
+    if (this.locked) return
+    await this.replaceRemote(path, [], knownSha)
+  }
+
+  /**
+   * Schrijft `records` over een onleesbaar bestand op GitHub, met de SHA als voorwaarde. Is het bestand intussen
+   * leesbaar (een ander apparaat herstelde het al), dan blijft het staan. Telt als herstelpoging.
+   */
+  private async replaceRemote(path: CollectionPath, records: readonly SyncRecord[], knownSha: string | null): Promise<void> {
+    if (this.metaVerdict !== 'match' || this.outdated) return
     await this.assertVault()
     if (this.vaultCheck !== null && (await this.checkMeta()) !== 'match') this.tripMismatch('remote')
+    setRepairAttempts(this.db.name, path, repairAttempts(this.db.name, path) + 1)
+    let sha = knownSha
     for (let attempt = 0; attempt < 2; attempt++) {
-      // Vlak voor het schrijven opnieuw kijken: misschien heeft een ander apparaat het bestand al hersteld.
-      const remote = await this.client.getFile(path)
-      if (remote) {
-        try {
-          await decryptRecords(this.masterKey, path, remote.content)
-          break
-        } catch (error) {
-          if (error instanceof NewerSchemaError) {
-            this.outdated = true
-            throw error
+      // Vlak voor het schrijven opnieuw kijken (behalve de eerste keer met een net gelezen SHA): misschien heeft een
+      // ander apparaat het bestand al hersteld.
+      if (sha === null || attempt > 0) {
+        const remote = await this.client.getFile(path)
+        if (!remote) sha = null
+        else {
+          try {
+            await decryptRecords(this.masterKey, path, remote.content)
+            return
+          } catch (error) {
+            if (error instanceof NewerSchemaError) {
+              this.outdated = true
+              throw error
+            }
+            if (!(error instanceof DecryptError)) throw error
           }
-          if (!(error instanceof DecryptError)) throw error
+          sha = remote.sha
         }
       }
       try {
-        const records = this.collections.get(path) ?? []
-        await this.client.putFile(path, await encryptRecords(this.masterKey, path, records), remote?.sha ?? null)
-        break
+        await this.client.putFile(path, await encryptRecords(this.masterKey, path, records), sha)
+        if (sha) rememberReplaced(this.db.name, path, sha)
+        return
       } catch (error) {
         if (!(error instanceof ConflictError) || attempt === 1) throw error
       }
     }
-    this.unreadable.delete(path)
-    await this.sync()
   }
 
   private reportFailure(failure: unknown): void {
