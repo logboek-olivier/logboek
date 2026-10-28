@@ -25,7 +25,7 @@ class Updates {
     this.available = true
     this.apply = apply
     for (const l of this.listeners) l()
-    if (crashed || urgent()) apply()
+    if (crashed || (urgent() && !busy())) apply()
   }
 
   /** Activeert de nieuwe service worker; die herlaadt daarna de pagina. */
@@ -58,8 +58,7 @@ export function markCrashed(): void {
 
 /**
  * Een nieuwe service worker heeft overgenomen (public/sw-vensters.js). De balk "Nieuwe versie beschikbaar · Herladen"
- * staat direct op elk scherm. Op een fout-, herstel- of sleutelscherm herlaadt dit venster meteen; elders zodra er
- * niets halverwege is (eerste keer, wachtzin wijzigen, herstellen). De outbox staat in IndexedDB en blijft.
+ * staat direct op elk scherm. Dit venster herlaadt zodra er niets halverwege is (eerste keer, wachtzin wijzigen, herstellen). De outbox staat in IndexedDB en blijft.
  */
 export function listenForNewVersion(): void {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
@@ -68,7 +67,7 @@ export function listenForNewVersion(): void {
     event.ports[0]?.postMessage('zelf')
     updates.announce(() => window.location.reload())
     const reloadWhenIdle = () => {
-      if (crashed || urgent() || !busy()) window.location.reload()
+      if (crashed || !busy()) window.location.reload()
       else setTimeout(reloadWhenIdle, 2000)
     }
     reloadWhenIdle()

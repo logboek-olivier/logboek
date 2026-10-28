@@ -66,6 +66,7 @@ afterEach(() => {
 })
 
 const week = { id: 'w1', name: 'Nepweek', updatedAt: NOW, deletedAt: null }
+const student = { id: 's1', firstName: 'Nepanna', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, updatedAt: NOW, deletedAt: null }
 const editedList = { ...SEED_CHECKLISTS[0]!, title: { nl: 'Nep briefing', en: 'Fake briefing' }, updatedAt: NOW, deletedAt: null }
 
 /** Telefoon: alles leesbaar onder K1, behalve `unreadable` op GitHub (onder een vreemde sleutel). */
@@ -75,7 +76,7 @@ async function phone(unreadable: CollectionPath): Promise<{ name: string; db: Db
   github.write(META_PATH, toBase64(utf8(serializeMeta(k1.meta))))
   await putObject(db, { path: META_PATH, blob: utf8(serializeMeta(k1.meta)), sha: github.files.get(META_PATH)!.sha })
   for (const path of COLLECTION_PATHS) {
-    const records: SyncRecord[] = path === 'trips.json.enc' ? [week] : path === 'checklists.json.enc' ? [editedList] : []
+    const records: SyncRecord[] = path === 'trips.json.enc' ? [week] : path === 'checklists.json.enc' ? [editedList] : path === 'students.json.enc' ? [student] : []
     const key = path === unreadable ? k2.masterKey : k1.masterKey
     const sha = github.write(path, toBase64(await encryptRecords(key, path, records)))
     await putObject(db, { path, blob: await encryptRecords(k1.masterKey, path, records), sha })
@@ -188,7 +189,9 @@ describe('Herstel raakt nooit in een lus', () => {
     // Geen derde poging met dezelfde kopie.
     expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(before)
     await store(s).resetFile('students.json.enc')
-    expect(await remote('students.json.enc')).toEqual([])
+    // Leegmaken raakt alleen GitHub: wat dit apparaat leesbaar heeft, blijft staan en gaat weer mee.
+    expect(store(s).list('students.json.enc')).toEqual([student])
+    expect(await remote('students.json.enc')).toEqual([student])
     expect(store(s).getStatus()).toEqual({ kind: 'synced' })
     expect(s.getState().phase).toBe('unlocked')
     await cleanDeviceReadsAll()

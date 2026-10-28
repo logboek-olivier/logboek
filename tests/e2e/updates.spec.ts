@@ -26,7 +26,7 @@ test('herladen met verbinding geeft de nieuwste app-pagina, niet die uit de prec
   })
   await page.reload()
   await expect(page).toHaveTitle('Logboek nieuw')
-  // Offline: de laatst opgehaalde pagina, de app start gewoon.
+  // Offline: de index.html uit de precache (hoort bij de actieve versie), de app start gewoon.
   await context.unroute(/\/logboek\/(\?.*)?$/)
   await context.setOffline(true)
   await page.reload()

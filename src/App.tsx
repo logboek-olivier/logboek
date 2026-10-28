@@ -27,8 +27,8 @@ export function App() {
 
   // Staat er al een nieuwe versie klaar als een herstel- of sleutelscherm opent: direct laden.
   useEffect(() => {
-    if ((state.phase === 'repair' || state.phase === 'mismatch') && updates.isAvailable()) updates.reload()
-  }, [state.phase])
+    if ((state.phase === 'repair' || state.phase === 'mismatch') && updates.isAvailable() && !session.isBusy()) updates.reload()
+  }, [session, state.phase])
 
   useEffect(() => {
     document.documentElement.lang = lang

@@ -74,20 +74,18 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,txt,webmanifest}', 'coast/*.json'],
         // De noodpagina (public/reset.html) staat nooit in de precache en komt altijd van het netwerk.
         globIgnores: ['**/reset.html', '**/reset.js'],
-        // De app-pagina zelf: eerst het netwerk (herladen met verbinding geeft altijd de nieuwste versie), offline de
-        // laatst opgehaalde, anders die uit de precache. Daarom geen navigateFallback en geen directoryIndex: anders
-        // komt /logboek/ altijd uit de precache.
+        // De app-pagina zelf: altijd van het netwerk (herladen met verbinding geeft de nieuwste versie), offline de
+        // index.html uit de precache, die altijd bij de scripts van de actieve versie hoort. Niet apart cachen: een
+        // los bewaarde pagina kan naar scripts verwijzen die niet (meer) in de precache staan. Daarom geen
+        // navigateFallback en geen directoryIndex: anders komt /logboek/ altijd uit de precache.
         navigateFallback: null,
         directoryIndex: 'geen-mapindex',
         runtimeCaching: [
           {
             urlPattern: ({ request, url }) => request.mode === 'navigate' && !url.pathname.endsWith('/reset.html'),
-            handler: 'NetworkFirst',
+            handler: 'NetworkOnly',
             options: {
-              cacheName: 'pagina',
-              networkTimeoutSeconds: 4,
               fetchOptions: { cache: 'no-cache' },
-              matchOptions: { ignoreSearch: true },
               precacheFallback: { fallbackURL: '/logboek/index.html' },
             },
           },
