@@ -20,13 +20,13 @@ Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code
 |---|---|
 | App | React 18 + Vite + TypeScript, PWA (vite-plugin-pwa, Workbox). Een nieuwe versie neemt zelf over, ruimt oude caches op en herlaadt open vensters (`public/sw-vensters.js`), zodat er nooit twee versies tegelijk draaien. De app-pagina zelf komt altijd van het netwerk (offline de index.html uit de precache, die bij de actieve versie hoort), dus herladen met verbinding geeft altijd de nieuwste versie. "Nieuwe versie beschikbaar · Herladen" staat op elk scherm; op een fout-, herstel- of sleutelscherm en op het keuzescherm van de eerste keer wordt een nieuwe versie direct actief (alleen halverwege de eerste keer, wachtzin wijzigen of herstellen wacht hij, met de balk). Noodpagina `public/reset.html` (buiten de precache en de navigatie-route): meldt de service worker af en wist de app-caches, nooit IndexedDB of andere gegevens; elk foutscherm linkt ernaar |
 | Styling | Eén CSS-bestand (`src/app.css`) met het ontwerpsysteem als variabelen: kleuren (marineblauw, zeegroen accent, warm lichte achtergrond), typografie (systeemlettertype, tabular-nums voor getallen), ruimtes, hoekradius, schaduwen. Geen UI-framework. Licht/donker via `prefers-color-scheme`. Iconen: lucide-react, één lijndikte (1,75) en maat via `--icon`. Grafieken in eigen SVG (`src/components/BarChart.tsx`) |
-| Kaart | Offline, in eigen SVG (`src/components/SeaMap.tsx`): alleen land uit Natural Earth (publiek domein), vooraf vereenvoudigd door `scripts/build-coast.mjs` tot `public/coast/` (grof wereldbestand plus fijne vakken van 10 × 10 graden, ca. 3,5 MB) en in de precache. Geen kaartdienst, geen tegels van buiten; GPS via `navigator.geolocation` (geen netwerk) |
+| Kaart | Offline, in eigen SVG (`src/components/SeaMap.tsx`), alleen land. Overal Natural Earth (publiek domein), vooraf vereenvoudigd door `scripts/build-coast.mjs` tot `public/coast/` (grof wereldbestand plus fijne vakken van 10 × 10 graden, ca. 3,5 MB, in de precache). In vier vaargebieden (Bovenwindse Eilanden en BVI, Dalmatië, Saronische Golf en Cycladen, Nederland met de Waddenzee) vanaf zoom 9 gedetailleerde OpenStreetMap-kustlijnen in twee detailniveaus, met meren (Nederland) en namen van eilanden, havens en plaatsen: gebouwd door `scripts/build-osm.mjs` in `kaart.yml` tot `public/osm/` (ca. 6 MB), per vak pas geladen als het in beeld komt en daarna offline bewaard (runtime-cache, niet in de precache); daar wordt Natural Earth weggeknipt. Naamsvermelding "© OpenStreetMap-bijdragers" klein op de kaart zodra OSM-data in beeld is, en onder Instellingen → Over (ODbL). Geen kaartdienst, geen tegels van buiten; GPS via `navigator.geolocation` (geen netwerk) |
 | Opslag telefoon | IndexedDB via `idb` |
 | Opslag bron | Private GitHub-repo `logboek-olivier/logboek-data`, via GitHub REST API (`api.github.com`) |
 | Hosting | GitHub Pages vanuit publieke repo `logboek-olivier/logboek`. URL: `https://logboek-olivier.github.io/logboek/`. Vite `base: '/logboek/'`, PWA-scope en start_url `/logboek/`. Geen aparte testorganisatie |
 | Crypto | WebCrypto (ingebouwd). Geen crypto-bibliotheken |
 | Ontgrendelen | Wachtzin; daarna WebAuthn (vingerafdruk, Chrome op Android) |
-| Automatisering | GitHub Actions: `deploy.yml` (bij elke push naar `main` en dagelijks: bouwt ook `public/rates.json` uit de ECB-koersen), `test.yml`. Later in `logboek-data`: vervaldatum, back-up |
+| Automatisering | GitHub Actions: `deploy.yml` (bij elke push naar `main` en dagelijks: bouwt ook `public/rates.json` uit de ECB-koersen), `test.yml`, `kaart.yml` (buiten `main`, als het kaartscript wijzigt: bouwt `public/osm/` uit de OSM-landpolygonen van osmdata.openstreetmap.de en de Overpass API, en legt het vast op de branch; de app praat zelf nooit met die diensten). Later in `logboek-data`: vervaldatum, back-up |
 | Tests | Vitest + Playwright |
 | Ontwikkelomgeving | Windows, VS Code, Claude Code. Scripts moeten werken in PowerShell (geen bash-only scripts in `package.json`) |
 | Taal | Nederlands en Engels. Eigen vertaalsysteem in `src/i18n/` (`nl.ts` is de bron met getypeerde sleutels; `en.ts` moet elke sleutel hebben, anders faalt `tsc`; een test controleert beide talen). Getallen en datums volgen de taal (nl-NL / en-GB). Standaard de taal van de telefoon; keuze per apparaat in Instellingen → Taal (`localStorage`, niet gesynct). Engelse vaktermen (skipper, Yacht Week, tide) blijven ook in het Nederlands Engels |
@@ -90,6 +90,7 @@ logboek-data/
   places.json.enc        # plaatsen met een punt op de kaart
   reminders.json.enc     # termijnen: deadlines en vervaldatums
   checklists.json.enc    # alleen eigen en bewerkte checklists; meegeleverde staan in de code
+  calendar.json.enc      # agenda: alleen dagen die Olivier zelf instelt
   documents/index.json.enc   # release 3
   documents/<uuid>.bin       # release 3
 ```
@@ -137,6 +138,7 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 - De rol op een dag volgt uit het type: training-geven → instructeur; skipper-charter, zelf-cruisen en delivery → schipper; zelf-trainen → trainee; overig → laatst gebruikt.
 - **Route-sjablonen** (`src/model/routes.ts`): trips die grotendeels dezelfde etappes varen (minstens de helft gedeeld, in beide richtingen) vormen een sjabloon; de nieuwste trip is het voorbeeld. Nieuwe trip biedt onder "Snel starten" "Herhaal vorige trip" en de sjablonen ("A → B (3×)"): boot, type, basis, charter, gebied, organisatie, aantal dagen en de geplande etappes (`route`, dag 0 = startdatum) komen mee; "Planning wissen" haalt de etappes weg. Op Vandaag staat bij een geplande etappe die nog niet gelogd is "Zoals gepland" (logt van, naar en nm uit het afstandsvoorstel, anders de afstand uit het sjabloon, met boot en rol uit de trip) naast "Aanpassen" (Toevoegen → Dag met van en naar voorgevuld). Toevoegen → Dag vult de geplande etappe van die datum ook voor.
 - Een nieuwe import houdt het id van een bestaande tocht met dezelfde naam en eerste dag, en ruimt vastgelegde weken (met type of datums) nooit op.
+- **Deelnemers** (`src/model/guests.ts`, regel 14): voornaam, optioneel land en kort kenmerk (initiaal of bijnaam). Een dubbele voornaam in een trip zonder land of kenmerk krijgt de vraag om een van beide; de naam wordt dan "Nick B." (kenmerk) of "Nick (VS)" (land). Terugkerende gast: dezelfde voornaam en hetzelfde land als in een eerdere trip (een ander kenmerk is iemand anders, een al gekoppelde gast telt niet nog eens): Deze trip vraagt "Is Nick (VS) dezelfde persoon als Nick (VS) in <trip>?"; pas na ja gekoppeld (`guestId` = de eerdere gast), na nee onthouden (`guestId` = het eigen id). Een andere naam of een ander land maakt de koppeling los.
 
 **Leg** (één dag op het water)
 `id, tripId, date, fromPlace, fromCountry, toPlace, toCountry, role (schipper|co-schipper|bemanningslid|trainee|instructeur), boat, skipperName?, coSkipperName?, windBft? (tekst, bijv. "2-3"), nmInland, nmSea, nmTidal, nightHours, notes?, dateEstimated (boolean), source (import|manual), updatedAt, deletedAt`
@@ -146,7 +148,8 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 **Place** (`places.json.enc`, `src/model/places.ts`)
 `id, name, lat, lon, country?, updatedAt, deletedAt`
 - Een plaats krijgt een punt door op de kaart te tikken of "Huidige locatie" te kiezen, plus een naam; dezelfde naam (zonder hoofdletters, accenten, spaties en leestekens: "Tiha bay" = "Tihabay") is dezelfde plaats. Plaatsen uit de import zonder punt zet Olivier onder Meer → Plaatsen met één tik op de kaart vast (met ongedaan maken). Dagen verwijzen via de naam naar een plaats; plaatsen zonder punt (bijvoorbeeld uit de import) blijven gewoon namen.
-- **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen, ook geïmporteerde dagen), wat Olivier echt gevaren heeft. Een kleine spelvariant van een lange naam (één letter verschil vanaf 8 letters: "Palmizana" / "Palimizana") telt als dezelfde plaats. Twijfel (één letter verschil vanaf 5 letters, twee vanaf 10) wordt een voorstel "Samenvoegen" in Toevoegen → Dag en onder Meer → Plaatsen: alle dagen krijgen de meest gebruikte schrijfwijze, met ongedaan maken. Een nieuwe naam die op een bekende lijkt, krijgt "Bedoel je …?". Het vult het nm-veld voor zolang Olivier niets typt. Zonder eerdere keren alleen een hint "Hemelsbreed …" (grootcirkel), nooit als voorstel.
+- **Afstandsvoorstel:** het gemiddelde van de laatste 5 dagen met dezelfde route (van en naar, in beide richtingen, ook geïmporteerde dagen), wat Olivier echt gevaren heeft. Een kleine spelvariant van een lange naam (één letter verschil vanaf 8 letters: "Palmizana" / "Palimizana") telt als dezelfde plaats. Twijfel (één letter verschil vanaf 5 letters, twee vanaf 10) wordt een voorstel "Samenvoegen" in Toevoegen → Dag en onder Meer → Plaatsen: alle dagen krijgen de meest gebruikte schrijfwijze, met ongedaan maken. Een nieuwe naam die op een bekende lijkt, krijgt "Bedoel je …?". Het vult het nm-veld voor zolang Olivier niets typt.
+- **Waterroute** (`src/model/waterroute.ts`, `src/model/estimate.ts`), zonder eerdere keren dezelfde route: de kortste route over water om land heen met een kleine veiligheidsmarge (cellen naast land zijn duurder), op een raster van ca. 100 × 100 m uit de OpenStreetMap-kustlijnen (`public/osm/<gebied>/water.bin`; alleen binnen één vaargebied), maal Oliviers persoonlijke factor: de mediaan van gelogde nm gedeeld door de waterroute, uit zijn recentste dagen waarvan beide plaatsen een punt hebben (uitschieters tellen niet); met minder dan 5 dagen 1,2. Getoond als "± 16 nm (water 13 nm × jouw factor 1,2)", voorgevuld zoals het afstandsvoorstel, en de route staat op de kaart. Volgorde: het gemiddelde van de laatste 5 keer dezelfde route, anders de gecorrigeerde waterroute, nooit hemelsbreed. Buiten de vaargebieden of zonder kaartdata: geen voorstel. Getest op openbare routes (marge 15%), zonder gegevens uit het logboek.
 
 **Reminder** = termijn (`reminders.json.enc`, `src/model/reminders.ts`)
 `id, title, date, kind (deadline|vervalt), doneAt (jjjj-mm-dd of null), note?, repeat? (maandelijks|jaarlijks), updatedAt, deletedAt`
@@ -161,6 +164,15 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 
 **Zeiltijd exporteren** (`src/model/sailtime.ts`, Logboek → Zeiltijd exporteren): per dag of per trip met boot, model en lengte (uit de trip, anders naam en model uit de kolom Schip), rol, route, nm, getijdenwater en nachturen, plus totalen per rol. Filter op periode en rol. Afdrukken of PDF via de printfunctie (alleen de tabellen, zwart op wit, RYA/ASA-stijl); er gaat niets naar buiten.
 
+### Agenda
+
+**CalendarDay** (`calendar.json.enc`, `src/model/calendar.ts`)
+`id (dag:<jjjj-mm-dd>), date, type (werk|rust|reis|thuis|beschikbaar|optie), location?, travel?: {from, to, flight?}, boat?, note?, updatedAt, deletedAt`
+- De agenda is het centrale overzicht van het seizoen. Elke dag heeft één dagsoort. Opgeslagen worden alleen dagen die Olivier zelf instelt (het id volgt uit de datum, zodat twee apparaten dezelfde dag samenvoegen); "Automatisch" maakt een tombstone. De rest volgt, met deze voorrang: eigen instelling > binnen een trip (werk; ook de eerste en laatste dag, als er alleen gasten worden afgezet of opgehaald) > dag met een gelogde etappe (werk) > hoogstens twee dagen tussen twee trips (rust) > toekomst zonder iets (beschikbaar) > verleden zonder iets (leeg). Trips zonder datums krijgen die uit hun dagen, dus ook geïmporteerde tochten staan er vanzelf in, met boot en nm.
+- **Trip en agenda blijven gelijk.** Een trip maken, verlengen of verplaatsen (ook via de planningsimport of "aanvullen") laat zelf ingestelde dagen in de nieuwe periode plaatsmaken voor werk; een dag met een notitie, plaats of reisgegevens blijft als werkdag staan. Een zelf ingestelde werkdag zonder gegevens die buiten de trip valt, vervalt. Andersom: werk op een dag vlak na of vóór een trip (hoogstens 3 dagen ertussen) biedt "<trip> verlengen tot …", en een andere dagsoort op de eerste of laatste dag maakt de trip een dag korter (niet bij een trip van één dag of als die dag gelogd is); beide met ongedaan maken.
+- **Planning importeren** (`src/import/planning.ts`, CSV of Excel): kolommen start, eind, soort (werk|rust|reis|thuis|optie), naam, type, organisatie, boot, gebied, notitie; datums jjjj-mm-dd (of d-m-jjjj). Werk wordt een trip, de andere soorten zelf ingestelde dagen. Eerst een voorbeeld met wat er gemaakt wordt en de overlappingen met trips en eigen dagen; een overlappende regel gaat alleen mee als Olivier hem aanzet ("Staat er al" bij dezelfde naam en startdatum). Meldingen noemen rij en kolom, nooit celinhoud.
+- **Delen** (PDF via de printfunctie, periode te kiezen): "Alleen beschikbaarheid" (beschikbaar, bezet, optie; geen namen, boten of bedragen) of "Volledige planning" (trips met type en gebied, reisdagen van–naar; geen boten, vluchten, bedragen, gastnamen of notities).
+
 ### Zeilgeld
 
 Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` in `transactions.json.enc`, zodat de latere volledige geldmodule (rekeningen, bankimports, netto waarde) zonder migratie kan aansluiten.
@@ -172,6 +184,7 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 - Alles wordt in euro getoond (`src/model/rates.ts`). Volgorde: `receivedEur` (werkelijk ontvangen, optioneel), dan de opgeslagen koers (`amountEur = amount / rate`, `rate` = valuta per 1 EUR, `rateDate`), dan de ECB-koers uit `public/rates.json` van de transactiedatum of de laatste werkdag daarvoor.
 - Een koers wordt opgeslagen zodra hij definitief is: bij nieuwe transacties direct, bij bestaande één keer per sessie na een geslaagde sync. Is de datum nieuwer dan het koersbestand (of is de app offline), dan geldt tijdelijk de laatst bekende koers, gemarkeerd als "voorlopig"; die wordt nooit opgeslagen. Zonder koersbestand staat een bedrag apart per valuta, nooit omgerekend met een verzonnen koers.
 - `public/rates.json` (`{format: 'logboek-rates', source, dates[], rates: {USD: [...], …}}`) bouwt `scripts/build-rates.mjs` in `deploy.yml` uit de ECB-referentiekoersen (volledige historie); XCD = USD × 2,70. Het bestand staat in `.gitignore` en wordt door de service worker "eerst netwerk, offline uit de cache" geladen, niet geprecachet. De bouwdatum is de commitdatum, zodat de dagelijkse build geen update meldt.
+- **Fooi van wie** (`tipFrom`, alleen bij een fooi, achteraf te wijzigen): één of meer deelnemers van de trip (per persoon een bedrag, dan is het totaal de som, of samen gegeven), de hele groep, of onbekend (standaard, ook alle oudere fooien). In de overzichten tellen samen gegeven en groepsfooi gelijk verdeeld, fooi van onbekend alleen bij de trip, en het deel van iemand die van de trip is gehaald als onbekend.
 - Inkomsten horen bij een trip: Toevoegen → Inkomsten kiest standaard de trip waarin de datum valt (anders de lopende trip) en volgt de datum zolang Olivier niets anders kiest; alleen zonder enige trip mag het leeg blijven. Bij uitgaven volgt de trip uit de datum (te wijzigen onder "Meer velden"). In het bewerkblad is de trip te kiezen.
 - Later toe te voegen (release 4): `accountId, priority, tag, counterparty, importId`, volgens Oliviers categorieën (1 loon, 2 lening, 3 gift, 4 overig; −1 verplicht, −2 normaal, −3 eigen tijd, −4 vakantie; 0 overboeking).
 
@@ -227,15 +240,17 @@ Opnieuw importeren mag niet dubbelen: legs krijgen `source = import` en een impo
 
 **Boten uit de kolom Schip** (`src/model/boats.ts`): meestal "Naam (Model)", soms alleen een model (tekst met een getal) of alleen een naam (zonder getal), soms met een lengte in het model ("38ft"). De import zet naam en model op de trip. De bootlijst is afgeleid uit de trips (opgeslagen bootgegevens, anders de boot uit de dagen), dus ook eerder geïmporteerde data werkt zonder opnieuw te importeren. Lengte (getal met ft of m, of een modelnummer: "4.2" = 42 ft, "42" = 42 ft, "519" = 52 ft, vanaf 600 centimeters) en catamaran (bekende merken) zijn alleen een voorstel: zichtbaar ingevuld en gemarkeerd in het scherm "Bootgegevens controleren", nooit stil opgeslagen. Dat scherm komt direct na een import, en via een melding in het Logboek voor boten met ontbrekende gegevens: per boot naam, model, soort (eenromp/catamaran) en lengte, "Alles bevestigen" schrijft alles naar de trips van die boot; overslaan mag. Onder Meer → Boten staat dezelfde lijst.
 
+Testfixture `tests/fixtures/planning-nep.csv` (gegenereerd door `scripts/fake-planning-csv.ts`): een verzonnen seizoen met werk, rust, reis, thuis en optie.
+
 Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures`, zelfde opbouw als het origineel: Sheet1 met samenvattingsformules in J1:O4 en kopregel op rij 6, Blad1 met de rollenlijst, data-validatie-extensie) , `tests/fixtures/boten-nep.csv` (gegenereerd door `scripts/fake-boats-csv.ts`: CSV-export met komma's, datums als d/m/jj en dezelfde soorten waarden in Schip, met verzonnen bootnamen en modellen) en `tests/fixtures/mijlen-nep.csv`: gegenereerd, zelfde opbouw (samenvattingsregels, kopregel, lege rijen tussen tochten, lege datums, `;` als scheidingsteken), verzonnen plaatsen en getallen.
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Geld, Termijnen, Boten, Plaatsen, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Geld, Termijnen, Boten, Plaatsen, Cursussen, Studentenarchief en Instellingen (met een terugknop naar Meer of naar de agenda). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
-3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Onderdelen:
+3. **Vandaag:** sync-status bovenaan (tikken of omlaag trekken synchroniseert). Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Vandaag volgt de dagsoort uit de agenda: bovenaan één regel met de dagsoort (tik = dagblad); bij reis van → naar en de vlucht; bij rust en thuis "Niets te loggen vandaag" en geen planning, "Zoals gepland" of log-knop. Onderdelen:
    - de planning van vandaag uit de lopende planning (alleen als er vandaag iets gepland is; tik op een thema = al zijn onderwerpen geoefend voor de hele groep);
    - bij een geplande etappe (route-sjabloon) "Zoals gepland" en "Aanpassen";
    - de knop "Dag van vandaag loggen" (opent Toevoegen → Dag, voorgevuld);
@@ -247,7 +262,7 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - Vergeten dagen (binnen de trip, tot en met vandaag, zonder gelogde dag): melding met één knop die Toevoegen → Dag op die datum opent.
    - Na de einddatum "Trip afronden": samenvatting (dagen, nm, inkomsten in euro, deelnemers met resultaat), cijfer en één zin "wat leerde ik"; reviewscore met citaten van gasten ingeklapt (Engelstalige citaten blijven Engels).
    - Vaste checklists bij het type van de trip (safety briefing, check-in en check-out, paklijst), af te vinken per trip en als sjabloon te bewerken.
-   - Deelnemers.
+   - Deelnemers (met kenmerk of land bij een dubbele voornaam) en bij een terugkerende gast de vraag "Is … dezelfde persoon als … in <trip>?" met ja en nee.
    - Planning (bij training geven): wizard in drie schermen (dagen, groepen, concept) met grote thema's per dagdeel, blok met één tik een dag eerder of later, bewerken met tikken, "Toon aan studenten" (alleen de planning volledig scherm, zonder onderbalk of andere gegevens, terug met één knop), delen als tekst via `navigator.share` of als PDF via de printfunctie, in een exporttaal los van de app-taal.
    - Checklists per deelnemer: grote vinkvakken (één tik = volgende status), examenkritische onderwerpen op "nieuw" bovenaan, voortgangsbalk per groep, "Alles geoefend/beheerst" per groep, "Groep afvinken" voor één onderwerp voor meerdere studenten.
    - Gezeilde dagen met nm-totaal; elke dag is aan te tikken en te bewerken; "Dag toevoegen" opent Dag op de eerstvolgende vergeten dag. De eerste dag van een trip begint op de basis.
@@ -259,20 +274,26 @@ Onderste balk: **Vandaag · Deze trip · + · Logboek · Meer**, vijf gelijke va
    - "Snel starten": Herhaal vorige trip en route-sjablonen uit de historie;
    - naam, type als knoppen, startdatum (vandaag), aantal dagen (7, tot 120);
    - boot: naam, model, lengte, basis, soort en charterbedrijf, met suggesties uit eerdere trips; gebied, organisatie (niets verplicht);
-   - deelnemers één per regel met optioneel niveau en cursus.
+   - deelnemers één per regel met optioneel land, initiaal of bijnaam (geen achternaam), niveau en cursus.
+
+   Vanuit de agenda (periode markeren) opent Nieuwe trip met de gemarkeerde datums; Herhaal vorige trip neemt dan de laatste trip vóór die periode en laat de datums staan.
 5. **Toevoegen (+):** tabs **Dag · Inkomsten · Uitgave**, opent op Dag. Snelkoppelingen op het app-icoon (manifest `shortcuts`: Dag loggen, Inkomsten, Uitgave) openen `?toevoegen=dag|inkomsten|uitgave`: na ontgrendelen (of binnen de 5 minuten van de sessie) direct Toevoegen op dat tabblad; de parameter verdwijnt meteen uit de adresbalk.
-   - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar (beide met suggesties uit eerdere plaatsen en een kaartknop: offline kaart, bekende plaatsen als stip, tik = nieuw punt met naam, "Huidige locatie"), nm (voorgevuld met het afstandsvoorstel), watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Niets is verplicht.
-   - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bron, valuta, datum, notitie.
+   - Dag: alle velden direct in beeld, compact: datum (vandaag), van (vorige bestemming), naar (beide met suggesties uit eerdere plaatsen en een kaartknop: offline kaart, bekende plaatsen als stip, tik = nieuw punt met naam, "Huidige locatie"), nm (voorgevuld met het afstandsvoorstel of de waterroute; op de kaart de route vanaf de andere plaats), watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Niets is verplicht.
+   - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bij een fooi "Van wie" (de deelnemers als knoppen, Hele groep, Onbekend; bij meerdere personen "Samen gegeven" of "Per persoon"), bron, valuta, datum, notitie.
    - Uitgave: bedrag, omschrijving, soort (kosten/investering); bron, valuta, datum en trip onder "Meer velden".
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
-6. **Logboek:** totalen bovenaan (nm per rol, per watertype, nachturen, dagen, trips). Grafiek nm per maand (12 maanden). "Nieuwe trip" en "Zeiltijd exporteren". Daaronder trips per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen; "Trip bewerken" opent het tripscherm. Knop "Importeren" (Excel of CSV).
-7. **Geld** (onder Meer): alles in euro, het originele bedrag klein eronder ("voorlopig" bij een voorlopige koers). Saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per bron; transacties per maand met bewerken (ook het werkelijk ontvangen eurobedrag) en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).
+6. **Agenda:** maandraster met een kleur per dagsoort (optie gestreept), een balk met de tripnaam over de dagen van elke trip, nm klein in het vakje en een stip voor termijnen (ook de vervaldatum van de token). Vegen of de pijlen naar een andere maand, de maandkiezer, "Naar vandaag". Onderaan de werk-, rust-, reis- en thuisdagen en nm van de maand, en na "Toon bedragen" de inkomsten van de maand en per werkdag. Een knop naar het Logboek.
+   - Dagblad (tik op een dag): dagsoort als knoppen (één tik slaat op; "Automatisch" volgt weer trips en dagen); bij werk de trip, de boot (per dag te overschrijven), "Zoals gepland" of "Dag loggen", nm, de inkomsten van die dag achter "Toon bedragen" en zo nodig "<trip> verlengen tot …"; bij reis van, naar en vlucht; anders een plaats; een notitie; de termijnen van die dag en "Termijn toevoegen" met die datum.
+   - Periode markeren: tik op een begindag en een einddag en kies een dagsoort; werk opent Nieuwe trip met die datums, of verlengt een trip die vlak ervoor eindigt of erna begint.
+   - Planning importeren, Seizoen (één regel per week van deze week tot het einde van de planning met naam, datums, type, boot en gebied, gaten als "Beschikbaar: …", "Eerdere weken tonen") en Delen (zie Agenda in het datamodel).
+6. **Logboek** (onder Meer en vanuit de agenda): totalen bovenaan (nm per rol, per watertype, nachturen, dagen, trips). Grafiek nm per maand (12 maanden). "Nieuwe trip" en "Zeiltijd exporteren". Daaronder trips per maand met vaste maandkoppen, nieuwste eerst, uitklapbaar naar de dagen; "Trip bewerken" opent het tripscherm. Knop "Importeren" (Excel of CSV).
+7. **Geld** (onder Meer): alles in euro, het originele bedrag klein eronder ("voorlopig" bij een voorlopige koers). Saldo, inkomsten en kosten; grafieken fooi per week (12 weken) en inkomsten/kosten per maand (12 maanden) met tabel; per werkdag (per maand de werkdagen in de agenda tot en met vandaag, de inkomsten en het bedrag per werkdag); fooi per gast (terugkerende gasten samen), gemiddeld per gast per trip, per soort trip en per land (weergaven zonder regels zijn niet te kiezen); per bron; transacties per maand met bewerken (ook het werkelijk ontvangen eurobedrag) en verwijderen. Geen netto waarde, geen bankrekeningen (release 4).
 8. **Termijnen** (onder Meer): alle openstaande termijnen, eerstvolgende eerst, toevoegen, en de afgeronde.
 8. **Cursussen** (onder Meer): per bond, met import (JSON), per cursus bewerken (groepen en onderwerpen toevoegen, wijzigen, verplaatsen, examenkritisch) en delen.
 8. **Boten** (onder Meer): alle boten uit de trips met naam, model, soort en lengte, in één keer te bewerken (zie Boten uit de kolom Schip).
 8. **Plaatsen** (onder Meer): alle plaatsen uit de dagen, meest gebruikt eerst, met of zonder punt; tik = op de kaart zetten (één tik op de kaart); voorstellen om spelvarianten samen te voegen bovenaan.
 9. **Studentenarchief** (onder Meer): studenten zonder trip en gearchiveerde studenten; terugzetten en wissen.
-10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash).
+10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, export (versleuteld), jaardoel, taal (Nederlands/Engels), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash, kaartbronnen met de OpenStreetMap-naamsvermelding).
 
 Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
 
@@ -286,18 +307,20 @@ logboek/
   README.md
   index.html
   vite.config.ts
-  public/            manifest-iconen, bip39-nl/en woordenlijst, coast/ (offline kaart), sw-vensters.js, reset.html + reset.js (noodpagina)
+  public/            manifest-iconen, bip39-nl/en woordenlijst, coast/ (offline kaart), osm/ (OpenStreetMap-kaartdata per vaargebied, gebouwd door kaart.yml),
+                     sw-vensters.js, reset.html + reset.js (noodpagina)
   src/
     crypto/          keys.ts, encrypt.ts, passphrase.ts, recovery.ts, webauthn.ts
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts, sync.ts, store.ts, token.ts, fingerprint.ts
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
                      weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts, ics.ts,
-                     checklists.ts, seed-checklists.ts, sailtime.ts
-    import/          mileage-csv.ts (mijlenregels), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
+                     checklists.ts, seed-checklists.ts, sailtime.ts, calendar.ts (agenda), guests.ts (deelnemers en fooi per persoon), tip-draft.ts,
+                     osm.ts (kaartdata laden), waterroute.ts, estimate.ts (waterroute × persoonlijke factor)
+    import/          mileage-csv.ts (mijlenregels), planning.ts (planning importeren), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), SailingExport, Deadlines, Boats, Places,
-                     Money, QuickAdd, More, Settings
-    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, MapSheet, Sheet, EditSheets, WeekSheet, CurriculumSheets,
+                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare
+    components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, MapSheet, Sheet, EditSheets, WeekSheet, CurriculumSheets, DaySheet, PeriodSheets, TipFromPicker,
                      SyncStatusLine, Icon, Toast, …)
     session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10), meta terugzetten op GitHub
     screen-files.ts  welke databestanden bij welk scherm horen (melding bij een onleesbaar bestand)
@@ -307,15 +330,16 @@ logboek/
     app.css          ontwerpsysteem
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
-                     foutmatrix, screen-files, upgrade-samples) + playwright (upgrade, updates, setup, unlock, sessie, import, boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen,
+                     foutmatrix, screen-files, upgrade-samples, calendar, planning, trip-agenda, guests, osm-lib, waterroute) + playwright (upgrade, updates, setup, unlock, sessie, import, boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen,
+                     agenda, agenda-planning, agenda-links, fooi per persoon, kaart per vaargebied,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
     upgrade/         voorbeeld per databestand en de generator die in de vorige release draait
   .github/workflows/ deploy.yml (alleen vanaf main, plus dagelijks voor de koersen), test.yml (bij elke PR en push;
-                     uploadt schermafbeeldingen)
+                     uploadt schermafbeeldingen), kaart.yml (kaartdata bouwen op een branch buiten main)
   scripts/           build-previous.mjs (vorige release voor de upgradetest), generate-fake-data.ts, fake-xlsx.ts, fake-boats-csv.ts, generate-icons.mjs, build-rates.mjs (ECB → public/rates.json),
-                     build-coast.mjs (Natural Earth → public/coast/)
+                     build-coast.mjs (Natural Earth → public/coast/), build-osm.mjs + osm-lib.mjs (OpenStreetMap → public/osm/), fake-planning-csv.ts
 ```
 
 ## Werkwijze
@@ -340,7 +364,7 @@ logboek/
 Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt niet gebouwd.
 
 1. **Bruikbaar (gedaan).** Basis afgerond op 25 oktober 2026 (skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag, Instellingen, vingerafdruk, PWA op telefoon; in gebruik voor mijlen en zeilgeld). Daarbovenop: import van Excel en CSV ook op Android, sessie die verversen en wisselen van app overleeft, vast ontwerpsysteem met iconen en grafieken, bewerken met ongedaan maken, onderhoud vanaf de telefoon (versie, foutdetails).
-2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen. Daarna: herstel bij een onleesbaar bestand op GitHub, Toevoegen met Dag eerst, weken (type, deelnemers, afronden met review), onderbalk Vandaag · Deze trip · + · Logboek · Meer, en geld in euro met ECB-koersen. Daarna gebruiksvriendelijk: Deze trip (trips van elke lengte, bootgegevens, eerdere en komende trips, vergeten dagen), Toevoegen met Dag · Inkomsten · Uitgave, offline kaart met afstandsvoorstel uit eerdere routes, termijnen (deadlines en vervaldatums samen) en planning met grote thema's.
+2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen. Daarna: herstel bij een onleesbaar bestand op GitHub, Toevoegen met Dag eerst, weken (type, deelnemers, afronden met review), onderbalk Vandaag · Deze trip · + · Logboek · Meer, en geld in euro met ECB-koersen. Daarna gebruiksvriendelijk: Deze trip (trips van elke lengte, bootgegevens, eerdere en komende trips, vergeten dagen), Toevoegen met Dag · Inkomsten · Uitgave, offline kaart met afstandsvoorstel uit eerdere routes, termijnen (deadlines en vervaldatums samen) en planning met grote thema's. Daarna overzicht: de agenda als centraal overzicht van het seizoen (dagsoort per dag, periode markeren, planning importeren, seizoensoverzicht, delen), koppelingen met Vandaag, trips, termijnen en geld, fooi per persoon met terugkerende gasten, en een gedetailleerde OpenStreetMap-kaart met waterroute en persoonlijke factor.
 3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
 4. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, aandelenkoersen, scenario's.
 5. **Doelen en skills.** Doelen, metingen, ademtrainer, skills, voortgang Yachtmaster/ASA.
