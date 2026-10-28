@@ -38,6 +38,16 @@
   --chart-2: #c98a5b;
   --chart-track: #e9e3d6;
   --scrim: rgb(11 27 46 / 0.4);
+  /* Agenda: één kleur per dagsoort (optie gestreept). */
+  --day-werk: #c9e7de;
+  --day-rust: #e9e1f3;
+  --day-reis: #f7e2c4;
+  --day-thuis: #dce6f3;
+  --day-beschikbaar: var(--surface);
+  --day-optie: #c9e7de;
+  --day-leeg: var(--surface-2);
+  --cal-bar: var(--navy-700);
+  --cal-bar-text: #ffffff;
 
   /* Typografie */
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -107,6 +117,13 @@
     --chart-2: #e0a77c;
     --chart-track: #1c3550;
     --scrim: rgb(0 0 0 / 0.55);
+    --day-werk: #17453e;
+    --day-rust: #2f2a47;
+    --day-reis: #413220;
+    --day-thuis: #1d3553;
+    --day-optie: #17453e;
+    --cal-bar: #74d6be;
+    --cal-bar-text: #05211b;
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
     --shadow-2: 0 6px 20px rgb(0 0 0 / 0.45);
     --shadow-bar: 0 -1px 0 var(--border), 0 -6px 20px rgb(0 0 0 / 0.3);
@@ -2453,3 +2470,257 @@ body.presenting .bottom-bar {
     break-inside: avoid;
   }
 }
+
+/* ---------- Agenda ---------- */
+
+.agenda-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.agenda-month {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.agenda-month h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  text-transform: capitalize;
+}
+
+.agenda-title {
+  position: relative;
+  cursor: pointer;
+}
+
+.agenda-title input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.agenda-month .to-today {
+  margin-left: auto;
+}
+
+.cal {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  touch-action: pan-y;
+}
+
+.cal-weekdays,
+.cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.cal-weekdays span {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+}
+
+.cal-day {
+  grid-row: 1;
+  position: relative;
+  min-height: 64px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--day-leeg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-day.day-werk {
+  background: var(--day-werk);
+}
+
+.cal-day.day-rust {
+  background: var(--day-rust);
+}
+
+.cal-day.day-reis {
+  background: var(--day-reis);
+}
+
+.cal-day.day-thuis {
+  background: var(--day-thuis);
+}
+
+.cal-day.day-beschikbaar {
+  background: var(--day-beschikbaar);
+}
+
+.cal-day.day-optie {
+  background: repeating-linear-gradient(135deg, var(--day-optie) 0 6px, var(--surface) 6px 12px);
+}
+
+.cal-day.other-month {
+  opacity: 0.45;
+}
+
+.cal-day.today {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.cal-num {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.cal-nm {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tripbalk: over de dagen van de trip in deze week; tikken gaat naar de dag eronder. */
+.cal-bar {
+  grid-row: 1;
+  align-self: start;
+  z-index: 1;
+  height: 15px;
+  margin: 20px 2px 0;
+  padding: 0 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--cal-bar);
+  color: var(--cal-bar-text);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.cal-bar.lane-1 {
+  margin-top: 37px;
+}
+
+.cal-bar.lane-2 {
+  margin-top: 54px;
+  height: 6px;
+}
+
+.cal-week > .col-1 { grid-column-start: 1; }
+.cal-week > .col-2 { grid-column-start: 2; }
+.cal-week > .col-3 { grid-column-start: 3; }
+.cal-week > .col-4 { grid-column-start: 4; }
+.cal-week > .col-5 { grid-column-start: 5; }
+.cal-week > .col-6 { grid-column-start: 6; }
+.cal-week > .col-7 { grid-column-start: 7; }
+.cal-bar.span-1 { grid-column-end: span 1; }
+.cal-bar.span-2 { grid-column-end: span 2; }
+.cal-bar.span-3 { grid-column-end: span 3; }
+.cal-bar.span-4 { grid-column-end: span 4; }
+.cal-bar.span-5 { grid-column-end: span 5; }
+.cal-bar.span-6 { grid-column-end: span 6; }
+.cal-bar.span-7 { grid-column-end: span 7; }
+
+.agenda-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-1);
+  margin: 0;
+}
+
+.agenda-stat {
+  min-width: 0;
+  padding: var(--s-2) var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  text-align: center;
+}
+
+.agenda-stat.day-werk { background: var(--day-werk); }
+.agenda-stat.day-rust { background: var(--day-rust); }
+.agenda-stat.day-reis { background: var(--day-reis); }
+.agenda-stat.day-thuis { background: var(--day-thuis); }
+
+.agenda-stat dt {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-stat dd {
+  margin: 0;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Dagblad */
+.day-chip::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--day-leeg);
+  vertical-align: -1px;
+}
+
+.day-chip.day-werk::before { background: var(--day-werk); }
+.day-chip.day-rust::before { background: var(--day-rust); }
+.day-chip.day-reis::before { background: var(--day-reis); }
+.day-chip.day-thuis::before { background: var(--day-thuis); }
+.day-chip.day-beschikbaar::before { background: var(--day-beschikbaar); }
+.day-chip.day-optie::before { background: repeating-linear-gradient(135deg, var(--day-optie) 0 3px, var(--surface) 3px 6px); }
+
+.day-source {
+  margin: var(--s-2) 0 0;
+}
+
+.day-trip {
+  margin: 0;
+}
+
+.day-nm {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.day-tip-list {
+  margin: 0;
+  padding-left: var(--s-4);
+  font-variant-numeric: tabular-nums;
+}
+

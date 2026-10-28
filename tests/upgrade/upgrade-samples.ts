@@ -29,6 +29,10 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   ],
   'places.json.enc': [{ id: 'upg-place-1', name: 'Nephaven', lat: 52.1, lon: 4.3, country: 'NL', updatedAt: T, deletedAt: null }],
   'reminders.json.enc': [{ id: 'upg-rem-1', title: 'Nepdeadline', date: '2027-01-15', kind: 'deadline', doneAt: null, repeat: 'jaarlijks', updatedAt: T, deletedAt: null }],
+  'calendar.json.enc': [
+    { id: 'dag:2026-10-25', date: '2026-10-25', type: 'reis', travel: { from: 'Nepstad', to: 'Nephaven', flight: 'NP 123' }, note: 'Nepnotitie', updatedAt: T, deletedAt: null },
+    { id: 'dag:2026-10-26', date: '2026-10-26', type: 'werk', boat: 'Andere nepboot', updatedAt: T, deletedAt: null },
+  ],
   'checklists.json.enc': [
     { id: 'upg-list-1', title: { nl: 'Neplijst', en: 'Fake list' }, items: [{ id: 'i1', text: { nl: 'Nepvink', en: 'Fake tick' } }], tripTypes: ['skipper-charter'], source: 'eigen', updatedAt: T, deletedAt: null },
   ],

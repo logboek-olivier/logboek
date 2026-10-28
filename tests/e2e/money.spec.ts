@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
 import { mockRates } from './helpers/rates'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, openLogbook } from './helpers/logbook'
 
 // De service worker neemt direct over en haalt rates.json zelf op (page.route ziet dat niet): hier geblokkeerd.
 test.use({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block' })
@@ -66,7 +66,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
   await expect(page.locator('.trip')).toHaveCount(1)
   await expect(page.locator('.trip').first()).toContainText('Testtocht')
   await expect(page.locator('.trip').first()).toContainText('50 nm')

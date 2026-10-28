@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook } from './helpers/logbook'
 
 const fixture = fileURLToPath(new URL('../fixtures/mijlen-nep.csv', import.meta.url))
 
@@ -21,7 +21,7 @@ test('Niets verplicht: lege dag en lege trip opslaan met "Onvolledig"; op zondag
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
 
   // Import: oudere trips zonder bootgegevens.
-  await nav.getByRole('button', { name: 'Logboek', exact: true }).click()
+  await openLogbook(page)
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture)
   await page.getByRole('button', { name: 'Importeren' }).click()
   await page.getByRole('button', { name: 'Overslaan' }).click()

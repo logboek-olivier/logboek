@@ -1,14 +1,14 @@
-import { CalendarRange, CircleEllipsis, NotebookPen, Plus, Sun, type LucideIcon } from 'lucide-react'
+import { CalendarDays, CalendarRange, CircleEllipsis, Plus, Sun, type LucideIcon } from 'lucide-react'
 import { t, type MessageKey } from '../i18n'
 import { Icon } from './Icon'
 
-export type Tab = 'vandaag' | 'week' | 'toevoegen' | 'logboek' | 'meer'
+export type Tab = 'vandaag' | 'week' | 'toevoegen' | 'agenda' | 'meer'
 
 const TABS: { id: Tab; label: MessageKey; icon: LucideIcon }[] = [
   { id: 'vandaag', label: 'nav.today', icon: Sun },
   { id: 'week', label: 'nav.week', icon: CalendarRange },
   { id: 'toevoegen', label: 'nav.add', icon: Plus },
-  { id: 'logboek', label: 'nav.logbook', icon: NotebookPen },
+  { id: 'agenda', label: 'nav.calendar', icon: CalendarDays },
   { id: 'meer', label: 'nav.more', icon: CircleEllipsis },
 ]
 

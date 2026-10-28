@@ -1,13 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook } from './helpers/logbook'
 
 test.use({ viewport: { width: 360, height: 740 } })
 
 const fixture = new URL('../fixtures/mijlen-nep.xlsx', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
 async function importFixture(page: Page) {
-  await page.getByRole('button', { name: 'Logboek' }).click()
+  await openLogbook(page)
   await page.getByLabel('Mijlenbestand').setInputFiles(fixture)
   await page.getByRole('button', { name: 'Importeren' }).click()
   // Na de import: Bootgegevens controleren (overslaan mag).

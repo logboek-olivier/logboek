@@ -10,13 +10,13 @@ function isoInDays(days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-test('onderbalk Vandaag · Deze week · + · Logboek · Meer; onder Meer Geld, Cursussen, Studentenarchief, Instellingen; Vandaag toont geen bedragen; bevestiging zonder bedrag; volgende vervaldatum', async ({ page }) => {
+test('onderbalk Vandaag · Deze trip · + · Agenda · Meer; onder Meer Geld, Cursussen, Studentenarchief, Instellingen; Vandaag toont geen bedragen; bevestiging zonder bedrag; volgende vervaldatum', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page, newGithub({ tokenExpiration: `${isoInDays(40)} 12:00:00 UTC` }))
   await createNewLogbook(page)
 
   const bar = page.getByRole('navigation', { name: 'Hoofdnavigatie' })
-  for (const name of ['Vandaag', 'Deze trip', 'Toevoegen', 'Logboek', 'Meer']) {
+  for (const name of ['Vandaag', 'Deze trip', 'Toevoegen', 'Agenda', 'Meer']) {
     await expect(bar.getByRole('button', { name, exact: true })).toBeVisible()
   }
   await expect(bar.getByRole('button', { name: 'Geld' })).toHaveCount(0)

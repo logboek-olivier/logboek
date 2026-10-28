@@ -43,6 +43,8 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'checklists.json.enc':
       return store.put(item.path, item.record)
+    case 'calendar.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 

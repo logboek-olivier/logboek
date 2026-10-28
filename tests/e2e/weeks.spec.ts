@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fillBoat, openLogbook } from './helpers/logbook'
 
 function isoDaysAgo(days: number): string {
   const d = new Date()
@@ -88,7 +88,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.locator('.toast')).toContainText(L('week.closed'))
       await expect(card).toContainText(L('week.noActive'))
       // De afgeronde week staat in het logboek met zijn dag.
-      await nav.getByRole('button', { name: L('nav.logbook'), exact: true }).click()
+      await openLogbook(page, lang)
       await expect(page.locator('.trip').first()).toContainText(/Nepbasis /)
 
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })

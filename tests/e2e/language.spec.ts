@@ -34,7 +34,7 @@ test('Instellingen → Taal: Engels voor de hele app, met Engelse notatie, en bl
   for (const [tab, heading] of [
     ['Today', 'Today'],
     ['This trip', 'This trip'],
-    ['Logbook', 'Logbook'],
+    ['Calendar', 'Calendar'],
     ['Add', 'Add'],
     ['More', 'More'],
   ] as const) {

@@ -314,6 +314,32 @@ export interface Checklist extends SyncRecord {
   source: 'seed' | 'eigen'
 }
 
+/** Dagsoort in de agenda. optie = onder voorbehoud (gestreept). */
+export type DayType = 'werk' | 'rust' | 'reis' | 'thuis' | 'beschikbaar' | 'optie'
+export const DAY_TYPES: readonly DayType[] = ['werk', 'rust', 'reis', 'thuis', 'beschikbaar', 'optie']
+
+export interface DayTravel {
+  from: string
+  to: string
+  /** Vluchtnummer of korte omschrijving. */
+  flight?: string
+}
+
+/**
+ * Een dag die Olivier zelf heeft ingesteld (calendar.json.enc). Alle andere dagen worden afgeleid uit trips en dagen
+ * (src/model/calendar.ts). id = `dag:<datum>`, zodat twee apparaten dezelfde dag samenvoegen (laatste updatedAt wint);
+ * terug naar automatisch = tombstone.
+ */
+export interface CalendarDay extends SyncRecord {
+  date: string
+  type: DayType
+  location?: string
+  travel?: DayTravel
+  /** Boot op deze dag, als die afwijkt van de boot van de trip. */
+  boat?: string
+  note?: string
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -326,6 +352,7 @@ export interface Collections {
   'places.json.enc': Place
   'reminders.json.enc': Reminder
   'checklists.json.enc': Checklist
+  'calendar.json.enc': CalendarDay
 }
 
 export type CollectionPath = keyof Collections
@@ -341,6 +368,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'places.json.enc',
   'reminders.json.enc',
   'checklists.json.enc',
+  'calendar.json.enc',
 ]
 
 export function newId(): string {

@@ -72,6 +72,9 @@ afterEach(() => {
   sessions.length = 0
 })
 
+// Klare tekst die nooit over de lijn mag. Lang genoeg: drie tekens als 'Nep' komen in willekeurige base64 (de
+// ciphertext) gewoon voor, en maakten de test af en toe rood.
+const PLAIN = ['Nepweek', 'Nephaven', 'Nepanna', 'Nepcursus']
 const week = { id: 'w1', name: 'Nepweek', updatedAt: NOW, deletedAt: null }
 const day = { id: 'd1', tripId: 'w1', date: '2026-10-20', fromPlace: 'Nephaven', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', nmInland: 0, nmSea: 12, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: NOW, deletedAt: null }
 const tip = { id: 'f1', date: '2026-10-26', kind: 'fooi', amount: 20, currency: 'EUR', source: 'yacht-week', updatedAt: NOW, deletedAt: null }
@@ -153,7 +156,7 @@ async function expectRepaired(session: Session, shas: Map<string, string>, name:
   expect(store.list('transactions.json.enc')).toEqual([])
   expect(effectiveCurricula(store.list('curricula.json.enc')).map((c) => c.id)).toEqual(SEED_CURRICULA.map((c) => c.id))
   expect(readMarker(name)).toBeNull()
-  expect(github.requests.some((r) => (r.body ?? '').includes('Nep'))).toBe(false)
+  expect(github.requests.some((r) => PLAIN.some((plain) => (r.body ?? '').includes(plain)))).toBe(false)
 }
 
 describe('Logboek herstellen: toestand van de telefoon na PR #27', () => {
@@ -327,7 +330,7 @@ describe('Logboek herstellen: veiligheid', () => {
     expect(store.getStatus()).toEqual({ kind: 'synced' })
     for (const [path] of ON_GITHUB_K2) expect(await remoteRecords(path, k1.masterKey)).toEqual([])
     expect(store.list('trips.json.enc').map((t) => t.name)).toEqual(['Nepweek'])
-    expect(github.requests.some((r) => (r.body ?? '').includes('Nep'))).toBe(false)
+    expect(github.requests.some((r) => PLAIN.some((plain) => (r.body ?? '').includes(plain)))).toBe(false)
   }, 60_000)
 
   it('regel 10: de sleutel wacht hoogstens 5 minuten op de tik; daarna vraagt het scherm de wachtzin weer', async () => {
