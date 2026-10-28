@@ -2,6 +2,7 @@ import type { Store } from '../storage/store'
 import { parseShip } from './boats'
 import { active, compareLegs } from './derive'
 import { addDays } from './money'
+import { followTrip, tripRange } from './calendar'
 import { DEFAULT_WEEK_DAYS } from './weeks'
 import type { Leg, Trip } from './types'
 
@@ -107,7 +108,12 @@ export async function fillGap(store: Store, gap: Gap, value: string | number): P
     await store.putMany('trips.json.enc', trips.map((t) => ({ ...t, [gap.field]: value, updatedAt: now })))
   } else if (gap.kind === 'trip') {
     const trip = store.get('trips.json.enc').find((t) => t.id === gap.trip.id) ?? gap.trip
-    await store.put('trips.json.enc', { ...trip, [gap.field]: value, ...(gap.field === 'startDate' && !trip.endDate ? { endDate: addDays(value as string, DEFAULT_WEEK_DAYS - 1) } : {}), updatedAt: now })
+    const next = { ...trip, [gap.field]: value, ...(gap.field === 'startDate' && !trip.endDate ? { endDate: addDays(value as string, DEFAULT_WEEK_DAYS - 1) } : {}), updatedAt: now }
+    await store.put('trips.json.enc', next)
+    if (gap.field === 'startDate') {
+      const legs = store.list('legs.json.enc')
+      await followTrip(store, trip.id, tripRange(trip, legs), tripRange(next, legs))
+    }
   } else {
     const leg = store.get('legs.json.enc').find((l) => l.id === gap.leg.id) ?? gap.leg
     await store.put('legs.json.enc', { ...leg, [gap.field]: value, updatedAt: now })

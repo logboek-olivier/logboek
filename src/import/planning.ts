@@ -1,5 +1,5 @@
 import { t } from '../i18n'
-import { datesBetween, type CalendarIndex } from '../model/calendar'
+import { datesBetween, followTrip, type CalendarIndex } from '../model/calendar'
 import { suggestType, weekFields, MAX_WEEK_DAYS, type WeekInput } from '../model/weeks'
 import { DAY_TYPES, newId, ORGANISATIONS, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type Trip, type WeekType } from '../model/types'
 import type { Lang } from '../i18n'
@@ -201,8 +201,12 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
       }
     }
   }
-  if (trips.length > 0) await store.putMany('trips.json.enc', trips)
   if (days.size > 0) await store.putMany('calendar.json.enc', [...days.values()])
+  if (trips.length > 0) {
+    await store.putMany('trips.json.enc', trips)
+    // Een aangezette werkregel over zelf ingestelde dagen: de agenda volgt de nieuwe trip.
+    for (const trip of trips) await followTrip(store, trip.id, null, { start: trip.startDate!, end: trip.endDate! })
+  }
   void store.sync()
   return { trips: trips.length, days: days.size }
 }

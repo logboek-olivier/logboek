@@ -1,8 +1,9 @@
-import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plus } from 'lucide-react'
+import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane, Plus } from 'lucide-react'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { activeWeek } from '../model/weeks'
 import type { AddInit } from './QuickAdd'
 import { useMemo, useRef, useState, type TouchEvent } from 'react'
+import { DaySheet } from '../components/DaySheet'
 import { FillSheet } from '../components/FillSheet'
 import { collectGaps, isSunday } from '../model/gaps'
 import { GoalSheet, type Notify } from '../components/EditSheets'
@@ -11,18 +12,20 @@ import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
+import { buildIndex, dayInfo } from '../model/calendar'
 import { nmInYear } from '../model/derive'
 import { ReminderSheet } from '../components/ReminderSheet'
 import { DueList, useDueItems } from './Deadlines'
 import { currentSettings, yearGoal } from '../model/settings'
-import { todayIso } from '../model/types'
+import { todayIso, type Reminder } from '../model/types'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
 import { TodayPlan } from './Planning'
 import { t } from '../i18n'
 
-// Vandaag: planning van vandaag (als er een lopende planning is), "Dag van vandaag loggen", nm dit jaar met
-// voortgang naar het jaardoel, op zondag "N dingen aanvullen", en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
+// Vandaag volgt de dagsoort uit de agenda (tik = dagblad): bij werk de planning van vandaag, "Zoals gepland" en "Dag van
+// vandaag loggen"; bij reis de reisgegevens; bij rust en thuis niets om te loggen. Verder nm dit jaar met voortgang
+// naar het jaardoel, op zondag "N dingen aanvullen", en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
 // Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
 
 const TOKEN_WARNING_DAYS = 30
@@ -64,7 +67,15 @@ export function Today({
   const [filling, setFilling] = useState(false)
   // Geplande etappe van vandaag in de lopende trip (sjabloon of vorige trip): "Zoals gepland" logt hem met één tik.
   const running = activeWeek(trips, settings, today)
-  const planned = plannedFor(running, legs, today)
+  // Dagsoort van vandaag: eigen instelling, anders uit trips en dagen.
+  const calendar = useCollection(store, 'calendar.json.enc')
+  const reminders = useCollection(store, 'reminders.json.enc')
+  const index = useMemo(() => buildIndex(calendar, trips, legs, reminders), [calendar, trips, legs, reminders])
+  const day = dayInfo(index, today, today)
+  const nothingToLog = day.type === 'reis' || day.type === 'rust' || day.type === 'thuis'
+  const [dayOpen, setDayOpen] = useState(false)
+  const [reminderFromDay, setReminderFromDay] = useState<{ reminder: Reminder | null } | null>(null)
+  const planned = nothingToLog ? null : plannedFor(running, legs, today)
   const plannedDistance = planned ? plannedNm(legs, planned) : null
   async function logAsPlanned() {
     if (!running || !planned) return
@@ -112,7 +123,8 @@ export function Today({
           onSettings={onSettings}
         />
       )}
-      <TodayPlan store={store} notify={notify} />
+      <DayKind day={day} onOpen={() => setDayOpen(true)} />
+      {!nothingToLog && <TodayPlan store={store} notify={notify} />}
       {planned && running && (
         <div className="card card-body planned-today">
           <span className="label">{t('route.today')}</span>
@@ -132,10 +144,12 @@ export function Today({
           </div>
         </div>
       )}
-      <button className={`btn${planned ? '' : ' primary'} log-day`} onClick={() => onAdd()}>
-        <Icon icon={NotebookPen} />
-        {t('today.logDay')}
-      </button>
+      {!nothingToLog && (
+        <button className={`btn${planned ? '' : ' primary'} log-day`} onClick={() => onAdd()}>
+          <Icon icon={NotebookPen} />
+          {t('today.logDay')}
+        </button>
+      )}
       {gaps.length > 0 && (
         <div className="notice">
           <span>{t('gaps.card', { n: gaps.length })}</span>
@@ -185,9 +199,56 @@ export function Today({
         </button>
       </div>
       {addingReminder && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAddingReminder(false)} />}
+      {dayOpen && (
+        <DaySheet
+          store={store}
+          index={index}
+          date={today}
+          notify={notify}
+          onClose={() => setDayOpen(false)}
+          onAdd={(init) => {
+            setDayOpen(false)
+            onAdd(init)
+          }}
+          onReminder={(reminder) => {
+            setDayOpen(false)
+            setReminderFromDay({ reminder })
+          }}
+        />
+      )}
+      {reminderFromDay && <ReminderSheet store={store} reminder={reminderFromDay.reminder} initialDate={today} notify={notify} onClose={() => setReminderFromDay(null)} />}
       {filling && <FillSheet store={store} gaps={gaps} notify={notify} onClose={() => setFilling(false)} />}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}
     </section>
+  )
+}
+
+/** Dagsoort van vandaag in één regel (tik = dagblad); bij reis de reisgegevens, bij rust en thuis "niets te loggen". */
+function DayKind({ day, onOpen }: { day: ReturnType<typeof dayInfo>; onOpen: () => void }) {
+  const type = day.type ?? 'leeg'
+  const trip = day.type === 'werk' ? day.trips.at(-1)?.trip.name : undefined
+  const travel = day.type === 'reis' ? day.own?.travel : undefined
+  const place = day.type !== 'werk' && day.type !== 'reis' ? day.own?.location : undefined
+  return (
+    <button type="button" className={`today-kind day-${type}`} onClick={onOpen} aria-label={`${t('today.kind')}: ${t(`dayType.${type}`)}${trip ? `, ${trip}` : ''}. ${t('today.change')}`}>
+      <span className="today-kind-head">
+        <strong>
+          {t(`dayType.${type}`)}
+          {trip ? ` · ${trip}` : ''}
+          {place ? ` · ${place}` : ''}
+        </strong>
+      </span>
+      {travel && (travel.from || travel.to || travel.flight) && (
+        <span className="today-travel">
+          <Icon icon={Plane} />
+          {[travel.from, travel.to].filter(Boolean).join(' → ')}
+          {travel.flight ? ` · ${travel.flight}` : ''}
+        </span>
+      )}
+      {day.own?.note && <span className="muted small">{day.own.note}</span>}
+      {(day.type === 'rust' || day.type === 'thuis') && <span className="muted small">{t('today.nothingToLog')}</span>}
+      <Icon icon={ChevronRight} className="today-kind-chevron" />
+    </button>
   )
 }
 

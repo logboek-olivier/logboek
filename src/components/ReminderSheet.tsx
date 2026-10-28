@@ -16,11 +16,12 @@ import { Sheet } from './Sheet'
 // Termijn toevoegen of bewerken: wat, deadline of vervaldatum, en wanneer (snelle keuze of datum). Drie velden; herhalen
 // (maandelijks, jaarlijks) en "Zet in agenda" (een .ics-bestand met herinnering vooraf) zijn optioneel.
 
-export function ReminderSheet({ store, reminder, notify, onClose }: { store: Store; reminder: Reminder | null; notify: Notify; onClose: () => void }) {
+/** `initialDate`: datum van een nieuwe termijn (vanuit het dagblad in de agenda). */
+export function ReminderSheet({ store, reminder, notify, onClose, initialDate }: { store: Store; reminder: Reminder | null; notify: Notify; onClose: () => void; initialDate?: string }) {
   const today = todayIso()
   const [title, setTitle] = useState(reminder?.title ?? '')
   const [kind, setKind] = useState<ReminderKind>(reminder?.kind ?? 'deadline')
-  const [date, setDate] = useState(reminder?.date ?? dateAfter(today, QUICK_OFFSETS[1]))
+  const [date, setDate] = useState(reminder?.date ?? initialDate ?? dateAfter(today, QUICK_OFFSETS[1]))
   const [note, setNote] = useState(reminder?.note ?? '')
   const [repeat, setRepeat] = useState<ReminderRepeat | undefined>(reminder?.repeat)
   const settings = currentSettings(store.get('settings.json.enc'))

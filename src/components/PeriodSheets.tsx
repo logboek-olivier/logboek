@@ -1,37 +1,85 @@
+import { MoveHorizontal, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { formatDateRange } from '../format'
+import { formatDateRange, formatDateShort } from '../format'
 import { t, useLang } from '../i18n'
 import { applyPlan, hasOverlap, type PlanItem } from '../import/planning'
-import { datesBetween, setDays } from '../model/calendar'
+import { datesBetween, extendOptions, resizeTrip, setDays, type CalendarIndex } from '../model/calendar'
 import { DAY_TYPES, type DayType } from '../model/types'
 import { weekTypeLabel } from './WeekSheet'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
+import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 
 // Periode markeren: één dagsoort voor alle dagen van de periode; werk opent "Nieuwe trip" met die datums (met
-// "Herhaal vorige trip" en de route-sjablonen). Planning importeren: eerst tonen wat er gemaakt wordt en wat overlapt.
+// "Herhaal vorige trip" en de route-sjablonen), of verlengt een trip die vlak ervoor eindigt of vlak erna begint.
+// Planning importeren: eerst tonen wat er gemaakt wordt en wat overlapt.
 
-export function PeriodSheet({ store, from, to, notify, onClose, onWork }: { store: Store; from: string; to: string; notify: Notify; onClose: () => void; onWork: (startDate: string, dayCount: number) => void }) {
+export function PeriodSheet({
+  store,
+  index,
+  from,
+  to,
+  notify,
+  onClose,
+  onWork,
+}: {
+  store: Store
+  index: CalendarIndex
+  from: string
+  to: string
+  notify: Notify
+  onClose: () => void
+  onWork: (startDate: string, dayCount: number) => void
+}) {
   const dates = datesBetween(from, to)
+  const [work, setWork] = useState(false)
+  const extend = extendOptions(index, dates[0]!, dates.at(-1)!)
+
   async function choose(type: DayType) {
     if (type === 'werk') {
-      onWork(dates[0]!, dates.length)
+      if (extend.length === 0) onWork(dates[0]!, dates.length)
+      else setWork(true)
       return
     }
     await setDays(store, dates, type)
     notify(t('calendar.periodSaved', { n: dates.length }))
     onClose()
   }
+
   return (
     <Sheet title={t('calendar.periodTitle', { range: formatDateRange(dates[0]!, dates.at(-1)!), n: dates.length })} onClose={onClose}>
-      <div className="type-buttons day-types" role="group" aria-label={t('day.kind')}>
-        {DAY_TYPES.map((d) => (
-          <button key={d} type="button" className={`chip day-chip day-${d}`} onClick={() => void choose(d)}>
-            {t(`dayType.${d}`)}
+      {work ? (
+        <div className="stack-sm">
+          {extend.map((option) => (
+            <button
+              key={option.view.trip.id}
+              type="button"
+              className="btn"
+              onClick={async () => {
+                const undo = await resizeTrip(store, option)
+                notify(t('day.tripResized', { name: option.view.trip.name, range: formatDateRange(option.start, option.end) }), undo)
+                onClose()
+              }}
+            >
+              <Icon icon={MoveHorizontal} />
+              {option.end === dates.at(-1) ? t('day.extend', { name: option.view.trip.name, date: formatDateShort(option.end) }) : t('day.extendEarlier', { name: option.view.trip.name, date: formatDateShort(option.start) })}
+            </button>
+          ))}
+          <button type="button" className="btn primary" onClick={() => onWork(dates[0]!, dates.length)}>
+            <Icon icon={Plus} />
+            {t('week.new')}
           </button>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="type-buttons day-types" role="group" aria-label={t('day.kind')}>
+          {DAY_TYPES.map((d) => (
+            <button key={d} type="button" className={`chip day-chip day-${d}`} onClick={() => void choose(d)}>
+              {t(`dayType.${d}`)}
+            </button>
+          ))}
+        </div>
+      )}
     </Sheet>
   )
 }

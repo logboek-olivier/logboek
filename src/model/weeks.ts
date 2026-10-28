@@ -1,6 +1,7 @@
 import { translate, type Lang } from '../i18n'
 import type { Store } from '../storage/store'
 import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
+import { followTrip, tripRange } from './calendar'
 import type { Undo } from './edit'
 import { addDays } from './money'
 import { saveSettings } from './settings'
@@ -248,6 +249,8 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
 export async function startWeek(store: Store, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
   const trip: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
   await store.put('trips.json.enc', trip)
+  // De agenda volgt direct: zelf ingestelde dagen in de nieuwe trip maken plaats voor werk.
+  await followTrip(store, trip.id, null, tripRange(trip, store.list('legs.json.enc')))
   await syncParticipants(store, trip)
   const current = !!trip.startDate && !!trip.endDate && trip.startDate <= today && today <= trip.endDate
   await saveSettings(store, { ...(current ? { activeWeekId: trip.id } : {}), ...(trip.boat ? { lastBoat: trip.boat } : {}) })
@@ -262,7 +265,10 @@ export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lan
   // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
   const keep = input.route === undefined && route ? { route } : {}
   const next: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
+  const legs = store.list('legs.json.enc')
   await store.put('trips.json.enc', next)
+  // Verlengen of verplaatsen: de agenda volgt direct.
+  await followTrip(store, trip.id, tripRange(trip, legs), tripRange(next, legs))
   await syncParticipants(store, next)
   void store.sync()
 }
