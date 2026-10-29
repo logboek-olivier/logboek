@@ -1,9 +1,10 @@
-import { CalendarClock, FileText, Plane, Plus, KeyRound } from 'lucide-react'
+import { Briefcase, CalendarClock, FileText, Plane, Plus, KeyRound } from 'lucide-react'
 import { Suspense, useState } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { lazyComponent } from '../lazy'
+import { careerDueItems } from '../model/career'
 import { documentDueItems } from '../model/documents'
 import { useCollection } from '../components/useCollection'
 import { formatDate } from '../format'
@@ -38,6 +39,8 @@ export function useDueItems(store: Store): DueItem[] {
   // Kluis: documenten met een vervaldatum (niet in de demo, die heeft geen kluis).
   const documents = useCollection(store, 'documents/index.json.enc')
   if (!demo) extra.push(...documentDueItems(documents))
+  // Carrière: de volgende actie van een lopende sollicitatie.
+  extra.push(...careerDueItems(useCollection(store, 'career.json.enc')))
   return dueItems(reminders, extra)
 }
 
@@ -50,7 +53,7 @@ export function dueLabel(item: Pick<DueItem, 'date' | 'kind'>, today = todayIso(
 }
 
 /**
- * `discreet` (Vandaag, waar studenten kunnen meekijken): een document uit de kluis zonder zijn titel.
+ * `discreet` (Vandaag, waar studenten kunnen meekijken): een document uit de kluis en een sollicitatie zonder titel.
  */
 export function DueList({ store, items, notify, onToken, discreet = false }: { store: Store; items: DueItem[]; notify: Notify; onToken?: () => void; discreet?: boolean }) {
   const reminders = useCollection(store, 'reminders.json.enc')
@@ -61,12 +64,12 @@ export function DueList({ store, items, notify, onToken, discreet = false }: { s
       <ul className="rows due-list">
         {items.map((item) => {
           const days = daysUntil(item.date, today) ?? 0
-          const icon = item.source === 'token' ? KeyRound : item.source === 'trip' ? Plane : item.source === 'document' ? FileText : CalendarClock
+          const icon = item.source === 'token' ? KeyRound : item.source === 'trip' ? Plane : item.source === 'document' ? FileText : item.source === 'career' ? Briefcase : CalendarClock
           const content = (
             <>
               <Icon icon={icon} />
               <span className="row-main">
-                <span>{discreet && item.source === 'document' ? t('vault.dueTitle') : item.title}</span>
+                <span>{discreet && item.source === 'document' ? t('vault.dueTitle') : discreet && item.source === 'career' ? t('career.dueTitle') : item.title}</span>
                 <span className="muted small">
                   {[item.kind === 'trip' ? '' : t(`reminderKind.${item.kind}`), formatDate(item.date), item.repeat ? t(`reminderRepeat.${item.repeat}`) : ''].filter(Boolean).join(' · ')}
                 </span>

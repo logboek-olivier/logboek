@@ -169,6 +169,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'skills.json.enc': 'key.file.skills',
   'sessions.json.enc': 'key.file.sessions',
   'documents/index.json.enc': 'key.file.documents',
+  'career.json.enc': 'key.file.career',
 }
 
 /** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */

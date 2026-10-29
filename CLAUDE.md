@@ -95,6 +95,7 @@ logboek-data/
   goals.json.enc         # doelen: zelfvullend uit de app of zelf gemeten
   skills.json.enc        # skills met mijlpalen
   sessions.json.enc      # sessies van skills en metingen van doelen, elk een eigen record
+  career.json.enc        # carrière: sollicitaties, netwerk (alleen voornaam) en projecten
   documents/index.json.enc   # kluis: titels, categorieën, datums en de bestandsnaam (fileId) per document
   documents/<uuid>.bin       # kluis: elk documentbestand versleuteld, willekeurige UUID als naam
 ```
@@ -269,6 +270,15 @@ Meer → Doelen (`src/screens/Goals.tsx`, `src/components/GoalSheets.tsx`, `src/
 `id, date, skillId?, goalId?, minutes?, value?, note?, updatedAt, deletedAt`
 - Losse records, zodat twee apparaten nooit elkaars sessies of metingen overschrijven (een skill of doel zelf wordt zelden tegelijk bewerkt). Een skill of doel verwijderen neemt zijn sessies mee; ongedaan maken zet alles terug.
 
+### Carrière
+
+Meer → Carrière (`src/screens/Career.tsx`, `src/model/career.ts`), alles in `career.json.enc` (één bestand, records met `kind`).
+
+- **Sollicitatie** `id, kind: sollicitatie, company, role, status (idee|gesolliciteerd|gesprek|aanbod|aangenomen|afgewezen|ingetrokken), nextAction?, nextDate?, note?, updatedAt, deletedAt`. De volgende actie met datum van een lopende sollicitatie (niet aangenomen, afgewezen of ingetrokken) staat bij de termijnen ("Bedrijf: actie"). Lopende sollicitaties bovenaan, op datum van de volgende actie.
+- **Contact** (netwerk) `id, kind: contact, firstName, role?, metAt?, updatedAt, deletedAt`: alleen een voornaam (van een ingetypte naam blijft het eerste woord), de rol en waar Olivier diegene ontmoette. Geen achternaam, geen contactgegevens, geen notitie (zoals regel 14 voor deelnemers).
+- **Project** `id, kind: project, name, status (bezig|idee|gepauzeerd|klaar), nextStep?, updatedAt, deletedAt`: zelf bijgehouden status van andere projecten.
+- Eerst bekijken, dan bewerken; verwijderen met ongedaan maken (`scrubbedCareer`: de tombstone houdt alleen `id`, soort en tijden, geen bedrijf, naam of notitie; ongedaan maken zet het record uit het geheugen terug). Op Vandaag (studenten kijken mee) staat een volgende actie als "Volgende stap sollicitatie", zonder bedrijf; Meer → Termijnen toont hem voluit. Niet in de export naar Excel.
+
 ### Kluis
 
 Meer → Kluis (`src/screens/Vault.tsx`, `src/components/DocumentSheets.tsx`, `src/model/documents.ts`, `src/storage/documents.ts`; niet in de demo).
@@ -312,7 +322,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Statistieken, Doelen, Geld, Termijnen, Kluis, Boten, Plaatsen, Kaarten, Cursussen, Studentenarchief, Opslag en Instellingen (met een terugknop naar Meer of naar de agenda).
+Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Statistieken, Doelen, Carrière, Geld, Termijnen, Kluis, Boten, Plaatsen, Kaarten, Cursussen, Studentenarchief, Opslag en Instellingen (met een terugknop naar Meer of naar de agenda).
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -400,10 +410,10 @@ logboek/
                      osm.ts (kaartdata laden), waterroute.ts, estimate.ts (waterroute × persoonlijke factor), trip-ops.ts (verwijderen, overlap, samenvoegen),
                      countries.ts (grove landvakken voor de pinregels), counters.ts (teller per organisatie), stats.ts (statistieken), trip-dates.ts (datums uit de dagen),
                      trip-route.ts (route en stops van een trip), measure.ts (afstand meten op de kaart), offline-maps.ts (vaargebieden offline), pin-suggest.ts (pin-assistent), salary.ts (salaris en vooruitblik), student-groups.ts (studentenarchief),
-                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting), tax-year.ts (jaaroverzicht voor de belasting), weather.ts (wind en weer), goals.ts (doelen en skills), documents.ts (kluis)
+                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting), tax-year.ts (jaaroverzicht voor de belasting), weather.ts (wind en weer), goals.ts (doelen en skills), documents.ts (kluis), career.ts (carrière)
     import/          mileage-csv.ts (mijlenregels), planning.ts (planning importeren), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), SailingExport, Deadlines, Boats, Places,
-                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten), Goals (Doelen), Vault (Kluis)
+                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten), Goals (Doelen), Vault (Kluis), Career (Carrière)
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, map-view (kaartgebaren), map-labels (namen op de kaart), LazyMap, RouteMap, RouteThumb, MapSheet, Sheet, Views (leesweergaven), EditSheets, WeekSheet,
                      TripOverview, TripShare, SailedMap, PinSheet, SalaryFields, SalarySheets, SalaryOutlook, DemoBar, boat-line, CurriculumSheets, DaySheet, PeriodSheets,
                      TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, NoteField, WeatherCard, GoalSheets, DocumentSheets, Icon, Toast, …)
@@ -421,10 +431,10 @@ logboek/
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
                      foutmatrix, screen-files, upgrade-samples, calendar, planning, trip-agenda, guests, osm-lib, waterroute, opslag, github-gedrag, trip-ops, pins,
-                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year, weather, goals, documents) + playwright (upgrade, updates, setup, unlock, sessie, import,
+                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year, weather, goals, documents, career) + playwright (upgrade, updates, setup, unlock, sessie, import,
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
-                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer, doelen, kluis,
+                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer, doelen, kluis, carrière,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
@@ -461,7 +471,7 @@ Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt
 3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera en vervaldatums zijn in release 2 gebouwd (PR 13, met het rapport van de volledige review); nog te doen: de vervaldatum-Action en de back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
 4. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, aandelenkoersen, scenario's.
 5. **Doelen en skills.** De basis is in release 2 gebouwd (Meer → Doelen: zelfvullende jaardoelen, zelf gemeten doelen, skills met sessies, trend en mijlpalen, + → Skill). Later: ademtrainer, voortgang ASA.
-6. **Carrière.** Sollicitaties en netwerk, status andere projecten.
+6. **Carrière.** Sollicitaties en netwerk, status andere projecten: in release 2 gebouwd (Meer → Carrière).
 7. **Wow.** Zeiljaar Wrapped, weekreview, zeil-CV, routekaart (GPS-logboek), horloge (Samsung Galaxy Watch 7) en Health Connect. Een zeil-CV als publieke pagina mag niet als tweede Pages-site in organisatie `logboek-olivier` (regel 13); die komt dan buiten deze organisatie, of als export die Olivier zelf deelt.
 
 ## Schrijfstijl in de app

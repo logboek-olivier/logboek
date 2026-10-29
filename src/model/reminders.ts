@@ -34,7 +34,7 @@ export interface DueItem {
   title: string
   date: string
   kind: ReminderKind | 'trip'
-  source: 'eigen' | 'token' | 'trip' | 'document'
+  source: 'eigen' | 'token' | 'trip' | 'document' | 'career'
   repeat?: ReminderRepeat
 }
 

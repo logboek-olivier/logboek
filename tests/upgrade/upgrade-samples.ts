@@ -62,4 +62,10 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'documents/index.json.enc': [
     { id: 'upg-doc-1', title: 'Nepcertificaat', category: 'certificaten', issuedAt: '2026-01-10', expiresAt: '2031-01-10', notes: 'Nepnotitie', mime: 'image/jpeg', size: 1234, offline: true, fileId: '0f8c2f4e-6c1a-4b2e-9d3a-5e7f1a2b3c4d', updatedAt: T, deletedAt: null },
   ],
+  // Carrière (ronde 2): een sollicitatie, een contact en een project in één bestand.
+  'career.json.enc': [
+    { id: 'upg-app-1', kind: 'sollicitatie', company: 'Nepbedrijf', role: 'Nepfunctie', status: 'gesprek', nextAction: 'Nepactie', nextDate: '2027-01-20', note: 'Nepnotitie', updatedAt: T, deletedAt: null },
+    { id: 'upg-contact-1', kind: 'contact', firstName: 'Nepnoor', role: 'Nepschipper', metAt: 'Nephaven', updatedAt: T, deletedAt: null },
+    { id: 'upg-project-1', kind: 'project', name: 'Nepproject', status: 'bezig', nextStep: 'Nepstap', updatedAt: T, deletedAt: null },
+  ],
 }
