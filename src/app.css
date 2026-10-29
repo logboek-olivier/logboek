@@ -44,6 +44,8 @@
   --day-rust: #e9e1f3;
   --day-reis: #f7e2c4;
   --day-thuis: #dce6f3;
+  /* Onbeschikbaar: bezet zonder werk, warm grijs met een fijne arcering. */
+  --day-onbeschikbaar: #e4ddd2;
   --day-beschikbaar: var(--surface);
   --day-optie: #c9e7de;
   --day-leeg: var(--surface-2);
@@ -124,6 +126,7 @@
     --day-rust: #2f2a47;
     --day-reis: #413220;
     --day-thuis: #1d3553;
+    --day-onbeschikbaar: #3b3731;
     --day-optie: #17453e;
     --cal-bar: #74d6be;
     --cal-bar-text: #05211b;
@@ -564,6 +567,9 @@ summary:focus-visible {
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   color: var(--text-muted);
+  /* Een lang woord ("Onbeschikbaar") breekt af binnen het vakje: met afbreekstreepje waar de browser dat kan. */
+  hyphens: auto;
+  overflow-wrap: anywhere;
 }
 
 .stat dt .icon {
@@ -2778,6 +2784,10 @@ body.presenting .bottom-bar {
   white-space: nowrap;
 }
 
+.agenda-summary.six {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .agenda-stat dd {
   margin: 0;
   font-weight: var(--fw-bold);
@@ -3927,4 +3937,17 @@ body.demo-on .group-head {
     max-width: 160mm;
     margin: 0 auto;
   }
+}
+
+/* Dagsoort Onbeschikbaar: gearceerd, zodat hij in één oogopslag als bezet leest. */
+.cal-day.day-onbeschikbaar,
+.agenda-stat.day-onbeschikbaar,
+.season-item.day-onbeschikbaar,
+.today-kind.day-onbeschikbaar,
+.today-trip-day.day-onbeschikbaar {
+  background: repeating-linear-gradient(135deg, var(--day-onbeschikbaar) 0 5px, var(--surface-2) 5px 10px);
+}
+
+.day-chip.day-onbeschikbaar::before {
+  background: repeating-linear-gradient(135deg, var(--day-onbeschikbaar) 0 3px, var(--surface-2) 3px 6px);
 }

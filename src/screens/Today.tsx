@@ -91,7 +91,7 @@ export function Today({
   const reminders = useCollection(store, 'reminders.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs, reminders), [calendar, trips, legs, reminders])
   const day = dayInfo(index, today, today)
-  const nothingToLog = day.type === 'reis' || day.type === 'rust' || day.type === 'thuis'
+  const nothingToLog = day.type === 'reis' || day.type === 'rust' || day.type === 'thuis' || day.type === 'onbeschikbaar'
   const [dayOpen, setDayOpen] = useState(false)
   const [reminderFromDay, setReminderFromDay] = useState<{ reminder: Reminder | null } | null>(null)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
@@ -356,7 +356,7 @@ function DayDetails({ day }: { day: ReturnType<typeof dayInfo> }) {
         </span>
       )}
       {day.own?.note && <span className="muted small">{day.own.note}</span>}
-      {(day.type === 'rust' || day.type === 'thuis') && <span className="muted small">{t('today.nothingToLog')}</span>}
+      {(day.type === 'rust' || day.type === 'thuis' || day.type === 'onbeschikbaar') && <span className="muted small">{t('today.nothingToLog')}</span>}
     </>
   )
 }

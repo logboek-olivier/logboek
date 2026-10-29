@@ -909,7 +909,7 @@ export const nl = {
   'planning.missingColumn': (p: { column: string }) => `De kolom ${p.column} ontbreekt in de kopregel.`,
   'planning.badDate': (p: { row: number; column: string }) => `Rij ${p.row}, kolom ${p.column}: geen geldige datum (jjjj-mm-dd).`,
   'planning.endBeforeStart': (p: { row: number }) => `Rij ${p.row}: de einddatum ligt vóór de startdatum.`,
-  'planning.badKind': (p: { row: number }) => `Rij ${p.row}, kolom soort: gebruik werk, rust, reis, thuis of optie.`,
+  'planning.badKind': (p: { row: number }) => `Rij ${p.row}, kolom soort: gebruik werk, rust, reis, thuis, onbeschikbaar of optie.`,
   'planning.badType': (p: { row: number }) => `Rij ${p.row}, kolom type: onbekend triptype.`,
   'planning.badOrganisation': (p: { row: number }) => `Rij ${p.row}, kolom organisatie: onbekende organisatie.`,
   'planning.tooLong': (p: { row: number; max: number }) => `Rij ${p.row}: een trip is hoogstens ${p.max} dagen.`,
@@ -1246,6 +1246,10 @@ export const nl = {
   'tripShare.image': 'Als afbeelding',
   'tripShare.pdf': 'Als PDF (afdrukken)',
   'tripShare.file': 'trip',
+  'dayType.onbeschikbaar': 'Onbeschikbaar',
+  'day.reason': 'Reden (alleen voor jou)',
+  'day.reasonHint': 'Nooit in de gedeelde PDF of het seizoensoverzicht.',
+  'stats.unavailableShort': 'Onbeschikb.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

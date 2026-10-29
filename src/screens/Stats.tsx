@@ -64,7 +64,8 @@ export function Stats({ store }: { store: Store }) {
   const money = period && showAmounts ? moneyStats(trips, legs, transactions, index, period, today) : null
   const instructor = period ? instructorStats(students, effectiveCurricula(storedCurricula), trips, legs, period, lang) : null
   const season = kind === 'seizoen' ? seasonStart(trips, legs, today) : null
-  const hasWork = !!work && work.werk + work.rust + work.reis + work.thuis > 0
+  const hasWork = !!work && work.werk + work.rust + work.reis + work.thuis + work.onbeschikbaar > 0
+  const hasUnavailable = !!work && work.onbeschikbaar > 0
   const hasMoney = transactions.some((tx) => tx.deletedAt === null && !!period && period.from <= tx.date && tx.date <= period.to)
   const nothing = !sailing?.days && !hasWork && !hasMoney && !instructor?.students
 
@@ -184,6 +185,7 @@ export function Stats({ store }: { store: Store }) {
             <Stat label={t('dayType.rust')} value={formatNumber(work.rust)} />
             <Stat label={t('dayType.reis')} value={formatNumber(work.reis)} />
             <Stat label={t('dayType.thuis')} value={formatNumber(work.thuis)} />
+            {hasUnavailable && <Stat label={t('dayType.onbeschikbaar')} value={formatNumber(work.onbeschikbaar)} />}
             <Stat label={t('stats.workShare')} value={percent(work.share)} />
           </dl>
           {work.months.length > 1 && work.months.length <= 24 && (
@@ -205,10 +207,11 @@ export function Stats({ store }: { store: Store }) {
                 <th className="num">{t('dayType.rust')}</th>
                 <th className="num">{t('dayType.reis')}</th>
                 <th className="num">{t('dayType.thuis')}</th>
+                {hasUnavailable && <th className="num">{t('stats.unavailableShort')}</th>}
               </tr>
             </thead>
             <tbody>
-              {[...work.months].reverse().filter((m) => m.werk + m.rust + m.reis + m.thuis > 0).map((m) => (
+              {[...work.months].reverse().filter((m) => m.werk + m.rust + m.reis + m.thuis + m.onbeschikbaar > 0).map((m) => (
                 <tr key={m.month}>
                   <td>
                     {formatMonthShort(m.month)} {m.month.slice(0, 4)}
@@ -217,6 +220,7 @@ export function Stats({ store }: { store: Store }) {
                   <td className="num">{m.rust}</td>
                   <td className="num">{m.reis}</td>
                   <td className="num">{m.thuis}</td>
+                  {hasUnavailable && <td className="num">{m.onbeschikbaar}</td>}
                 </tr>
               ))}
             </tbody>

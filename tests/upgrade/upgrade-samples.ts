@@ -38,6 +38,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'calendar.json.enc': [
     { id: 'dag:2026-10-25', date: '2026-10-25', type: 'reis', travel: { from: 'Nepstad', to: 'Nephaven', flight: 'NP 123' }, note: 'Nepnotitie', updatedAt: T, deletedAt: null },
     { id: 'dag:2026-10-26', date: '2026-10-26', type: 'werk', boat: 'Andere nepboot', updatedAt: T, deletedAt: null },
+    // Dagsoort onbeschikbaar met een reden (ronde 2): een oudere versie bewaart hem ongewijzigd.
+    { id: 'dag:2026-10-27', date: '2026-10-27', type: 'onbeschikbaar', reason: 'Nepreden', updatedAt: T, deletedAt: null },
   ],
   'checklists.json.enc': [
     { id: 'upg-list-1', title: { nl: 'Neplijst', en: 'Fake list' }, items: [{ id: 'i1', text: { nl: 'Nepvink', en: 'Fake tick' } }], tripTypes: ['skipper-charter'], source: 'eigen', updatedAt: T, deletedAt: null },

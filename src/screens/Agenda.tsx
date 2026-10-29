@@ -170,7 +170,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} rangeStart={marking?.start ?? null} counters={counters} onDay={onDay} />
         ))}
       </div>
-      <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>
+      <dl className={`agenda-summary${summary.onbeschikbaar > 0 ? ' six' : ''}`} aria-label={t('calendar.summaryTitle')}>
         {(
           [
             ['dayType.werk', 'werk', summary.werk],
@@ -184,6 +184,13 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             <dd>{formatNumber(value)}</dd>
           </div>
         ))}
+        {/* Onbeschikbaar alleen in een maand die zulke dagen heeft; dan twee rijen van drie, zodat het woord past. */}
+        {summary.onbeschikbaar > 0 && (
+          <div className="agenda-stat day-onbeschikbaar">
+            <dt>{t('dayType.onbeschikbaar')}</dt>
+            <dd>{formatNumber(summary.onbeschikbaar)}</dd>
+          </div>
+        )}
         <div className="agenda-stat">
           <dt>nm</dt>
           <dd>{formatNumber(summary.nm)}</dd>

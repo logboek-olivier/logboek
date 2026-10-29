@@ -118,7 +118,14 @@ describe('maandoverzicht', () => {
   it('per maand werk-, rust-, reis- en thuisdagen en nm', () => {
     const trips = [trip('a', { startDate: '2026-11-02', endDate: '2026-11-08' }), trip('b', { startDate: '2026-11-10', endDate: '2026-11-11' })]
     const index = buildIndex([own('2026-11-20', 'reis'), own('2026-11-21', 'thuis'), own('2026-11-22', 'thuis')], trips, [leg('l', 'a', '2026-11-03', 20)])
-    expect(monthSummary(index, '2026-11', TODAY)).toEqual({ werk: 9, rust: 1, reis: 1, thuis: 2, nm: 20 })
+    expect(monthSummary(index, '2026-11', TODAY)).toEqual({ werk: 9, rust: 1, reis: 1, thuis: 2, onbeschikbaar: 0, nm: 20 })
+  })
+
+  it('onbeschikbaar: telt apart in de maand en geldt als zelf ingestelde dag (geen werk)', () => {
+    const index = buildIndex([own('2026-11-24', 'onbeschikbaar', { reason: 'Nepreden' }), own('2026-11-25', 'onbeschikbaar')], [], [])
+    expect(dayInfo(index, '2026-11-24', TODAY)).toMatchObject({ type: 'onbeschikbaar', source: 'eigen' })
+    expect(dayInfo(index, '2026-11-24', TODAY).own?.reason).toBe('Nepreden')
+    expect(monthSummary(index, '2026-11', TODAY)).toMatchObject({ werk: 0, onbeschikbaar: 2 })
   })
 })
 
@@ -131,6 +138,11 @@ describe('dag zelf instellen', () => {
     expect(store.list('calendar.json.enc')).toEqual([expect.objectContaining({ id: 'dag:2026-11-20', type: 'reis', travel: { from: 'Nepstad', to: 'Nepeiland' } })])
     await clearDay(store, '2026-11-20')
     expect(store.list('calendar.json.enc')).toEqual([])
+    // De reden hoort alleen bij onbeschikbaar, wordt ingekort en lege tekst valt weg.
+    await setDay(store, '2026-11-21', 'onbeschikbaar', { reason: `  ${'x'.repeat(300)} ` })
+    expect(store.list('calendar.json.enc')[0]!.reason).toHaveLength(200)
+    await setDay(store, '2026-11-21', 'onbeschikbaar', { reason: '  ' })
+    expect(store.list('calendar.json.enc')[0]).not.toHaveProperty('reason')
     expect(dayInfo(buildIndex(store.get('calendar.json.enc'), [], []), '2026-11-20', TODAY).source).toBe('toekomst')
   })
 })

@@ -872,7 +872,7 @@ export const en: Messages = {
   'planning.missingColumn': (p) => `The column ${p.column} is missing from the header row.`,
   'planning.badDate': (p) => `Row ${p.row}, column ${p.column}: not a valid date (yyyy-mm-dd).`,
   'planning.endBeforeStart': (p) => `Row ${p.row}: the end date is before the start date.`,
-  'planning.badKind': (p) => `Row ${p.row}, column soort: use werk, rust, reis, thuis or optie.`,
+  'planning.badKind': (p) => `Row ${p.row}, column soort: use werk, rust, reis, thuis, onbeschikbaar or optie.`,
   'planning.badType': (p) => `Row ${p.row}, column type: unknown trip type.`,
   'planning.badOrganisation': (p) => `Row ${p.row}, column organisatie: unknown organisation.`,
   'planning.tooLong': (p) => `Row ${p.row}: a trip is at most ${p.max} days.`,
@@ -1209,4 +1209,8 @@ export const en: Messages = {
   'tripShare.image': 'As an image',
   'tripShare.pdf': 'As a PDF (print)',
   'tripShare.file': 'trip',
+  'dayType.onbeschikbaar': 'Unavailable',
+  'day.reason': 'Reason (only you see this)',
+  'day.reasonHint': 'Never in the shared PDF or the season overview.',
+  'stats.unavailableShort': 'Unavail.',
 }

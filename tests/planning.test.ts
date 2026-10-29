@@ -97,6 +97,27 @@ describe('voorbeeld en importeren', () => {
   })
 })
 
+describe('onbeschikbaar importeren', () => {
+  it('soort onbeschikbaar (ook unavailable of bezet); de notitie wordt de reden', async () => {
+    const rows = parsePlanning(csv('start;eind;soort;notitie\n2027-05-01;2027-05-02;onbeschikbaar;Nepreden\n2027-05-03;;Unavailable;\n2027-05-04;;bezet;\n'))
+    expect(rows.map((r) => [r.start, r.end, r.kind])).toEqual([
+      ['2027-05-01', '2027-05-02', 'onbeschikbaar'],
+      ['2027-05-03', '2027-05-03', 'onbeschikbaar'],
+      ['2027-05-04', '2027-05-04', 'onbeschikbaar'],
+    ])
+    const s = await store()
+    const items = planImport(rows, buildIndex([], [], []))
+    expect(await applyPlan(s, items, new Set(), 'nl')).toEqual({ trips: 0, days: 4 })
+    const days = s.list('calendar.json.enc').sort((a, b) => a.date.localeCompare(b.date))
+    expect(days.map((d) => [d.date, d.type, d.reason ?? null, d.note ?? null])).toEqual([
+      ['2027-05-01', 'onbeschikbaar', 'Nepreden', null],
+      ['2027-05-02', 'onbeschikbaar', 'Nepreden', null],
+      ['2027-05-03', 'onbeschikbaar', null, null],
+      ['2027-05-04', 'onbeschikbaar', null, null],
+    ])
+  })
+})
+
 describe('seizoensoverzicht en delen', () => {
   const trips = [trip('a', { name: 'Nepweek Een', startDate: '2027-03-06', endDate: '2027-03-13', type: 'skipper-charter', area: 'Nepgebied', boat: 'Nepboot' })]
   const own: CalendarDay[] = [
@@ -110,6 +131,19 @@ describe('seizoensoverzicht en delen', () => {
     expect(weeks.map((w) => w.start)).toEqual(['2027-03-08', '2027-03-15'])
     expect(weeks[0]!.items.map((i) => (i.kind === 'trip' ? `trip:${i.view.trip.name}` : `${i.type}:${i.from}–${i.to}`))).toEqual(['trip:Nepweek Een', 'reis:2027-03-14–2027-03-14'])
     expect(weeks[1]!.items.map((i) => (i.kind === 'trip' ? 'trip' : `${i.type}:${i.from}–${i.to}`))).toEqual(['beschikbaar:2027-03-15–2027-03-16', 'optie:2027-03-17–2027-03-17', 'beschikbaar:2027-03-18–2027-03-21'])
+  })
+
+  it('onbeschikbaar is bezet in de beschikbaarheid, zonder reden; in de volledige planning alleen de dagsoort', () => {
+    const idx = buildIndex([...own, { id: 'dag:2027-03-16', date: '2027-03-16', type: 'onbeschikbaar', reason: 'Geheime reden', updatedAt: NOW, deletedAt: null }], trips, [])
+    expect(availabilityRuns(idx, '2027-03-15', '2027-03-17', TODAY)).toEqual([
+      { from: '2027-03-15', to: '2027-03-15', value: 'beschikbaar' },
+      { from: '2027-03-16', to: '2027-03-16', value: 'bezet' },
+      { from: '2027-03-17', to: '2027-03-17', value: 'optie' },
+    ])
+    expect(planningRuns(idx, '2027-03-16', '2027-03-16', TODAY)).toEqual([{ from: '2027-03-16', to: '2027-03-16', value: { type: 'onbeschikbaar' } }])
+    const season = seasonWeeks(idx, '2027-03-15', '2027-03-21', TODAY)
+    expect(JSON.stringify(season)).toContain('"onbeschikbaar"')
+    for (const shared of [availabilityRuns(idx, '2027-03-01', '2027-03-31', TODAY), planningRuns(idx, '2027-03-01', '2027-03-31', TODAY), season]) expect(JSON.stringify(shared)).not.toContain('Geheime')
   })
 
   it('alleen beschikbaarheid: beschikbaar, bezet en optie, zonder namen', () => {

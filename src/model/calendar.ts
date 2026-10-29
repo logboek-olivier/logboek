@@ -177,14 +177,15 @@ export interface MonthSummary {
   rust: number
   reis: number
   thuis: number
+  onbeschikbaar: number
   nm: number
 }
 
 export function monthSummary(index: CalendarIndex, month: string, today: string = todayIso()): MonthSummary {
-  const sum: MonthSummary = { werk: 0, rust: 0, reis: 0, thuis: 0, nm: 0 }
+  const sum: MonthSummary = { werk: 0, rust: 0, reis: 0, thuis: 0, onbeschikbaar: 0, nm: 0 }
   for (let d = `${month}-01`; monthOf(d) === month; d = addDays(d, 1)) {
     const info = dayInfo(index, d, today)
-    if (info.type === 'werk' || info.type === 'rust' || info.type === 'reis' || info.type === 'thuis') sum[info.type]++
+    if (info.type === 'werk' || info.type === 'rust' || info.type === 'reis' || info.type === 'thuis' || info.type === 'onbeschikbaar') sum[info.type]++
     sum.nm += info.nm
   }
   sum.nm = round1(sum.nm)
@@ -198,6 +199,7 @@ export interface DayDetails {
   travel?: DayTravel
   boat?: string
   note?: string
+  reason?: string
 }
 
 const text = (value: string | undefined, max: number) => (value ?? '').trim().slice(0, max)
@@ -206,6 +208,7 @@ function cleanDetails(details: DayDetails): DayDetails {
   const location = text(details.location, 80)
   const boat = text(details.boat, 80)
   const note = text(details.note, 500)
+  const reason = text(details.reason, 200)
   const from = text(details.travel?.from, 80)
   const to = text(details.travel?.to, 80)
   const flight = text(details.travel?.flight, 40)
@@ -213,6 +216,7 @@ function cleanDetails(details: DayDetails): DayDetails {
     ...(location ? { location } : {}),
     ...(boat ? { boat } : {}),
     ...(note ? { note } : {}),
+    ...(reason ? { reason } : {}),
     ...(from || to || flight ? { travel: { from, to, ...(flight ? { flight } : {}) } } : {}),
   }
 }
