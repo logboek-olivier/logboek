@@ -5,7 +5,7 @@ import { MapSheet } from '../components/MapSheet'
 import { TipFromPicker } from '../components/TipFromPicker'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { formatNm, formatNumber } from '../format'
-import { findPlace, knownPlaceNames, mergeCandidates, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
+import { defaultFromPlace, findPlace, knownPlaceNames, mergeCandidates, nearestKnownPlace, placeCountry, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
 import { MergeProposal } from './Places'
 import { plannedFor } from '../model/routes'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
@@ -424,14 +424,20 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const defaultTripId = current?.id ?? (sameTripDefault && lastTrip ? lastTrip.id : NEW_WEEK)
   // Van: de vorige bestemming binnen deze trip; de eerste dag van een trip begint op de basis van de boot.
   const startDate = init?.date ?? today
-  const previousInTrip = current ? [...active(legs)].filter((l) => l.tripId === current.id && l.date <= startDate).sort(compareLegs).at(-1) : undefined
   // Een geplande etappe van die dag (route-sjabloon of vorige trip) vult van en naar voor.
   const planned = plannedFor(current ?? null, legs, startDate)
-  const defaultFrom = init?.from ?? planned?.from ?? previousInTrip?.toPlace ?? (current && current.base && !previousInTrip ? current.base : (lastLeg?.toPlace ?? ''))
+  // Nooit een plaats uit een andere trip: vorige Naar in deze trip, anders de basis, anders via GPS (hieronder).
+  const defaultFrom = init?.from ?? planned?.from ?? defaultFromPlace(legs, active(trips).find((x) => x.id === defaultTripId), startDate)
   const weekRole = (trip: Trip | undefined) => (trip?.type ? roleForType(trip.type) : null)
 
   const [date, setDate] = useState(startDate)
-  const [fromPlace, setFromPlace] = useState(defaultFrom)
+  const [fromPlace, setFromPlaceState] = useState(defaultFrom)
+  // Zelf getypt of gekozen: dan volgt Van niet meer de trip, de datum of de GPS.
+  const [fromTouched, setFromTouched] = useState(!!init?.from)
+  const setFromPlace = (value: string) => {
+    setFromTouched(true)
+    setFromPlaceState(value)
+  }
   const [toPlace, setToPlace] = useState(init?.to ?? planned?.to ?? '')
   const [nm, setNm] = useState('')
   const [nmTouched, setNmTouched] = useState(false)
@@ -469,14 +475,38 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const [role, setRole] = useState<Role>(weekRole(current ?? undefined) ?? settings.lastRole)
   const [tripId, setTripId] = useState<string>(defaultTripId)
 
-  /** Andere week gekozen: boot en rol volgen die week als die ze heeft. */
+  /** Andere week gekozen: boot en rol volgen die week als die ze heeft; Van ook, zolang Olivier hem niet zelf koos. */
   function chooseWeek(id: string) {
     setTripId(id)
     const trip = trips.find((w) => w.id === id)
+    if (!fromTouched) setFromPlaceState(defaultFromPlace(legs, trip, date))
     if (trip?.boat) setBoat(trip.boat)
     const r = weekRole(trip)
     if (r) setRole(r)
   }
+  // Geen vorige dag in deze trip en geen basis: de dichtstbijzijnde bekende plaats via GPS (alleen als die dichtbij is).
+  useEffect(() => {
+    if (fromTouched || fromPlace.trim() || !('geolocation' in navigator)) return
+    let live = true
+    const locate = () =>
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const near = nearestKnownPlace(store.list('places.json.enc'), { lat: pos.coords.latitude, lon: pos.coords.longitude }, GPS_FROM_NM)
+          if (live && near) setFromPlaceState((current) => current || near.name)
+        },
+        () => undefined,
+        { maximumAge: 10 * 60_000, timeout: 10_000 },
+      )
+    // Niet opnieuw om toestemming vragen als Olivier die weigerde.
+    void (navigator.permissions?.query({ name: 'geolocation' as PermissionName }) ?? Promise.resolve(null))
+      .then((status) => {
+        if (live && status?.state !== 'denied') locate()
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [tripId])
   const [tripName, setTripName] = useState('')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
@@ -504,16 +534,19 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
         await store.put('trips.json.enc', trip)
         id = trip.id
       }
-      // Landen: niet in beeld; van = land van de vorige bestemming, naar = hetzelfde land.
-      const country = lastLeg?.toCountry ?? ''
+      // Landen: niet in beeld. Van de plaats zelf (punt of eerdere dagen), anders het land van de vorige dag in deze
+      // trip; nooit van een dag uit een andere trip (anders krijgt een dag in de BVI het land van een dag in Engeland).
+      const previous = id ? [...active(legs)].filter((l) => l.tripId === id && l.date <= day).sort(compareLegs).at(-1) : undefined
+      const fromCountry = placeCountry(legs, places, fromPlace) || previous?.toCountry || ''
+      const toCountry = placeCountry(legs, places, toPlace) || (previous ? previous.toCountry : '')
       const leg: Leg = {
         id: newId(),
         tripId: id,
         date: day,
         fromPlace: fromPlace.trim(),
-        fromCountry: country,
+        fromCountry,
         toPlace: toPlace.trim(),
-        toCountry: country,
+        toCountry,
         role,
         boat: boat.trim(),
         nmInland: water === 'binnen' ? nmValue : 0,
@@ -543,7 +576,15 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
         <div className="two">
           <label>
             {t('field.date')}
-            <input type="date" value={date} max={addDays(today, 1)} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date"
+              value={date}
+              max={addDays(today, 1)}
+              onChange={(e) => {
+                setDate(e.target.value)
+                if (!fromTouched) setFromPlaceState(defaultFromPlace(legs, trips.find((w) => w.id === tripId), e.target.value || today))
+              }}
+            />
           </label>
           <PlaceField label={t('field.from')} value={fromPlace} onChange={setFromPlace} onMap={() => setMapFor('from')} />
         </div>
@@ -680,4 +721,6 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   )
 }
 
+/** Van via GPS: alleen een bekende plaats binnen deze afstand. */
+const GPS_FROM_NM = 15
 const NEW_WEEK = '__nieuw__'

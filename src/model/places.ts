@@ -1,4 +1,5 @@
 import type { Store } from '../storage/store'
+import { distanceToCountryNm } from './countries'
 import { active, compareLegs, round1, totalNm } from './derive'
 import { newId, nowIso, type Leg, type Place } from './types'
 
@@ -309,4 +310,75 @@ export async function removePin(store: Store, use: PlaceUse): Promise<() => Prom
 export async function deletePlace(store: Store, use: PlaceUse): Promise<() => Promise<void>> {
   if (use.days > 0) throw new Error('Plaats komt voor in dagen')
   return removePin(store, use)
+}
+
+/** Het land van een plaats: dat van het punt, anders het meest gebruikte land in de dagen met die plaats. */
+export function placeCountry(legs: readonly Leg[], places: readonly Place[], name: string): string {
+  const own = findPlace(places, name)?.country?.trim()
+  if (own) return own
+  const key = placeKey(name)
+  const counts = new Map<string, number>()
+  for (const l of active(legs)) {
+    if (placeKey(l.fromPlace) === key && l.fromCountry.trim()) counts.set(l.fromCountry.trim(), (counts.get(l.fromCountry.trim()) ?? 0) + 1)
+    if (placeKey(l.toPlace) === key && l.toCountry.trim()) counts.set(l.toCountry.trim(), (counts.get(l.toCountry.trim()) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+}
+
+/** Verder dan dit van het land van de plaats: eerst vragen of de plaats klopt. */
+export const FAR_FROM_COUNTRY_NM = 300
+/** Een pin minder dan dit verschuiven is een kleine correctie: niet vragen. */
+export const QUIET_MOVE_NM = 1
+
+/**
+ * Wat er gevraagd moet worden voordat een pin voor `name` op `point` komt; null als er niets te vragen is. Een pin
+ * koppelen of vervangen gebeurt nooit stil: een bestaande pin verplaatsen, of een pin ver van het land van de plaats.
+ */
+export interface PinQuestion {
+  name: string
+  /** Bestaande pin die verplaatst zou worden (meer dan een kleine correctie). */
+  existing: Place | null
+  /** Afstand van de oude naar de nieuwe pin, in nm. */
+  moveNm: number | null
+  /** Land van de plaats waar de nieuwe pin ver vandaan ligt. */
+  farFrom: string | null
+}
+
+export function pinQuestion(legs: readonly Leg[], places: readonly Place[], name: string, point: { lat: number; lon: number }): PinQuestion | null {
+  const existing = findPlace(places, name)
+  const moveNm = existing ? greatCircleNm(existing, point) : null
+  const moving = existing !== null && moveNm !== null && moveNm >= QUIET_MOVE_NM
+  const country = placeCountry(legs, places, name)
+  const far = country ? distanceToCountryNm(country, point) : null
+  const farFrom = far !== null && far > FAR_FROM_COUNTRY_NM ? country : null
+  if (!moving && !farFrom) return null
+  return { name: name.trim(), existing: moving ? existing : null, moveNm: moving ? moveNm : null, farFrom }
+}
+
+/**
+ * Van, standaard: de Naar van de vorige dag binnen dezelfde trip (tot en met die datum); is die er niet, dan de basis
+ * van de trip (de eerste dag begint op de basis). Nooit een plaats uit een andere trip: zonder trip of basis leeg, en
+ * dan kiest het scherm de dichtstbijzijnde bekende plaats via GPS.
+ */
+export function defaultFromPlace(legs: readonly Leg[], trip: { id: string; base?: string } | null | undefined, date: string): string {
+  if (!trip) return ''
+  const previous = active(legs)
+    .filter((l) => l.tripId === trip.id && l.date <= date && l.toPlace.trim())
+    .sort(compareLegs)
+    .at(-1)
+  return previous?.toPlace.trim() ?? trip.base?.trim() ?? ''
+}
+
+/** De dichtstbijzijnde bekende plaats binnen `maxNm` (voor Van via GPS); null als er geen in de buurt is. */
+export function nearestKnownPlace(places: readonly Place[], point: { lat: number; lon: number }, maxNm: number): Place | null {
+  let best: Place | null = null
+  let bestNm = maxNm
+  for (const p of active(places)) {
+    const d = greatCircleNm(p, point)
+    if (d <= bestNm) {
+      best = p
+      bestNm = d
+    }
+  }
+  return best
 }

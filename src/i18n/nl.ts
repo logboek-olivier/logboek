@@ -1047,6 +1047,18 @@ export const nl = {
   'place.delete': 'Plaats verwijderen',
   'place.deleted': (p: { name: string }) => `${p.name} verwijderd`,
   'place.deleteHint': (p: { n: number }) => `Komt voor in ${p.n} ${plural(p.n, 'dag', 'dagen')}: hernoem de plaats of voeg hem samen, dan blijven die dagen kloppen.`,
+  'pin.far': (p: { country: string }) => `Dit ligt ver van ${p.country}. Klopt de plaats?`,
+  'pin.move': (p: { name: string }) => `Pin van ${p.name} verplaatsen?`,
+  'pin.old': (p: { where: string }) => `Oud: ${p.where}`,
+  'pin.new': (p: { where: string }) => `Nieuw: ${p.where}`,
+  'pin.near': (p: { where: string; name: string }) => `${p.where}, bij ${p.name}`,
+  'pin.distance': (p: { nm: string }) => `${p.nm} nm verder`,
+  'pin.other': 'Andere plaats kiezen',
+  'pin.makeNew': 'Nieuwe plaats maken',
+  'pin.newName': 'Naam van de nieuwe plaats',
+  'pin.nameTaken': 'Die naam bestaat al; kies een andere.',
+  'pin.anyway': 'Toch hier',
+  'pin.moveIt': 'Verplaatsen',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

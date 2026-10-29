@@ -96,6 +96,12 @@ export function formatDateRange(start: string, end: string, lang?: Lang): string
   return `${formatDateShort(start, lang)} – ${formatDate(end, lang)}`
 }
 
+/** 18.4271, -64.6182 → "18,427° N · 64,618° W" (Engels met punt). */
+export function formatCoordinate(lat: number, lon: number, lang?: Lang): string {
+  const n = new Intl.NumberFormat(locale(lang ?? getLang()), { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+  return `${n.format(Math.abs(lat))}° ${lat >= 0 ? 'N' : 'S'} · ${n.format(Math.abs(lon))}° ${lon >= 0 ? 'E' : 'W'}`
+}
+
 /** ISO-tijd → "3 mei, 14:05" (lokale tijd van het apparaat). */
 export function formatMoment(isoTime: string, lang?: Lang): string {
   const d = new Date(isoTime)
