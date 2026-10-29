@@ -5,10 +5,13 @@ import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
-import { getObject, putObject, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
-import { clearSynced, loadOutbox, markPending, pendingCount, saveOutbox, type Outbox } from './outbox'
+import { getLocal, getObject, putObject, putObjectAndLocal, setAsideIfVault, type Db, type StoredObject } from './idb'
+import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
-import { decryptRecords, encryptRecords, InvalidDataError, syncCollection } from './sync'
+import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, sameRecords, sealForUpload, syncCollection } from './sync'
+import { encodeBackup } from './backup'
+import { exclusive } from './writer'
+import { readStorageLog, writeStorageLog, type FileCheck, type StorageCheck } from './storage-log'
 
 /**
  * Bestanden met meegeleverde inhoud in de code (cursussen, checklists). Is zo'n bestand op GitHub onleesbaar, dan zet de
@@ -124,6 +127,10 @@ export function describeStatus(status: SyncStatus): string {
 }
 
 type Listener = () => void
+/** Zo lang na de laatste opslag start de sync vanzelf. */
+const AUTO_SYNC_MS = 800
+/** Zo vaak controleert de app vanzelf of GitHub en dit apparaat gelijk zijn (Meer → Opslag). */
+export const CHECK_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 type MetaCheck = 'match' | 'mismatch' | 'missing' | 'unknown'
 
 export class Store {
@@ -152,13 +159,34 @@ export class Store {
   /** De sleutel past niet (meer) bij meta.json.enc: deze Store schrijft nooit meer iets. */
   private mismatch = false
   private readonly mismatchListeners = new Set<(error: KeyMismatchError) => void>()
+  /** Andere vensters van de app (die dezelfde opslag delen) laten weten dat een bestand lokaal is opgeslagen. */
+  private readonly channel: BroadcastChannel | null
+  /** Na elke opslag vanzelf synchroniseren (de sessie zet dit aan; tests van de opslaglaag niet). */
+  private autoSync = false
+  private autoSyncTimer: ReturnType<typeof setTimeout> | null = null
+  /** Laatste lokale opslag en laatste volledige sync (ms sinds 1970), voor "Opgeslagen" en daarna "Gesynct". */
+  private savedAt = 0
+  private syncedAt = 0
+  /** Soort defect per onleesbaar bestand (leeg, formaat, sleutel), voor de foutdetails; nooit inhoud. */
+  private unreadableKinds = new Map<CollectionPath, string>()
+  private checking: Promise<StorageCheck | null> | null = null
 
   private constructor(
     private readonly db: Db,
     private readonly masterKey: CryptoKey,
     private readonly client: GithubClient,
     private vaultCheck: string | null,
-  ) {}
+  ) {
+    this.channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`logboek-opslag:${db.name}`)
+    if (this.channel) {
+      this.channel.onmessage = (event: MessageEvent) => {
+        const path = COLLECTION_PATHS.find((p) => p === (event.data as { path?: unknown } | null)?.path)
+        if (path && !this.locked) void this.absorbDisk(path).catch(recordError)
+      }
+      // Node (tests): het kanaal mag het proces niet openhouden.
+      ;(this.channel as unknown as { unref?: () => void }).unref?.()
+    }
+  }
 
   /**
    * Laadt de lokale versleutelde kopie uit IndexedDB. Synchroniseert nog niet.
@@ -287,7 +315,8 @@ export class Store {
   private async runRounds(): Promise<void> {
     do {
       this.syncAgain = false
-      await this.runSync()
+      // Eén venster tegelijk naar GitHub; een ander venster wacht en synct daarna (met wat dat venster opsloeg).
+      await exclusive(this.db.name, 'sync', () => this.runSync())
     } while (this.syncAgain && !this.locked && this.status.kind !== 'offline' && this.status.kind !== 'error')
   }
 
@@ -297,6 +326,28 @@ export class Store {
     this.collections.clear()
     this.outbox = {}
     this.listeners.clear()
+    if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer)
+    this.autoSyncTimer = null
+    this.channel?.close()
+  }
+
+  /** Na elke opslag vanzelf synchroniseren (kort daarna, zodat snel achter elkaar opslaan één sync geeft). */
+  enableAutoSync(): void {
+    this.autoSync = true
+  }
+
+  /** Tijdstip (ms) van de laatste lokale opslag en de laatste volledige sync; 0 = nog niet in deze sessie. */
+  savedTimes(): { savedAt: number; syncedAt: number } {
+    return { savedAt: this.savedAt, syncedAt: this.syncedAt }
+  }
+
+  private scheduleSync(): void {
+    if (!this.autoSync || this.locked) return
+    if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer)
+    this.autoSyncTimer = setTimeout(() => {
+      this.autoSyncTimer = null
+      if (!this.locked) void this.sync()
+    }, AUTO_SYNC_MS)
   }
 
   private async runSync(): Promise<void> {
@@ -335,10 +386,22 @@ export class Store {
       this.reportFailure(error)
       return
     }
+    // Wat andere vensters van de app intussen lokaal opsloegen, gaat in deze ronde mee.
+    try {
+      await this.absorbAll()
+    } catch (error) {
+      if (this.locked || error instanceof KeyMismatchError) return
+      if (error instanceof NewerSchemaError) {
+        this.setStatus(this.updateStatus())
+        return
+      }
+      throw error
+    }
     // Leespas: alle bestanden ophalen en controleren vóór er iets geschreven wordt. Een bestand van een
     // nieuwere schemaversie (geschreven door een nieuwere app) betekent: niets naar GitHub schrijven.
     const prefetched = new Map<CollectionPath, RemoteFile | null>()
     const unreadable = new Map<CollectionPath, string>()
+    const kinds = new Map<CollectionPath, string>()
     const remoteSha = new Map<CollectionPath, string>()
     let decryptFailures = 0
     let readable = 0
@@ -346,8 +409,9 @@ export class Store {
     let waiting = false
     for (const path of COLLECTION_PATHS) {
       if (this.locked) return
+      let file: RemoteFile | null = null
       try {
-        const file = await this.client.getFile(path)
+        file = await this.client.getFile(path)
         if (file) {
           remoteSha.set(path, file.sha)
           try {
@@ -377,7 +441,10 @@ export class Store {
         if (error instanceof DecryptError || error instanceof InvalidDataError) {
           // Onleesbaar bestand: dit pad wordt overgeslagen (geen PUT), de andere gaan door; het pad wordt gemeld.
           unreadable.set(path, error.name)
-          if (error instanceof DecryptError) decryptFailures++
+          if (error instanceof DecryptError) {
+            decryptFailures++
+            if (file) kinds.set(path, decryptFailureKind(file.content))
+          }
         } else failure = error
       }
     }
@@ -390,6 +457,7 @@ export class Store {
       return
     }
     this.unreadable = unreadable
+    this.unreadableKinds = kinds
     // Seedbestanden (cursussen, checklists) vanzelf herstellen; andere bestanden alleen na een tik.
     if (this.vaultCheck !== null && meta === 'match' && !this.outdated) {
       for (const [path, reason] of [...unreadable]) {
@@ -420,6 +488,13 @@ export class Store {
         await this.syncPath(path, prefetched.get(path))
       } catch (error) {
         if (this.locked || error instanceof KeyMismatchError) return
+        // Pas bij het aanmaken bleek het bestand er te staan en onleesbaar te zijn (of het net aangemaakte bestand is
+        // niet terug te lezen): net als in de leespas alleen dit bestand overslaan en melden.
+        if (error instanceof DecryptError || error instanceof InvalidDataError) {
+          unreadable.set(path, error.name)
+          if (this.unreadableKinds.has(path)) kinds.set(path, this.unreadableKinds.get(path)!)
+          continue
+        }
         failure = error
         if (error instanceof NewerSchemaError) {
           this.outdated = true
@@ -429,13 +504,108 @@ export class Store {
       }
     }
     if (this.locked) return
-    if (failure === null && unreadable.size > 0) failure = new UnreadableFileError([...unreadable.keys()], [...new Set(unreadable.values())].join(', '))
+    if (failure === null && unreadable.size > 0) {
+      const reasons = [...unreadable].map(([path, name]) => (kinds.has(path) ? `${name}/${kinds.get(path)}` : name))
+      failure = new UnreadableFileError([...unreadable.keys()], [...new Set(reasons)].join(', '))
+    }
     if (failure === null) {
-      if (!waiting) this.syncedOnce = true
+      if (!waiting) {
+        this.syncedOnce = true
+        this.syncedAt = Date.now()
+      }
       this.setStatus(this.idleStatus())
       return
     }
     this.reportFailure(failure)
+  }
+
+  /**
+   * Back-up van het hele logboek als tekst (zie src/storage/backup.ts): alle records, ook verwijderde, versleuteld onder
+   * de hoofdsleutel, met de lokale meta erbij (alleen te openen met de wachtzin of herstelcode).
+   */
+  async exportBackup(): Promise<string> {
+    this.assertUnlocked()
+    const meta = await Store.loadMeta(this.db)
+    if (!meta) throw new Error('Geen meta op dit apparaat')
+    return encodeBackup(meta, this.masterKey, new Map(COLLECTION_PATHS.map((path) => [path, this.get(path)])))
+  }
+
+  /** Laatste controle en per bestand de laatste geslaagde sync (Meer → Opslag). */
+  storageLog() {
+    return readStorageLog(this.db.name)
+  }
+
+  /** Records op dit apparaat per bestand (niet verwijderd). */
+  localCount(path: CollectionPath): number {
+    return this.list(path).length
+  }
+
+  /**
+   * "Controleer nu": eerst synchroniseren, dan alles opnieuw van GitHub halen, ontsleutelen en per bestand vergelijken
+   * met dit apparaat. Alleen paden, aantallen en de soort uitkomst worden bewaard (regel 9). Null als er geen
+   * verbinding is of de sync niet lukte (de syncstatus zegt dan waarom). `syncFirst: false` na een net geslaagde sync.
+   */
+  check(syncFirst = true): Promise<StorageCheck | null> {
+    this.checking ??= this.runCheck(syncFirst).finally(() => {
+      this.checking = null
+    })
+    return this.checking
+  }
+
+  /** Eén keer per week vanzelf, na een geslaagde sync; alleen bij een probleem verschijnt een melding. */
+  async weeklyCheck(now = Date.now()): Promise<void> {
+    if (!this.syncedOnce || this.locked || this.outdated) return
+    const last = readStorageLog(this.db.name).check
+    if (last && now - Date.parse(last.at) < CHECK_EVERY_MS && Date.parse(last.at) <= now) return
+    await this.check(false)
+  }
+
+  private async runCheck(syncFirst: boolean): Promise<StorageCheck | null> {
+    this.assertUnlocked()
+    if (syncFirst) await this.sync()
+    if (this.locked || this.status.kind === 'offline' || this.outdated || this.mismatch) return null
+    if (this.status.kind === 'error' && this.status.code !== 'unreadable') return null
+    const result = await exclusive(this.db.name, 'sync', async (): Promise<StorageCheck | null> => {
+      let metaOk: boolean
+      try {
+        metaOk = (await this.checkMeta()) === 'match'
+      } catch (error) {
+        if (error instanceof NetworkError) return null
+        throw error
+      }
+      const files: FileCheck[] = []
+      for (const path of COLLECTION_PATHS) {
+        if (this.locked) return null
+        const local = this.get(path)
+        const localActive = local.filter((r) => r.deletedAt === null).length
+        let file: RemoteFile | null
+        try {
+          file = await this.client.getFile(path)
+        } catch (error) {
+          if (error instanceof NetworkError) return null
+          throw error
+        }
+        if (!file) {
+          files.push({ path, local: localActive, remote: null, state: local.length === 0 ? 'leeg' : 'ontbreekt', differences: 0 })
+          continue
+        }
+        try {
+          const remote = await decryptRecords(this.masterKey, path, file.content)
+          const differences = countDifferences(local, remote)
+          files.push({ path, local: localActive, remote: remote.filter((r) => r.deletedAt === null).length, state: differences === 0 ? 'gelijk' : 'verschil', differences })
+        } catch (error) {
+          if (!(error instanceof DecryptError) && !(error instanceof InvalidDataError) && !(error instanceof NewerSchemaError)) throw error
+          const reason = error instanceof DecryptError ? `${error.name}/${decryptFailureKind(file.content)}` : error.name
+          files.push({ path, local: localActive, remote: null, state: 'onleesbaar', differences: 0, reason })
+        }
+      }
+      return { at: new Date().toISOString(), metaOk, files }
+    })
+    if (!result || this.locked) return null
+    const log = readStorageLog(this.db.name)
+    writeStorageLog(this.db.name, { ...log, check: result })
+    this.notify()
+    return result
   }
 
   /**
@@ -493,7 +663,7 @@ export class Store {
   async repair(path: CollectionPath): Promise<void> {
     this.assertUnlocked()
     if (!(await this.repairable()).includes(path)) return
-    await this.replaceRemote(path, this.collections.get(path) ?? [], null)
+    await exclusive(this.db.name, 'sync', () => this.replaceRemote(path, this.collections.get(path) ?? [], null))
     this.unreadable.delete(path)
     await this.sync()
   }
@@ -506,7 +676,7 @@ export class Store {
   async resetFile(path: CollectionPath): Promise<void> {
     this.assertUnlocked()
     if (!(await this.repairOptions()).some((o) => o.path === path)) return
-    await this.replaceRemote(path, [], null)
+    await exclusive(this.db.name, 'sync', () => this.replaceRemote(path, [], null))
     setRepairAttempts(this.db.name, path, 0)
     this.unreadable.delete(path)
     await this.sync()
@@ -530,7 +700,8 @@ export class Store {
       // ander apparaat het bestand al hersteld.
       if (sha === null || attempt > 0) {
         const remote = await this.client.getFile(path)
-        if (!remote) sha = null
+        // Er staat (nu) niets: niets te vervangen. Een nieuw bestand maakt alleen de sync aan.
+        if (!remote) return
         else {
           try {
             await decryptRecords(this.masterKey, path, remote.content)
@@ -546,7 +717,7 @@ export class Store {
         }
       }
       try {
-        await this.client.putFile(path, await encryptRecords(this.masterKey, path, records), sha)
+        await this.client.putFile(path, await sealForUpload(this.masterKey, path, records), sha)
         if (sha) rememberReplaced(this.db.name, path, sha)
         setRepairAttempts(this.db.name, path, repairAttempts(this.db.name, path) + 1)
         return
@@ -570,42 +741,160 @@ export class Store {
   }
 
   private async syncPath(path: CollectionPath, prefetched: RemoteFile | null | undefined): Promise<void> {
+    let remote = prefetched
+    const creating = remote === null
+    if (creating) {
+      // Een nieuw bestand op GitHub ontstaat alleen hier: in de sync, na de sleutelcontrole van deze ronde, en pas als
+      // een tweede blik bevestigt dat het er echt niet staat (GitHub geeft vlak na schrijven soms nog even 404). Staat
+      // het er intussen wel (een ander venster of apparaat was eerder), dan gewoon samenvoegen.
+      remote = await this.client.getFile(path)
+      if (remote) await decryptRecords(this.masterKey, path, remote.content)
+    }
     const snapshot = { ...(this.outbox[path] ?? {}) }
     const local = this.collections.get(path) ?? []
     await this.assertVault()
-    const result = await syncCollection(this.client, this.masterKey, path, local, prefetched)
+    const result = await syncCollection(this.client, this.masterKey, path, local, remote)
     if (this.locked) return
-    // Wijzigingen tijdens het wachten blijven staan: samenvoegen met wat ondertussen lokaal is gezet.
-    const during = (this.collections.get(path) ?? []).filter((r) => {
-      const synced = result.records.find((s) => s.id === r.id)
-      return !synced || r.updatedAt > synced.updatedAt
+    if (creating && remote === null && result.pushed) await this.verifyCreated(path, result.sha)
+    await exclusive(this.db.name, 'lokaal', async () => {
+      // Wijzigingen tijdens het wachten blijven staan: samenvoegen met wat ondertussen in het geheugen en (door een
+      // ander venster) op het apparaat is gezet.
+      const during = (this.collections.get(path) ?? []).filter((r) => {
+        const synced = result.records.find((s) => s.id === r.id)
+        return !synced || r.updatedAt > synced.updatedAt
+      })
+      const fromSync = [...result.records.filter((s) => !during.some((d) => d.id === s.id)), ...during]
+      const merged = await this.mergeWithDisk(path, fromSync)
+      const outbox = clearSynced(mergeOutbox(await this.diskOutbox(), this.outbox), path, snapshot)
+      const blob = await encryptRecords(this.masterKey, path, merged)
+      if (this.locked) return
+      await this.putGuarded({ path, blob, sha: result.sha }, outbox)
+      if (this.locked) return
+      this.collections.set(path, merged)
+      this.outbox = outbox
     })
-    const merged = [...result.records.filter((s) => !during.some((d) => d.id === s.id)), ...during]
-    this.collections.set(path, merged)
-    this.outbox = clearSynced(this.outbox, path, snapshot)
-    const outbox = this.outbox
-    const blob = await encryptRecords(this.masterKey, path, merged)
     if (this.locked) return
-    await this.putGuarded({ path, blob, sha: result.sha })
-    if (this.locked) return
-    await saveOutbox(this.db, this.masterKey, outbox)
+    this.markSynced(path)
+    this.broadcast(path)
   }
 
+  /**
+   * Net aangemaakt op GitHub: één keer teruglezen. Geeft GitHub voor onze eigen versie iets terug dat niet te lezen is,
+   * dan meteen melden (pad en soort defect, nooit inhoud) in plaats van het pas bij een volgende sync te ontdekken.
+   * Een oudere of andere versie (GitHub loopt nog achter, of een ander apparaat schreef al) laat de volgende sync zien.
+   */
+  private async verifyCreated(path: CollectionPath, sha: string): Promise<void> {
+    const back = await this.client.getFile(path)
+    if (!back || back.sha !== sha) return
+    try {
+      await decryptRecords(this.masterKey, path, back.content)
+    } catch (error) {
+      if (error instanceof DecryptError) this.unreadableKinds.set(path, decryptFailureKind(back.content))
+      throw error
+    }
+  }
+
+  /** Andere vensters laten weten dat dit bestand lokaal veranderd is. */
+  private broadcast(path: CollectionPath): void {
+    try {
+      this.channel?.postMessage({ path })
+    } catch {
+      // Kanaal al gesloten (vergrendeld): niets te melden.
+    }
+  }
+
+  private markSynced(path: CollectionPath): void {
+    const log = readStorageLog(this.db.name)
+    log.synced[path] = new Date().toISOString()
+    writeStorageLog(this.db.name, log)
+  }
+
+  /**
+   * Een bestand opslaan op dit apparaat. Wat er nu in het geheugen staat wordt direct vastgelegd: ook als er tijdens het
+   * opslaan vergrendeld wordt (de app sluit), wordt deze opslag afgemaakt. Wat een ander venster intussen opsloeg, wordt
+   * samengevoegd (laatste updatedAt wint), nooit overschreven. Bestand en outbox gaan in één transactie.
+   */
   private async persist(path: CollectionPath): Promise<void> {
-    // Na vergrendelen niets meer schrijven: het geheugen is gewist en de outbox zou leeg worden opgeslagen.
-    // lock() kan tijdens elke await komen, daarom na elke await opnieuw controleren.
     if (this.frozen.has(path)) return
-    const records = this.collections.get(path) ?? []
+    const mine = this.collections.get(path) ?? []
     const outbox = this.outbox
-    const blob = await encryptRecords(this.masterKey, path, records)
-    const stored = await getObject(this.db, path)
+    await exclusive(this.db.name, 'lokaal', async () => {
+      const merged = await this.mergeWithDisk(path, mine)
+      const nextOutbox = mergeOutbox(await this.diskOutbox(), outbox)
+      const blob = await encryptRecords(this.masterKey, path, merged)
+      const stored = await getObject(this.db, path)
+      await this.putGuarded({ path, blob, sha: stored?.sha ?? null }, nextOutbox)
+      if (this.locked) return
+      // Andere vensters en wijzigingen die tijdens het opslaan in het geheugen kwamen, allebei behouden.
+      this.collections.set(path, mergeRecords(merged, this.collections.get(path) ?? []))
+      this.outbox = mergeOutbox(nextOutbox, this.outbox)
+    })
     if (this.locked) return
-    await this.putGuarded({ path, blob, sha: stored?.sha ?? null })
-    if (this.locked) return
-    await saveOutbox(this.db, this.masterKey, outbox)
-    if (this.locked) return
+    this.savedAt = Date.now()
+    this.broadcast(path)
     if (this.status.kind !== 'syncing') this.setStatus(this.idleStatus())
     else this.notify()
+    this.scheduleSync()
+  }
+
+  /**
+   * `mine` samengevoegd met de lokale kopie op het apparaat (een ander venster kan die intussen geschreven hebben);
+   * bij gelijke updatedAt wint `mine`. Een lokale kopie van een nieuwere app wordt nooit overschreven: dan alleen-lezen
+   * en "Werk de app bij". Een lokale kopie die wel ontsleutelt maar ongeldig is, wordt eerst apart bewaard.
+   */
+  private async mergeWithDisk(path: CollectionPath, mine: readonly SyncRecord[]): Promise<SyncRecord[]> {
+    const stored = await getObject(this.db, path)
+    if (!stored) return [...mine]
+    try {
+      return mergeRecords(await decryptRecords(this.masterKey, path, stored.blob), mine)
+    } catch (error) {
+      if (error instanceof NewerSchemaError) {
+        this.outdated = true
+        this.frozen.add(path)
+        this.setStatus(this.updateStatus())
+        throw error
+      }
+      if (error instanceof InvalidDataError) {
+        await setAsideIfVault(this.db, META_PATH, this.vaultCheck, path, stored.blob, `${SET_ASIDE_PREFIX}${path}/${new Date().toISOString()}`)
+        return [...mine]
+      }
+      // Niet te ontsleutelen: een ander logboek op dit apparaat; putGuarded houdt het schrijven dan tegen.
+      if (error instanceof DecryptError) return [...mine]
+      throw error
+    }
+  }
+
+  /** De outbox zoals die nu op het apparaat staat (een ander venster kan hem bijgewerkt hebben). */
+  private async diskOutbox(): Promise<Outbox> {
+    const blob = await getLocal(this.db, OUTBOX_NAME)
+    if (!blob) return {}
+    try {
+      return await decryptOutbox(this.masterKey, blob)
+    } catch {
+      return {}
+    }
+  }
+
+  /** Neemt wat een ander venster van dit bestand opsloeg over in het geheugen. */
+  private async absorbDisk(path: CollectionPath): Promise<void> {
+    if (this.frozen.has(path)) return
+    const mine = this.collections.get(path) ?? []
+    const merged = await this.mergeWithDisk(path, mine)
+    if (this.locked) return
+    const current = this.collections.get(path) ?? []
+    if (sameRecords(merged, current)) return
+    this.collections.set(path, mergeRecords(merged, current))
+    this.outbox = mergeOutbox(await this.diskOutbox(), this.outbox)
+    if (this.locked) return
+    this.setStatus(this.status.kind === 'syncing' ? this.status : this.idleStatus())
+  }
+
+  private async absorbAll(): Promise<void> {
+    for (const path of COLLECTION_PATHS) {
+      if (this.locked) return
+      await this.absorbDisk(path)
+    }
+    this.outbox = mergeOutbox(await this.diskOutbox(), this.outbox)
   }
 
   /**
@@ -628,18 +917,20 @@ export class Store {
   }
 
   /**
-   * Lokaal schrijven onder de sleutel-invariant: controle van de lokale meta en schrijven in één transactie, zodat een
-   * ander tabblad er niet tussen een ander logboek kan neerzetten.
+   * Lokaal schrijven onder de sleutel-invariant: controle van de lokale meta en schrijven (bestand plus outbox) in één
+   * transactie, zodat een ander tabblad er niet tussen een ander logboek kan neerzetten. Na vergrendelen hoort een
+   * ander logboek op dit apparaat niet meer bij deze opslag: dan stil niets schrijven.
    */
-  private async putGuarded(object: StoredObject): Promise<void> {
+  private async putGuarded(object: StoredObject, outbox: Outbox): Promise<void> {
     if (this.mismatch) throw new KeyMismatchError('local')
+    const local = { name: OUTBOX_NAME, blob: await encryptOutbox(this.masterKey, outbox) }
     if (this.vaultCheck === null) {
-      await putObject(this.db, object)
+      await putObjectAndLocal(this.db, META_PATH, null, object, local)
       return
     }
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (await putObjectAndLocal(this.db, META_PATH, this.vaultCheck, object, local)) return
       if (this.locked) return
-      if (await putObjectIfVault(this.db, META_PATH, this.vaultCheck, object)) return
       // Andere meta: hoort die bij deze sleutel, dan opnieuw met het nieuwe check-veld; anders stoppen.
       await this.assertVault()
     }
@@ -689,4 +980,22 @@ export class Store {
   private assertUnlocked(): void {
     if (this.locked) throw new Error('Vergrendeld')
   }
+}
+
+/** Aantal records dat op GitHub en op dit apparaat niet precies gelijk is (ook verwijderde, die tellen voor sync mee). */
+export function countDifferences(local: readonly SyncRecord[], remote: readonly SyncRecord[]): number {
+  const byId = new Map(remote.map((r) => [r.id, stable(r)]))
+  let n = 0
+  for (const r of local) {
+    if (byId.get(r.id) !== stable(r)) n++
+    byId.delete(r.id)
+  }
+  return n + byId.size
+}
+
+/** JSON met gesorteerde sleutels: dezelfde inhoud geeft dezelfde tekst, ongeacht de volgorde van de velden. */
+function stable(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
+  )
 }

@@ -27,13 +27,30 @@ export function clearSynced(outbox: Outbox, path: string, synced: Record<string,
   return next
 }
 
+/** Twee outboxen samenvoegen (bijvoorbeeld van twee vensters): per record de laatste updatedAt. */
+export function mergeOutbox(a: Outbox, b: Outbox): Outbox {
+  const out: Outbox = { ...a }
+  for (const [path, ids] of Object.entries(b)) {
+    const merged = { ...out[path] }
+    for (const [id, updatedAt] of Object.entries(ids)) {
+      const mine = merged[id]
+      if (mine === undefined || updatedAt > mine) merged[id] = updatedAt
+    }
+    out[path] = merged
+  }
+  return out
+}
+
 export function pendingCount(outbox: Outbox): number {
   return Object.values(outbox).reduce((n, ids) => n + Object.keys(ids).length, 0)
 }
 
 export async function loadOutbox(db: Db, masterKey: CryptoKey): Promise<Outbox> {
   const blob = await getLocal(db, OUTBOX_NAME)
-  if (!blob) return {}
+  return blob ? decryptOutbox(masterKey, blob) : {}
+}
+
+export async function decryptOutbox(masterKey: CryptoKey, blob: Bytes): Promise<Outbox> {
   const plain = await decryptObject(masterKey, OUTBOX_AAD, blob)
   // Wel ontsleuteld maar geen geldige outbox: leeg beginnen (de gegevens zelf staan in de bestanden en blijven).
   let raw: unknown
@@ -46,8 +63,11 @@ export async function loadOutbox(db: Db, masterKey: CryptoKey): Promise<Outbox> 
 }
 
 export async function saveOutbox(db: Db, masterKey: CryptoKey, outbox: Outbox): Promise<void> {
-  const blob: Bytes = await encryptObject(masterKey, OUTBOX_AAD, utf8(JSON.stringify(outbox)))
-  await putLocal(db, OUTBOX_NAME, blob)
+  await putLocal(db, OUTBOX_NAME, await encryptOutbox(masterKey, outbox))
+}
+
+export function encryptOutbox(masterKey: CryptoKey, outbox: Outbox): Promise<Bytes> {
+  return encryptObject(masterKey, OUTBOX_AAD, utf8(JSON.stringify(outbox)))
 }
 
 export async function deleteOutbox(db: Db): Promise<void> {

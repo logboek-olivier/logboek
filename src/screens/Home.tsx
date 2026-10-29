@@ -22,6 +22,7 @@ import { Deadlines } from './Deadlines'
 import { Boats } from './Boats'
 import { Places } from './Places'
 import { Agenda } from './Agenda'
+import { Storage } from './Storage'
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -42,6 +43,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
+  opslag: 'Opslag',
 }
 
 
@@ -106,13 +108,13 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen'
+      : screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
         ? 'meer'
         : screen
 
   return (
     <main className="app with-bar">
-      <SyncStatusLine store={store} files={SCREEN_FILES[screen]} />
+      <SyncStatusLine store={store} files={SCREEN_FILES[screen]} onStorage={screen === 'opslag' ? undefined : () => select('opslag')} />
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {
             select('toevoegen')
@@ -191,6 +193,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Settings store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'opslag' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Storage store={store} notify={notify} />
         </>
       )}
       <Toast message={toast} onDone={clearToast} />

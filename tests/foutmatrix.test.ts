@@ -384,6 +384,52 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
   }
 })
 
+describe('Foutmatrix: twee vensters en een nieuw bestand', () => {
+  for (const path of COLLECTION_PATHS) {
+    it(`${path} · twee vensters zonder verbinding slaan allebei op: na sluiten staat alles er en komt alles op GitHub`, async () => {
+      const { name, db } = await phone()
+      db.close()
+      const a = await openApp(name, false)
+      const b = await openApp(name, false)
+      await Promise.all([store(a).sync(), store(b).sync()])
+      github.offline = true
+      const record = (id: string) => ({ ...(samples(path)[0] as unknown as Record<string, unknown>), id, updatedAt: new Date().toISOString(), deletedAt: null }) as never
+      await store(a).put(path, record(`${path}-venster-a`))
+      await store(b).put(path, record(`${path}-venster-b`))
+      a.lock()
+      b.lock()
+      github.offline = false
+      const again = await openApp(name, false)
+      expect(store(again).get(path).map((r) => r.id)).toEqual(expect.arrayContaining([`${path}-venster-a`, `${path}-venster-b`]))
+      await store(again).sync()
+      const key = await remoteKey()
+      const remote = await decryptRecords(key, path, Uint8Array.from(Buffer.from(github.files.get(path)!.content, 'base64')))
+      expect(remote.map((r) => r.id)).toEqual(expect.arrayContaining([`${path}-venster-a`, `${path}-venster-b`]))
+      expect(store(await cleanDevice()).getStatus()).toEqual({ kind: 'synced' })
+    }, 60_000)
+
+    it(`${path} · nieuw na een update, GitHub geeft eerst nog 404: aangemaakt na de sleutelcontrole, geen PUT zonder sha over een bestaand bestand`, async () => {
+      const { name, db } = await phone()
+      // Dit bestand bestaat nog niet (zoals na een update die het toevoegt): niet op GitHub en niet op het apparaat.
+      github.files.delete(path)
+      await db.delete('objects', path)
+      db.close()
+      const a = await openApp(name, false)
+      await store(a).sync()
+      expect(github.files.has(path)).toBe(true)
+      // Een tweede venster ziet bij de eerste blik nog 404.
+      const b = await openApp(name, false)
+      github.notFoundReads.set(path, 1)
+      const before = github.requests.length
+      await store(b).sync()
+      const blind = github.requests.slice(before).filter((r) => r.method === 'PUT' && r.url.endsWith(`/contents/${path}`) && !(JSON.parse(r.body ?? '{}') as { sha?: string }).sha)
+      expect(blind).toEqual([])
+      expect(store(b).getStatus()).toEqual({ kind: 'synced' })
+      expect(store(await cleanDevice()).getStatus()).toEqual({ kind: 'synced' })
+    }, 60_000)
+  }
+})
+
 describe('Foutmatrix: randgevallen uit de review', () => {
   it('een record zonder deletedAt maakt het bestand niet ongeldig: alle trips blijven staan', async () => {
     const { name, db } = await phone()

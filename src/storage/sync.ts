@@ -62,6 +62,28 @@ export async function encryptRecords(masterKey: CryptoKey, path: string, records
   return encryptObject(masterKey, path, encodeRecords(records))
 }
 
+/**
+ * Versleutelen voor GitHub, op één plek: met de sleutel en het pad (AAD) van dit bestand, en vóór het uploaden met
+ * dezelfde sleutel en hetzelfde pad weer ontsleuteld en gecontroleerd. Zo gaat er nooit een bestand naar GitHub dat
+ * deze sleutel zelf niet kan lezen.
+ */
+export async function sealForUpload(masterKey: CryptoKey, path: string, records: readonly SyncRecord[]): Promise<Bytes> {
+  const blob = await encryptRecords(masterKey, path, records)
+  const back = await decryptRecords(masterKey, path, blob)
+  if (back.length !== records.length) throw new InvalidDataError(path)
+  return blob
+}
+
+/**
+ * Soort defect van een bestand dat niet te ontsleutelen is, zonder inhoud (regel 9): leeg, een ander formaat (eerste
+ * byte of lengte klopt niet; ook afgekapt), of een andere sleutel of ander pad (de controle van AES-GCM faalt).
+ */
+export function decryptFailureKind(blob: Bytes): 'leeg' | 'formaat' | 'sleutel' {
+  if (blob.length === 0) return 'leeg'
+  if (blob[0] !== FORMAT_VERSION || blob.length < 1 + 12 + 16) return 'formaat'
+  return 'sleutel'
+}
+
 export async function decryptRecords<T extends SyncRecord>(masterKey: CryptoKey, path: string, blob: Bytes): Promise<T[]> {
   // Een objectformaat van een nieuwere app (versiebyte 2–15) is geen andere sleutel: niets schrijven en "Werk de app
   // bij". Andere eerste bytes zijn gewoon onleesbaar.
@@ -118,7 +140,7 @@ export async function syncCollection<T extends SyncRecord>(
       return { records: merged, sha: remoteFile.sha, pushed: false, pulled }
     }
     try {
-      const sha = await client.putFile(path, await encryptRecords(masterKey, path, merged), remoteFile?.sha ?? null)
+      const sha = await client.putFile(path, await sealForUpload(masterKey, path, merged), remoteFile?.sha ?? null)
       return { records: merged, sha, pushed: true, pulled }
     } catch (error) {
       if (!(error instanceof ConflictError)) throw error
