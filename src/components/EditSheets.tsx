@@ -1,13 +1,11 @@
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { formatDate, formatDateRange, formatNm, formatNumber, formatRate } from '../format'
+import { formatDate, formatNumber, formatRate } from '../format'
 import { active, summarizeTrips } from '../model/derive'
 import {
   deleteLeg,
   deleteTransaction,
-  deleteTrip,
   parseNonNegative,
-  renameTrip,
   updateLeg,
   updateTransaction,
   type Undo,
@@ -26,7 +24,6 @@ import {
   type Transaction,
   type TransactionKind,
   type TransactionSource,
-  type Trip,
 } from '../model/types'
 import type { Store } from '../storage/store'
 import { defaultTripName } from '../import/mileage-csv'
@@ -389,57 +386,6 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
           <button className="btn danger" type="button" onClick={() => void remove()}>
             <Icon icon={Trash2} />
             {t('common.delete')}
-          </button>
-        </div>
-      </form>
-    </Sheet>
-  )
-}
-
-export function TripSheet({ store, trip, onClose, notify }: { store: Store; trip: Trip; onClose: () => void; notify: Notify }) {
-  const [name, setName] = useState(trip.name)
-  const [busy, setBusy] = useState(false)
-  const summary = summarizeTrips([trip], store.get('legs.json.enc'))[0]
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (busy) return
-    setBusy(true)
-    try {
-      await renameTrip(store, trip, name)
-      onClose()
-      notify(t('toast.saved'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function remove() {
-    const undo = await deleteTrip(store, trip)
-    onClose()
-    notify(t('toast.deleted'), undo)
-  }
-
-  return (
-    <Sheet title={t('edit.trip')} onClose={onClose}>
-      <form className="stack" onSubmit={(e) => void submit(e)}>
-        <label>
-          {t('field.name')}
-          <input type="text" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        {summary && (
-          <p className="muted">
-            {formatDateRange(summary.startDate, summary.endDate)} · {t('unit.days', { n: summary.days })} · {formatNm(summary.nm)}.{' '}
-            {t('edit.moveDayHint')}
-          </p>
-        )}
-        <div className="sheet-actions">
-          <button className="btn primary" type="submit" disabled={busy}>
-            {t('common.save')}
-          </button>
-          <button className="btn danger" type="button" onClick={() => void remove()}>
-            <Icon icon={Trash2} />
-            {t('trip.deleteWithDays')}
           </button>
         </div>
       </form>

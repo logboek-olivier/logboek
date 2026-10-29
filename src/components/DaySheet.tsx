@@ -8,7 +8,7 @@ import { isEarned } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { currentSettings } from '../model/settings'
-import { DAY_TYPES, todayIso, type DayType, type Reminder } from '../model/types'
+import { DAY_TYPES, todayIso, type DayType, type Reminder, type Trip } from '../model/types'
 import { useDueItems } from '../screens/Deadlines'
 import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
@@ -30,6 +30,7 @@ export function DaySheet({
   onClose,
   onAdd,
   onReminder,
+  onEditTrip,
   notify,
 }: {
   store: Store
@@ -39,6 +40,8 @@ export function DaySheet({
   onAdd: (init: AddInit) => void
   /** Termijn bewerken (of null = nieuwe termijn op deze dag); het dagblad sluit dan. */
   onReminder: (reminder: Reminder | null) => void
+  /** Trip bewerken (alle velden, ook verwijderen); het dagblad sluit dan. */
+  onEditTrip?: (trip: Trip) => void
   notify: Notify
 }) {
   const today = todayIso()
@@ -134,6 +137,14 @@ export function DaySheet({
               <p key={v.trip.id} className="day-trip">
                 <strong>{v.trip.name}</strong>
                 <span className="muted small"> · {formatDateRange(v.startDate, v.endDate)}</span>
+                {onEditTrip && (
+                  <>
+                    {' '}
+                    <button type="button" className="btn link small inline" onClick={() => onEditTrip(v.trip)}>
+                      {t('day.editTrip', { name: v.trip.name })}
+                    </button>
+                  </>
+                )}
               </p>
             ))}
             <label>
@@ -270,7 +281,7 @@ function DayIncome({ store, date }: { store: Store; date: string }) {
           })}
         </ul>
       ) : (
-        <p className="muted small">{t('week.amountsHidden', { n: income.length })}</p>
+        <p className="muted small">{t('day.amountsHidden', { n: income.length })}</p>
       )}
     </div>
   )

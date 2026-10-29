@@ -175,3 +175,75 @@ export async function skipBoats(store: Store, boats: readonly BoatEntry[]): Prom
 function currentChecked(store: Store): string[] {
   return store.get('settings.json.enc').find((s) => s.id === 'settings' && s.deletedAt === null)?.boatsChecked ?? []
 }
+
+/** Hoe een boot in de kolom boot van een dag staat: "Naam (Model)", of alleen naam of model. */
+export function shipText(name: string, model: string): string {
+  const n = name.trim()
+  const m = model.trim()
+  return n && m ? `${n} (${m})` : n || m
+}
+
+/** Dagen met deze boot (de tekst in de kolom boot wijst naar dezelfde naam en hetzelfde model). */
+function legsOf(legs: readonly Leg[], boat: BoatEntry): Leg[] {
+  return active(legs).filter((l) => {
+    const ship = parseShip(l.boat)
+    return (ship.name || ship.model) && boatKey(ship.name, ship.model) === boat.key
+  })
+}
+
+/** Na een wijziging van trips en dagen: alles terugzetten zoals het was (met een latere updatedAt). */
+function restore(store: Store, trips: readonly Trip[], legs: readonly Leg[]): () => Promise<void> {
+  return async () => {
+    const later = (iso: string) => new Date(Math.max(Date.now(), Date.parse(iso) + 1)).toISOString()
+    if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...t, updatedAt: later(t.updatedAt) })))
+    if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, updatedAt: later(l.updatedAt) })))
+    void store.sync()
+  }
+}
+
+function tripsOf(store: Store, boat: BoatEntry): Trip[] {
+  return store.list('trips.json.enc').filter((t) => boat.tripIds.includes(t.id))
+}
+
+/** Een boot weghalen: de trips en dagen houden geen bootgegevens meer (bijvoorbeeld een tikfout als "xxx"). */
+export async function deleteBoat(store: Store, boat: BoatEntry): Promise<() => Promise<void>> {
+  const now = new Date().toISOString()
+  const trips = tripsOf(store, boat)
+  const legs = legsOf(store.get('legs.json.enc'), boat)
+  const nextTrips = trips.map((t) => {
+    const { boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, ...rest } = t
+    void [_b, _m, _l, _k]
+    return { ...rest, updatedAt: now }
+  })
+  if (nextTrips.length > 0) await store.putMany('trips.json.enc', nextTrips)
+  if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, boat: '', updatedAt: now })))
+  void store.sync()
+  return restore(store, trips, legs)
+}
+
+/**
+ * Een boot samenvoegen met een andere: de trips en dagen van `from` krijgen de naam, het model, de lengte en de soort van
+ * `into`. Daarna is er nog één boot.
+ */
+export async function mergeBoat(store: Store, from: BoatEntry, into: BoatEntry): Promise<() => Promise<void>> {
+  const now = new Date().toISOString()
+  const trips = tripsOf(store, from)
+  const legs = legsOf(store.get('legs.json.enc'), from)
+  const nextTrips = trips.map((t) => {
+    const { boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, ...rest } = t
+    void [_b, _m, _l, _k]
+    return {
+      ...rest,
+      ...(into.name ? { boat: into.name } : {}),
+      ...(into.model ? { boatModel: into.model } : {}),
+      ...(into.lengthFt ? { boatLengthFt: into.lengthFt } : {}),
+      ...(into.kind ? { boatKind: into.kind } : {}),
+      updatedAt: now,
+    }
+  })
+  const text = shipText(into.name, into.model)
+  if (nextTrips.length > 0) await store.putMany('trips.json.enc', nextTrips)
+  if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, boat: text, updatedAt: now })))
+  void store.sync()
+  return restore(store, trips, legs)
+}

@@ -40,14 +40,18 @@ test('Boten uit de import: naam en model uit Schip, lengte als voorstel, alles i
   await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   await expect(page.getByText(/boten uit je import controleren/)).toHaveCount(0)
 
-  // Meer → Boten: dezelfde gegevens, te bewerken.
+  // Meer → Boten: dezelfde gegevens; tikken opent bewerken met alle velden.
   await openMore(page, 'Boten')
-  const list = page.locator('.boat-card')
+  const list = page.locator('.rows .row-button')
   await expect(list).toHaveCount(8)
-  const saved = list.filter({ has: page.locator('input[value="Nepzwaan"]') })
-  await expect(saved.getByLabel('Lengte (ft)')).toHaveValue('50')
-  await expect(saved.getByRole('radio', { name: 'Catamaran' })).toHaveAttribute('aria-checked', 'true')
-  await expect(list.filter({ has: page.locator('input[value="Nepflits"]') }).getByLabel('Model')).toHaveValue('Sportnep 680')
+  await page.getByRole('button', { name: 'Boot bewerken: Nepzwaan' }).click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.getByLabel('Lengte (ft)')).toHaveValue('50')
+  await expect(sheet.getByRole('radio', { name: 'Catamaran' })).toHaveAttribute('aria-checked', 'true')
+  await sheet.getByRole('button', { name: 'Sluiten' }).click()
+  await page.getByRole('button', { name: 'Boot bewerken: Nepflits' }).click()
+  await expect(page.getByRole('dialog').getByLabel('Model')).toHaveValue('Sportnep 680')
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
 
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })

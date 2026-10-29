@@ -1,11 +1,12 @@
-import { Check, SkipForward } from 'lucide-react'
+import { Check, ChevronRight, Merge, SkipForward, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
+import { Sheet } from '../components/Sheet'
 import { useCollection } from '../components/useCollection'
 import { formatNumber } from '../format'
 import { t } from '../i18n'
-import { boatList, confirmBoats, skipBoats, type BoatEntry, type BoatInput } from '../model/boats'
+import { boatList, confirmBoats, deleteBoat, mergeBoat, skipBoats, type BoatEntry, type BoatInput } from '../model/boats'
 import { parseAmount } from '../model/money'
 import { type BoatKind } from '../model/types'
 import { feetToMetres } from '../model/weeks'
@@ -141,10 +142,10 @@ export function BoatCheck({
   )
 }
 
-/** Meer → Boten: alle boten uit de trips, te bewerken in één keer. */
+/** Meer → Boten: alle boten uit de trips; tikken opent bewerken, samenvoegen met een andere boot of verwijderen. */
 export function Boats({ store, notify }: { store: Store; notify: Notify }) {
   const boats = boatList(useCollection(store, 'trips.json.enc'), useCollection(store, 'legs.json.enc'))
-  const [version, setVersion] = useState(0)
+  const [open, setOpen] = useState<BoatEntry | null>(null)
   return (
     <section className="stack-lg">
       <header className="page-header">
@@ -153,8 +154,137 @@ export function Boats({ store, notify }: { store: Store; notify: Notify }) {
       {boats.length === 0 ? (
         <p className="muted">{t('boats.empty')}</p>
       ) : (
-        <BoatCheck key={version} store={store} boats={boats} notify={notify} canSkip={false} onDone={() => setVersion(version + 1)} />
+        <>
+          <p className="muted small">{t('boats.tapHint')}</p>
+          <ul className="rows">
+            {boats.map((b) => (
+              <li key={b.key}>
+                <button type="button" className="row-button" onClick={() => setOpen(b)} aria-label={`${t('boat.edit')}: ${b.name || b.model}`}>
+                  <span className="row-main">
+                    <span>{b.name || b.model}</span>
+                    <span className="muted small">{boatDetails(b)}</span>
+                  </span>
+                  <Icon icon={ChevronRight} className="chevron" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
+      {open && <BoatSheet key={open.key} store={store} boat={open} boats={boats} notify={notify} onClose={() => setOpen(null)} />}
     </section>
+  )
+}
+
+function boatDetails(b: BoatEntry): string {
+  return [
+    b.name ? b.model : '',
+    b.lengthFt ? `${formatNumber(b.lengthFt)} ft · ${formatNumber(feetToMetres(b.lengthFt))} m` : '',
+    b.kind ? t(`boatKind.${b.kind}`) : '',
+    t('gaps.boatTrips', { n: b.tripIds.length }),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** Eén boot: alle velden; samenvoegen met een andere boot (trips en dagen gaan mee); onderaan verwijderen. */
+function BoatSheet({ store, boat, boats, notify, onClose }: { store: Store; boat: BoatEntry; boats: BoatEntry[]; notify: Notify; onClose: () => void }) {
+  const [row, setRow] = useState(() => initialRow(boat))
+  const others = boats.filter((b) => b.key !== boat.key)
+  const [target, setTarget] = useState(others[0]?.key ?? '')
+  const [busy, setBusy] = useState(false)
+  const ft = parseAmount(row.length)
+  const kinds = row.kind && !SHOWN_KINDS.includes(row.kind) ? [...SHOWN_KINDS, row.kind] : SHOWN_KINDS
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    try {
+      await confirmBoats(store, [boat], [{ key: boat.key, name: row.name, model: row.model, lengthFt: ft, kind: row.kind }])
+      onClose()
+      notify(t('toast.saved'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function merge() {
+    const into = others.find((b) => b.key === target)
+    if (!into || busy) return
+    setBusy(true)
+    const undo = await mergeBoat(store, boat, into)
+    onClose()
+    notify(t('boats.merged', { name: into.name || into.model }), undo)
+  }
+
+  async function remove() {
+    if (busy) return
+    setBusy(true)
+    const undo = await deleteBoat(store, boat)
+    onClose()
+    notify(t('boats.deleted', { name: boat.name || boat.model }), undo)
+  }
+
+  return (
+    <Sheet title={t('boat.edit')} onClose={onClose}>
+      <form className="stack" onSubmit={(e) => void save(e)}>
+        <div className="two">
+          <label>
+            {t('boat.name')}
+            <input type="text" autoComplete="off" maxLength={120} value={row.name} onChange={(e) => setRow({ ...row, name: e.target.value })} />
+          </label>
+          <label>
+            {t('boat.model')}
+            <input type="text" autoComplete="off" maxLength={120} value={row.model} onChange={(e) => setRow({ ...row, model: e.target.value })} />
+          </label>
+        </div>
+        <div className="two">
+          <label>
+            {t('boat.length')}
+            <input inputMode="decimal" autoComplete="off" value={row.length} onChange={(e) => setRow({ ...row, length: e.target.value, lengthSuggested: false })} />
+          </label>
+          <span className="muted small boat-length-hint">
+            {[ft !== null ? t('boat.metres', { m: formatNumber(feetToMetres(ft)) }) : '', row.lengthSuggested ? t('boats.lengthSuggested') : ''].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+        <div className="segments small" role="radiogroup" aria-label={t('boat.kind')}>
+          {kinds.map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={row.kind === k} className={`segment${row.kind === k ? ' active' : ''}`} onClick={() => setRow({ ...row, kind: row.kind === k ? undefined : k })}>
+              {t(`boatKind.${k}`)}
+            </button>
+          ))}
+        </div>
+        <span className="muted small">{t('gaps.boatTrips', { n: boat.tripIds.length })}</span>
+        <button className="btn primary" type="submit" disabled={busy}>
+          <Icon icon={Check} />
+          {t('common.save')}
+        </button>
+        {others.length > 0 && (
+          <div className="stack-sm">
+            <label>
+              {t('boat.mergeWith')}
+              <select value={target} onChange={(e) => setTarget(e.target.value)}>
+                {others.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {[b.name, b.model].filter(Boolean).join(' · ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn" type="button" disabled={busy || !target} onClick={() => void merge()}>
+              <Icon icon={Merge} />
+              {t('boat.merge')}
+            </button>
+            <span className="muted small">{t('boat.mergeHint')}</span>
+          </div>
+        )}
+        <button className="btn danger" type="button" disabled={busy} onClick={() => void remove()}>
+          <Icon icon={Trash2} />
+          {t('boat.delete')}
+        </button>
+        <span className="muted small">{t('boat.deleteHint')}</span>
+      </form>
+    </Sheet>
   )
 }

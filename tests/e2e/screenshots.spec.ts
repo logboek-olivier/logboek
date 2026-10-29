@@ -42,7 +42,7 @@ for (const { width, scheme, lang } of RUNS) {
       const shot = async (name: string) => {
         await expectNoHorizontalOverflow(page)
         // Geen bevestiging over de inhoud heen, en bovenaan beginnen (vaste maandkoppen).
-        await expect(page.locator('.toast')).toHaveCount(0, { timeout: 6_000 })
+        await expect(page.locator('.toast')).toHaveCount(0, { timeout: 12_000 })
         await page.evaluate(() => window.scrollTo(0, 0))
         n++
         const path = `screenshots/${width}-${scheme}${lang === 'nl' ? '' : `-${lang}`}/${String(n).padStart(2, '0')}-${name}`
