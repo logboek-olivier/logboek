@@ -41,6 +41,8 @@ export interface RepairOption {
 
 export type SyncStatus =
   | { kind: 'synced' }
+  /** Demomodus: deze Store synct nooit (src/demo.ts). */
+  | { kind: 'demo' }
   | { kind: 'syncing' }
   | { kind: 'pending'; count: number }
   | { kind: 'offline'; count: number }
@@ -108,6 +110,8 @@ export function describeStatus(status: SyncStatus): string {
   switch (status.kind) {
     case 'synced':
       return t('sync.synced')
+    case 'demo':
+      return t('sync.demo')
     case 'syncing':
       return t('sync.syncing')
     case 'pending':
@@ -192,6 +196,8 @@ export class Store {
     private readonly masterKey: CryptoKey,
     private readonly client: GithubClient,
     private vaultCheck: string | null,
+    /** Demomodus: nooit synchroniseren of controleren, nooit iets van of naar GitHub. */
+    private readonly demo: boolean = false,
   ) {}
 
   /** Luisteren naar andere vensters; pas als het openen gelukt is (een mislukte Store houdt niets in het geheugen). */
@@ -213,8 +219,8 @@ export class Store {
    * schrijfactie naar GitHub moet meta.json.enc op GitHub aan deze sleutel gebonden zijn. Zonder (alleen tests van de
    * opslaglaag) gelden alleen de controles uit runSync.
    */
-  static async open(db: Db, masterKey: CryptoKey, client: GithubClient, vaultCheck: string | null = null): Promise<Store> {
-    const store = new Store(db, masterKey, client, vaultCheck)
+  static async open(db: Db, masterKey: CryptoKey, client: GithubClient, vaultCheck: string | null = null, options: { demo?: boolean } = {}): Promise<Store> {
+    const store = new Store(db, masterKey, client, vaultCheck, options.demo === true)
     for (const path of COLLECTION_PATHS) {
       const stored = await getObject(db, path)
       let records: SyncRecord[] = []
@@ -328,6 +334,11 @@ export class Store {
    * volgt na afloop nog een ronde.
    */
   sync(options: { changedOnly?: boolean } = {}): Promise<void> {
+    // Demomodus: nooit synchroniseren (harde regel), ook niet als iets het vraagt.
+    if (this.demo) {
+      this.setStatus({ kind: 'demo' })
+      return Promise.resolve()
+    }
     if (!options.changedOnly) this.wantFull = true
     if (this.syncing) {
       this.syncAgain = true
@@ -371,6 +382,7 @@ export class Store {
 
   /** Na elke opslag vanzelf synchroniseren (kort daarna, zodat snel achter elkaar opslaan één sync geeft). */
   enableAutoSync(): void {
+    if (this.demo) return
     this.autoSync = true
   }
 
@@ -596,6 +608,8 @@ export class Store {
    * bekeken, omdat GitHub vlak na het schrijven soms nog even de vorige versie geeft.
    */
   check(syncFirst = true, retryMs = CHECK_RETRY_MS): Promise<StorageCheck | null> {
+    // Demomodus: niets controleren op GitHub.
+    if (this.demo) return Promise.resolve(null)
     // Loopt er al een controle zonder sync vooraf, dan daarna alsnog met sync ("Controleer nu" tijdens de weekcontrole).
     if (this.checking && syncFirst && !this.checkingSyncs) return this.checking.then(() => this.check(true, retryMs))
     if (!this.checking) {
@@ -1098,6 +1112,7 @@ export class Store {
   }
 
   private idleStatus(): SyncStatus {
+    if (this.demo) return { kind: 'demo' }
     const count = this.pendingCount()
     if (count === 0) return { kind: 'synced' }
     if (this.status.kind === 'offline') return { kind: 'offline', count }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { ErrorBoundary, installGlobalErrorHandlers, UnhandledErrorBar } from './components/ErrorBoundary'
 import { Loading } from './components/Loading'
 import { setScreen } from './errors'
@@ -10,6 +10,8 @@ import { Setup } from './screens/Setup'
 import { KeyMismatch, Repair } from './screens/KeyProblem'
 import { Unlock } from './screens/Unlock'
 import { Session, SessionContext } from './session'
+import { demoPhase, demoStore, startDemo, stopDemo, subscribeDemo } from './demo'
+import { DemoBar } from './components/DemoBar'
 
 export function App() {
   const session = useMemo(() => new Session(), [])
@@ -33,6 +35,29 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = lang
   }, [lang])
+
+  // De demo hoort bij een ontgrendelde sessie: vergrendelen (ook na 5 minuten, ook halverwege het starten) stopt de
+  // demo. Herladen tijdens de demo (nieuwe versie, omlaag trekken): de demo start opnieuw, nooit het eigen logboek.
+  const demoState = useSyncExternalStore(subscribeDemo, demoPhase)
+  const demo = demoState === 'aan' ? demoStore() : null
+  useEffect(() => {
+    if (state.phase === 'loading') return
+    if (state.phase !== 'unlocked') {
+      if (demoState !== 'uit') void stopDemo()
+      return
+    }
+    if (demoState === 'start') void startDemo().catch(() => undefined)
+  }, [state.phase, demoState])
+  // Na de demo: de eigen Store kon tijdens de demo niet bij GitHub (geen verbinding); stoppen is een actie van
+  // Olivier, dus dan één keer synchroniseren.
+  const wasDemo = useRef(false)
+  useEffect(() => {
+    if (demo) wasDemo.current = true
+    else if (wasDemo.current) {
+      wasDemo.current = false
+      if (state.phase === 'unlocked') void state.store.sync()
+    }
+  }, [demo, state])
 
   useEffect(() => {
     installGlobalErrorHandlers()
@@ -76,7 +101,18 @@ export function App() {
       screen = <Unlock fingerprint={state.fingerprint} />
       break
     case 'unlocked':
-      screen = <Home store={state.store} />
+      // Demomodus: een eigen Home op de voorbeelddata (de eigen Store blijft open, maar wordt niet getoond).
+      screen = demo ? (
+        <>
+          <DemoBar />
+          <Home key="demo" store={demo} />
+        </>
+      ) : demoState === 'start' ? (
+        // De demo start (ook na herladen): tot hij klaar is niets van de eigen gegevens tonen.
+        <Loading text={t('demo.starting')} />
+      ) : (
+        <Home key="eigen" store={state.store} />
+      )
       break
     case 'mismatch':
       screen = <KeyMismatch where={state.where} metaRestorable={state.metaRestorable === true} />

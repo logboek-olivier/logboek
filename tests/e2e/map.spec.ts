@@ -77,7 +77,8 @@ test('Kaart offline: punt zetten, huidige locatie, bekende plaats kiezen; waterr
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   const wire = github.requests.map((r) => `${r.url} ${r.body ?? ''}`).join('\n')
-  for (const secret of ['Nepbarths', 'Nepstatia', '17.9']) expect(wire).not.toContain(secret)
+  // De coördinaten zoals ze onversleuteld in JSON zouden staan ("17.9" alleen kan ook in de tijd van een commitbericht staan).
+  for (const secret of ['Nepbarths', 'Nepstatia', '"lat":17.9', '-62.85']) expect(wire).not.toContain(secret)
   expect(external).toEqual([])
   expect(errors).toEqual([])
 })

@@ -1,5 +1,6 @@
 import { Archive, BarChart3, BookOpen, CalendarClock, ChevronLeft, ChevronRight, HardDrive, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
+import { useIsDemo } from '../components/DemoBar'
 import { t, type MessageKey } from '../i18n'
 
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
@@ -21,13 +22,16 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
 ]
 
 export function More({ onOpen }: { onOpen: (screen: MoreScreen) => void }) {
+  // In de demo geen Opslag: controleren en back-ups gaan over de eigen gegevens op GitHub.
+  const demo = useIsDemo()
+  const items = demo ? ITEMS.filter((item) => item.id !== 'opslag') : ITEMS
   return (
     <section className="stack-lg">
       <header className="page-header">
         <h1>{t('nav.more')}</h1>
       </header>
       <ul className="rows">
-        {ITEMS.map((item) => (
+        {items.map((item) => (
           <li key={item.id}>
             <button className="settings-row" onClick={() => onOpen(item.id)}>
               <Icon icon={item.icon} />

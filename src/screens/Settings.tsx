@@ -1,8 +1,10 @@
-import { ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, ShieldCheck, Wallet, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Wallet, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { FirstNumbersSheet, firstNumbersLine } from '../components/CounterSheets'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { SalaryDefaultsSheet, salaryDefaultsLine } from '../components/SalarySheets'
+import { useIsDemo } from '../components/DemoBar'
+import { startDemo, stopDemo } from '../demo'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { APP_VERSION, BUILD_DATE, COMMIT } from '../build-info'
@@ -25,6 +27,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const [countersOpen, setCountersOpen] = useState(false)
   const [salaryOpen, setSalaryOpen] = useState(false)
   const session = useSession()
+  const demo = useIsDemo()
   const [panel, setPanel] = useState<Panel>('none')
   const [fingerprintPossible, setFingerprintPossible] = useState(false)
   const [fingerprintOn, setFingerprintOn] = useState(false)
@@ -95,6 +98,11 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
       {salaryOpen && <SalaryDefaultsSheet store={store} onClose={() => setSalaryOpen(false)} notify={notify} />}
       {goalOpen && <GoalSheet store={store} current={yearGoal(settings)} onClose={() => setGoalOpen(false)} notify={notify} />}
 
+      <DemoSection />
+
+      {/* In de demo niets over de eigen sleutels, token of GitHub: dat hoort bij de eigen gegevens. */}
+      {!demo && (
+        <>
       <div className="section">
         <h2>{t('settings.security')}</h2>
         <ul className="rows">
@@ -143,6 +151,8 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
           )}
         </ul>
       </div>
+        </>
+      )}
 
       <div className="section">
         <h2>{t('settings.about')}</h2>
@@ -165,6 +175,47 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
         </ul>
       </div>
     </section>
+  )
+}
+
+/** Instellingen → Demomodus: de app op voorbeelddata laten zien; stoppen brengt de eigen gegevens en taal terug. */
+function DemoSection() {
+  const demo = useIsDemo()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="section">
+      <h2>{t('demo.title')}</h2>
+      <p className="muted small">{t('demo.hint')}</p>
+      {demo ? (
+        <button type="button" className="btn" onClick={() => void stopDemo()}>
+          <Icon icon={X} />
+          {t('demo.stop')}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            setError(null)
+            try {
+              await startDemo()
+              window.scrollTo(0, 0)
+            } catch (e) {
+              setError(describeError(e))
+            } finally {
+              setBusy(false)
+            }
+          }}
+        >
+          <Icon icon={Presentation} />
+          {busy ? t('demo.starting') : t('demo.start')}
+        </button>
+      )}
+      <ErrorLine error={error} />
+    </div>
   )
 }
 
@@ -333,6 +384,8 @@ function ReplaceToken({ onDone }: { onDone: () => void }) {
 
 /** Taal van de app op dit apparaat; standaard de taal van de telefoon. */
 function LanguagePicker() {
+  // In de demo geldt de keuze alleen zolang de demo loopt; de eigen taalkeuze verandert niet.
+  const demo = useIsDemo()
   const lang = useLang()
   return (
     <div className="segments" role="radiogroup" aria-label={t('settings.language')}>
@@ -343,7 +396,7 @@ function LanguagePicker() {
           role="radio"
           aria-checked={lang === l}
           className={`segment${lang === l ? ' active' : ''}`}
-          onClick={() => setLang(l)}
+          onClick={() => setLang(l, !demo)}
         >
           {l === 'nl' ? 'Nederlands' : 'English'}
         </button>

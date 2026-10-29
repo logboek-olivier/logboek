@@ -2,6 +2,7 @@ import { CalendarClock, Plane, Plus, KeyRound } from 'lucide-react'
 import { Suspense, useState } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
+import { useIsDemo } from '../components/DemoBar'
 import { lazyComponent } from '../lazy'
 import { useCollection } from '../components/useCollection'
 import { formatDate } from '../format'
@@ -26,8 +27,10 @@ export function useDueItems(store: Store): DueItem[] {
   const reminders = useCollection(store, 'reminders.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const demo = useIsDemo()
   const extra: DueItem[] = []
-  if (session.tokenExpiresAt) extra.push({ title: t('expiry.token'), date: session.tokenExpiresAt, kind: 'vervalt', source: 'token' })
+  // De token hoort bij de eigen gegevens: in de demo niet tonen.
+  if (session.tokenExpiresAt && !demo) extra.push({ title: t('expiry.token'), date: session.tokenExpiresAt, kind: 'vervalt', source: 'token' })
   const running = activeWeek(trips, settings)
   const next = upcomingTrips(trips).find((trip) => trip.id !== running?.id)
   if (next?.startDate) extra.push({ title: t('reminder.tripStart', { name: next.name }), date: next.startDate, kind: 'trip', source: 'trip' })

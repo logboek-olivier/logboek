@@ -15,6 +15,7 @@ import { collectGaps, isSunday } from '../model/gaps'
 import type { Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
+import { useIsDemo } from '../components/DemoBar'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
@@ -72,7 +73,9 @@ export function Today({
   const nmYear = nmInYear(legs, year)
   const goal = yearGoal(settings)
   const share = Math.min(1, nmYear / goal)
-  const tokenDays = daysUntil(session.tokenExpiresAt, today)
+  // In de demo niets over de eigen token.
+  const demo = useIsDemo()
+  const tokenDays = demo ? null : daysUntil(session.tokenExpiresAt, today)
   const tokenInvalid = status.kind === 'error' && status.code === 'token'
   // Termijnen: eigen deadlines en vervaldatums, de token en de volgende trip. De kluis voegt later documenten toe.
   const due = useDueItems(store)
