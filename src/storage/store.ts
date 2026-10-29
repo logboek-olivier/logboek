@@ -595,6 +595,11 @@ export class Store {
     return readStorageLog(this.db.name)
   }
 
+  /** Bestanden van een nieuwere app-versie op dit apparaat (niet in het geheugen, dus niet te exporteren). */
+  frozenPaths(): CollectionPath[] {
+    return [...this.frozen]
+  }
+
   /** Records op dit apparaat per bestand (niet verwijderd). */
   localCount(path: CollectionPath): number {
     return this.list(path).length
