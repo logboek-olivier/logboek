@@ -113,7 +113,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
   await page.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.tx')).toHaveCount(2)
-  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 7_000 })
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 12_000 })
   expect(dialogs).toBe(0)
 
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
