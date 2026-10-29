@@ -306,6 +306,8 @@ export class Store {
       this.syncAgain = true
       return this.syncing
     }
+    // Direct "Synchroniseren…": de ronde zelf begint pas als geen ander venster synct (Web Locks).
+    if (!this.mismatch && !this.outdated && !this.locked) this.setStatus({ kind: 'syncing' })
     this.syncing = this.runRounds().finally(() => {
       this.syncing = null
     })
