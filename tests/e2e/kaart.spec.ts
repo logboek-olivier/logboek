@@ -10,7 +10,7 @@ const AREAS = [
   { name: 'bvi', lat: 18.405, lon: -64.62, label: 'Norman Island', kinds: ['.map-poi-marina', '.map-label-baai'] },
   { name: 'dalmatie', lat: 43.49, lon: 16.44, label: 'Split', kinds: ['.map-poi-marina', '.map-label-baai'] },
   { name: 'saronisch', lat: 37.72, lon: 23.5, label: 'Aegina', kinds: ['.map-label-baai'] },
-  { name: 'wadden', lat: 53.176, lon: 5.414, label: 'Harlingen', kinds: ['.map-poi-marina'] },
+  { name: 'wadden', lat: 53.18, lon: 5.4, label: 'Harlingen', kinds: ['.map-poi-marina'] },
 ] as const
 
 async function openMapAt(page: Page) {

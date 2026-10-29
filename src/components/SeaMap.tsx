@@ -532,10 +532,22 @@ export function SeaMap({
   const clip = shownOsm.length > 0 ? `M-1 -1H${WORLD + 1}V${WORLD + 1}H-1Z${shownOsm.map(({ rect: [x0, y0, x1, y1] }) => `M${x0} ${y0}H${x1}V${y1}H${x0}Z`).join('')}` : null
   const routeLine = route && route.length > 1 ? route.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('') : null
   // Niet over de eigen plaatsen en de genummerde stops van een route heen.
-  const taken = [...places.map(placeBox), ...(stops ?? []).map((st): [number, number, number, number] => {
-    const p = toScreen(st)
+  const pointBox = (point: LatLon): [number, number, number, number] => {
+    const p = toScreen(point)
     return [p.x - 12, p.y - 12, p.x + 12, p.y + 12]
-  })]
+  }
+  // Ook niet onder de knoppen rechtsboven (48 px met 4 px ertussen, 8 px van de rand) en de naamsvermelding linksonder.
+  const controls = 2 + (selected ? 1 : 0)
+  const reserved: [number, number, number, number][] = [
+    [size.w - 64, 0, size.w, 8 + controls * 52 + 4],
+    [0, size.h - 28, 220, size.h],
+  ]
+  // Het gekozen punt is een cirkel van 9 px.
+  const markerBox = (point: LatLon): [number, number, number, number] => {
+    const p = toScreen(point)
+    return [p.x - 10, p.y - 10, p.x + 10, p.y + 10]
+  }
+  const taken = [...places.map(placeBox), ...(stops ?? []).map(pointBox), ...(selected ? [markerBox(selected)] : []), ...reserved]
   const shownLabels = placeLabels(rankedLabels, view.zoom, toScreen, size, taken)
   const stopGroups = groupStops(stops ?? [])
   const line = (path: readonly LatLon[]) => path.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('')
@@ -677,11 +689,11 @@ function groupStops(stops: readonly MapStop[]): { lat: number; lon: number; numb
  */
 function MapLabel({ label }: { label: ShownLabel }) {
   const kind = label.k === 'plaats' ? 'stad' : label.k
-  const { x, y } = label
+  const { x, y, tx, ty, anchor } = label
   if (!POINT_KINDS.has(kind)) {
     return (
-      <text className={`map-label map-label-${kind}`} x={x} y={y}>
-        {label.n}
+      <text className={`map-label map-label-${kind}`} x={tx} y={ty}>
+        {label.text}
       </text>
     )
   }
@@ -695,8 +707,8 @@ function MapLabel({ label }: { label: ShownLabel }) {
       ) : (
         <circle cx={x} cy={y} r={kind === 'marina' ? 3.6 : 3} />
       )}
-      <text className={`map-label map-label-${kind}`} x={x + 8} y={y + 4}>
-        {label.n}
+      <text className={`map-label map-label-${kind}${anchor === 'end' ? ' end' : ''}`} x={tx} y={ty}>
+        {label.text}
       </text>
     </g>
   )

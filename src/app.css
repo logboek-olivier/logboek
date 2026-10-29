@@ -2298,6 +2298,10 @@ body.presenting .bottom-bar {
   stroke: var(--map-sea);
 }
 
+.map-poi .map-label.end {
+  text-anchor: end;
+}
+
 .map-label-marina {
   font-weight: var(--fw-medium);
   fill: var(--accent-strong);

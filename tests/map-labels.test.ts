@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelBox, labelZoom, MAX_LABELS, placeLabels, rankLabels } from '../src/components/map-labels'
+import { labelBox, labelText, labelZoom, MAX_LABELS, placeLabels, rankLabels } from '../src/components/map-labels'
 import type { OsmLabel } from '../src/model/osm'
 // @ts-expect-error: Node-script zonder typen
 import { buildLabels, labelKind, labelZoom as buildZoom, sizeKm } from '../scripts/osm-lib.mjs'
@@ -89,7 +89,7 @@ describe('labels plaatsen', () => {
     const shown = placeLabels(crowd, 13, projector(13), SIZE, taken)
     expect(shown.length).toBeGreaterThan(5)
     expect(shown.length).toBeLessThanOrEqual(MAX_LABELS)
-    const boxes = shown.map((l) => labelBox(l, l.x, l.y))
+    const boxes = shown.map((l) => l.box)
     for (let i = 0; i < boxes.length; i++) {
       const a = boxes[i]!
       expect(a[0] < taken[0]![2] && taken[0]![0] < a[2] && a[1] < taken[0]![3] && taken[0]![1] < a[3]).toBe(false)
@@ -98,9 +98,27 @@ describe('labels plaatsen', () => {
         expect(a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]).toBe(false)
       }
     }
-    // Twee namen op dezelfde plek: alleen de belangrijkste (lagere zoom) staat er.
+    // Twee namen op dezelfde plek: de belangrijkste op het punt, de andere erboven.
     const pair = rankLabels([label('Klein', 'eilandje', 40, 10, 13), label('Groot', 'eiland', 40, 10, 9)])
-    expect(placeLabels(pair, 14, projector(14), SIZE).map((l) => l.n)).toEqual(['Groot'])
+    const both = placeLabels(pair, 14, projector(14), SIZE)
+    expect(both.map((l) => [l.n, l.ty < l.y])).toEqual([
+      ['Groot', false],
+      ['Klein', true],
+    ])
+    // Een marina met de rechterkant bezet: de naam links van het teken.
+    const marina = rankLabels([label('Nepmarina', 'marina', 40, 10, 12)])
+    const left = placeLabels(marina, 13, projector(13), SIZE, [[175, 190, 260, 230]])
+    expect(left).toHaveLength(1)
+    expect(left[0]!.anchor).toBe('end')
+    expect(left[0]!.box[2]).toBeLessThanOrEqual(171)
+    expect(labelBox(marina[0]!, 100, 100)[0]).toBe(94)
+  })
+
+  it('lange namen afgekort, zodat ze passen', () => {
+    expect(labelText(label('Jachthaven De Leeuwenbrug — Noorderhaven', 'marina', 0, 0))).toBe('Jachthaven De Leeuwen…')
+    expect(labelText(label('Uvala Zvončac', 'baai', 0, 0))).toBe('Uvala Zvončac')
+    const shown = placeLabels(rankLabels([label('Jachthaven De Leeuwenbrug — Noorderhaven', 'marina', 40, 10.002, 12)]), 13, projector(13), SIZE)
+    expect(shown.map((l) => l.text)).toEqual(['Jachthaven De Leeuwen…'])
   })
 
   it('niet buiten het beeld', () => {
