@@ -1260,6 +1260,20 @@ export const nl = {
   'map.measureDone': 'Klaar met meten',
   'map.measureUndoShort': 'Punt weg',
   'map.measureDoneShort': 'Klaar',
+  'maps.title': 'Kaarten',
+  'more.mapsHint': 'Vaargebieden offline beschikbaar maken',
+  'maps.hint': 'Zet een vaargebied offline, dan werkt de gedetailleerde kaart daar ook zonder verbinding, op elke zoom. Het gebied van de lopende trip gaat vanzelf.',
+  'maps.size': (p: { mb: string }) => `${p.mb} MB`,
+  'maps.offline': 'Offline beschikbaar',
+  'maps.notOffline': 'Niet offline',
+  'maps.partly': (p: { percent: number }) => `Deels offline (${p.percent}%)`,
+  'maps.loading': (p: { percent: number }) => `Bezig… ${p.percent}%`,
+  'maps.progress': (p: { name: string }) => `Voortgang ${p.name}`,
+  'maps.auto': 'Vanzelf offline: gebied van de lopende trip',
+  'maps.failed': 'Niet gelukt, controleer de verbinding. Wat al binnen is, blijft staan.',
+  'maps.makeOffline': 'Offline beschikbaar maken',
+  'maps.remove': 'Verwijderen',
+  'maps.noIndex': 'De kaartdata is nog niet geladen. Open dit scherm opnieuw met verbinding.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

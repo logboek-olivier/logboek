@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { BottomBar, type Tab } from '../components/BottomBar'
+import { useIsDemo } from '../components/DemoBar'
 import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
 import { backfillRates, getRates, loadRates, subscribeRates } from '../model/rates'
@@ -8,7 +9,8 @@ import { setScreen } from '../errors'
 import { onNavigate } from '../navigation'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
-import type { AddTab } from '../model/types'
+import { todayIso, type AddTab } from '../model/types'
+import { currentSettings } from '../model/settings'
 import { SCREEN_FILES } from '../screen-files'
 import { lazyComponent } from '../lazy'
 import { BackToMore, More, type MoreScreen } from './More'
@@ -26,6 +28,7 @@ const Courses = lazyComponent(() => import('./Courses').then((m) => m.Courses))
 const Deadlines = lazyComponent(() => import('./Deadlines').then((m) => m.Deadlines))
 const Boats = lazyComponent(() => import('./Boats').then((m) => m.Boats))
 const Places = lazyComponent(() => import('./Places').then((m) => m.Places))
+const Maps = lazyComponent(() => import('./Maps').then((m) => m.Maps))
 const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
@@ -47,6 +50,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   termijnen: 'Termijnen',
   boten: 'Boten',
   plaatsen: 'Plaatsen',
+  kaarten: 'Kaarten',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -105,6 +109,15 @@ export function Home({ store }: { store: Store }) {
   useEffect(() => {
     if (!getRates()) void loadRates()
   }, [])
+  // Het vaargebied van de lopende trip vanzelf offline zetten (Meer → Kaarten), op de achtergrond; niet in de demo.
+  const demo = useIsDemo()
+  const tripsVersion = store.list('trips.json.enc').length + store.list('legs.json.enc').length
+  useEffect(() => {
+    if (demo) return
+    void import('../model/offline-maps').then((m) =>
+      m.offlineActiveTrip(store.list('trips.json.enc'), store.list('legs.json.enc'), store.list('places.json.enc'), currentSettings(store.list('settings.json.enc')), todayIso()),
+    )
+  }, [store, demo, tripsVersion])
   useEffect(() => {
     if (backfilled.current || !rates || !store.hasSynced()) return
     backfilled.current = true
@@ -127,7 +140,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
+      : screen === 'statistieken' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
         ? 'meer'
         : screen
 
@@ -195,6 +208,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Places store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'kaarten' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Maps />
         </>
       )}
       {screen === 'cursussen' && (
