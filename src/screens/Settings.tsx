@@ -181,6 +181,8 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
               </dd>
               <dt>{t('settings.mapSource')}</dt>
               <dd>{t('settings.mapSourceValue')}</dd>
+              <dt>{t('settings.weatherSource')}</dt>
+              <dd>{t('settings.weatherSourceValue')}</dd>
             </dl>
           </li>
         </ul>

@@ -4212,3 +4212,41 @@ textarea.note {
   align-self: flex-end;
   font-variant-numeric: tabular-nums;
 }
+
+/* Wind en weer op Vandaag (src/components/WeatherCard.tsx): per dagdeel de wind groot, stoten, golven en regen klein. */
+.weather-card h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.weather-day h3 {
+  margin: 0 0 var(--s-1);
+  font-size: var(--fs-sm);
+}
+
+.weather-parts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-2);
+}
+
+.weather-parts li {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+.weather-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-stale {
+  color: var(--warning);
+}

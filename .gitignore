@@ -1,6 +1,8 @@
 # Afhankelijkheden en build
 # Gebouwd door deploy.yml uit de ECB-bron (npm run rates)
 public/rates.json
+# Gebouwd door deploy.yml uit Open-Meteo (npm run weather)
+public/weather.json
 node_modules/
 dist/
 dev-dist/
