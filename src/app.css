@@ -4250,3 +4250,46 @@ textarea.note {
 .weather-stale {
   color: var(--warning);
 }
+
+/* Doelen en skills (Meer → Doelen): voortgangsbalk onder de naam, mijlpalen om af te vinken. */
+.goal-row .row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.goal-row .progress {
+  width: 100%;
+}
+
+.goal-row .row-title,
+.goal-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.goal-done {
+  font-size: var(--fs-xs);
+  color: var(--accent);
+}
+
+.milestone .icon {
+  color: var(--text-faint);
+}
+
+.milestone.done .icon {
+  color: var(--accent);
+}
+
+.milestone-edit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.session-form .two {
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+}

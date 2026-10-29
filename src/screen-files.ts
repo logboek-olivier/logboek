@@ -17,6 +17,7 @@ export type ScreenId =
   | 'boten'
   | 'plaatsen'
   | 'kaarten'
+  | 'doelen'
   | 'cursussen'
   | 'archief'
   | 'instellingen'
@@ -25,7 +26,7 @@ export type ScreenId =
 export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
   vandaag: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'plans.json.enc', 'students.json.enc', 'reminders.json.enc', 'settings.json.enc', 'weekreviews.json.enc'],
   week: ['trips.json.enc', 'legs.json.enc', 'students.json.enc', 'plans.json.enc', 'checklists.json.enc', 'curricula.json.enc', 'transactions.json.enc'],
-  toevoegen: ['legs.json.enc', 'trips.json.enc', 'transactions.json.enc', 'places.json.enc'],
+  toevoegen: ['legs.json.enc', 'trips.json.enc', 'transactions.json.enc', 'places.json.enc', 'skills.json.enc', 'goals.json.enc', 'sessions.json.enc'],
   agenda: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'reminders.json.enc', 'transactions.json.enc', 'weekreviews.json.enc'],
   logboek: ['trips.json.enc', 'legs.json.enc'],
   meer: [],
@@ -35,6 +36,7 @@ export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
   boten: ['trips.json.enc'],
   plaatsen: ['places.json.enc', 'legs.json.enc'],
   kaarten: [],
+  doelen: ['goals.json.enc', 'skills.json.enc', 'sessions.json.enc', 'legs.json.enc', 'trips.json.enc', 'transactions.json.enc'],
   cursussen: ['curricula.json.enc'],
   archief: ['students.json.enc'],
   instellingen: ['settings.json.enc'],

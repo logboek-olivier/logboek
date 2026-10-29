@@ -237,6 +237,22 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog', { name: /^Week \d+ afsluiten$/ }).getByRole('button', { name: L('weekClose.save') }).click()
     await expect.poll(() => puts('weekreviews.json.enc'), { timeout: 20_000 }).toBeGreaterThan(closingPuts)
     await expectSynced(page)
+    // Doelen en skills (goals, skills en sessions, nieuw in ronde 2): een skill toevoegen en een sessie loggen via
+    // Toevoegen → Skill; de nieuwe bestanden ontstaan bij de sync.
+    await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
+    const sessionPuts = puts('sessions.json.enc')
+    await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
+    await page.getByRole('tab', { name: L('quick.tabSkill') }).click()
+    await page.getByRole('button', { name: L('goals.newSkill') }).click()
+    await page.getByRole('dialog').getByRole('button', { name: L('goals.skill.kitesurfen') }).click()
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.getByRole('combobox', { name: L('goals.whatLog') }).selectOption({ label: L('goals.skill.kitesurfen') })
+    await page.getByLabel(L('goals.minutesField')).fill('45')
+    await page.getByRole('button', { name: L('goals.logSession') }).click()
+    await expect.poll(() => puts('sessions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(sessionPuts)
+    await expect.poll(() => puts('skills.json.enc'), { timeout: 20_000 }).toBeGreaterThan(0)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -267,6 +283,12 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     // De weekafsluiting staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende).
     const closings = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
     expect(closings).toEqual(expect.arrayContaining([expect.objectContaining({ rating: 7, deletedAt: null })]))
+    // De skill en de sessie staan leesbaar op GitHub.
+    const skills = await decryptRecords(key, 'skills.json.enc', Uint8Array.from(Buffer.from(github.files.get('skills.json.enc')!.content, 'base64')))
+    const kite = skills.find((x) => (x as { name?: string }).name === L('goals.skill.kitesurfen'))
+    expect(kite).toBeDefined()
+    const sessions = await decryptRecords(key, 'sessions.json.enc', Uint8Array.from(Buffer.from(github.files.get('sessions.json.enc')!.content, 'base64')))
+    expect(sessions).toEqual(expect.arrayContaining([expect.objectContaining({ skillId: kite!.id, minutes: 45, deletedAt: null })]))
   } finally {
     await server.close()
   }

@@ -1,8 +1,9 @@
-import { CalendarPlus, Coins, MapPin, Receipt, Sailboat } from 'lucide-react'
+import { CalendarPlus, Coins, MapPin, Receipt, Sailboat, Zap } from 'lucide-react'
 import { TripForm } from '../components/QuickTrip'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
 import { NoteField } from '../components/NoteField'
+import { SessionForm, SkillSheet } from '../components/GoalSheets'
 import { MapSheet } from '../components/MapSheet'
 import { TipFromPicker } from '../components/TipFromPicker'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
@@ -75,7 +76,7 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
         <h1>{t('nav.add')}</h1>
       </header>
       <div className="segments add-tabs" role="tablist">
-        {(['trip', 'dag', 'inkomsten', 'uitgave'] as AddTab[]).map((id) => (
+        {(['trip', 'dag', 'inkomsten', 'uitgave', 'skill'] as AddTab[]).map((id) => (
           <button
             key={id}
             role="tab"
@@ -83,8 +84,8 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
             className={`segment${tab === id ? ' active' : ''}`}
             onClick={() => choose(id)}
           >
-            <Icon icon={id === 'trip' ? CalendarPlus : id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : Sailboat} />
-            {t(id === 'trip' ? 'quick.tabTrip' : id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : 'quick.tabDay')}
+            <Icon icon={id === 'trip' ? CalendarPlus : id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : id === 'skill' ? Zap : Sailboat} />
+            {t(id === 'trip' ? 'quick.tabTrip' : id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : id === 'skill' ? 'quick.tabSkill' : 'quick.tabDay')}
           </button>
         ))}
       </div>
@@ -92,7 +93,32 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
       {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} notify={notify} />}
       {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}
+      {tab === 'skill' && <SkillTab store={store} onDone={onDone} notify={notify} />}
     </section>
+  )
+}
+
+/**
+ * Toevoegen → Skill: één sessie bij een skill of één meting bij een doel (wat, minuten of waarde, datum = vandaag).
+ * Zonder skills of meetdoelen eerst "Skill toevoegen" (met voorstellen zoals kitesurfen en adem inhouden).
+ */
+function SkillTab({ store, onDone, notify }: { store: Store; onDone: (message: string) => void; notify: Notify }) {
+  const skills = useCollection(store, 'skills.json.enc').filter((s) => !s.deletedAt)
+  const goals = useCollection(store, 'goals.json.enc').filter((g) => !g.deletedAt && g.kind === 'meting')
+  const [adding, setAdding] = useState(false)
+  return (
+    <>
+      {skills.length === 0 && goals.length === 0 ? (
+        <p className="muted">{t('goals.quickEmpty')}</p>
+      ) : (
+        <SessionForm store={store} notify={notify} onDone={onDone} />
+      )}
+      <button type="button" className="btn" onClick={() => setAdding(true)}>
+        <Icon icon={Zap} />
+        {t('goals.newSkill')}
+      </button>
+      {adding && <SkillSheet store={store} skill={null} notify={notify} onClose={() => setAdding(false)} />}
+    </>
   )
 }
 

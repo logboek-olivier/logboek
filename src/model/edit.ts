@@ -3,7 +3,7 @@ import { tripForDate } from './derive'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CollectionPath, Collections, Leg, Reminder, TipFrom, Transaction, Trip, WeekClosing } from './types'
+import type { CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, Transaction, Trip, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -48,6 +48,12 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'weekreviews.json.enc':
       return store.put(item.path, item.record)
+    case 'goals.json.enc':
+      return store.put(item.path, item.record)
+    case 'skills.json.enc':
+      return store.put(item.path, item.record)
+    case 'sessions.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 
@@ -57,6 +63,22 @@ export function deleteReminder(store: Store, reminder: Reminder): Promise<Undo> 
 
 export function deleteWeekClosing(store: Store, closing: WeekClosing): Promise<Undo> {
   return removeWithUndo(store, [{ path: 'weekreviews.json.enc', record: closing }])
+}
+
+/** Een doel met zijn metingen verwijderen (ongedaan maken zet ze allemaal terug). */
+export function deleteGoal(store: Store, goal: Goal): Promise<Undo> {
+  const own = store.list('sessions.json.enc').filter((s) => s.goalId === goal.id)
+  return removeWithUndo(store, [{ path: 'goals.json.enc', record: goal }, ...own.map((record): Removal => ({ path: 'sessions.json.enc', record }))])
+}
+
+/** Een skill met zijn sessies verwijderen. */
+export function deleteSkill(store: Store, skill: Skill): Promise<Undo> {
+  const own = store.list('sessions.json.enc').filter((s) => s.skillId === skill.id)
+  return removeWithUndo(store, [{ path: 'skills.json.enc', record: skill }, ...own.map((record): Removal => ({ path: 'sessions.json.enc', record }))])
+}
+
+export function deleteSession(store: Store, session: Session): Promise<Undo> {
+  return removeWithUndo(store, [{ path: 'sessions.json.enc', record: session }])
 }
 
 export function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {
