@@ -1250,6 +1250,16 @@ export const nl = {
   'day.reason': 'Reden (alleen voor jou)',
   'day.reasonHint': 'Nooit in de gedeelde PDF of het seizoensoverzicht.',
   'stats.unavailableShort': 'Onbeschikb.',
+  'map.measure': 'Meten',
+  'map.measureHint': 'Tik twee of meer punten aan om de afstand te meten.',
+  'map.measureNext': 'Tik nog een punt aan.',
+  'map.measureWater': 'over water',
+  'map.measureStraight': 'hemelsbreed',
+  'map.measureNoWater': 'Over water alleen binnen de vaargebieden; hier alleen hemelsbreed.',
+  'map.measureUndo': 'Laatste punt weg',
+  'map.measureDone': 'Klaar met meten',
+  'map.measureUndoShort': 'Punt weg',
+  'map.measureDoneShort': 'Klaar',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
