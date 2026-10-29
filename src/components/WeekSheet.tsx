@@ -27,6 +27,7 @@ import {
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { NoteField } from './NoteField'
 import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
 import { DeleteTrip } from './TripSheets'
@@ -366,10 +367,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             </button>
           </div>
         )}
-        <label>
-          {t('field.note')}
-          <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
-        </label>
+        <NoteField label={t('field.note')} value={note} onChange={setNote} />
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={busy}>
             {trip ? (

@@ -2,6 +2,7 @@ import { CalendarPlus, Coins, MapPin, Receipt, Sailboat } from 'lucide-react'
 import { TripForm } from '../components/QuickTrip'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
+import { NoteField } from '../components/NoteField'
 import { MapSheet } from '../components/MapSheet'
 import { TipFromPicker } from '../components/TipFromPicker'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
@@ -254,16 +255,11 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
           </select>
         </label>
       </div>
-      <div className="two">
-        <label>
-          {t('field.date')}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <label>
-          {t('field.note')}
-          <input type="text" autoComplete="off" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
-        </label>
-      </div>
+      <label>
+        {t('field.date')}
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      <NoteField label={t('field.note')} value={note} onChange={setNote} maxLength={200} />
       <button className="btn primary" type="submit" disabled={parsed === null || !date || !tripOk || busy}>
         {t('common.save')}
       </button>
@@ -702,10 +698,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
             />
           </label>
         )}
-        <label>
-          {t('field.note')}
-          <input type="text" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
+        <NoteField label={t('field.note')} value={notes} onChange={setNotes} maxLength={2000} />
         <button className="btn primary" type="submit" disabled={!ok || busy}>
           {t('common.save')}
         </button>

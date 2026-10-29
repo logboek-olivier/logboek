@@ -22,6 +22,7 @@ import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { WeekClosingSection } from './WeekClose'
@@ -220,10 +221,7 @@ export function DaySheet({
 
         {type !== null && (
           <>
-            <label>
-              {t('field.note')}
-              <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
-            </label>
+            <NoteField label={t('field.note')} value={note} onChange={setNote} />
             <button className="btn primary" type="submit">
               {t('common.save')}
             </button>

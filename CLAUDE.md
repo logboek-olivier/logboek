@@ -342,6 +342,8 @@ Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-vers
 
 Geen onboarding, geen tutorial, geen bevestigingsdialogen behalve bij exporteren. **Eerst bekijken, dan bewerken** voor alles (trips, dagen, agendadagen, boten, plaatsen, inkomsten, uitgaven, termijnen, deelnemers; `src/components/Views.tsx`): tikken opent een leesweergave; bewerken gaat via het potlood rechtsboven (`Sheet` met `onEdit`). Het bewerkscherm heeft alle velden en onderaan "Verwijderen", zonder bevestigingsvraag, daarna 10 seconden "Verwijderd · Ongedaan maken" (de melding staat bovenaan zolang er een blad open is, zodat hij geen knoppen bedekt). Zo verandert er nooit iets per ongeluk. Ongedaan maken zet de vorige versie terug met een nieuwe `updatedAt`, zodat die bij de sync wint. Een trip is volledig te bewerken (ook de naam); een dag kan naar een andere trip. Een trip verwijderen vraagt wat er met zijn gegevens gebeurt (zie Trip verwijderen). Boten (Meer → Boten): verwijderen (de naam gaat van de trips en dagen af) of samenvoegen met een andere boot (trips en dagen gaan mee naar de gekozen boot). Plaatsen: zie Pinregels. Deelnemers: tik op een deelnemer in Deze trip of het tripoverzicht (met een cursus "Checklist openen"). Alles werkt op 360 px breed, bedienbaar met één duim.
 
+**Notities** (`src/components/NoteField.tsx`; dag, agendadag, trip, termijn, inkomsten): een tekstvak van drie regels dat meegroeit met de tekst tot ongeveer tien regels (`field-sizing: content`), met een hoofdletter aan het begin van een zin, spellingcontrole en Enter voor een nieuwe regel, zodat inspreken via het toetsenbord prettig is. Het toetsenbord drukt het veld niet weg: de pagina krimpt mee met het toetsenbord (`interactive-widget=resizes-content` in de viewport-tag van `index.html`), en het veld blijft in beeld bij focus en zolang het toetsenbord in- of uitschuift. De onderbalk blijft staan (verbergen tijdens typen liet een tik op Opslaan soms op de terugkomende balk landen). In de leesweergaven houden notities hun regels. Korte velden (omschrijving van een uitgave, de ene zin bij afronden en bij de weekafsluiting) blijven één regel.
+
 ## Mapstructuur app-repo
 
 ```
@@ -369,7 +371,7 @@ logboek/
                      Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten)
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, map-view (kaartgebaren), map-labels (namen op de kaart), LazyMap, RouteMap, RouteThumb, MapSheet, Sheet, Views (leesweergaven), EditSheets, WeekSheet,
                      TripOverview, TripShare, SailedMap, PinSheet, SalaryFields, SalarySheets, SalaryOutlook, DemoBar, boat-line, CurriculumSheets, DaySheet, PeriodSheets,
-                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, Icon, Toast, …)
+                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, NoteField, Icon, Toast, …)
     demo/            data.ts (voorbeelddata voor de demomodus)
     demo.ts          demomodus: aparte demo-database, nooit netwerk naar GitHub (zie Demomodus)
     lazy.ts          schermen, kaarten en bladen pas laden bij openen
@@ -387,7 +389,7 @@ logboek/
                      quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year) + playwright (upgrade, updates, setup, unlock, sessie, import,
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
-                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht,
+                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
