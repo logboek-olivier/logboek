@@ -32,6 +32,7 @@ describe('soort en zoom (bouwscript)', () => {
   it('grote steden, eilanden en baaien verschijnen eerder dan kleine', () => {
     expect(buildZoom('stad', { place: 'city', population: '300000' }, null)).toBeLessThan(buildZoom('stad', { place: 'town' }, null))
     expect(buildZoom('eiland', {}, 40)).toBeLessThan(buildZoom('eiland', {}, 2))
+    expect([buildZoom('eiland', {}, 19), buildZoom('eiland', {}, 2.5), buildZoom('eiland', {}, 1)]).toEqual([8, 11, 12])
     expect(buildZoom('baai', {}, 16)).toBeLessThan(buildZoom('baai', {}, 1))
     expect(buildZoom('dorp', {}, null)).toBeGreaterThan(buildZoom('stad', { place: 'town' }, null))
     expect(buildZoom('ankerplek', {}, null)).toBe(13)

@@ -334,7 +334,8 @@ export function labelZoom(kind, tags, km) {
     case 'dorp':
       return population >= 3_000 ? 11 : 12
     case 'eiland':
-      return bySize(11, 14, 8, 12)
+      // Tortola (19 km) vanaf 8, Norman Island (2,5 km) vanaf 11, een eiland van 1 km vanaf 12.
+      return bySize(11, 12.5, 8, 12)
     case 'eilandje':
       return km !== null && km >= 1 ? 12 : 13
     case 'baai':
