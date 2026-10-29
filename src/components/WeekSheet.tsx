@@ -6,6 +6,7 @@ import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { MAX_COUNTRY, MAX_TAG, needsDistinction, norm, participantName, usedCountries } from '../model/guests'
 import { addDays, parseAmount, totals } from '../model/money'
 import { currentSettings } from '../model/settings'
+import { newTripName } from '../model/counters'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
 import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
@@ -63,6 +64,8 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const [filledFrom, setFilledFrom] = useState(false)
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
+  // Nieuwe trip bij Sailing Virgins of Yacht Week: naamvoorstel met teller ("SV #4 · BVI").
+  const namePlaceholder = newTripName(trips, legs, currentSettings(store.get('settings.json.enc')), organisation, startDate || todayIso(), area, defaultWeekName(startDate || todayIso(), lang, base))
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
   // Dubbele voornamen: om land of kenmerk vragen ("Nick B." of "Nick (VS)").
   const unclear = needsDistinction(rows)
@@ -141,7 +144,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     e.preventDefault()
     if (busy) return
     setBusy(true)
-    const input = { name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route }
+    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route }
     try {
       if (trip) {
         await updateWeek(store, trip, input, getLang())
@@ -185,7 +188,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
         )}
         <label>
           {t('field.name')}
-          <input type="text" autoComplete="off" maxLength={120} placeholder={defaultWeekName(startDate || todayIso(), lang, base)} value={name} onChange={(e) => setName(e.target.value)} />
+          <input type="text" autoComplete="off" maxLength={120} placeholder={trip ? defaultWeekName(startDate || todayIso(), lang, base) : namePlaceholder} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="type-buttons" role="radiogroup" aria-label={t('week.type')}>
           {WEEK_TYPES.map((wt) => (

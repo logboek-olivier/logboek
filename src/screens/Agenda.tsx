@@ -15,6 +15,8 @@ import { parsePlanning, planImport, PlanningError, type PlanItem } from '../impo
 import { buildIndex, dayInfo, monthIncome, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
 import { tripOverlaps } from '../model/trip-ops'
+import { nameWithCounter, type TripCounter } from '../model/counters'
+import { useCounters } from '../components/useCounters'
 import { todayIso, type Reminder, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { AgendaShare } from './AgendaShare'
@@ -50,6 +52,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [reminder, setReminder] = useState<{ reminder: Reminder | null; date: string } | null>(null)
   const [showAmounts, setShowAmounts] = useState(false)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
+  const counters = useCounters(store)
   const fileInput = useRef<HTMLInputElement>(null)
   const touch = useRef<{ x: number; y: number } | null>(null)
   const transactions = useCollection(store, 'transactions.json.enc')
@@ -161,7 +164,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           ))}
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} rangeStart={marking?.start ?? null} onDay={onDay} />
+          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} rangeStart={marking?.start ?? null} counters={counters} onDay={onDay} />
         ))}
       </div>
       <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>
@@ -260,7 +263,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   )
 }
 
-function Week({ index, week, month, today, dueDates, rangeStart, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; rangeStart: string | null; onDay: (date: string) => void }) {
+function Week({ index, week, month, today, dueDates, rangeStart, counters, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; onDay: (date: string) => void }) {
   const bars = tripBars(index, week)
   return (
     <div className="cal-week">
@@ -285,7 +288,7 @@ function Week({ index, week, month, today, dueDates, rangeStart, onDay }: { inde
       })}
       {bars.map((bar) => (
         <span key={bar.view.trip.id} className={`cal-bar col-${bar.from + 1} span-${bar.to - bar.from + 1} lane-${Math.min(bar.lane, 2)}`} aria-hidden="true">
-          {bar.starts || bar.from === 0 ? bar.view.trip.name : ''}
+          {bar.starts || bar.from === 0 ? nameWithCounter(bar.view.trip, counters.get(bar.view.trip.id)) : ''}
         </span>
       ))}
     </div>

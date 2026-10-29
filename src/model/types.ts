@@ -177,7 +177,15 @@ export interface Settings extends SyncRecord {
   boatsChecked?: string[]
   /** Herinnering in het agenda-bestand van een termijn: zoveel dagen vooraf (standaard 7). */
   reminderAlarmDays?: number
+  /** Teller per organisatie: het nummer van de eerste trip in de app (voor trips van vóór de app); standaard 1. */
+  orgFirst?: Partial<Record<CountedOrganisation, number>>
+  /** Trips met alleen een afkorting in de naam (YW, SV) waarvan Olivier zei dat ze niet bij die organisatie horen. */
+  orgAnswered?: string[]
 }
+
+/** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */
+export type CountedOrganisation = 'sailing-virgins' | 'yacht-week'
+export const COUNTED_ORGANISATIONS: readonly CountedOrganisation[] = ['sailing-virgins', 'yacht-week']
 
 // Training (release 2). Bond-onafhankelijk: ASA, RYA, CWO of een eigen cursus.
 

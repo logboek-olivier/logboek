@@ -22,6 +22,8 @@ import { IncompleteBadge } from '../components/Incomplete'
 import { activeWeek, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
 import type { Leg, Participant, Trip, WeekType } from '../model/types'
 import { tripOverlaps } from '../model/trip-ops'
+import { nameAfterCounter, nameWithCounter, type TripCounter } from '../model/counters'
+import { useCounters } from '../components/useCounters'
 import { OverlapNotices, ParticipantSheet } from '../components/TripSheets'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
@@ -43,6 +45,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const counters = useCounters(store)
   const stored = useCollection(store, 'curricula.json.enc')
   const curricula = effectiveCurricula(stored)
   const lang = useLang()
@@ -59,7 +62,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
   const upcoming = upcomingTrips(trips).filter((u) => u.id !== week?.id)
   const upcomingSection = (
     <>
-      <UpcomingTrips trips={upcoming} onOpen={setEditTrip} />
+      <UpcomingTrips trips={upcoming} counters={counters} onOpen={setEditTrip} />
       {editTrip && <WeekSheet store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
     </>
   )
@@ -87,6 +90,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
   }
 
   const view = weekView(week, legs)
+  const counter = counters.get(week.id)
   const detail = planOpen || studentOpen
   const participants = week.participants ?? []
   // Terugkerende gasten: zelfde voornaam en land als in een eerdere trip; pas koppelen na "ja".
@@ -104,7 +108,8 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
           <button className="card week-head" onClick={() => setSheet('edit')} aria-label={`${t('week.edit')}: ${week.name}`}>
             <span className="week-head-title">
               <span>
-                {week.name} {tripIncomplete(week, legs) && <IncompleteBadge />}
+                {counter && <span className="counter-chip">{counter.label}</span>}
+                {nameAfterCounter(week, counter)} {tripIncomplete(week, legs) && <IncompleteBadge />}
               </span>
               <Icon icon={Pencil} />
             </span>
@@ -291,7 +296,7 @@ function SailedDays({ store, notify, legs, nm, onAdd }: { store: Store; notify: 
 }
 
 /** Komende trips met het aantal dagen tot de start; tikken = bewerken. */
-function UpcomingTrips({ trips, onOpen }: { trips: Trip[]; onOpen: (trip: Trip) => void }) {
+function UpcomingTrips({ trips, counters, onOpen }: { trips: Trip[]; counters: ReadonlyMap<string, TripCounter>; onOpen: (trip: Trip) => void }) {
   if (trips.length === 0) return null
   const today = todayIso()
   return (
@@ -305,7 +310,7 @@ function UpcomingTrips({ trips, onOpen }: { trips: Trip[]; onOpen: (trip: Trip) 
               <button className="row-button" onClick={() => onOpen(trip)} aria-label={`${t('week.edit')}: ${trip.name}`}>
                 <span className="row-main">
                   <span>
-                    {trip.name} {tripIncomplete(trip, []) && <IncompleteBadge />}
+                    {nameWithCounter(trip, counters.get(trip.id))} {tripIncomplete(trip, []) && <IncompleteBadge />}
                   </span>
                   <span className="muted small">{[trip.startDate ? formatDateRange(trip.startDate, trip.endDate ?? trip.startDate) : '', boatLine(trip)].filter(Boolean).join(' · ')}</span>
                 </span>

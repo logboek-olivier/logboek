@@ -16,6 +16,9 @@ import { nmPerMonth, summarize, summarizeTrips, totalNm, type SailingSummary, ty
 import { roleLabel } from '../i18n/labels'
 import { ROLES, todayIso, type Leg, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
+import { nameWithCounter, type TripCounter } from '../model/counters'
+import { useCounters } from '../components/useCounters'
+import { CounterDoubtNotice } from '../components/CounterSheets'
 import { ErrorLine } from './Setup'
 import { BoatCheck } from './Boats'
 import { SailingExport } from './SailingExport'
@@ -28,6 +31,7 @@ import { t } from '../i18n'
 type Editing = { kind: 'leg'; leg: Leg } | { kind: 'trip'; trip: Trip } | { kind: 'new-week' } | null
 
 export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
+  const counters = useCounters(store)
   const [editing, setEditing] = useState<Editing>(null)
   const legs = useCollection(store, 'legs.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
@@ -169,6 +173,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
       <input ref={fileInput} type="file" hidden aria-label={t('import.file')} onChange={(e) => void onFile(e.target.files?.[0])} />
       <ErrorLine error={error} />
+      <CounterDoubtNotice store={store} notify={notify} />
       {summary.days === 0 && (
         <Empty icon={FileSpreadsheet} action={importButton(true)}>
           {t('sailing.empty')}
@@ -210,6 +215,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
                     <TripRow
                       key={s.trip.id}
                       summary={s}
+                      counter={counters.get(s.trip.id)}
                       onEditTrip={() => setEditing({ kind: 'trip', trip: s.trip })}
                       onEditLeg={(leg) => setEditing({ kind: 'leg', leg })}
                     />
@@ -256,10 +262,12 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function TripRow({
   summary,
+  counter,
   onEditTrip,
   onEditLeg,
 }: {
   summary: TripSummary
+  counter?: TripCounter
   onEditTrip: () => void
   onEditLeg: (leg: Leg) => void
 }) {
@@ -272,7 +280,7 @@ function TripRow({
         </span>
         <span className="row-main">
           <span className="row-title">
-            {summary.trip.name} {tripIncomplete(summary.trip, summary.legs) && <IncompleteBadge />}
+            {nameWithCounter(summary.trip, counter)} {tripIncomplete(summary.trip, summary.legs) && <IncompleteBadge />}
           </span>
           <span className="muted">
             {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {t('unit.days', { n: summary.days })}

@@ -3245,3 +3245,19 @@ body.presenting .bottom-bar {
     font-size: var(--fs-sm);
   }
 }
+
+/* Teller per organisatie ("SV #3") in de kop van Deze trip. */
+.counter-chip {
+  display: inline-block;
+  margin-right: var(--s-2);
+  padding: 1px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-tight);
+  vertical-align: middle;
+  white-space: nowrap;
+}
