@@ -3261,3 +3261,109 @@ body.presenting .bottom-bar {
   vertical-align: middle;
   white-space: nowrap;
 }
+
+/* ---------- Statistieken ---------- */
+
+.stats h3 {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.hbars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.hbars li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s-2);
+  row-gap: 2px;
+  font-size: var(--fs-sm);
+}
+
+.hbar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hbar-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hbar {
+  grid-column: 1 / -1;
+  display: block;
+  width: 100%;
+  height: 6px;
+}
+
+.hbar-track {
+  fill: var(--surface-2);
+}
+
+.hbar-fill {
+  fill: var(--accent);
+}
+
+.rya-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.rya-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.rya-list li > svg {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.rya-list li.done > svg {
+  color: var(--accent);
+}
+
+.rya-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.best-worst {
+  margin: 0;
+}
+
+.trip-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trip-line dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.table td.keep-case {
+  text-transform: none;
+}

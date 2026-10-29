@@ -11,6 +11,7 @@ export type ScreenId =
   | 'agenda'
   | 'logboek'
   | 'meer'
+  | 'statistieken'
   | 'geld'
   | 'termijnen'
   | 'boten'
@@ -27,6 +28,7 @@ export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
   agenda: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'reminders.json.enc', 'transactions.json.enc'],
   logboek: ['trips.json.enc', 'legs.json.enc'],
   meer: [],
+  statistieken: ['legs.json.enc', 'trips.json.enc', 'calendar.json.enc', 'transactions.json.enc', 'students.json.enc', 'curricula.json.enc', 'settings.json.enc'],
   geld: ['transactions.json.enc', 'calendar.json.enc'],
   termijnen: ['reminders.json.enc'],
   boten: ['trips.json.enc'],
