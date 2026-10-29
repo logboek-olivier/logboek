@@ -52,11 +52,14 @@ test('Toevoegen: Dag · Inkomsten · Uitgave; inkomsten horen bij een trip, de t
   await page.getByRole('radiogroup', { name: 'Soort' }).getByRole('radio', { name: 'Fooi' }).click()
   await page.getByLabel('Bedrag').fill('120')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   await nav.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByLabel('Bedrag').fill('30')
   await page.getByLabel('Omschrijving').fill('Nepboodschappen')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  // Na opslaan terug naar Vandaag; pas daarna verder.
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
 
   // Deze trip: alleen de fooi en de uitgave van de lopende trip.
   await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
