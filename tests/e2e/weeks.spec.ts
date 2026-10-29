@@ -46,6 +46,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await fillBoat(sheet, lang)
       await sheet.getByLabel(L('week.area')).fill('Nepgebied')
       await sheet.getByRole('combobox', { name: L('week.organisation') }).selectOption({ label: 'Sailing Virgins' })
+      // Bij Sailing Virgins en Yacht Week: naamvoorstel met de teller per organisatie.
+      await expect(sheet.getByLabel(L('field.name'), { exact: true })).toHaveAttribute('placeholder', 'SV #1 · Nepgebied')
       await sheet.getByLabel(L('week.participantName', { n: 1 }), { exact: true }).fill('Nepanna')
       await sheet.getByRole('combobox', { name: L('week.participantLevel', { n: 1 }) }).selectOption({ label: L('level.beginner') })
       await sheet.getByLabel(L('week.participantName', { n: 2 }), { exact: true }).fill('Nepbram')
@@ -60,7 +62,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
       await expect(page.getByRole('combobox', { name: L('field.role'), exact: true })).toHaveValue('instructeur')
       await expect(page.getByLabel(L('field.boat'), { exact: true })).toHaveValue('Nepboot')
-      await expect(page.getByRole('combobox', { name: L('field.week'), exact: true }).locator('option:checked')).toHaveText(/^Nepbasis /)
+      await expect(page.getByRole('combobox', { name: L('field.week'), exact: true }).locator('option:checked')).toHaveText('SV #1 · Nepgebied')
       await page.getByLabel(L('field.to'), { exact: true }).fill('Nephaven')
       await page.getByLabel(L('field.nm')).fill('12')
       await page.getByRole('button', { name: L('common.save') }).click()
@@ -89,7 +91,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(card).toContainText(L('week.noActive'))
       // De afgeronde week staat in het logboek met zijn dag.
       await openLogbook(page, lang)
-      await expect(page.locator('.trip').first()).toContainText(/Nepbasis /)
+      await expect(page.locator('.trip').first()).toContainText('SV #1 · Nepgebied')
 
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       const wire = github.requests.map((r) => r.body ?? '').join('\n')
