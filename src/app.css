@@ -3566,6 +3566,8 @@ body.presenting .bottom-bar {
 .view-row dd {
   margin: 0;
   overflow-wrap: anywhere;
+  /* Notities van meer regels (ingesproken met Enter) houden hun regels. */
+  white-space: pre-line;
   font-variant-numeric: tabular-nums;
 }
 
@@ -4194,4 +4196,19 @@ body.demo-on .group-head {
   .tax-print .muted {
     color: #333;
   }
+}
+
+/* Notitieveld (src/components/NoteField.tsx): drie regels, groeit mee met de tekst tot ongeveer tien regels; prettig
+   voor inspreken via het toetsenbord. */
+textarea.note {
+  min-height: calc(3 * 1.45em + 22px);
+  max-height: calc(10 * 1.45em + 22px);
+  line-height: 1.45;
+  resize: none;
+  field-sizing: content;
+}
+
+.note-count {
+  align-self: flex-end;
+  font-variant-numeric: tabular-nums;
 }

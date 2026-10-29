@@ -28,6 +28,7 @@ import {
 import type { Store } from '../storage/store'
 import { defaultTripName } from '../model/trip-name'
 import { Icon } from './Icon'
+import { NoteField } from './NoteField'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
 import { TipFromPicker } from './TipFromPicker'
@@ -375,10 +376,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
             <input type="text" autoComplete="off" value={newTripName} onChange={(e) => setNewTripName(e.target.value)} />
           </label>
         )}
-        <label>
-          {t('field.notes')}
-          <input type="text" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
+        <NoteField label={t('field.notes')} value={notes} onChange={setNotes} maxLength={2000} />
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!ok || busy}>
             {t('common.save')}

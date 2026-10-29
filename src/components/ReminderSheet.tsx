@@ -11,6 +11,7 @@ import { newId, REMINDER_KINDS, REMINDER_REPEATS, todayIso, type Reminder, type 
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
 
 // Termijn toevoegen of bewerken: wat, deadline of vervaldatum, en wanneer (snelle keuze of datum). Drie velden; herhalen
@@ -104,11 +105,8 @@ export function ReminderSheet({ store, reminder, notify, onClose, initialDate }:
             {t(kind === 'deadline' ? 'reminder.dateDeadline' : 'reminder.dateExpiry')}
             <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
-          <label>
-            {t('field.note')}
-            <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
-          </label>
         </div>
+        <NoteField label={t('field.note')} value={note} onChange={setNote} />
         <div className="calendar-row">
           <label>
             {t('reminder.alarm')}
