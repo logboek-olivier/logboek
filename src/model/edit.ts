@@ -1,10 +1,11 @@
 import type { Store } from '../storage/store'
+import { scrubbedCareer } from './career'
 import { tripForDate } from './derive'
 import { scrubbedDocument } from './documents'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, Transaction, Trip, VaultDocument, WeekClosing } from './types'
+import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -57,6 +58,8 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'documents/index.json.enc':
       return store.put(item.path, item.record)
+    case 'career.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 
@@ -88,6 +91,17 @@ export async function deleteDocument(store: Store, document: VaultDocument): Pro
   void store.sync()
   return async () => {
     await store.put('documents/index.json.enc', { ...original, updatedAt: new Date().toISOString(), deletedAt: null })
+    void store.sync()
+  }
+}
+
+/** Een sollicitatie, contact of project verwijderen: een tombstone zonder inhoud; ongedaan maken zet het uit het geheugen terug. */
+export async function deleteCareerRecord(store: Store, record: CareerRecord): Promise<Undo> {
+  const original = { ...record }
+  await store.put('career.json.enc', scrubbedCareer(record, new Date().toISOString()))
+  void store.sync()
+  return async () => {
+    await store.put('career.json.enc', { ...original, updatedAt: new Date().toISOString(), deletedAt: null })
     void store.sync()
   }
 }

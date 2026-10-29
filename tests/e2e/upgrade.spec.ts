@@ -267,6 +267,17 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect.poll(() => github.requests.filter((r) => r.method === 'PUT' && /documents\/[0-9a-f-]{36}\.bin/.test(r.url)).length, { timeout: 20_000 }).toBeGreaterThan(0)
     await expect.poll(() => puts('documents/index.json.enc'), { timeout: 20_000 }).toBeGreaterThan(0)
     await expectSynced(page)
+    // Carrière (career.json.enc, nieuw in ronde 2): een sollicitatie toevoegen.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await openMore(page, L('career.screen'), L('nav.more'))
+    // Het lege bestand kan bij de eerste sync na de update al ontstaan zijn: wachten op de schrijfactie ná het opslaan.
+    const careerPuts = puts('career.json.enc')
+    await page.getByRole('button', { name: L('career.newApplication') }).click()
+    await page.getByRole('dialog').getByLabel(L('career.company')).fill('Nepwerf')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect.poll(() => puts('career.json.enc'), { timeout: 20_000 }).toBeGreaterThan(careerPuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -311,6 +322,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     const docPath = `documents/${doc!.fileId}.bin`
     const plain = await decryptObject(key, docPath, Uint8Array.from(Buffer.from(github.files.get(docPath)!.content, 'base64')))
     expect([plain[0], plain[1]]).toEqual([0xff, 0xd8])
+    const career = await decryptRecords(key, 'career.json.enc', Uint8Array.from(Buffer.from(github.files.get('career.json.enc')!.content, 'base64')))
+    expect(career).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'sollicitatie', company: 'Nepwerf', status: 'gesolliciteerd', deletedAt: null })]))
   } finally {
     await server.close()
   }

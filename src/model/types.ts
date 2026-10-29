@@ -502,6 +502,41 @@ export interface VaultDocument extends SyncRecord {
   fileId: string
 }
 
+export type ApplicationStatus = 'idee' | 'gesolliciteerd' | 'gesprek' | 'aanbod' | 'aangenomen' | 'afgewezen' | 'ingetrokken'
+export const APPLICATION_STATUSES: readonly ApplicationStatus[] = ['idee', 'gesolliciteerd', 'gesprek', 'aanbod', 'aangenomen', 'afgewezen', 'ingetrokken']
+export type ProjectStatus = 'idee' | 'bezig' | 'gepauzeerd' | 'klaar'
+export const PROJECT_STATUSES: readonly ProjectStatus[] = ['bezig', 'idee', 'gepauzeerd', 'klaar']
+
+/** Sollicitatie: bedrijf, functie, status en de volgende actie met datum (die staat bij de termijnen). */
+export interface Application extends SyncRecord {
+  kind: 'sollicitatie'
+  company: string
+  role: string
+  status: ApplicationStatus
+  nextAction?: string
+  nextDate?: string
+  note?: string
+}
+
+/** Iemand uit het netwerk: alleen een voornaam, de rol en waar Olivier diegene ontmoette (geen contactgegevens). */
+export interface Contact extends SyncRecord {
+  kind: 'contact'
+  firstName: string
+  role?: string
+  metAt?: string
+}
+
+/** Een ander project van Olivier, met de status en de volgende stap (zelf bijgehouden). */
+export interface Project extends SyncRecord {
+  kind: 'project'
+  name: string
+  status: ProjectStatus
+  nextStep?: string
+}
+
+/** Carrière (career.json.enc, src/model/career.ts): sollicitaties, netwerk en projecten in één bestand. */
+export type CareerRecord = Application | Contact | Project
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -520,6 +555,7 @@ export interface Collections {
   'skills.json.enc': Skill
   'sessions.json.enc': Session
   'documents/index.json.enc': VaultDocument
+  'career.json.enc': CareerRecord
 }
 
 export type CollectionPath = keyof Collections
@@ -541,6 +577,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'skills.json.enc',
   'sessions.json.enc',
   'documents/index.json.enc',
+  'career.json.enc',
 ]
 
 export function newId(): string {

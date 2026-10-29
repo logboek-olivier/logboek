@@ -1,10 +1,11 @@
 import { decryptObject, DecryptError, encryptObject, fromBase64, toBase64, utf8, type Bytes } from '../crypto/encrypt'
 import { parseMeta, unlock, type Meta, type Secret } from '../crypto/keys'
+import { scrubbedCareer } from '../model/career'
 import { scrubbedDocument } from '../model/documents'
 import type { Undo } from '../model/edit'
 import { NewerSchemaError } from '../model/schema'
 import { scrubbed } from '../model/students'
-import { COLLECTION_PATHS, type CollectionPath, type Collections, type Student, type SyncRecord, type VaultDocument } from '../model/types'
+import { COLLECTION_PATHS, type CareerRecord, type CollectionPath, type Collections, type Student, type SyncRecord, type VaultDocument } from '../model/types'
 import type { Store } from './store'
 import { decodeRecords, encodeRecords } from './sync'
 
@@ -158,6 +159,7 @@ export async function applyRestore(store: Store, plan: readonly RestoreItem[]): 
         const later = new Date(Math.max(Date.now(), Date.parse(r.updatedAt) + 1)).toISOString()
         if (item.path === 'students.json.enc') return scrubbed(r as Student, later)
         if (item.path === 'documents/index.json.enc') return scrubbedDocument(r as VaultDocument, later)
+        if (item.path === 'career.json.enc') return scrubbedCareer(r as CareerRecord, later)
         return { ...r, updatedAt: later, deletedAt: later }
       })
       await putRecords(store, item.path, gone)
