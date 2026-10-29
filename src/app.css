@@ -2771,6 +2771,17 @@ body.presenting .bottom-bar {
   background: var(--warning);
 }
 
+/* Afgesloten week: een open rondje in de accentkleur linksonder op de zondag. */
+.cal-closed {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+}
+
 .cal-nm {
   position: absolute;
   right: 4px;
@@ -4118,4 +4129,30 @@ body.demo-on .group-head {
   justify-content: space-between;
   gap: var(--s-2);
   padding: var(--s-2) var(--s-3);
+}
+
+/* Weekafsluiting (Vandaag op zondag, dagkaart van de zondag): de samenvatting als korte regels zonder opsommingstekens. */
+.week-close h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.week-summary {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-closing-rating {
+  margin: 0;
+  font-weight: var(--fw-bold);
+}
+
+.week-closing-lesson {
+  margin: 0;
+  font-style: italic;
 }

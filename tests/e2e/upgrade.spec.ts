@@ -226,6 +226,17 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await salaryQuestion.getByRole('button', { name: L('salary.yes'), exact: true }).click()
     await expect.poll(() => puts('trips.json.enc'), { timeout: 20_000 }).toBeGreaterThan(salaryPuts)
     await expectSynced(page)
+    // Weekafsluiting (weekreviews.json.enc, nieuw in ronde 2): de week van vandaag afsluiten via de dagkaart van de
+    // zondag in de agenda; het nieuwe bestand ontstaat bij de sync.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    const closingPuts = puts('weekreviews.json.enc')
+    await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
+    await page.locator('.cal-week', { has: page.locator('.cal-day.today') }).locator('.cal-day.col-7').click()
+    await page.getByRole('dialog').getByRole('button', { name: /^Week \d+ afsluiten$/ }).click()
+    await page.getByRole('dialog', { name: /^Week \d+ afsluiten$/ }).getByRole('radio', { name: '7', exact: true }).click()
+    await page.getByRole('dialog', { name: /^Week \d+ afsluiten$/ }).getByRole('button', { name: L('weekClose.save') }).click()
+    await expect.poll(() => puts('weekreviews.json.enc'), { timeout: 20_000 }).toBeGreaterThan(closingPuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -253,6 +264,9 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(salaryTrip).toMatchObject({ salary: { amount: 1200, currency: 'EUR', status: 'ontvangen', source: 'eigen' } })
     expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({ id: salaryTrip?.salary?.transactionId, kind: 'loon', amount: 1200, tripId: 'upg-trip-salaris', deletedAt: null })]))
     expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
+    // De weekafsluiting staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende).
+    const closings = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
+    expect(closings).toEqual(expect.arrayContaining([expect.objectContaining({ rating: 7, deletedAt: null })]))
   } finally {
     await server.close()
   }

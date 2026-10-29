@@ -125,8 +125,8 @@ describe('GitHub-gedrag: twee vensters na een update', () => {
       const metaText = serializeMeta(k1.meta)
       gh.files.set(META_PATH, { sha: 'meta-1', content: toBase64(utf8(metaText)) })
       await putObject(db, { path: META_PATH, blob: utf8(metaText), sha: 'meta-1' })
-      // Oude versie: places en calendar bestonden nog niet.
-      const NEW: CollectionPath[] = ['places.json.enc', 'calendar.json.enc', 'checklists.json.enc']
+      // Oude versie: places, calendar en de weekafsluitingen bestonden nog niet.
+      const NEW: CollectionPath[] = ['places.json.enc', 'calendar.json.enc', 'checklists.json.enc', 'weekreviews.json.enc']
       for (const path of COLLECTION_PATHS) {
         if (NEW.includes(path)) continue
         const records: SyncRecord[] = []

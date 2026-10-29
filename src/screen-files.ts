@@ -23,10 +23,10 @@ export type ScreenId =
   | 'opslag'
 
 export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
-  vandaag: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'plans.json.enc', 'students.json.enc', 'reminders.json.enc', 'settings.json.enc'],
+  vandaag: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'plans.json.enc', 'students.json.enc', 'reminders.json.enc', 'settings.json.enc', 'weekreviews.json.enc'],
   week: ['trips.json.enc', 'legs.json.enc', 'students.json.enc', 'plans.json.enc', 'checklists.json.enc', 'curricula.json.enc', 'transactions.json.enc'],
   toevoegen: ['legs.json.enc', 'trips.json.enc', 'transactions.json.enc', 'places.json.enc'],
-  agenda: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'reminders.json.enc', 'transactions.json.enc'],
+  agenda: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'reminders.json.enc', 'transactions.json.enc', 'weekreviews.json.enc'],
   logboek: ['trips.json.enc', 'legs.json.enc'],
   meer: [],
   statistieken: ['legs.json.enc', 'trips.json.enc', 'calendar.json.enc', 'transactions.json.enc', 'students.json.enc', 'curricula.json.enc', 'settings.json.enc'],

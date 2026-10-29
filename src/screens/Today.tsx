@@ -12,6 +12,7 @@ import { boatLine } from '../components/boat-line'
 import type { AddInit } from './QuickAdd'
 import { Suspense, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { collectGaps, isSunday } from '../model/gaps'
+import { WeekClose } from '../components/WeekClose'
 import type { Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
@@ -198,6 +199,7 @@ export function Today({
           </button>
         </div>
       )}
+      <WeekClose store={store} index={index} today={today} notify={notify} />
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}

@@ -91,6 +91,7 @@ logboek-data/
   reminders.json.enc     # termijnen: deadlines en vervaldatums
   checklists.json.enc    # alleen eigen en bewerkte checklists; meegeleverde staan in de code
   calendar.json.enc      # agenda: alleen dagen die Olivier zelf instelt
+  weekreviews.json.enc   # weekafsluitingen: cijfer en één zin per week
   documents/index.json.enc   # release 3
   documents/<uuid>.bin       # release 3
 ```
@@ -198,6 +199,12 @@ De opbouw volgt Oliviers bestaande mijlenregistratie. Eén rij = één dag(tocht
 - **Planning importeren** (`src/import/planning.ts`, CSV of Excel): kolommen start, eind, soort (werk|rust|reis|thuis|onbeschikbaar|optie), naam, type, organisatie, boot, gebied, notitie; datums jjjj-mm-dd (of d-m-jjjj). Werk wordt een trip, de andere soorten zelf ingestelde dagen. Eerst een voorbeeld met wat er gemaakt wordt en de overlappingen met trips en eigen dagen; een overlappende regel gaat alleen mee als Olivier hem aanzet ("Staat er al" bij dezelfde naam en startdatum). Meldingen noemen rij en kolom, nooit celinhoud.
 - **Delen** (PDF via de printfunctie, periode te kiezen): "Alleen beschikbaarheid" (beschikbaar, bezet, optie; geen namen, boten of bedragen) of "Volledige planning" (trips met type en gebied, reisdagen van–naar; geen boten, vluchten, bedragen, gastnamen of notities).
 
+**WeekClosing** = weekafsluiting (`weekreviews.json.enc`, `src/model/week-close.ts`, `src/components/WeekClose.tsx`)
+`id (week:<jjjj>-W<ww>), week, start (maandag), rating? (1–10), lesson? (hoogstens 200 tekens), updatedAt, deletedAt`
+- Eén record per ISO-week (maandag tot en met zondag); het id volgt uit de week, zodat twee apparaten dezelfde week samenvoegen. Opgeslagen worden alleen het cijfer en de zin; de samenvatting wordt steeds uitgerekend: dagen op het water met nm, nachturen, werk-, rust- en reisdagen uit de agenda, de trips, het aantal plaatsen waar Olivier aankwam en de examens van studenten (aantallen, geen namen). Geen bedragen.
+- Op zondag staat op Vandaag de kaart "Week N afsluiten" met de samenvatting, een cijfer en één zin; op maandag nog voor de week van gisteren. Opslaan met één tik (cijfer of zin is genoeg); daarna is de kaart weg. Overslaan mag: de kaart verdwijnt dinsdag vanzelf.
+- Terug te lezen in de agenda: een open rondje op de zondag, en op de dagkaart van de zondag de afsluiting met de samenvatting; bewerken via het potlood, verwijderen met ongedaan maken. Een week die al begonnen is en nog niet afgesloten, is daar ook af te sluiten ("Week N afsluiten").
+
 ### Zeilgeld
 
 Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` in `transactions.json.enc`, zodat de latere volledige geldmodule (rekeningen, bankimports, netto waarde) zonder migratie kan aansluiten.
@@ -280,7 +287,7 @@ Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vak
    - de planning van vandaag uit de lopende planning (alleen als er vandaag iets gepland is; tik op een thema = al zijn onderwerpen geoefend voor de hele groep);
    - bij een geplande etappe (route-sjabloon) "Zoals gepland" en "Aanpassen";
    - de knop "Dag van vandaag loggen" (opent Toevoegen → Dag, voorgevuld);
-   - open vragen: vergeten dagen van de lopende trip tot en met gisteren (één tik naar Dag op die datum), "Salaris van <trip> ontvangen?" (zie Salaris per trip), op zondag "N dingen aanvullen" (alleen als er lege velden zijn; zie Niets is verplicht);
+   - open vragen: vergeten dagen van de lopende trip tot en met gisteren (één tik naar Dag op die datum), "Salaris van <trip> ontvangen?" (zie Salaris per trip), op zondag "N dingen aanvullen" (alleen als er lege velden zijn; zie Niets is verplicht) en de weekafsluiting (zie WeekClosing; op maandag nog voor de week van gisteren);
    - nm dit jaar met voortgang naar een instelbaar jaardoel (standaard 2.500 nm, in `settings.json.enc`);
    - Termijnen: de eerstvolgende drie (eigen deadlines en vervaldatums, de token, de start van de volgende trip; te laat of verlopen bovenaan), "Termijn toevoegen" en "Alle" (Meer → Termijnen).
 4. **Deze trip:** de lopende trip; zonder lopende trip "Nieuwe trip". Onderaan de komende trips met het aantal dagen tot de start (tikken = tripoverzicht).
@@ -315,8 +322,8 @@ Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vak
    - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bij een fooi "Van wie" (de deelnemers als knoppen, Hele groep, Onbekend; bij meerdere personen "Samen gegeven" of "Per persoon"), bron, valuta, datum, notitie.
    - Uitgave: bedrag, omschrijving, soort (kosten/investering); bron, valuta, datum en trip onder "Meer velden".
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
-6. **Agenda:** maandraster met een kleur per dagsoort (optie gestreept), een balk met de tripnaam over de dagen van elke trip, nm klein in het vakje en een stip voor termijnen (ook de vervaldatum van de token). Vegen of de pijlen naar een andere maand, de maandkiezer, "Naar vandaag". Onderaan de werk-, rust-, reis-, thuis- en onbeschikbare dagen en nm van de maand, en na "Toon bedragen" de inkomsten van de maand en per werkdag. Een knop naar het Logboek.
-   - Dagkaart (tik op een dag, `DayView` in `src/components/DaySheet.tsx`): dagsoort, de trip met teller (tik = tripoverzicht), boot (naam, model, lengte), de route van die dag op een kleine kaart, nm, nachturen, wind, reis of plaats, notitie, planningsthema's, of er fooi was (bedragen achter "Toon bedragen"), "Zoals gepland" of "Dag loggen", de termijnen van die dag en "Termijn toevoegen" met die datum.
+6. **Agenda:** maandraster met een kleur per dagsoort (optie gestreept), een balk met de tripnaam over de dagen van elke trip, nm klein in het vakje, een stip voor termijnen (ook de vervaldatum van de token) en een open rondje op de zondag van een afgesloten week. Vegen of de pijlen naar een andere maand, de maandkiezer, "Naar vandaag". Onderaan de werk-, rust-, reis-, thuis- en onbeschikbare dagen en nm van de maand, en na "Toon bedragen" de inkomsten van de maand en per werkdag. Een knop naar het Logboek.
+   - Dagkaart (tik op een dag, `DayView` in `src/components/DaySheet.tsx`): dagsoort, de trip met teller (tik = tripoverzicht), boot (naam, model, lengte), de route van die dag op een kleine kaart, nm, nachturen, wind, reis of plaats, notitie, planningsthema's, of er fooi was (bedragen achter "Toon bedragen"), "Zoals gepland" of "Dag loggen", de termijnen van die dag en "Termijn toevoegen" met die datum; op een zondag de weekafsluiting van die week (of "Week N afsluiten").
    - Dagblad (via het potlood op de dagkaart): dagsoort als knoppen (één tik slaat op; "Automatisch" volgt weer trips en dagen); bij werk de boot (per dag te overschrijven) en zo nodig "<trip> verlengen tot …"; bij reis van, naar en vlucht; bij onbeschikbaar een reden; anders een plaats; een notitie.
    - Periode markeren: tik op een begindag en een einddag en kies een dagsoort; werk opent Nieuwe trip met die datums, of verlengt een trip die vlak ervoor eindigt of erna begint.
    - Planning importeren, Seizoen (één regel per week van deze week tot het einde van de planning met naam, datums, type, boot en gebied, gaten als "Beschikbaar: …", "Eerdere weken tonen") en Delen (zie Agenda in het datamodel).
@@ -356,13 +363,13 @@ logboek/
                      osm.ts (kaartdata laden), waterroute.ts, estimate.ts (waterroute × persoonlijke factor), trip-ops.ts (verwijderen, overlap, samenvoegen),
                      countries.ts (grove landvakken voor de pinregels), counters.ts (teller per organisatie), stats.ts (statistieken), trip-dates.ts (datums uit de dagen),
                      trip-route.ts (route en stops van een trip), measure.ts (afstand meten op de kaart), offline-maps.ts (vaargebieden offline), pin-suggest.ts (pin-assistent), salary.ts (salaris en vooruitblik), student-groups.ts (studentenarchief),
-                     trip-name.ts, export.ts (exporteren naar Excel)
+                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting)
     import/          mileage-csv.ts (mijlenregels), planning.ts (planning importeren), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), SailingExport, Deadlines, Boats, Places,
                      Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten)
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, map-view (kaartgebaren), map-labels (namen op de kaart), LazyMap, RouteMap, RouteThumb, MapSheet, Sheet, Views (leesweergaven), EditSheets, WeekSheet,
                      TripOverview, TripShare, SailedMap, PinSheet, SalaryFields, SalarySheets, SalaryOutlook, DemoBar, boat-line, CurriculumSheets, DaySheet, PeriodSheets,
-                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, Icon, Toast, …)
+                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, Icon, Toast, …)
     demo/            data.ts (voorbeelddata voor de demomodus)
     demo.ts          demomodus: aparte demo-database, nooit netwerk naar GitHub (zie Demomodus)
     lazy.ts          schermen, kaarten en bladen pas laden bij openen
@@ -377,10 +384,10 @@ logboek/
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
                      foutmatrix, screen-files, upgrade-samples, calendar, planning, trip-agenda, guests, osm-lib, waterroute, opslag, github-gedrag, trip-ops, pins,
-                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export) + playwright (upgrade, updates, setup, unlock, sessie, import,
+                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close) + playwright (upgrade, updates, setup, unlock, sessie, import,
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
-                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren,
+                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)

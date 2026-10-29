@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
+import { COLLECTION_PATHS } from '../../src/model/types'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook, openMore, PASSPHRASE, storedLastUsed } from './helpers/logbook'
 
 // PR A, "Data eerst": na opslaan eerst "Opgeslagen", dan "Gesynct"; de app sluiten vóór de sync verliest niets;
@@ -59,7 +60,7 @@ test('Meer → Opslag: per bestand de stand, Controleer nu, back-up downloaden e
 
   await openMore(page, 'Opslag')
   await expect(page.getByRole('heading', { name: 'Opslag', exact: true })).toBeVisible()
-  await expect(page.locator('.storage-file')).toHaveCount(11)
+  await expect(page.locator('.storage-file')).toHaveCount(COLLECTION_PATHS.length)
   await page.getByRole('button', { name: 'Controleer nu' }).click()
   await expect(page.getByRole('button', { name: 'Controleren…' })).toHaveCount(0, { timeout: 30_000 })
   await expect(page.locator('.storage-ok')).toContainText('GitHub en deze telefoon zijn gelijk')

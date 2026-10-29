@@ -24,6 +24,8 @@ import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
+import { WeekClosingSection } from './WeekClose'
+import { isSundayDate } from '../model/week-close'
 
 // Dagblad: dagsoort als knoppen (één tik slaat op; "Automatisch" volgt weer de trips en dagen). Bij werk de trip, de
 // boot (van de trip, per dag te overschrijven), "Zoals gepland" of "Dag loggen", nm en inkomsten (bedragen pas na
@@ -409,6 +411,7 @@ export function DayView({
           </div>
         )}
         <DayTips store={store} date={date} />
+        {isSundayDate(date) && <WeekClosingSection store={store} index={index} date={date} today={today} notify={notify} />}
         {info.type === 'werk' && (planned && trip ? (
           <button type="button" className="btn primary" onClick={() => void logAsPlanned()}>
             <Icon icon={Route} />
