@@ -1012,10 +1012,14 @@ summary:focus-visible {
   position: fixed;
   left: 50%;
   bottom: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px) + var(--s-4));
-  z-index: 30;
+  /* Boven de onderbladen: na verwijderen in een geneste weergave (een dag in het tripoverzicht) blijft het overzicht
+     open, en "Ongedaan maken" moet dan te tikken zijn. */
+  z-index: 45;
   display: inline-flex;
   align-items: center;
   gap: var(--s-3);
+  /* Zo breed als de tekst (anders breekt left: 50% elk woord af), hoogstens de schermbreedte. */
+  width: max-content;
   max-width: calc(100vw - 2 * var(--s-4));
   min-height: var(--tap);
   padding: var(--s-2) var(--s-4);
@@ -1025,6 +1029,12 @@ summary:focus-visible {
   color: #f3f6f9;
   box-shadow: var(--shadow-2);
   font-size: var(--fs-sm);
+}
+
+/* Met een open onderblad bovenaan, over de donkere laag: dan bedekt de melding de knoppen van het blad niet. */
+body.sheet-open .toast {
+  top: calc(env(safe-area-inset-top, 0px) + var(--s-2));
+  bottom: auto;
 }
 
 .toast .icon {
@@ -3366,4 +3376,242 @@ body.presenting .bottom-bar {
 
 .table td.keep-case {
   text-transform: none;
+}
+
+/* ---------- Route op de kaart: genummerde stops, start en eind duidelijk ---------- */
+
+.sea-map.small .sea-map-canvas {
+  height: 200px;
+}
+
+.map-route.solid {
+  stroke-dasharray: none;
+  stroke-width: 2.5;
+  opacity: 0.9;
+}
+
+.map-stop circle {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.map-stop text {
+  font-size: 10px;
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  fill: var(--text);
+}
+
+.map-stop.start circle {
+  fill: var(--accent);
+  stroke: var(--surface);
+}
+
+.map-stop.start text {
+  fill: var(--accent-text);
+}
+
+.map-stop.end circle {
+  fill: var(--navy-700);
+  stroke: var(--surface);
+}
+
+.map-stop.end text {
+  fill: #ffffff;
+}
+
+.map-stop.start.end circle {
+  fill: var(--accent);
+  stroke: var(--navy-700);
+  stroke-width: 3;
+}
+
+/* ---------- Leesweergaven: eerst bekijken, bewerken via het potlood ---------- */
+
+.sheet-header h2 {
+  flex: 1;
+}
+
+.sheet-header .sheet-edit {
+  color: var(--accent);
+}
+
+.view-rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.view-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 38%) 1fr;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.view-row dt {
+  color: var(--text-muted);
+}
+
+.view-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.view-amount {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold, 600);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.view h3,
+.trip-overview h3,
+.trip-route h3 {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Tripkop: "SV #3 · BVI · 8–21 nov · Lagoon 42", potlood rechts. */
+.trip-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-4);
+}
+
+.trip-head-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.trip-head-title h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+.trip-head-title .btn.icon {
+  flex: none;
+  color: var(--accent);
+  margin: calc(-1 * var(--s-1)) calc(-1 * var(--s-2)) 0 0;
+}
+
+.trip-head p {
+  margin: 0;
+}
+
+.trip-totals {
+  margin: 0;
+}
+
+/* Logboek als kaartjes per trip. */
+.trip-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.trip-card-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+}
+
+.trip-card-button .row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trip-card-button .row-title {
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.route-thumb {
+  display: block;
+  width: 64px;
+  height: 48px;
+  border-radius: 8px;
+}
+
+.route-thumb.empty {
+  background: var(--surface-2);
+}
+
+.route-thumb-sea {
+  fill: var(--map-sea);
+}
+
+.route-thumb-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route-thumb-start {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+
+.route-thumb-end {
+  fill: var(--navy-700);
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+
+/* Dagkaart in de agenda. */
+.day-view-type {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.day-view-trip:disabled {
+  cursor: default;
+}
+
+.pin-assistant h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.pin-assistant-start {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  flex-wrap: wrap;
 }

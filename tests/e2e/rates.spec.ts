@@ -56,6 +56,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Werkelijk ontvangen eurobedrag gaat voor de omrekening.
       await usd.getByRole('button').click()
+      // Eerst de weergave: euro met het origineel en "voorlopig"; bewerken via het potlood.
+      await expect(page.getByRole('dialog').locator('.view-amount')).toContainText(lang === 'nl' ? '€ 80,00 ($ 100,00, voorlopig)' : '€80.00 ($100.00, provisional)')
+      await page.getByRole('dialog').getByRole('button', { name: L('common.edit') }).click()
       await expect(page.getByRole('dialog')).toContainText(L('money.rateProvisional', { rate: lang === 'nl' ? '1,25' : '1.25', currency: 'USD', date: '' }).split(' (')[0]!)
       await shots(page, 'transactie-koers', lang)
       await page.getByRole('dialog').getByLabel(L('money.receivedEur')).fill(lang === 'nl' ? '78,50' : '78.50')

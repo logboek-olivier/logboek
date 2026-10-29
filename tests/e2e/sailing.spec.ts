@@ -35,10 +35,14 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   const trips = page.locator('.trip')
   await expect(trips).toHaveCount(3)
   await expect(trips.first()).toContainText('Cursus binnenwater')
+  // Een kaartje per trip met de totalen; tikken opent het tripoverzicht met de dagen.
+  await expect(trips.first()).toContainText('2 dagen')
   await trips.first().getByRole('button').click()
-  await expect(trips.first().locator('.leg')).toHaveCount(2)
-  await expect(trips.first()).toContainText('Meerdorp → Rietmeer')
+  const overview = page.getByRole('dialog')
+  await expect(overview.locator('.leg-button')).toHaveCount(2)
+  await expect(overview).toContainText('Meerdorp → Rietmeer')
   await expectNoHorizontalOverflow(page)
+  await overview.getByRole('button', { name: 'Sluiten' }).click()
 
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
   const wire = github.requests.map((r) => `${r.url}\n${r.body ?? ''}`).join('\n')

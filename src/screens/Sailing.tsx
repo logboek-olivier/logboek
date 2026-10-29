@@ -1,20 +1,23 @@
-import { CalendarPlus, ChevronDown, FileText, FileSpreadsheet, LoaderCircle, Pencil, Sailboat, Upload } from 'lucide-react'
+import { CalendarPlus, FileText, FileSpreadsheet, LoaderCircle, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { BarChart } from '../components/BarChart'
-import { LegSheet, type Notify } from '../components/EditSheets'
+import type { Notify } from '../components/EditSheets'
+import { RouteThumb } from '../components/RouteMap'
+import { TripOverviewSheet } from '../components/TripOverview'
+import { routeOf } from '../model/trip-route'
 import { WeekSheet } from '../components/WeekSheet'
 import { IncompleteBadge } from '../components/Incomplete'
-import { legGaps, tripIncomplete } from '../model/gaps'
+import { tripIncomplete } from '../model/gaps'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
-import { formatDate, formatDateRange, formatHours, formatMonth, formatMonthShort, formatNm, formatNumber } from '../format'
+import { formatDateRangeShort, formatHours, formatMonth, formatMonthShort, formatNm, formatNumber } from '../format'
 import { recordError } from '../errors'
 import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
-import { nmPerMonth, summarize, summarizeTrips, totalNm, type SailingSummary, type TripSummary } from '../model/derive'
+import { nmPerMonth, summarize, summarizeTrips, type SailingSummary, type TripSummary } from '../model/derive'
 import { roleLabel } from '../i18n/labels'
-import { ROLES, todayIso, type Leg, type Trip } from '../model/types'
+import { ROLES, todayIso, type Place, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
@@ -28,12 +31,13 @@ import { t } from '../i18n'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
-type Editing = { kind: 'leg'; leg: Leg } | { kind: 'trip'; trip: Trip } | { kind: 'new-week' } | null
+type Editing = { kind: 'trip'; trip: Trip } | { kind: 'new-week' } | null
 
 export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   const counters = useCounters(store)
   const [editing, setEditing] = useState<Editing>(null)
   const legs = useCollection(store, 'legs.json.enc')
+  const places = useCollection(store, 'places.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const [pending, setPending] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -210,15 +214,9 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
                   <span>{formatMonth(g.month)}</span>
                   <span className="num">{formatNm(g.trips.reduce((n, s) => n + s.nm, 0))}</span>
                 </h3>
-                <ul className="rows">
+                <ul className="trip-cards">
                   {g.trips.map((s) => (
-                    <TripRow
-                      key={s.trip.id}
-                      summary={s}
-                      counter={counters.get(s.trip.id)}
-                      onEditTrip={() => setEditing({ kind: 'trip', trip: s.trip })}
-                      onEditLeg={(leg) => setEditing({ kind: 'leg', leg })}
-                    />
+                    <TripCard key={s.trip.id} summary={s} counter={counters.get(s.trip.id)} places={places} onOpen={() => setEditing({ kind: 'trip', trip: s.trip })} />
                   ))}
                 </ul>
               </div>
@@ -226,8 +224,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
           </div>
         </>
       )}
-      {editing?.kind === 'leg' && <LegSheet store={store} leg={editing.leg} onClose={() => setEditing(null)} notify={notify} />}
-      {editing?.kind === 'trip' && <WeekSheet store={store} trip={editing.trip} onClose={() => setEditing(null)} notify={notify} />}
+      {editing?.kind === 'trip' && <TripOverviewSheet store={store} trip={editing.trip} notify={notify} onClose={() => setEditing(null)} />}
       {editing?.kind === 'new-week' && <WeekSheet store={store} trip={null} onClose={() => setEditing(null)} notify={notify} />}
     </section>
   )
@@ -260,84 +257,24 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TripRow({
-  summary,
-  counter,
-  onEditTrip,
-  onEditLeg,
-}: {
-  summary: TripSummary
-  counter?: TripCounter
-  onEditTrip: () => void
-  onEditLeg: (leg: Leg) => void
-}) {
-  const [open, setOpen] = useState(false)
+/** Een trip als kaartje: klein routeplaatje, naam met teller, periode, boot en totalen; tikken opent het overzicht. */
+function TripCard({ summary, counter, places, onOpen }: { summary: TripSummary; counter?: TripCounter; places: readonly Place[]; onOpen: () => void }) {
+  const route = routeOf(summary.legs, places)
+  const name = nameWithCounter(summary.trip, counter)
   return (
-    <li className="trip">
-      <button className="row-button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="row-icon">
-          <Icon icon={Sailboat} />
-        </span>
+    <li className="trip trip-card">
+      <button type="button" className="trip-card-button" onClick={onOpen} aria-label={t('trip.open', { name })}>
+        <RouteThumb route={route} />
         <span className="row-main">
           <span className="row-title">
-            {nameWithCounter(summary.trip, counter)} {tripIncomplete(summary.trip, summary.legs) && <IncompleteBadge />}
+            {name} {tripIncomplete(summary.trip, summary.legs) && <IncompleteBadge />}
           </span>
-          <span className="muted">
-            {formatDateRange(summary.startDate, summary.endDate)} · {summary.boat} · {t('unit.days', { n: summary.days })}
+          <span className="muted small">{[formatDateRangeShort(summary.startDate, summary.endDate), summary.trip.boatModel || summary.boat].filter(Boolean).join(' · ')}</span>
+          <span className="muted small">
+            {[t('unit.days', { n: summary.days }), route.nightHours > 0 ? t('sailing.night', { hours: formatHours(route.nightHours) }) : ''].filter(Boolean).join(' · ')}
           </span>
         </span>
         <span className="row-value">{formatNm(summary.nm)}</span>
-        <Icon icon={ChevronDown} className="chevron" />
-      </button>
-      {open && (
-        <ul className="legs">
-          {summary.legs.map((leg) => (
-            <LegRow key={leg.id} leg={leg} onEdit={() => onEditLeg(leg)} />
-          ))}
-          <li className="legs-actions">
-            <button className="btn small quiet" onClick={onEditTrip}>
-              <Icon icon={Pencil} />
-              {t('week.edit')}
-            </button>
-          </li>
-        </ul>
-      )}
-    </li>
-  )
-}
-
-function LegRow({ leg, onEdit }: { leg: Leg; onEdit: () => void }) {
-  const water = [leg.nmInland > 0 && t('water.inlandShort'), leg.nmSea > 0 && t('water.seaShort'), leg.nmTidal > 0 && t('water.tidalShort')]
-    .filter(Boolean)
-    .join(', ')
-  return (
-    <li className="leg">
-      <button
-        className="leg-button"
-        onClick={onEdit}
-        aria-label={`${leg.fromPlace} → ${leg.toPlace}, ${formatDate(leg.date)} · ${t('common.edit')}`}
-      >
-        <div className="row-main">
-          <span className="row-title">
-            {leg.fromPlace} → {leg.toPlace} {legGaps(leg).length > 0 && <IncompleteBadge />}
-          </span>
-          <span className="muted">
-            {formatDate(leg.date)}
-            {leg.dateEstimated ? ` ${t('sailing.estimated')}` : ''} · {roleLabel(leg.role)}
-            {leg.windBft ? ` · ${leg.windBft} bft` : ''}
-            {leg.nightHours > 0 ? ` · ${t('sailing.night', { hours: formatHours(leg.nightHours) })}` : ''}
-          </span>
-          {leg.notes && <span className="muted">{leg.notes}</span>}
-        </div>
-        <span className="row-value">
-          {formatNm(totalNm(leg))}
-          {water && (
-            <span className="muted small">
-              <br />
-              {water}
-            </span>
-          )}
-        </span>
       </button>
     </li>
   )

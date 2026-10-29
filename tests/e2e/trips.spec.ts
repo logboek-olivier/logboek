@@ -52,8 +52,8 @@ test('Deze trip: eerdere en komende trips invoeren, bootgegevens van een bekende
   await expect(sheet.getByLabel('Basis', { exact: true })).toHaveValue('Nepbaai')
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByRole('heading', { name: 'Deze trip' })).toBeVisible()
-  await expect(page.locator('.week-head')).toContainText('Nepster · Nepcat 45 · 45 ft (13,7 m)')
-  await expect(page.locator('.week-head')).toContainText('Nepbaai')
+  await expect(page.locator('.trip-head')).toContainText('Nepster · Nepcat 45 · 45 ft (13,7 m)')
+  await expect(page.locator('.trip-head')).toContainText('Nepbaai')
 
   // Vergeten dagen: één tik opent Dag met die datum; de eerste dag begint op de basis.
   await expect(page.getByText('4 dagen in deze trip nog niet gelogd')).toBeVisible()
@@ -70,7 +70,8 @@ test('Deze trip: eerdere en komende trips invoeren, bootgegevens van een bekende
   await expect(page.getByText('3 dagen in deze trip nog niet gelogd')).toBeVisible()
 
   // Dag achteraf bewerken vanuit de trip.
-  await page.getByRole('button', { name: /^Dag .* bewerken$/ }).click()
+  await page.getByRole('button', { name: /^Dag .* bekijken$/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Bewerken', exact: true }).click()
   const daySheet = page.getByRole('dialog', { name: 'Dag bewerken' })
   await daySheet.getByLabel('Zee (nm)').fill('21')
   await daySheet.getByRole('button', { name: 'Opslaan' }).click()

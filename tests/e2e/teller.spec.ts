@@ -64,8 +64,7 @@ test('teller per organisatie: twijfel bevestigen, naamvoorstel, beginnummer, kop
 
   // Kop van Deze trip en de komende trips: de nummers schuiven mee, ook in een naam die al een nummer had.
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
-  await expect(page.locator('.week-head .counter-chip')).toHaveText('SV #4')
-  await expect(page.locator('.week-head-title')).toContainText('SV #4Nepweek')
+  await expect(page.locator('.trip-head h2')).toContainText(/^SV #4 Nepweek · /)
   await expect(page.locator('main')).toContainText('YW #10 · Nepgebied')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/teller/deze-trip.png' })

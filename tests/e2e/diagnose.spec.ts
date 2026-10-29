@@ -34,7 +34,7 @@ test('trip via Dag krijgt datums uit de dagen; commitberichten met versie en app
     await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   }
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
-  const head = page.locator('.week-head')
+  const head = page.locator('.trip-head')
   await expect(head).toContainText('Nepweek via dag')
   // Twee dagen, van gisteren tot vandaag; geen melding over vergeten dagen.
   await expect(head).toContainText(/\d/)

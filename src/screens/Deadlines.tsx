@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { ReminderSheet } from '../components/ReminderSheet'
+import { ReminderView } from '../components/Views'
 import { useCollection } from '../components/useCollection'
 import { formatDate } from '../format'
 import { t } from '../i18n'
@@ -75,7 +76,7 @@ export function DueList({ store, items, notify, onToken }: { store: Store; items
           )
         })}
       </ul>
-      {editing && <ReminderSheet store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}
+      {editing && <ReminderView store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}
     </>
   )
 }
@@ -114,7 +115,7 @@ export function Deadlines({ store, notify, onToken }: { store: Store; notify: No
         </div>
       )}
       {adding && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAdding(false)} />}
-      {editing && <ReminderSheet store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}
+      {editing && <ReminderView store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}
     </section>
   )
 }

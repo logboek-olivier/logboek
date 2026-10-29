@@ -127,6 +127,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Achteraf wijzigen: de fooi van twee personen wordt "samen gegeven".
       await page.locator('.tx button', { hasText: lang === 'nl' ? '€ 60,00' : '€60.00' }).first().click()
+      // Eerst de weergave met van wie; bewerken via het potlood.
+      await expect(sheet).toContainText('Nick (VS)')
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await expect(sheet.getByRole('radio', { name: L('tip.perPerson') })).toHaveAttribute('aria-checked', 'true')
       await sheet.getByRole('radio', { name: L('tip.together') }).click()
       await sheet.getByLabel(L('field.amount'), { exact: true }).fill('60')

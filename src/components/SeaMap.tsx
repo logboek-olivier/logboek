@@ -20,12 +20,36 @@ export interface MapPlace extends LatLon {
   name: string
 }
 
+/** Een genummerde stop van een route; start en eind zijn duidelijk anders getekend. */
+export interface MapStop extends LatLon {
+  n: number
+  kind: 'start' | 'stop' | 'end'
+}
+
+/** Middelpunt en zoom waarbij alle punten in beeld zijn, met wat ruimte langs de rand. */
+export function fitView(points: readonly LatLon[], w: number, h: number): { x: number; y: number; zoom: number } {
+  const xs = points.map((p) => mercX(p.lon))
+  const ys = points.map((p) => mercY(p.lat))
+  const x0 = Math.min(...xs)
+  const x1 = Math.max(...xs)
+  const y0 = Math.min(...ys)
+  const y1 = Math.max(...ys)
+  const pad = 44
+  const fitX = x1 > x0 ? (w - 2 * pad) / ((x1 - x0) * 256) : Infinity
+  const fitY = y1 > y0 ? (h - 2 * pad) / ((y1 - y0) * 256) : Infinity
+  const fit = Math.min(fitX, fitY)
+  const zoom = Number.isFinite(fit) && fit > 0 ? Math.log2(fit) : FIT_MAX_ZOOM
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom: Math.max(MIN_ZOOM, Math.min(FIT_MAX_ZOOM, zoom)) }
+}
+
 const TILE_DEG = 10
 const FINE_SPAN_DEG = 40
 /** Wereldcoördinaten (Mercator, 0..1) maal deze factor in de SVG-paden, zodat afronding geen rol speelt. */
 const WORLD = 1_000_000
 const MIN_ZOOM = 2
 const MAX_ZOOM = 16
+/** Niet verder inzoomen dan dit om een route of één plaats in beeld te brengen. */
+const FIT_MAX_ZOOM = 12
 
 type Rings = number[][]
 const cache = new Map<string, Promise<string>>()
@@ -123,18 +147,34 @@ export function SeaMap({
   route,
   onPick,
   onSelectPlace,
+  fit,
+  stops,
+  small = false,
+  label,
 }: {
   center: LatLon
   places: readonly MapPlace[]
   selected: LatLon | null
   /** Waterroute om te tekenen (bijvoorbeeld van de vorige plaats naar het gekozen punt). */
   route?: readonly LatLon[] | null
-  onPick: (point: LatLon) => void
-  onSelectPlace: (place: MapPlace) => void
+  /** Zonder: alleen kijken (verschuiven en zoomen), geen punt zetten. */
+  onPick?: (point: LatLon) => void
+  onSelectPlace?: (place: MapPlace) => void
+  /** Zoom en middelpunt zo dat al deze punten in beeld zijn (route van een trip of dag). */
+  fit?: readonly LatLon[]
+  /** Genummerde stops van een route. */
+  stops?: readonly MapStop[]
+  /** Kleiner kaartje (dagkaart, plaats). */
+  small?: boolean
+  /** Beschrijving voor schermlezers (bijvoorbeeld de route in woorden). */
+  label?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ w: 360, h: 420 })
-  const [view, setView] = useState(() => ({ x: mercX(center.lon), y: mercY(center.lat), zoom: 9 }))
+  const [size, setSize] = useState({ w: 360, h: small ? 200 : 420 })
+  const [view, setView] = useState(() => (fit && fit.length > 0 ? fitView(fit, 360, small ? 200 : 420) : { x: mercX(center.lon), y: mercY(center.lat), zoom: 9 }))
+  // Zodra de echte maat bekend is, de route nog één keer in beeld brengen (tenzij Olivier al verschoof of zoomde).
+  const touched = useRef(false)
+  const fitKey = fit?.map((p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`).join('|') ?? ''
   const [paths, setPaths] = useState<Record<string, string>>({})
   const [osm, setOsm] = useState<OsmIndex | null>(null)
   const [osmPaths, setOsmPaths] = useState<Record<string, { land: string; lakes: string }>>({})
@@ -152,6 +192,12 @@ export function SeaMap({
     observer?.observe(el)
     return () => observer?.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (!fit || fit.length === 0 || touched.current) return
+    setView(fitView(fit, size.w, size.h))
+    // fitKey staat voor de punten zelf; een nieuwe array met dezelfde punten verandert niets.
+  }, [fitKey, size.w, size.h])
 
   // Pixels per wereldeenheid.
   const scale = 256 * 2 ** view.zoom
@@ -241,6 +287,7 @@ export function SeaMap({
   const toLatLon = (sx: number, sy: number): LatLon => ({ lon: lonOf(view.x + (sx - size.w / 2) / scale), lat: latOf(view.y + (sy - size.h / 2) / scale) })
 
   function zoomBy(delta: number, around?: { x: number; y: number }) {
+    touched.current = true
     setView((v) => {
       const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom + delta))
       if (!around) return { ...v, zoom }
@@ -292,6 +339,7 @@ export function SeaMap({
     if (!g.moved && Math.hypot(dx, dy) < 6) return
     g.moved = true
     g.last = p
+    touched.current = true
     setView((v) => ({ ...v, x: v.x - dx / scale, y: v.y - dy / scale }))
   }
 
@@ -300,15 +348,15 @@ export function SeaMap({
     const wasTap = pointers.current.size === 1 && !g.moved
     pointers.current.delete(e.pointerId)
     if (pointers.current.size === 0) g.last = null
-    if (!wasTap) return
+    if (!wasTap || (!onPick && !onSelectPlace)) return
     const p = local(e)
     // Tik dicht bij een bekende plaats: die plaats kiezen; anders een nieuw punt.
     const near = places
       .map((place) => ({ place, d: Math.hypot(toScreen(place).x - p.x, toScreen(place).y - p.y) }))
       .filter((c) => c.d <= 22)
       .sort((a, b) => a.d - b.d)[0]
-    if (near) onSelectPlace(near.place)
-    else onPick(toLatLon(p.x, p.y))
+    if (near) onSelectPlace?.(near.place)
+    else onPick?.(toLatLon(p.x, p.y))
   }
 
   const transform = `translate(${size.w / 2 - view.x * scale} ${size.h / 2 - view.y * scale}) scale(${scale / WORLD})`
@@ -318,14 +366,15 @@ export function SeaMap({
   const clip = shownOsm.length > 0 ? `M-1 -1H${WORLD + 1}V${WORLD + 1}H-1Z${shownOsm.map(({ rect: [x0, y0, x1, y1] }) => `M${x0} ${y0}H${x1}V${y1}H${x0}Z`).join('')}` : null
   const routeLine = route && route.length > 1 ? route.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('') : null
   const shownLabels = placeLabels(osmAreas.flatMap((a) => labels[a.id] ?? []), view.zoom, toScreen, size, places)
+  const stopGroups = groupStops(stops ?? [])
 
   return (
-    <div className="sea-map">
+    <div className={`sea-map${small ? ' small' : ''}`}>
       <div
         ref={box}
         className="sea-map-canvas"
         role="application"
-        aria-label={t('map.label')}
+        aria-label={label ?? t('map.label')}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
@@ -355,7 +404,7 @@ export function SeaMap({
               ) : null,
             )}
           </g>
-          {routeLine && <path className="map-route" d={routeLine} />}
+          {routeLine && <path className={`map-route${stops?.length ? ' solid' : ''}`} d={routeLine} />}
           {shownLabels.map((l) => (
             <text key={`${l.k}|${l.n}|${l.x}|${l.y}`} className={`map-label map-label-${l.k}`} x={l.x} y={l.y}>
               {l.n}
@@ -372,6 +421,20 @@ export function SeaMap({
                     {place.name}
                   </text>
                 )}
+              </g>
+            )
+          })}
+          {stopGroups.map((g) => {
+            const s = toScreen(g)
+            if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
+            const text = g.numbers.length > 2 ? `${g.numbers[0]}…${g.numbers.at(-1)}` : g.numbers.join('·')
+            const r = text.length > 2 ? 12 : 10
+            return (
+              <g key={`${g.lat}|${g.lon}`} className={`map-stop${g.kinds.has('start') ? ' start' : ''}${g.kinds.has('end') ? ' end' : ''}`}>
+                <circle cx={s.x} cy={s.y} r={r} />
+                <text x={s.x} y={s.y + 4}>
+                  {text}
+                </text>
               </g>
             )
           })}
@@ -399,6 +462,19 @@ export function SeaMap({
       </div>
     </div>
   )
+}
+
+/** Stops op dezelfde plek samen (heen en terug, of start en eind in dezelfde haven). */
+function groupStops(stops: readonly MapStop[]): { lat: number; lon: number; numbers: number[]; kinds: Set<MapStop['kind']> }[] {
+  const groups = new Map<string, { lat: number; lon: number; numbers: number[]; kinds: Set<MapStop['kind']> }>()
+  for (const s of stops) {
+    const key = `${s.lat.toFixed(3)}|${s.lon.toFixed(3)}`
+    const g = groups.get(key) ?? { lat: s.lat, lon: s.lon, numbers: [], kinds: new Set<MapStop['kind']>() }
+    g.numbers.push(s.n)
+    g.kinds.add(s.kind)
+    groups.set(key, g)
+  }
+  return [...groups.values()]
 }
 
 interface ShownLabel extends OsmLabel {

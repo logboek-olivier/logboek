@@ -72,9 +72,14 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Dagblad van een werkdag: trip, boot van de trip, nm en "Dag loggen".
       await day(11).click()
       const sheet = page.getByRole('dialog')
+      await expect(sheet.locator('.day-view-type')).toContainText(L('dayType.werk'))
+      await expect(sheet.locator('.view-rows')).toContainText('Nepboot Twee')
+      await expect(sheet.getByRole('button', { name: L('day.log') })).toBeVisible()
+      await shots(page, 'dagkaart-werk', lang)
+      // Bewerken via het potlood: de dagsoort als knoppen, de boot van de trip als voorstel.
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await expect(sheet.getByRole('radio', { name: L('dayType.werk') })).toHaveAttribute('aria-checked', 'true')
       await expect(sheet.getByLabel(L('day.boat'))).toHaveAttribute('placeholder', /Nepboot Twee/)
-      await expect(sheet.getByRole('button', { name: L('day.log') })).toBeVisible()
       await shots(page, 'dagblad-werk', lang)
       await sheet.getByRole('button', { name: L('common.close') }).click()
 
@@ -82,6 +87,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('button', { name: L('calendar.toToday') }).click()
       await expect(page.locator('.cal-day.today')).toHaveCount(1)
       await page.locator('.cal-day.today').click()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.reis') }).click()
       await sheet.getByLabel(L('day.from')).fill('Nepstad')
       await sheet.getByLabel(L('day.to')).fill('Nephaven')
@@ -94,6 +100,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Niets onversleuteld naar GitHub.
       expect(github.requests.some((r) => (r.body ?? '').includes('Nepstad'))).toBe(false)
       await page.locator('.cal-day.today').click()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('button', { name: L('day.auto') }).click()
       await expect(sheet.getByRole('radio', { name: L('dayType.beschikbaar') })).toHaveAttribute('aria-checked', 'true')
       await sheet.getByRole('button', { name: L('common.close') }).click()

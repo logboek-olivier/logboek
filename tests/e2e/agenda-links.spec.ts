@@ -55,6 +55,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Thuis: niets te loggen.
       await today.click()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.thuis') }).click()
       await sheet.getByRole('button', { name: L('common.close') }).click()
       await expect(today).toHaveClass(/day-thuis/)
@@ -63,6 +64,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Reis: de reisgegevens.
       await today.click()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.reis') }).click()
       await sheet.getByLabel(L('day.from')).fill('Nepstad')
       await sheet.getByLabel(L('day.to')).fill('Nephaven')
@@ -75,6 +77,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Terug naar automatisch: weer werk.
       await today.click()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('button', { name: L('day.auto') }).click()
       await sheet.getByRole('button', { name: L('common.close') }).click()
       await expect(today).toHaveClass(/day-werk/)
@@ -82,6 +85,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Agenda → trip: werk op 15 maart verlengt de trip (14 maart komt erbij); rust op de laatste dag maakt hem korter.
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
       await day(15).click()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.werk') }).click()
       await shots(page, 'dagblad-verlengen', lang)
       await sheet.getByRole('button', { name: new RegExp(`Nepweek Koppel`) }).click()
@@ -89,6 +93,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.locator('.cal-week').nth(2).locator('.cal-bar')).toHaveText('Nepweek Koppel')
       await day(15).click()
       await expect(sheet.getByText(L('day.source.trip'))).toBeVisible()
+      await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.rust') }).click()
       await expect(page.getByText(/Nepweek Koppel: /)).toBeVisible()
       await sheet.getByRole('button', { name: L('common.close') }).click()

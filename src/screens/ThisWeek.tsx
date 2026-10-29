@@ -1,30 +1,31 @@
-import { CalendarPlus, ChevronRight, Eye, EyeOff, ListChecks, Pencil, Plus, Users } from 'lucide-react'
+import { CalendarPlus, ChevronRight, Eye, EyeOff, ListChecks, Plus, Users } from 'lucide-react'
 import { ChecklistSheet, NewChecklistButton } from '../components/ChecklistSheet'
 import { addChecklist, checkedItems, checklistsFor, effectiveChecklists } from '../model/checklists'
 import { useCallback, useState, useSyncExternalStore } from 'react'
-import { LegSheet, type Notify } from '../components/EditSheets'
+import type { Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
-import { CloseWeekSheet, organisationLabel, WeekSheet, weekTypeLabel } from '../components/WeekSheet'
-import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from '../format'
+import { CloseWeekSheet, WeekSheet } from '../components/WeekSheet'
+import { formatDate, formatDateRange, formatMoney, formatNm } from '../format'
 import { t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
-import { totalNm } from '../model/derive'
 import { totals } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil } from '../session'
-import { legGaps, tripIncomplete } from '../model/gaps'
+import { tripIncomplete } from '../model/gaps'
 import { answerReturning, guestLabel, participantName, returningGuests } from '../model/guests'
 import { IncompleteBadge } from '../components/Incomplete'
-import { activeWeek, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
+import { activeWeek, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
 import type { Leg, Participant, Trip, WeekType } from '../model/types'
 import { tripOverlaps } from '../model/trip-ops'
-import { nameAfterCounter, nameWithCounter, type TripCounter } from '../model/counters'
+import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
-import { OverlapNotices, ParticipantSheet } from '../components/TripSheets'
+import { OverlapNotices } from '../components/TripSheets'
+import { boatLine, TripDays, TripHead, TripOverviewSheet, TripRouteSection } from '../components/TripOverview'
+import { ParticipantView } from '../components/Views'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { PlansView } from './Planning'
@@ -33,13 +34,6 @@ import { StudentsView } from './Students'
 // Deze trip: kop met boot (tikken = bewerken), deelnemers, planning (bij training geven), checklists per deelnemer,
 // gezeilde dagen met nm-totaal (elke dag te bewerken, vergeten dagen met één tik toe te voegen), inkomsten en
 // uitgaven van de trip, standaard verborgen achter "Toon bedragen", en de komende trips.
-
-/** Bootgegevens op één regel: naam · model · lengte in voet en meter. */
-export function boatLine(trip: Trip, fallbackBoat = ''): string {
-  const length = trip.boatLengthFt ? t('boat.feet', { ft: formatNumber(trip.boatLengthFt), m: formatNumber(feetToMetres(trip.boatLengthFt)) }) : ''
-  // De boot uit de dagen alleen als de trip zelf geen naam en geen model heeft (geïmporteerd: "Naam (Model)").
-  return [trip.boat || (trip.boatModel ? '' : fallbackBoat), trip.boatModel ?? '', length, trip.boatKind ? t(`boatKind.${trip.boatKind}`) : ''].filter(Boolean).join(' · ')
-}
 
 export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: Notify; onAddDay: (init: AddInit) => void }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
@@ -63,7 +57,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
   const upcomingSection = (
     <>
       <UpcomingTrips trips={upcoming} counters={counters} onOpen={setEditTrip} />
-      {editTrip && <WeekSheet store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
+      {editTrip && <TripOverviewSheet store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
     </>
   )
 
@@ -105,20 +99,8 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
           <header className="page-header">
             <h1>{t('nav.week')}</h1>
           </header>
-          <button className="card week-head" onClick={() => setSheet('edit')} aria-label={`${t('week.edit')}: ${week.name}`}>
-            <span className="week-head-title">
-              <span>
-                {counter && <span className="counter-chip">{counter.label}</span>}
-                {nameAfterCounter(week, counter)} {tripIncomplete(week, legs) && <IncompleteBadge />}
-              </span>
-              <Icon icon={Pencil} />
-            </span>
-            <span className="muted small">
-              {[weekTypeLabel(view.type), view.startDate ? formatDateRange(view.startDate, view.endDate) : ''].filter(Boolean).join(' · ')}
-            </span>
-            <span className="muted small">{boatLine(week, view.boat)}</span>
-            <span className="muted small">{[week.base, week.area, week.charter, week.organisation ? organisationLabel(week.organisation) : ''].filter(Boolean).join(' · ')}</span>
-          </button>
+          <TripHead view={view} counter={counter} legs={legs} onEdit={() => setSheet('edit')} />
+          <TripRouteSection store={store} view={view} notify={notify} />
           <OverlapNotices store={store} overlaps={tripOverlaps(trips, legs).filter((o) => o.a.id === week.id || o.b.id === week.id)} notify={notify} onEditTrip={setOtherTrip} />
           {missing.length > 0 && (
             <div className="notice">
@@ -151,7 +133,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
                   const course = curricula.find((c) => c.id === p.curriculumId)
                   return (
                     <li key={p.id}>
-                      <button type="button" className="chip-static participant-chip" onClick={() => setParticipant(p)} aria-label={`${t('participant.edit')}: ${participantName(p, participants)}`}>
+                      <button type="button" className="chip-static participant-chip" onClick={() => setParticipant(p)} aria-label={`${t('participant.open')}: ${participantName(p, participants)}`}>
                         <Icon icon={Users} />
                         <span>{participantName(p, participants)}</span>
                         {(p.level || course) && (
@@ -216,7 +198,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
       )}
       {sheet === 'edit' && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
       {otherTrip && <WeekSheet key={otherTrip.id} store={store} trip={otherTrip} notify={notify} onClose={() => setOtherTrip(null)} />}
-      {participant && <ParticipantSheet store={store} trip={week} participant={participant} notify={notify} onClose={() => setParticipant(null)} />}
+      {participant && <ParticipantView store={store} trip={week} participant={participant} notify={notify} onClose={() => setParticipant(null)} />}
       {sheet === 'close' && <CloseWeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
     </section>
   )
@@ -260,37 +242,17 @@ function TripChecklists({ store, notify, trip, type }: { store: Store; notify: N
 }
 
 function SailedDays({ store, notify, legs, nm, onAdd }: { store: Store; notify: Notify; legs: Leg[]; nm: number; onAdd: () => void }) {
-  const [editing, setEditing] = useState<Leg | null>(null)
   return (
     <div className="section">
       <div className="section-head">
         <h2>{t('week.sailedDays')}</h2>
         <span className="num">{formatNm(nm)}</span>
       </div>
-      {legs.length === 0 ? (
-        <p className="muted">{t('week.noDays')}</p>
-      ) : (
-        <ul className="rows">
-          {legs.map((leg) => (
-            <li key={leg.id}>
-              <button className="row-button" onClick={() => setEditing(leg)} aria-label={t('trip.editDay', { date: formatDate(leg.date) })}>
-                <span className="row-main">
-                  <span>
-                    {[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ')} {legGaps(leg).length > 0 && <IncompleteBadge />}
-                  </span>
-                  <span className="muted small">{formatDate(leg.date)}</span>
-                </span>
-                <span className="row-value">{formatNm(totalNm(leg))}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <TripDays store={store} legs={legs} notify={notify} />
       <button className="btn" onClick={onAdd}>
         <Icon icon={Plus} />
         {t('trip.addDay')}
       </button>
-      {editing && <LegSheet store={store} leg={editing} notify={notify} onClose={() => setEditing(null)} />}
     </div>
   )
 }
@@ -307,7 +269,7 @@ function UpcomingTrips({ trips, counters, onOpen }: { trips: Trip[]; counters: R
           const n = daysUntil(trip.startDate ?? null, today) ?? 0
           return (
             <li key={trip.id}>
-              <button className="row-button" onClick={() => onOpen(trip)} aria-label={`${t('week.edit')}: ${trip.name}`}>
+              <button className="row-button" onClick={() => onOpen(trip)} aria-label={t('trip.open', { name: trip.name })}>
                 <span className="row-main">
                   <span>
                     {nameWithCounter(trip, counters.get(trip.id))} {tripIncomplete(trip, []) && <IncompleteBadge />}

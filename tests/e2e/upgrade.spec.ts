@@ -187,6 +187,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     const calendarPuts = puts('calendar.json.enc')
     await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
     await page.locator('.cal-day.today').click()
+    // Eerst de dagkaart; de dagsoort kiezen via het potlood.
+    await page.getByRole('dialog').getByRole('button', { name: L('common.edit') }).click()
     await page.getByRole('dialog').getByRole('radio', { name: L('dayType.thuis') }).click()
     await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
     await expect(page.locator('.cal-day.today')).toHaveClass(/day-thuis/)

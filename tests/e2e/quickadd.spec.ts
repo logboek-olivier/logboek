@@ -30,7 +30,10 @@ test('Toevoegen: tabs Dag · Fooi · Kosten, opent op Dag; zonder boot geen blok
   await openLogbook(page)
   await page.locator('.trip').first().getByRole('button').first().click()
   await page.locator('.leg-button').first().click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByRole('dialog').getByLabel('Bijzonderheden')).toHaveValue('Nepnotitie bij de dag')
+  // De dag eerst bekijken (met de notitie), bewerken via het potlood.
+  const day = page.getByRole('dialog').last()
+  await expect(day).toContainText('Nepnotitie bij de dag')
+  await day.getByRole('button', { name: 'Bewerken' }).click()
+  await expect(page.getByRole('dialog', { name: 'Dag bewerken' }).getByLabel('Bijzonderheden')).toHaveValue('Nepnotitie bij de dag')
   expect(errors).toEqual([])
 })
