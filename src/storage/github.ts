@@ -6,6 +6,8 @@ import { fromBase64, toBase64, type Bytes } from '../crypto/encrypt'
 export const API_BASE = 'https://api.github.com'
 export const DATA_REPO = 'logboek-olivier/logboek-data'
 const API_VERSION = '2022-11-28'
+/** Een verzoek dat zo lang niets oplevert, telt als geen verbinding (anders blijft een sync op zee eeuwig hangen). */
+const REQUEST_TIMEOUT_MS = 60_000
 
 /** Soort GitHub-fout; de app toont hiervoor een vertaalde melding (zie describeError). */
 export type GithubErrorCode = 'auth' | 'conflict' | 'rateLimit' | 'repoNotFound' | 'read' | 'write' | 'unexpected'
@@ -81,6 +83,7 @@ export class GithubClient {
     try {
       response = await this.fetchImpl(`${API_BASE}${path}`, {
         ...init,
+        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined,
         // Nooit uit de browsercache: GitHub stuurt max-age=60 mee, en een oudere versie van een net hersteld bestand
         // liet de app denken dat het nog onleesbaar was.
         cache: 'no-store',

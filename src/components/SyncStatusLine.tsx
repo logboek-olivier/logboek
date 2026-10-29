@@ -68,8 +68,8 @@ export function SyncStatusLine({ store, files, onStorage }: { store: Store; file
 
 function StatusButton({ store, status }: { store: Store; status: SyncStatus }) {
   // Na een opslag eerst "Opgeslagen" (op deze telefoon), daarna "Gesynct" zodra de sync klaar is.
-  const { savedAt, syncedAt } = store.savedTimes()
-  const saved = savedAt > syncedAt && (status.kind === 'syncing' || status.kind === 'pending' || status.kind === 'offline')
+  const { saved: savedSeq, synced } = store.saveState()
+  const saved = savedSeq > synced && (status.kind === 'syncing' || status.kind === 'pending' || status.kind === 'offline')
   return (
     <button
       type="button"

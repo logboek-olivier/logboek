@@ -1114,6 +1114,8 @@ export function describeError(error: unknown): string {
         return t('key.mismatchTitle')
       case 'InvalidBackupError':
         return t('backup.invalid')
+      case 'RestoreNeedsSyncError':
+        return t('backup.syncFirst')
       case 'WebAuthnError':
         return describeWebAuthnError(error.message)
     }

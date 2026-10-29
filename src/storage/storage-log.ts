@@ -5,8 +5,9 @@ import { COLLECTION_PATHS, type CollectionPath } from '../model/types'
 // niet gesynct.
 
 /** gelijk: GitHub en dit apparaat hebben dezelfde records; verschil: niet; onleesbaar: op GitHub niet te lezen;
- *  ontbreekt: niet op GitHub terwijl dit apparaat records heeft; leeg: nergens records. */
-export type FileState = 'gelijk' | 'verschil' | 'onleesbaar' | 'ontbreekt' | 'leeg'
+ *  ontbreekt: niet op GitHub terwijl dit apparaat records heeft; leeg: nergens records; wacht: GitHub geeft nog een
+ *  versie die dit apparaat al verving (loopt achter, geen probleem). */
+export type FileState = 'gelijk' | 'verschil' | 'onleesbaar' | 'ontbreekt' | 'leeg' | 'wacht'
 
 export interface FileCheck {
   path: CollectionPath
@@ -36,10 +37,10 @@ export interface StorageLog {
 }
 
 export function checkHasProblem(check: StorageCheck): boolean {
-  return !check.metaOk || check.files.some((f) => f.state !== 'gelijk' && f.state !== 'leeg')
+  return !check.metaOk || check.files.some((f) => f.state === 'verschil' || f.state === 'onleesbaar' || f.state === 'ontbreekt')
 }
 
-const STATES: readonly FileState[] = ['gelijk', 'verschil', 'onleesbaar', 'ontbreekt', 'leeg']
+const STATES: readonly FileState[] = ['gelijk', 'verschil', 'onleesbaar', 'ontbreekt', 'leeg', 'wacht']
 
 function key(dbName: string): string {
   return `logboek-opslag:${dbName}`

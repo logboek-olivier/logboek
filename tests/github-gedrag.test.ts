@@ -164,6 +164,7 @@ describe('GitHub-gedrag: twee vensters na een update', () => {
         await store(a).sync().catch(() => undefined)
         await store(b).sync().catch(() => undefined)
       }
+      let last: Session[] = [a, b]
       if (offline) {
         a.lock()
         b.lock()
@@ -171,7 +172,12 @@ describe('GitHub-gedrag: twee vensters na een update', () => {
         const c = await open()
         await store(c).sync()
         await store(c).sync()
+        last = [c]
       }
+      // Na een rustige laatste ronde wacht er in geen enkel venster nog iets.
+      for (const s of last) await store(s).sync()
+      for (const s of last) await store(s).sync()
+      for (const s of last) expect(store(s).pendingCount()).toBe(0)
 
       // Alles op GitHub leesbaar met K1?
       for (const [path, file] of gh.files) {

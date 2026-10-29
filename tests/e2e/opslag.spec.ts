@@ -16,7 +16,7 @@ async function logDay(page: Page, to: string): Promise<void> {
   await expect(page.locator('.toast')).toHaveText('Dag opgeslagen')
 }
 
-test('opslaan: eerst "Opgeslagen", dan "Gesynct"; de app sluiten vóór de sync verliest niets', async ({ context, page }) => {
+test('opslaan: eerst "Opgeslagen", dan "Gesynct"; de app sluiten na "Opgeslagen" maar vóór de sync verliest niets', async ({ context, page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
@@ -29,7 +29,7 @@ test('opslaan: eerst "Opgeslagen", dan "Gesynct"; de app sluiten vóór de sync 
   await expect(status).toHaveText('Gesynct', { timeout: 15_000 })
   await expect(page.locator('.saved-here')).toHaveCount(0)
 
-  // Zonder verbinding opslaan en de app meteen sluiten.
+  // Zonder verbinding opslaan en de app meteen sluiten (sluiten midden in het opslaan zelf: tests/opslag.test.ts).
   github.offline = true
   await logDay(page, 'Nepdorp')
   await expect(page.locator('.saved-here')).toBeVisible()

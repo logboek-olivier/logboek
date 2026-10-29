@@ -10,8 +10,9 @@ import { decodeRecords, encodeRecords } from './sync'
 // Back-up zonder laptop: één bestand met het hele logboek, dat Olivier zelf deelt (bijvoorbeeld naar Google Drive).
 // Alles is versleuteld onder de hoofdsleutel; de meta (zoals meta.json.enc op GitHub: salts en de verpakte sleutel,
 // geen geheimen) staat erbij, zodat het bestand alleen met de wachtzin of herstelcode van dat moment te openen is.
-// Terugzetten brengt alleen terug wat nu helemaal ontbreekt: wat Olivier zelf verwijderde of wiste (ook studenten,
-// regel 14) blijft weg, en nieuwere wijzigingen blijven staan.
+// Terugzetten brengt alleen terug wat nu helemaal ontbreekt, met de tijden uit de back-up: wat Olivier zelf
+// verwijderde of wiste (ook studenten, regel 14) en wat intussen nieuwer is, wint bij de sync gewoon (laatste updatedAt
+// wint). Daarom alleen na een geslaagde sync, zodat dit apparaat weet wat er op GitHub staat.
 
 export const BACKUP_FORMAT = 'logboek-backup'
 const BACKUP_VERSION = 1
@@ -33,6 +34,14 @@ interface Payload {
 export interface OpenedBackup {
   createdAt: string
   files: Map<CollectionPath, SyncRecord[]>
+}
+
+/** Terugzetten kan pas als dit apparaat in deze sessie gesynct is (anders kent het niet alles wat op GitHub staat). */
+export class RestoreNeedsSyncError extends Error {
+  constructor() {
+    super('Eerst synchroniseren')
+    this.name = 'RestoreNeedsSyncError'
+  }
 }
 
 /** Geen back-up van Logboek, of beschadigd. Een verkeerde wachtzin geeft WrongSecretError. */
@@ -126,20 +135,28 @@ export function restorePlan(store: Store, backup: OpenedBackup): RestoreItem[] {
   })
 }
 
-/** Zet terug volgens het voorbeeld; geeft een functie die het ongedaan maakt. */
+/**
+ * Zet terug volgens het voorbeeld, opnieuw gecontroleerd tegen wat er nu is (er kan intussen gesynct zijn), met de tijden
+ * uit de back-up. Geeft een functie die het ongedaan maakt.
+ */
 export async function applyRestore(store: Store, plan: readonly RestoreItem[]): Promise<Undo> {
-  const now = new Date().toISOString()
+  if (!store.hasSynced()) throw new RestoreNeedsSyncError()
   const done: RestoreItem[] = []
   for (const item of plan) {
-    if (item.back.length === 0) continue
-    await putRecords(store, item.path, item.back.map((r) => ({ ...r, updatedAt: now, deletedAt: null })))
-    done.push(item)
+    const now = new Set(store.get(item.path).map((r) => r.id))
+    const back = item.back.filter((r) => !now.has(r.id))
+    if (back.length === 0) continue
+    await putRecords(store, item.path, back)
+    done.push({ ...item, back })
   }
   void store.sync()
   return async () => {
-    const later = new Date().toISOString()
     for (const item of done) {
-      const gone = item.back.map((r) => (item.path === 'students.json.enc' ? scrubbed(r as Student, later) : { ...r, updatedAt: later, deletedAt: later }))
+      const gone = item.back.map((r) => {
+        // Altijd later dan de tijd uit de back-up (die kan van een apparaat met een voorlopende klok komen).
+        const later = new Date(Math.max(Date.now(), Date.parse(r.updatedAt) + 1)).toISOString()
+        return item.path === 'students.json.enc' ? scrubbed(r as Student, later) : { ...r, updatedAt: later, deletedAt: later }
+      })
       await putRecords(store, item.path, gone)
     }
     void store.sync()

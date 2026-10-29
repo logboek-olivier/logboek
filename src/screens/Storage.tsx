@@ -13,7 +13,7 @@ import { describeError } from '../session'
 import { shareOrDownload } from '../share'
 import { applyRestore, backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
-import type { Store } from '../storage/store'
+import { describeStatus, type Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 
 // Meer → Opslag: per bestand de laatste sync, het aantal records hier en op GitHub en of het leesbaar is; "Controleer
@@ -40,6 +40,7 @@ const STATE_LABEL: Record<FileState, MessageKey> = {
   onleesbaar: 'storage.state.unreadable',
   ontbreekt: 'storage.state.missing',
   leeg: 'storage.state.empty',
+  wacht: 'storage.state.waiting',
 }
 
 function useStorageLog(store: Store) {
@@ -55,19 +56,19 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
   const status = useSyncStatus(store)
   const log = useStorageLog(store)
   const [busy, setBusy] = useState(false)
-  const [offline, setOffline] = useState(false)
+  const [failed, setFailed] = useState(false)
   const check = log.check
   const unreadableNow = status.kind === 'error' && status.code === 'unreadable' ? (status.paths ?? []) : []
 
   async function runCheck() {
     setBusy(true)
-    setOffline(false)
+    setFailed(false)
     try {
       const result = await store.check()
-      if (!result) setOffline(true)
+      if (!result) setFailed(true)
     } catch (error) {
       recordError(error)
-      setOffline(true)
+      setFailed(true)
     } finally {
       setBusy(false)
     }
@@ -95,10 +96,10 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
           </p>
         )}
         {!check && <p className="muted">{t('storage.never')}</p>}
-        {offline && (
+        {failed && (
           <p className="notice" role="status">
             <Icon icon={CloudOff} />
-            {t('storage.offline')}
+            {t('storage.cannotCheck', { reason: describeStatus(status) })}
           </p>
         )}
         <ul className="rows storage-files">
@@ -106,7 +107,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
             const file = byPath.get(path)
             const state: FileState | null = unreadableNow.includes(path) ? 'onleesbaar' : (file?.state ?? null)
             const synced = log.synced[path]
-            const good = state === 'gelijk' || state === 'leeg'
+            const good = state === 'gelijk' || state === 'leeg' || state === 'wacht'
             return (
               <li key={path} className="row-item storage-file">
                 <span className="row-main">
@@ -263,9 +264,10 @@ function RestoreBackup({ store, text, notify, onClose }: { store: Store; text: s
           ))}
         </ul>
         <p className="muted small">{total === 0 ? t('backup.nothing') : t('backup.explain')}</p>
+        {total > 0 && !store.hasSynced() && <p className="notice">{t('backup.syncFirst')}</p>}
         <ErrorLine error={error} />
         {total > 0 && (
-          <button type="button" className="btn primary" disabled={busy} onClick={() => void apply()}>
+          <button type="button" className="btn primary" disabled={busy || !store.hasSynced()} onClick={() => void apply()}>
             {t('backup.apply', { n: total })}
           </button>
         )}

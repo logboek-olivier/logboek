@@ -5,7 +5,7 @@ import { META_PATH, parseMeta, serializeMeta, unlock, WrongSecretError, type Met
 import { NewerSchemaError } from '../src/model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Place, type SyncRecord } from '../src/model/types'
 import { Session } from '../src/session'
-import { applyRestore, encodeBackup, InvalidBackupError, openBackup, restorePlan } from '../src/storage/backup'
+import { applyRestore, encodeBackup, InvalidBackupError, openBackup, RestoreNeedsSyncError, restorePlan } from '../src/storage/backup'
 import { openLogboekDb, putObject } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
 import { checkHasProblem } from '../src/storage/storage-log'
@@ -157,10 +157,19 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     const b = await open(name)
     await Promise.all([store(a).sync(), store(b).sync()])
     await store(a).put('places.json.enc', place('a1'))
-    // Het andere venster krijgt het bericht en neemt de opslag over (BroadcastChannel), of uiterlijk bij zijn sync.
+    // Het andere venster krijgt een bericht en neemt de opslag direct over, zonder sync.
+    await expect.poll(() => store(b).list('places.json.enc').map((p) => p.id), { timeout: 5_000 }).toEqual(['a1'])
+    // Synct venster a, dan wacht er in venster b ook niets meer (de outbox op het apparaat is leidend).
+    await store(a).sync()
     await store(b).sync()
-    expect(store(b).list('places.json.enc').map((p) => p.id)).toEqual(['a1'])
-    expect((await remote('places.json.enc')).map((p) => p.id)).toEqual(['a1'])
+    expect(store(a).pendingCount()).toBe(0)
+    expect(store(b).pendingCount()).toBe(0)
+    await store(b).put('places.json.enc', place('b1'))
+    expect(store(b).pendingCount()).toBe(1)
+    await expect.poll(() => store(a).pendingCount(), { timeout: 5_000 }).toBe(1)
+    await store(b).sync()
+    expect((await remote('places.json.enc')).map((p) => p.id).sort()).toEqual(['a1', 'b1'])
+    expect(store(b).pendingCount()).toBe(0)
   }, 60_000)
 
   it('vergrendelen of sluiten midden in het opslaan: de opslag wordt afgemaakt en komt daarna op GitHub', async () => {
@@ -182,13 +191,26 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     const s = await open(name)
     await store(s).sync()
     await store(s).put('places.json.enc', place('p1'))
-    const { savedAt, syncedAt } = store(s).savedTimes()
-    expect(savedAt).toBeGreaterThan(syncedAt)
+    const { saved, synced } = store(s).saveState()
+    expect(saved).toBeGreaterThan(synced)
     expect(store(s).getStatus()).toMatchObject({ kind: 'pending', count: 1 })
     // De sync start vanzelf kort na het opslaan.
     await expect.poll(() => store(s).getStatus(), { timeout: 5_000 }).toEqual({ kind: 'synced' })
-    expect(store(s).savedTimes().syncedAt).toBeGreaterThanOrEqual(store(s).savedTimes().savedAt)
+    expect(store(s).saveState().synced).toBe(store(s).saveState().saved)
     expect((await remote('places.json.enc')).map((p) => p.id)).toEqual(['p1'])
+  }, 60_000)
+
+  it('de sync vanzelf na een opslag haalt alleen het gewijzigde bestand (en meta.json.enc voor de sleutelcontrole)', async () => {
+    const name = await phone()
+    const s = await open(name)
+    await store(s).sync()
+    // De weekcontrole na het openen haalt wel alles; daarna begint de meting.
+    await expect.poll(() => store(s).storageLog().check, { timeout: 5_000 }).not.toBeNull()
+    const before = github.requests.length
+    await store(s).put('places.json.enc', place('p1'))
+    await expect.poll(() => store(s).getStatus(), { timeout: 5_000 }).toEqual({ kind: 'synced' })
+    const paths = new Set(github.requests.slice(before).map((r) => r.url.split('/contents/')[1]))
+    expect([...paths].sort()).toEqual([META_PATH, 'places.json.enc'])
   }, 60_000)
 })
 
@@ -282,6 +304,35 @@ describe('Controleer nu', () => {
     expect(checkHasProblem(result!)).toBe(true)
   }, 60_000)
 
+  it('geen vals alarm: GitHub die vlak na schrijven nog de vorige versie geeft, en wijzigingen die nog wachten', async () => {
+    const name = await phone()
+    const s = await open(name)
+    await store(s).sync()
+    github.staleReadsAfterPut = 1
+    await store(s).put('places.json.enc', place('p1'))
+    await store(s).sync()
+    // Na de sync opgeslagen, nog niet gesynct: geen verschil.
+    github.offline = true
+    await store(s).put('legs.json.enc', { id: 'l1', tripId: 'w1', date: '2026-10-29', fromPlace: 'A', fromCountry: '', toPlace: 'B', toCountry: '', role: 'schipper', boat: '', nmInland: 0, nmSea: 3, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: NOW, deletedAt: null })
+    github.offline = false
+    const result = await store(s).check(false, 10)
+    expect(result!.files.filter((f) => f.state !== 'gelijk' && f.state !== 'leeg')).toEqual([])
+    expect(checkHasProblem(result!)).toBe(false)
+  }, 60_000)
+
+  it('een gevonden probleem wordt na herstellen opnieuw gecontroleerd; de melding verdwijnt', async () => {
+    const name = await phone()
+    const s = await open(name)
+    await store(s).put('plans.json.enc', { id: 'pl1', title: 'Nepplan', startDate: '2026-11-01', dayCount: 3, groups: [], days: [], updatedAt: NOW, deletedAt: null })
+    await store(s).sync()
+    github.write('plans.json.enc', toBase64(await encryptRecords(k2.masterKey, 'plans.json.enc', [])))
+    await store(s).sync()
+    const found = await store(s).check(false, 0)
+    expect(checkHasProblem(found!)).toBe(true)
+    await store(s).repair('plans.json.enc')
+    await expect.poll(() => checkHasProblem(store(s).storageLog().check!), { timeout: 5_000 }).toBe(false)
+  }, 60_000)
+
   it('vanzelf één keer per week, na een geslaagde sync', async () => {
     const name = await phone()
     const s = await open(name)
@@ -347,6 +398,7 @@ describe('Back-up zonder laptop', () => {
     sessions.push(other)
     await other.init()
     await other.unlockLocal({ passphrase: 'nep wachtzin van een ander logboek' })
+    await store(other).sync()
     await store(other).put('places.json.enc', place('n1'))
     const plan = restorePlan(store(other), await openBackup(text, { passphrase: PASSPHRASE }))
     expect(plan.find((p) => p.path === 'places.json.enc')!.back.map((r) => r.id)).toEqual(['p1'])
@@ -360,6 +412,43 @@ describe('Back-up zonder laptop', () => {
     await undo()
     expect(store(other).list('places.json.enc').map((p) => p.id)).toEqual(['n1'])
     expect(store(other).list('trips.json.enc')).toEqual([])
+  }, 60_000)
+
+  it('terugzetten kan pas na een geslaagde sync, en overschrijft nooit wat op GitHub nieuwer is of gewist werd', async () => {
+    const name = await phone()
+    const a = await open(name)
+    await store(a).put('students.json.enc', { id: 'st1', firstName: 'Nepstudent', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, updatedAt: '2026-10-29T08:01:00.000Z', deletedAt: null })
+    await store(a).put('places.json.enc', { ...place('p1'), updatedAt: '2026-10-29T08:01:00.000Z' })
+    await store(a).sync()
+    const text = await backupOf(a)
+    // Een tweede apparaat dat al eerder gesynct had (zonder de student en de plaats), zonder verbinding.
+    const b = await open(name)
+    a.lock()
+    github.offline = true
+    const db = await openLogboekDb(name)
+    await db.clear('objects')
+    await putObject(db, { path: META_PATH, blob: utf8(serializeMeta(k1.meta)), sha: github.files.get(META_PATH)!.sha })
+    db.close()
+    b.lock()
+    const c = await open(name)
+    const backup = await openBackup(text, { passphrase: PASSPHRASE })
+    await expect(applyRestore(store(c), restorePlan(store(c), backup))).rejects.toBeInstanceOf(RestoreNeedsSyncError)
+    // Intussen op een ander apparaat: de student gewist, de plaats hernoemd.
+    const changed = (await remote('places.json.enc')).map((r) => ({ ...r, name: 'Nepplaats hernoemd', updatedAt: '2026-10-29T09:00:00.000Z' }))
+    github.write('places.json.enc', toBase64(await encryptRecords(k1.masterKey, 'places.json.enc', changed)))
+    const scrubbedStudent = { id: 'st1', firstName: '', curriculumId: '', level: 'beginner', progress: {}, archivedAt: null, updatedAt: '2026-10-29T09:00:00.000Z', deletedAt: '2026-10-29T09:00:00.000Z' }
+    github.write('students.json.enc', toBase64(await encryptRecords(k1.masterKey, 'students.json.enc', [scrubbedStudent])))
+    github.offline = false
+    // Het voorbeeld van vóór de sync zegt nog: terug. Bij de tik is er gesynct, en de tijden uit de back-up winnen nooit.
+    const stale = restorePlan(store(c), backup)
+    await store(c).sync()
+    await applyRestore(store(c), stale)
+    await store(c).sync()
+    expect(store(c).list('students.json.enc')).toEqual([])
+    expect(store(c).list('places.json.enc').map((p) => p.name)).toEqual(['Nepplaats hernoemd'])
+    const students = await remote('students.json.enc')
+    expect(students).toEqual([expect.objectContaining({ id: 'st1', firstName: '', deletedAt: expect.any(String) })])
+    expect((await remote('places.json.enc')).map((p) => (p as Place).name)).toEqual(['Nepplaats hernoemd'])
   }, 60_000)
 
   it('weigert een beschadigd bestand en een back-up van een nieuwere versie', async () => {

@@ -4,6 +4,7 @@ import { encryptObject, toBase64, utf8, type Bytes } from '../src/crypto/encrypt
 import { META_PATH, parseMeta, serializeMeta, unlock, type Meta } from '../src/crypto/keys'
 import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from '../src/model/types'
 import { Session } from '../src/session'
+import { openBackup } from '../src/storage/backup'
 import { getObject, openLogboekDb, putLocal, putObject, type Db } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
 import type { Store } from '../src/storage/store'
@@ -425,6 +426,26 @@ describe('Foutmatrix: twee vensters en een nieuw bestand', () => {
       const blind = github.requests.slice(before).filter((r) => r.method === 'PUT' && r.url.endsWith(`/contents/${path}`) && !(JSON.parse(r.body ?? '{}') as { sha?: string }).sha)
       expect(blind).toEqual([])
       expect(store(b).getStatus()).toEqual({ kind: 'synced' })
+      expect(store(await cleanDevice()).getStatus()).toEqual({ kind: 'synced' })
+    }, 60_000)
+  }
+})
+
+describe('Foutmatrix: back-up terugzetten', () => {
+  for (const fault of ['beschadigd', 'nieuwere versie', 'verkeerde wachtzin'] as const) {
+    it(`back-up · ${fault}: duidelijke fout, niets geschreven, de app blijft open`, async () => {
+      const { name, db } = await phone()
+      db.close()
+      const s = await openApp(name, false)
+      await store(s).sync()
+      const text = await store(s).exportBackup()
+      const parsed = JSON.parse(text) as Record<string, unknown>
+      const input = fault === 'beschadigd' ? JSON.stringify({ ...parsed, payload: 'AAAA' }) : fault === 'nieuwere versie' ? JSON.stringify({ ...parsed, version: 9 }) : text
+      const secret = { passphrase: fault === 'verkeerde wachtzin' ? 'niet de wachtzin van dit logboek' : PASSPHRASE }
+      const puts = github.requests.filter((r) => r.method === 'PUT').length
+      await expect(openBackup(input, secret)).rejects.toMatchObject({ name: fault === 'beschadigd' ? 'InvalidBackupError' : fault === 'nieuwere versie' ? 'NewerSchemaError' : 'WrongSecretError' })
+      expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts)
+      expect(s.getState().phase).toBe('unlocked')
       expect(store(await cleanDevice()).getStatus()).toEqual({ kind: 'synced' })
     }, 60_000)
   }
