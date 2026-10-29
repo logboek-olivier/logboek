@@ -92,6 +92,9 @@ logboek-data/
   checklists.json.enc    # alleen eigen en bewerkte checklists; meegeleverde staan in de code
   calendar.json.enc      # agenda: alleen dagen die Olivier zelf instelt
   weekreviews.json.enc   # weekafsluitingen: cijfer en één zin per week
+  goals.json.enc         # doelen: zelfvullend uit de app of zelf gemeten
+  skills.json.enc        # skills met mijlpalen
+  sessions.json.enc      # sessies van skills en metingen van doelen, elk een eigen record
   documents/index.json.enc   # release 3
   documents/<uuid>.bin       # release 3
 ```
@@ -245,6 +248,24 @@ Vandaag alleen geld dat met zeilen te maken heeft. Opgeslagen als `Transaction` 
 - Groepen verwijzen naar studenten via id; gedeelde tekst, printweergave en "Toon aan studenten" tonen groepsnamen, nooit studentnamen of voortgang.
 - Een planning hoort bij een trip via `tripId`; zonder `tripId` (oudere planningen) bij de trip waarin `startDate` valt. Een nieuwe planning vanuit Deze trip krijgt de trip, de startdatum, het aantal dagen en groepen per cursus van de deelnemers mee.
 
+### Doelen en skills
+
+Meer → Doelen (`src/screens/Goals.tsx`, `src/components/GoalSheets.tsx`, `src/model/goals.ts`); snel loggen via + → Skill.
+
+**Goal** (`goals.json.enc`)
+`id, title, kind (auto|meting), metric? (nm|trips|yachtmaster|inkomsten), organisation?, year?, target, unit?, lower?, doneAt?, updatedAt, deletedAt`
+- **Zelfvullend** (`auto`), voor een kalenderjaar: nm in het jaar, trips bij een organisatie (de organisatie van de trip, ook uit de naam zoals de teller; een trip telt in het jaar waarin hij begint), Yachtmaster Offshore (eisen gehaald van de zeven, over alle dagen, zoals in Statistieken) en inkomsten in euro (verdiend, zonder terugbetalingen). De naam volgt uit soort, organisatie en jaar, in de taal van dat moment.
+- **Zelf meten** (`meting`), bijvoorbeeld "5 kilo afvallen" (nu 82 kg, doel 77 kg, lager is beter) of "Meer sporten" (keer per week, doel 3): elke meting is een sessie met `goalId`. Voortgang loopt van de eerste meting naar het doel; gehaald is gehaald (lager of hoger, volgens `lower`).
+
+**Skill** (`skills.json.enc`)
+`id, name, valueUnit?, best?, milestones: [{id, title, doneAt}], updatedAt, deletedAt`
+- Voorstellen met één tik: kitesurfen, vissen en fileren (vissen), kreeft vangen (kreeften), adem inhouden (seconden, de beste telt). Een sessie heeft minuten en/of een waarde (`valueUnit`); `best` zegt of de hoogste waarde telt of de som.
+- Per skill: aantal sessies, minuten samen, beste of totale waarde, minuten (of sessies) per week over de laatste acht weken, de trend (laatste vier weken tegenover de vier daarvoor) en mijlpalen om af te vinken met datum.
+
+**Session** (`sessions.json.enc`)
+`id, date, skillId?, goalId?, minutes?, value?, note?, updatedAt, deletedAt`
+- Losse records, zodat twee apparaten nooit elkaars sessies of metingen overschrijven (een skill of doel zelf wordt zelden tegelijk bewerkt). Een skill of doel verwijderen neemt zijn sessies mee; ongedaan maken zet alles terug.
+
 ### Kluis (release 3)
 
 **Document**
@@ -279,7 +300,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Statistieken, Geld, Termijnen, Boten, Plaatsen, Kaarten, Cursussen, Studentenarchief, Opslag en Instellingen (met een terugknop naar Meer of naar de agenda). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Statistieken, Doelen, Geld, Termijnen, Boten, Plaatsen, Kaarten, Cursussen, Studentenarchief, Opslag en Instellingen (met een terugknop naar Meer of naar de agenda). Kluis komt erbij zodra die gebouwd is.
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -317,11 +338,12 @@ Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vak
    - salaris (ingeklapt): bedrag, valuta, verwacht of ontvangen; standaardbedrag van de organisatie of eigen bedrag, met "Standaardbedrag gebruiken".
 
    Vanuit de agenda (periode markeren) opent Nieuwe trip met de gemarkeerde datums; Herhaal vorige trip neemt dan de laatste trip vóór die periode en laat de datums staan.
-5. **Toevoegen (+):** tabs **Trip · Dag · Inkomsten · Uitgave**, opent op Dag. Snelkoppelingen op het app-icoon (manifest `shortcuts`: Trip toevoegen, Dag loggen, Inkomsten, Uitgave) openen `?toevoegen=trip|dag|inkomsten|uitgave`: na ontgrendelen (of binnen de 5 minuten van de sessie) direct Toevoegen op dat tabblad; de parameter verdwijnt meteen uit de adresbalk.
+5. **Toevoegen (+):** tabs **Trip · Dag · Inkomsten · Uitgave · Skill**, opent op Dag. Snelkoppelingen op het app-icoon (manifest `shortcuts`: Trip toevoegen, Dag loggen, Inkomsten, Uitgave) openen `?toevoegen=trip|dag|inkomsten|uitgave` (ook `skill`, zonder snelkoppeling): na ontgrendelen (of binnen de 5 minuten van de sessie) direct Toevoegen op dat tabblad; de parameter verdwijnt meteen uit de adresbalk.
    - Trip (`src/components/QuickTrip.tsx`): alleen startdatum (de eerste vrije dag) en einddatum (start + 6, volgt de start tot Olivier hem zelf kiest) zijn nodig, dan Opslaan. Naam en type krijgen een voorstel uit de vorige trip (een naam die op een getal eindigt telt door; bij een getelde organisatie "SV #4 · BVI"); organisatie en gebied volgen de vorige trip; boot en deelnemers (alleen voornamen) staan onder "Meer velden" en zijn later aan te vullen. Overlapt de trip een bestaande, dan de keuze uit Overlappende trips.
    - Dag: alle velden direct in beeld, compact: datum (vandaag), van (zie Van bij een nieuwe dag), naar (beide met suggesties uit eerdere plaatsen en een kaartknop: offline kaart, bekende plaatsen als stip, tik = nieuw punt met naam, "Huidige locatie"), nm (voorgevuld met het afstandsvoorstel of de waterroute; op de kaart de route vanaf de andere plaats), watertype, nachturen, wind, boot, rol, week, notitie. Boot, rol en trip komen uit de lopende trip; ontbreekt er iets, dan een voorgevuld veld en nooit een blokkerende melding. Niets is verplicht.
    - Inkomsten: bedrag (groot numeriek toetsenbord), soort (fooi, loon of dagtarief, bonus of provisie, terugbetaling onkosten, overig), trip, bij een fooi "Van wie" (de deelnemers als knoppen, Hele groep, Onbekend; bij meerdere personen "Samen gegeven" of "Per persoon"), bron, valuta, datum, notitie.
    - Uitgave: bedrag, omschrijving, soort (kosten/investering); bron, valuta, datum en trip onder "Meer velden".
+   - Skill: wat (een skill of een zelf gemeten doel; standaard wat het laatst gelogd is), minuten en/of waarde, datum (vandaag); "Skill toevoegen" met voorstellen (zie Doelen en skills).
    - Opslaan = één tik met een korte trilling, daarna terug naar Vandaag met een korte bevestiging zonder bedrag. Laatst gebruikte waarden worden onthouden.
 6. **Agenda:** maandraster met een kleur per dagsoort (optie gestreept), een balk met de tripnaam over de dagen van elke trip, nm klein in het vakje, een stip voor termijnen (ook de vervaldatum van de token) en een open rondje op de zondag van een afgesloten week. Vegen of de pijlen naar een andere maand, de maandkiezer, "Naar vandaag". Onderaan de werk-, rust-, reis-, thuis- en onbeschikbare dagen en nm van de maand, en na "Toon bedragen" de inkomsten van de maand en per werkdag. Een knop naar het Logboek.
    - Dagkaart (tik op een dag, `DayView` in `src/components/DaySheet.tsx`): dagsoort, de trip met teller (tik = tripoverzicht), boot (naam, model, lengte), de route van die dag op een kleine kaart, nm, nachturen, wind, reis of plaats, notitie, planningsthema's, of er fooi was (bedragen achter "Toon bedragen"), "Zoals gepland" of "Dag loggen", de termijnen van die dag en "Termijn toevoegen" met die datum; op een zondag de weekafsluiting van die week (of "Week N afsluiten").
@@ -366,13 +388,13 @@ logboek/
                      osm.ts (kaartdata laden), waterroute.ts, estimate.ts (waterroute × persoonlijke factor), trip-ops.ts (verwijderen, overlap, samenvoegen),
                      countries.ts (grove landvakken voor de pinregels), counters.ts (teller per organisatie), stats.ts (statistieken), trip-dates.ts (datums uit de dagen),
                      trip-route.ts (route en stops van een trip), measure.ts (afstand meten op de kaart), offline-maps.ts (vaargebieden offline), pin-suggest.ts (pin-assistent), salary.ts (salaris en vooruitblik), student-groups.ts (studentenarchief),
-                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting), tax-year.ts (jaaroverzicht voor de belasting), weather.ts (wind en weer)
+                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting), tax-year.ts (jaaroverzicht voor de belasting), weather.ts (wind en weer), goals.ts (doelen en skills)
     import/          mileage-csv.ts (mijlenregels), planning.ts (planning importeren), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), SailingExport, Deadlines, Boats, Places,
-                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten)
+                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten), Goals (Doelen)
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, map-view (kaartgebaren), map-labels (namen op de kaart), LazyMap, RouteMap, RouteThumb, MapSheet, Sheet, Views (leesweergaven), EditSheets, WeekSheet,
                      TripOverview, TripShare, SailedMap, PinSheet, SalaryFields, SalarySheets, SalaryOutlook, DemoBar, boat-line, CurriculumSheets, DaySheet, PeriodSheets,
-                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, NoteField, WeatherCard, Icon, Toast, …)
+                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, NoteField, WeatherCard, GoalSheets, Icon, Toast, …)
     demo/            data.ts (voorbeelddata voor de demomodus)
     demo.ts          demomodus: aparte demo-database, nooit netwerk naar GitHub (zie Demomodus)
     lazy.ts          schermen, kaarten en bladen pas laden bij openen
@@ -387,10 +409,10 @@ logboek/
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
                      foutmatrix, screen-files, upgrade-samples, calendar, planning, trip-agenda, guests, osm-lib, waterroute, opslag, github-gedrag, trip-ops, pins,
-                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year, weather) + playwright (upgrade, updates, setup, unlock, sessie, import,
+                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year, weather, goals) + playwright (upgrade, updates, setup, unlock, sessie, import,
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
-                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer,
+                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer, doelen,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
@@ -426,7 +448,7 @@ Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt
 2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen. Daarna: herstel bij een onleesbaar bestand op GitHub, Toevoegen met Dag eerst, weken (type, deelnemers, afronden met review), onderbalk Vandaag · Deze trip · + · Logboek · Meer, en geld in euro met ECB-koersen. Daarna gebruiksvriendelijk: Deze trip (trips van elke lengte, bootgegevens, eerdere en komende trips, vergeten dagen), Toevoegen met Dag · Inkomsten · Uitgave, offline kaart met afstandsvoorstel uit eerdere routes, termijnen (deadlines en vervaldatums samen) en planning met grote thema's. Daarna overzicht: de agenda als centraal overzicht van het seizoen (dagsoort per dag, periode markeren, planning importeren, seizoensoverzicht, delen), koppelingen met Vandaag, trips, termijnen en geld, fooi per persoon met terugkerende gasten, en een gedetailleerde OpenStreetMap-kaart met waterroute en persoonlijke factor. Daarna betrouwbaar: één schrijver met Meer → Opslag en een versleutelde back-up, één vast bewerk- en verwijderpatroon, pins die nooit stil verschuiven, Trip via het plusje, de teller per organisatie en Meer → Statistieken. Daarna laten zien: diagnose in de commitberichten (versie en apparaat) met de controle na elke update, tripdatums uit de dagen, eerst bekijken en dan bewerken, het tripoverzicht met de route op de kaart, de dagkaart, Logboek-kaartjes en de pin-assistent, salaris per trip met vooruitblik, het studentenarchief per trip, een ontwerpronde met eigen icoon en een nieuwe Vandaag, snel openen, de demomodus, "Waar ik gevaren heb" en een trip delen als afbeelding of PDF.
 3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
 4. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, aandelenkoersen, scenario's.
-5. **Doelen en skills.** Doelen, metingen, ademtrainer, skills, voortgang Yachtmaster/ASA.
+5. **Doelen en skills.** De basis is in release 2 gebouwd (Meer → Doelen: zelfvullende jaardoelen, zelf gemeten doelen, skills met sessies, trend en mijlpalen, + → Skill). Later: ademtrainer, voortgang ASA.
 6. **Carrière.** Sollicitaties en netwerk, status andere projecten.
 7. **Wow.** Zeiljaar Wrapped, weekreview, zeil-CV, routekaart (GPS-logboek), horloge (Samsung Galaxy Watch 7) en Health Connect. Een zeil-CV als publieke pagina mag niet als tweede Pages-site in organisatie `logboek-olivier` (regel 13); die komt dan buiten deze organisatie, of als export die Olivier zelf deelt.
 

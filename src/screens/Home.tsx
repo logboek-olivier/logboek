@@ -29,6 +29,7 @@ const Deadlines = lazyComponent(() => import('./Deadlines').then((m) => m.Deadli
 const Boats = lazyComponent(() => import('./Boats').then((m) => m.Boats))
 const Places = lazyComponent(() => import('./Places').then((m) => m.Places))
 const Maps = lazyComponent(() => import('./Maps').then((m) => m.Maps))
+const Goals = lazyComponent(() => import('./Goals').then((m) => m.Goals))
 const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
@@ -51,6 +52,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   boten: 'Boten',
   plaatsen: 'Plaatsen',
   kaarten: 'Kaarten',
+  doelen: 'Doelen',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -59,14 +61,14 @@ const SCREEN_NAMES: Record<Screen, string> = {
 
 
 /**
- * Snelkoppeling op het app-icoon (?toevoegen=trip|dag|inkomsten|uitgave): opent Toevoegen op dat tabblad. De parameter
+ * Snelkoppeling op het app-icoon (?toevoegen=trip|dag|inkomsten|uitgave|skill): opent Toevoegen op dat tabblad. De parameter
  * verdwijnt direct uit de adresbalk, zodat verversen niet opnieuw Toevoegen opent.
  */
 function shortcutTab(): AddTab | null {
   const value = new URLSearchParams(window.location.search).get('toevoegen')
   if (value === null) return null
   window.history.replaceState(null, '', window.location.pathname)
-  return value === 'inkomsten' || value === 'uitgave' || value === 'dag' || value === 'trip' ? value : null
+  return value === 'inkomsten' || value === 'uitgave' || value === 'dag' || value === 'trip' || value === 'skill' ? value : null
 }
 
 export function Home({ store }: { store: Store }) {
@@ -149,7 +151,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
         ? 'meer'
         : screen
 
@@ -217,6 +219,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Places store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'doelen' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Goals store={store} notify={notify} />
         </>
       )}
       {screen === 'kaarten' && (

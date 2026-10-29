@@ -46,4 +46,16 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   ],
   // Weekafsluiting (ronde 2): cijfer en één zin per ISO-week; het id volgt uit de week.
   'weekreviews.json.enc': [{ id: 'week:2026-W43', week: '2026-W43', start: '2026-10-19', rating: 8, lesson: 'Nepzin over de week', updatedAt: T, deletedAt: null }],
+  // Doelen en skills (ronde 2): een zelfvullend doel, een meetdoel, een skill met mijlpalen en twee sessies.
+  'goals.json.enc': [
+    { id: 'upg-goal-nm', title: '', kind: 'auto', metric: 'trips', organisation: 'sailing-virgins', year: 2026, target: 12, doneAt: null, updatedAt: T, deletedAt: null },
+    { id: 'upg-goal-kg', title: 'Nepdoel afvallen', kind: 'meting', target: 77, unit: 'kg', lower: true, doneAt: null, updatedAt: T, deletedAt: null },
+  ],
+  'skills.json.enc': [
+    { id: 'upg-skill-1', name: 'Nepskill adem', valueUnit: 's', best: true, milestones: [{ id: 'm1', title: 'Nepmijlpaal', doneAt: '2026-10-19' }, { id: 'm2', title: 'Tweede nepmijlpaal', doneAt: null }], updatedAt: T, deletedAt: null },
+  ],
+  'sessions.json.enc': [
+    { id: 'upg-session-1', date: '2026-10-19', skillId: 'upg-skill-1', minutes: 20, value: 95, note: 'Nepnotitie', updatedAt: T, deletedAt: null },
+    { id: 'upg-session-2', date: '2026-10-20', goalId: 'upg-goal-kg', value: 81.5, updatedAt: T, deletedAt: null },
+  ],
 }

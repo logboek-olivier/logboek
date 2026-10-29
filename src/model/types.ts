@@ -188,7 +188,7 @@ export interface Transaction extends SyncRecord {
   tipFrom?: TipFrom
 }
 
-export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave'
+export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave' | 'skill'
 export type Water = 'zee' | 'getij' | 'binnen'
 
 export interface Settings extends SyncRecord {
@@ -424,6 +424,63 @@ export interface WeekClosing extends SyncRecord {
   lesson?: string
 }
 
+/** Een doel dat zichzelf vult uit de gegevens van de app. */
+export type GoalMetric = 'nm' | 'trips' | 'yachtmaster' | 'inkomsten'
+export const GOAL_METRICS: readonly GoalMetric[] = ['nm', 'trips', 'yachtmaster', 'inkomsten']
+
+/**
+ * Doel (goals.json.enc, src/model/goals.ts). `auto`: vult zichzelf uit de app (nm, trips bij een organisatie,
+ * Yachtmaster-voortgang, inkomsten) voor een kalenderjaar. `meting`: Olivier meet zelf (bijv. gewicht of keer sporten
+ * per week); de metingen zijn losse sessies (sessions.json.enc) met `goalId`.
+ */
+export interface Goal extends SyncRecord {
+  title: string
+  kind: 'auto' | 'meting'
+  /** Bij auto. */
+  metric?: GoalMetric
+  /** Bij trips: de organisatie. */
+  organisation?: Organisation
+  /** Kalenderjaar (auto). */
+  year?: number
+  target: number
+  /** Bij meting: eenheid (vrije tekst, bijv. "kg") en of lager beter is (afvallen). */
+  unit?: string
+  lower?: boolean
+  doneAt?: string | null
+}
+
+/** Een mijlpaal van een skill: afgevinkt met datum. */
+export interface Milestone {
+  id: string
+  title: string
+  doneAt: string | null
+}
+
+/**
+ * Skill (skills.json.enc): iets dat Olivier oefent, met sessies (sessions.json.enc) en mijlpalen. `valueUnit` is wat een
+ * sessie behalve minuten kan meten (bijv. "s" bij adem inhouden, "kreeften"); `best` zegt of de hoogste waarde telt
+ * (adem inhouden) of de som (kreeften gevangen).
+ */
+export interface Skill extends SyncRecord {
+  name: string
+  valueUnit?: string
+  best?: boolean
+  milestones: Milestone[]
+}
+
+/**
+ * Sessie (sessions.json.enc): één keer oefenen bij een skill (minuten en/of een waarde) of één meting bij een doel
+ * (waarde). Losse records, zodat twee apparaten nooit elkaars sessies overschrijven.
+ */
+export interface Session extends SyncRecord {
+  date: string
+  skillId?: string
+  goalId?: string
+  minutes?: number
+  value?: number
+  note?: string
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -438,6 +495,9 @@ export interface Collections {
   'checklists.json.enc': Checklist
   'calendar.json.enc': CalendarDay
   'weekreviews.json.enc': WeekClosing
+  'goals.json.enc': Goal
+  'skills.json.enc': Skill
+  'sessions.json.enc': Session
 }
 
 export type CollectionPath = keyof Collections
@@ -455,6 +515,9 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'checklists.json.enc',
   'calendar.json.enc',
   'weekreviews.json.enc',
+  'goals.json.enc',
+  'skills.json.enc',
+  'sessions.json.enc',
 ]
 
 export function newId(): string {
