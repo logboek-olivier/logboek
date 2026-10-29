@@ -10,7 +10,10 @@ import { participantName } from '../model/guests'
 import { placeUses } from '../model/places'
 import { routeOf } from '../model/trip-route'
 import type { Leg, Participant, Trip } from '../model/types'
-import { feetToMetres, planWeek, weekView, type WeekView } from '../model/weeks'
+import { feetToMetres, planWeek, studentWeek, weekView, type WeekView } from '../model/weeks'
+import { activeStudents } from '../model/students'
+import { openStudent } from '../navigation'
+import { StudentRow } from '../screens/Students'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -146,6 +149,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const plans = useCollection(store, 'plans.json.enc')
+  const students = useCollection(store, 'students.json.enc')
   const curricula = effectiveCurricula(useCollection(store, 'curricula.json.enc'))
   const counters = useCounters(store)
   const current = trips.find((x) => x.id === trip.id)
@@ -155,6 +159,8 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
   const counter = counters.get(current.id)
   const people = current.participants ?? []
   const own = plans.filter((p) => p.deletedAt === null && planWeek(p, trips, legs) === current.id)
+  // Studenten van deze trip: één tik opent hun checklist.
+  const tripStudents = activeStudents(students).filter((st) => studentWeek(st, trips, legs) === current.id)
   return (
     <Sheet title={tripTitle(view, counter)} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack-lg view trip-overview">
@@ -182,6 +188,16 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
             </ul>
           </div>
         )}
+        {tripStudents.length > 0 && (
+          <div className="section">
+            <h3>{t('students.title')}</h3>
+            <ul className="rows">
+              {tripStudents.map((st) => (
+                <StudentRow key={st.id} student={st} course={curricula.find((c) => c.id === st.curriculumId)} onOpen={() => openStudent(st.id)} />
+              ))}
+            </ul>
+          </div>
+        )}
         {own.length > 0 && (
           <div className="section">
             <h3>{t('plan.list')}</h3>
@@ -199,7 +215,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
         )}
         {current.note && <p className="muted">{current.note}</p>}
       </div>
-      {participant && <ParticipantView store={store} trip={current} participant={participant} notify={notify} onClose={() => setParticipant(null)} />}
+      {participant && <ParticipantView store={store} trip={current} participant={participant} notify={notify} onClose={() => setParticipant(null)} onOpenStudent={openStudent} />}
     </Sheet>
   )
 }

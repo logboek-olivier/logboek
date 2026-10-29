@@ -65,7 +65,6 @@ export function StudentsView({
   const [adding, setAdding] = useState(false)
   const [ticking, setTicking] = useState(false)
   const lang = useLang()
-  const archivedOnce = useRef(false)
   const weekId = scope.kind === 'week' ? scope.week.id : null
   const students = activeStudents(all).filter((s) => studentWeek(s, trips, legs) === weekId)
   const archived = archivedStudents(all)
@@ -75,18 +74,7 @@ export function StudentsView({
     onDetail?.(view.kind !== 'list')
   }, [view.kind, onDetail])
 
-  // Automatisch archiveren na 12 maanden zonder activiteit (één keer per opening van het scherm), pas na een
-  // geslaagde sync: anders kan een lang offline apparaat voortgang van een ander apparaat overschrijven.
-  const status = useSyncStatus(store)
-  useEffect(() => {
-    if (archivedOnce.current || !store.hasSynced()) return
-    archivedOnce.current = true
-    const today = todayIso()
-    const due = dueForArchive(store.get('students.json.enc'), today)
-    if (due.length > 0) {
-      void setArchived(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
-    }
-  }, [store, notify, status])
+  useAutoArchive(store, notify)
 
   if (view.kind === 'student') {
     const student = all.find((s) => s.id === view.id && s.deletedAt === null)
@@ -154,34 +142,9 @@ export function StudentsView({
                 <span className="num">{formatNumber(g.students.length)}</span>
               </h3>
               <ul className="rows">
-                {g.students.map((s) => {
-                  const course = courseOf(s)
-                  const p = course ? progressFor(s, allTopics(course)) : null
-                  const open = course ? criticalOpen(s, course).length : 0
-                  return (
-                    <li key={s.id} className="student">
-                      <button className="settings-row" onClick={() => setView({ kind: 'student', id: s.id })}>
-                        <span className="avatar" aria-hidden="true">
-                          {s.firstName.slice(0, 1).toUpperCase()}
-                        </span>
-                        <span className="row-main">
-                          <span>{s.firstName}</span>
-                          <span className="muted small">
-                            {course ? courseLabel(course, lang) : t('students.unknownCourse')} · {t(`level.${s.level}`)}
-                          </span>
-                          {p && <ProgressBar progress={p} label={t('students.progressOf', { name: s.firstName })} />}
-                        </span>
-                        {open > 0 && (
-                          <span className="tag critical" title={t('students.criticalOpen')}>
-                            <Icon icon={Flag} />
-                            {open}
-                          </span>
-                        )}
-                        <Icon icon={ChevronRight} className="chevron" />
-                      </button>
-                    </li>
-                  )
-                })}
+                {g.students.map((s) => (
+                  <StudentRow key={s.id} student={s} course={courseOf(s)} onOpen={() => setView({ kind: 'student', id: s.id })} />
+                ))}
               </ul>
             </div>
           ))}
@@ -214,6 +177,55 @@ export function StudentsView({
   )
 }
 
+/**
+ * Automatisch archiveren na 12 maanden zonder activiteit (één keer per opening van het scherm), pas na een geslaagde
+ * sync: anders kan een lang offline apparaat voortgang van een ander apparaat overschrijven.
+ */
+export function useAutoArchive(store: Store, notify: Notify): void {
+  const archivedOnce = useRef(false)
+  const status = useSyncStatus(store)
+  useEffect(() => {
+    if (archivedOnce.current || !store.hasSynced()) return
+    archivedOnce.current = true
+    const today = todayIso()
+    const due = dueForArchive(store.get('students.json.enc'), today)
+    if (due.length > 0) {
+      void setArchived(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
+    }
+  }, [store, notify, status])
+}
+
+/** Eén student in een lijst: naam, cursus en niveau, voortgang, open examenkritische onderwerpen en de uitslag. */
+export function StudentRow({ student: s, course, onOpen }: { student: Student; course: Curriculum | undefined; onOpen: () => void }) {
+  const lang = useLang()
+  const p = course ? progressFor(s, allTopics(course)) : null
+  const open = course ? criticalOpen(s, course).length : 0
+  return (
+    <li className="student">
+      <button className="settings-row" onClick={onOpen}>
+        <span className="avatar" aria-hidden="true">
+          {s.firstName.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="row-main">
+          <span>{s.firstName}</span>
+          <span className="muted small">
+            {course ? courseLabel(course, lang) : t('students.unknownCourse')} · {t(`level.${s.level}`)}
+          </span>
+          {p && <ProgressBar progress={p} label={t('students.progressOf', { name: s.firstName })} />}
+        </span>
+        {s.exam && <span className={`tag ${s.exam.passed ? 'passed' : 'failed'}`}>{t(s.exam.passed ? 'students.passed' : 'students.failed')}</span>}
+        {open > 0 && (
+          <span className="tag critical" title={t('students.criticalOpen')}>
+            <Icon icon={Flag} />
+            {open}
+          </span>
+        )}
+        <Icon icon={ChevronRight} className="chevron" />
+      </button>
+    </li>
+  )
+}
+
 export function ProgressBar({ progress, label }: { progress: { total: number; practised: number; mastered: number }; label: string }) {
   const { total, practised, mastered } = progress
   const pct = (n: number) => (total === 0 ? 0 : Math.round((n / total) * 1000) / 10)
@@ -232,7 +244,7 @@ function setWidth(el: HTMLElement | null, pct: number) {
 
 const STATUS_ICON = { nieuw: null, geoefend: CircleDot, beheerst: Check } as const
 
-function StudentDetail({
+export function StudentDetail({
   store,
   notify,
   student,
@@ -365,7 +377,7 @@ function StudentDetail({
   )
 }
 
-function ArchiveView({
+export function ArchiveView({
   store,
   notify,
   students,

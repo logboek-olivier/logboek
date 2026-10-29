@@ -26,6 +26,7 @@ import { useCounters } from '../components/useCounters'
 import { OverlapNotices } from '../components/TripSheets'
 import { boatLine, TripDays, TripHead, TripOverviewSheet, TripRouteSection } from '../components/TripOverview'
 import { ParticipantView } from '../components/Views'
+import { openStudent } from '../navigation'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { PlansView } from './Planning'
@@ -198,7 +199,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
       )}
       {sheet === 'edit' && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
       {otherTrip && <WeekSheet key={otherTrip.id} store={store} trip={otherTrip} notify={notify} onClose={() => setOtherTrip(null)} />}
-      {participant && <ParticipantView store={store} trip={week} participant={participant} notify={notify} onClose={() => setParticipant(null)} />}
+      {participant && <ParticipantView store={store} trip={week} participant={participant} notify={notify} onClose={() => setParticipant(null)} onOpenStudent={openStudent} />}
       {sheet === 'close' && <CloseWeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
     </section>
   )

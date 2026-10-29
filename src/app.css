@@ -3662,3 +3662,57 @@ body.presenting .bottom-bar {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Studentenarchief: zoeken, filters, de lopende trip bovenaan en de uitslag per student. */
+.search-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.search-field .icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.student-group .group-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.badge.current-badge {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 1px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  vertical-align: middle;
+}
+
+.tag.passed {
+  background: var(--accent-soft);
+  color: var(--positive);
+}
+
+.tag.failed {
+  background: var(--negative-soft);
+  color: var(--negative);
+}

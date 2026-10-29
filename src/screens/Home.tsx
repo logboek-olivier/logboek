@@ -5,6 +5,7 @@ import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
 import { backfillRates, getRates, loadRates, subscribeRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { setScreen } from '../errors'
+import { onNavigate } from '../navigation'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
 import type { AddTab } from '../model/types'
@@ -69,6 +70,17 @@ export function Home({ store }: { store: Store }) {
   const [logbookFrom, setLogbookFrom] = useState<'meer' | 'agenda'>('meer')
   const counter = useRef(0)
   const clearToast = useCallback(() => setToast(null), [])
+  // De checklist van een student, geopend vanuit het tripoverzicht (src/navigation.ts).
+  const [archiveStudent, setArchiveStudent] = useState<string | undefined>(undefined)
+  useEffect(
+    () =>
+      onNavigate((target) => {
+        setArchiveStudent(target.studentId)
+        setScreenState('archief')
+        window.scrollTo(0, 0)
+      }),
+    [],
+  )
 
   const notify: Notify = useCallback((text, undo) => {
     counter.current++
@@ -97,6 +109,7 @@ export function Home({ store }: { store: Store }) {
 
   function select(next: Screen) {
     if (next !== 'toevoegen') setAddInit(undefined)
+    setArchiveStudent(undefined)
     if (next === 'logboek' && screen !== 'agenda') setLogbookFrom('meer')
     setScreenState(next)
     window.scrollTo(0, 0)
@@ -188,7 +201,7 @@ export function Home({ store }: { store: Store }) {
       {screen === 'archief' && (
         <>
           <BackToMore onBack={() => select('meer')} />
-          <StudentArchive store={store} notify={notify} />
+          <StudentArchive key={archiveStudent ?? 'lijst'} store={store} notify={notify} openStudentId={archiveStudent} />
         </>
       )}
       {screen === 'instellingen' && (
