@@ -1,11 +1,12 @@
 import { decryptObject, DecryptError, encryptObject, fromBase64, toBase64, utf8, type Bytes } from '../crypto/encrypt'
 import { parseMeta, unlock, type Meta, type Secret } from '../crypto/keys'
+import { scrubbedAccount, scrubbedBalance } from '../model/accounts'
 import { scrubbedCareer } from '../model/career'
 import { scrubbedDocument } from '../model/documents'
 import type { Undo } from '../model/edit'
 import { NewerSchemaError } from '../model/schema'
 import { scrubbed } from '../model/students'
-import { COLLECTION_PATHS, type CareerRecord, type CollectionPath, type Collections, type Student, type SyncRecord, type VaultDocument } from '../model/types'
+import { COLLECTION_PATHS, type Account, type Balance, type CareerRecord, type CollectionPath, type Collections, type Student, type SyncRecord, type VaultDocument } from '../model/types'
 import type { Store } from './store'
 import { decodeRecords, encodeRecords } from './sync'
 
@@ -160,6 +161,8 @@ export async function applyRestore(store: Store, plan: readonly RestoreItem[]): 
         if (item.path === 'students.json.enc') return scrubbed(r as Student, later)
         if (item.path === 'documents/index.json.enc') return scrubbedDocument(r as VaultDocument, later)
         if (item.path === 'career.json.enc') return scrubbedCareer(r as CareerRecord, later)
+        if (item.path === 'accounts.json.enc') return scrubbedAccount(r as Account, later)
+        if (item.path === 'balances.json.enc') return scrubbedBalance(r as Balance, later)
         return { ...r, updatedAt: later, deletedAt: later }
       })
       await putRecords(store, item.path, gone)

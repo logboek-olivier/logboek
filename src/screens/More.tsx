@@ -1,4 +1,4 @@
-import { Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Target, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Target, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { t, type MessageKey } from '../i18n'
@@ -6,7 +6,7 @@ import { t, type MessageKey } from '../i18n'
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
 // hier ook.
 
-export type MoreScreen = 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen'
+export type MoreScreen = 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
   { id: 'logboek', label: 'nav.logbook', hint: 'more.logbookHint', icon: NotebookPen },
@@ -14,6 +14,7 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
   { id: 'doelen', label: 'goals.screen', hint: 'more.goalsHint', icon: Target },
   { id: 'carriere', label: 'career.screen', hint: 'more.careerHint', icon: Briefcase },
   { id: 'geld', label: 'nav.money', hint: 'more.moneyHint', icon: Wallet },
+  { id: 'rekeningen', label: 'accounts.screen', hint: 'more.accountsHint', icon: Landmark },
   { id: 'termijnen', label: 'reminder.screen', hint: 'more.remindersHint', icon: CalendarClock },
   { id: 'kluis', label: 'vault.screen', hint: 'more.vaultHint', icon: VaultIcon },
   { id: 'boten', label: 'boats.screen', hint: 'more.boatsHint', icon: Sailboat },
@@ -26,9 +27,10 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
 ]
 
 export function More({ onOpen }: { onOpen: (screen: MoreScreen) => void }) {
-  // In de demo geen Opslag (controleren en back-ups gaan over de eigen gegevens op GitHub) en geen Kluis.
+  // In de demo geen Opslag (controleren en back-ups gaan over de eigen gegevens op GitHub), geen Kluis en geen
+  // Rekeningen (de demo heeft geen bedragen).
   const demo = useIsDemo()
-  const items = demo ? ITEMS.filter((item) => item.id !== 'opslag' && item.id !== 'kluis') : ITEMS
+  const items = demo ? ITEMS.filter((item) => item.id !== 'opslag' && item.id !== 'kluis' && item.id !== 'rekeningen') : ITEMS
   return (
     <section className="stack-lg">
       <header className="page-header">

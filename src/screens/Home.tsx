@@ -32,6 +32,7 @@ const Maps = lazyComponent(() => import('./Maps').then((m) => m.Maps))
 const Goals = lazyComponent(() => import('./Goals').then((m) => m.Goals))
 const Vault = lazyComponent(() => import('./Vault').then((m) => m.Vault))
 const Career = lazyComponent(() => import('./Career').then((m) => m.Career))
+const Accounts = lazyComponent(() => import('./Accounts').then((m) => m.Accounts))
 const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
@@ -57,6 +58,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   doelen: 'Doelen',
   kluis: 'Kluis',
   carriere: 'Carrière',
+  rekeningen: 'Rekeningen',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -155,7 +157,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
         ? 'meer'
         : screen
 
@@ -229,6 +231,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Career store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'rekeningen' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Accounts store={store} notify={notify} />
         </>
       )}
       {screen === 'kluis' && (

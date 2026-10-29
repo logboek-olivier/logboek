@@ -384,6 +384,9 @@ describe('Back-up zonder laptop', () => {
     const name = await phone()
     const s = await open(name)
     await store(s).put('places.json.enc', place('p1'))
+    const at = new Date().toISOString()
+    await store(s).put('accounts.json.enc', { id: 'acc1', name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie', updatedAt: at, deletedAt: null })
+    await store(s).put('balances.json.enc', { id: 'stand:acc1:2026-09', accountId: 'acc1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: at, deletedAt: null })
     const text = await backupOf(s)
     s.lock()
     // GitHub en de telefoon zijn het logboek kwijt; Olivier begint opnieuw (een ander logboek, K2) met één eigen plaats.
@@ -412,6 +415,10 @@ describe('Back-up zonder laptop', () => {
     await undo()
     expect(store(other).list('places.json.enc').map((p) => p.id)).toEqual(['n1'])
     expect(store(other).list('trips.json.enc')).toEqual([])
+    // Ongedaan gemaakt: de rekening en de stand als tombstone zonder naam, notitie of bedrag.
+    expect(store(other).get('accounts.json.enc').find((a) => a.id === 'acc1')).toMatchObject({ name: '', deletedAt: expect.any(String) })
+    expect(JSON.stringify(store(other).get('accounts.json.enc'))).not.toContain('Nep')
+    expect(store(other).get('balances.json.enc').find((b) => b.id === 'stand:acc1:2026-09')).toMatchObject({ amount: 0, deletedAt: expect.any(String) })
   }, 60_000)
 
   it('terugzetten kan pas na een geslaagde sync, en overschrijft nooit wat op GitHub nieuwer is of gewist werd', async () => {

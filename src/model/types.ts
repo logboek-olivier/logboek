@@ -537,6 +537,36 @@ export interface Project extends SyncRecord {
 /** Carrière (career.json.enc, src/model/career.ts): sollicitaties, netwerk en projecten in één bestand. */
 export type CareerRecord = Application | Contact | Project
 
+/** Bij wie de rekening loopt: bepaalt alleen welk importformaat de app voorstelt. */
+export type AccountProvider = 'asn' | 'revolut' | 'bux' | 'degiro' | 'duo' | 'overig'
+export const ACCOUNT_PROVIDERS: readonly AccountProvider[] = ['asn', 'revolut', 'bux', 'degiro', 'duo', 'overig']
+/** Soort rekening; een schuld (bijvoorbeeld de studieschuld) telt negatief mee in de netto waarde. */
+export type AccountKind = 'betaal' | 'spaar' | 'beleggen' | 'schuld' | 'contant'
+export const ACCOUNT_KINDS: readonly AccountKind[] = ['betaal', 'spaar', 'beleggen', 'schuld', 'contant']
+
+/** Een rekening (accounts.json.enc, src/model/accounts.ts). Geen rekeningnummer, geen inloggegevens. */
+export interface Account extends SyncRecord {
+  name: string
+  provider: AccountProvider
+  kind: AccountKind
+  currency: Currency
+  /** jjjj-mm-dd: opgeheven; telt vanaf die dag niet meer mee. */
+  closedAt?: string
+  note?: string
+}
+
+/**
+ * De stand van een rekening (balances.json.enc): één per rekening per maand, id `stand:<accountId>:<jjjj-mm>`, zodat
+ * twee apparaten en een nieuwe import dezelfde maand samenvoegen. `date` is de dag waarop de stand gold; het bedrag
+ * in de valuta van de rekening, negatief bij een schuld. Geen afzonderlijke mutaties, omschrijvingen of tegenrekeningen.
+ */
+export interface Balance extends SyncRecord {
+  accountId: string
+  date: string
+  amount: number
+  source: 'handmatig' | 'import'
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -556,6 +586,8 @@ export interface Collections {
   'sessions.json.enc': Session
   'documents/index.json.enc': VaultDocument
   'career.json.enc': CareerRecord
+  'accounts.json.enc': Account
+  'balances.json.enc': Balance
 }
 
 export type CollectionPath = keyof Collections
@@ -578,6 +610,8 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'sessions.json.enc',
   'documents/index.json.enc',
   'career.json.enc',
+  'accounts.json.enc',
+  'balances.json.enc',
 ]
 
 export function newId(): string {

@@ -278,6 +278,20 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect.poll(() => puts('career.json.enc'), { timeout: 20_000 }).toBeGreaterThan(careerPuts)
     await expectSynced(page)
+    // Rekeningen (accounts.json.enc en balances.json.enc, nieuw in ronde 2): een rekening met een stand met de hand.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await openMore(page, L('accounts.screen'), L('nav.more'))
+    const balancePuts = puts('balances.json.enc')
+    await page.getByRole('button', { name: L('accounts.add') }).click()
+    await page.getByRole('dialog').getByLabel(L('accounts.name')).fill('Nepbank upgrade')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.locator('.row-button', { hasText: 'Nepbank upgrade' }).click()
+    await page.getByRole('dialog').getByLabel(L('accounts.standAmount'), { exact: true }).fill('321')
+    await page.getByRole('dialog').getByRole('button', { name: L('accounts.updateStand') }).click()
+    await expect.poll(() => puts('balances.json.enc'), { timeout: 20_000 }).toBeGreaterThan(balancePuts)
+    await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -324,6 +338,12 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect([plain[0], plain[1]]).toEqual([0xff, 0xd8])
     const career = await decryptRecords(key, 'career.json.enc', Uint8Array.from(Buffer.from(github.files.get('career.json.enc')!.content, 'base64')))
     expect(career).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'sollicitatie', company: 'Nepwerf', status: 'gesolliciteerd', deletedAt: null })]))
+    // De rekening en zijn stand staan leesbaar op GitHub.
+    const accounts = await decryptRecords(key, 'accounts.json.enc', Uint8Array.from(Buffer.from(github.files.get('accounts.json.enc')!.content, 'base64')))
+    const bank = accounts.find((a) => (a as { name?: string }).name === 'Nepbank upgrade')
+    expect(bank).toMatchObject({ provider: 'asn', kind: 'betaal', currency: 'EUR', deletedAt: null })
+    const balances = await decryptRecords(key, 'balances.json.enc', Uint8Array.from(Buffer.from(github.files.get('balances.json.enc')!.content, 'base64')))
+    expect(balances).toEqual(expect.arrayContaining([expect.objectContaining({ accountId: bank!.id, amount: 321, source: 'handmatig', deletedAt: null })]))
   } finally {
     await server.close()
   }
