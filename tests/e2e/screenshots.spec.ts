@@ -114,6 +114,8 @@ for (const { width, scheme, lang } of RUNS) {
       await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
       await shot('toevoegen-fooi')
       await page.getByRole('tab', { name: L('quick.tabDay') }).click()
+      // Een eerdere overtocht: een trip uit Dag is lopend tot drie dagen na zijn laatste dag, dus ruim daarvoor.
+      await page.getByLabel(L('field.date'), { exact: true }).fill(isoDaysAgo(20))
       await page.getByLabel(L('field.to'), { exact: true }).fill('Nepbaai')
       await page.getByLabel(L('field.nm')).fill('23,5')
       await page.getByLabel(L('field.boat'), { exact: true }).fill('Nepboot Vijf')

@@ -160,6 +160,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('legs.json.enc'), { timeout: 20_000 }).toBeGreaterThan(legPuts)
     await expectSynced(page)
+    // De melding "Dag opgeslagen" ligt anders over de knop Opslaan van de volgende invoer.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     // Agenda (calendar.json.enc, nieuw sinds de agenda-release): een dag instellen, synchroniseren.
     const calendarPuts = puts('calendar.json.enc')
     await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
