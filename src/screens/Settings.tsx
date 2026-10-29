@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Wallet, X, type LucideIcon } from 'lucide-react'
+import { BellRing, ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Wallet, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { FirstNumbersSheet, firstNumbersLine } from '../components/CounterSheets'
+import { DailyReminderSheet, reminderLine } from '../components/DailyReminderSheet'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { SalaryDefaultsSheet, salaryDefaultsLine } from '../components/SalarySheets'
 import { useIsDemo } from '../components/DemoBar'
@@ -26,6 +27,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const [goalOpen, setGoalOpen] = useState(false)
   const [countersOpen, setCountersOpen] = useState(false)
   const [salaryOpen, setSalaryOpen] = useState(false)
+  const [reminderOpen, setReminderOpen] = useState(false)
   const session = useSession()
   const demo = useIsDemo()
   const [panel, setPanel] = useState<Panel>('none')
@@ -91,11 +93,20 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
               <Icon icon={ChevronRight} className="chevron" />
             </button>
           </li>
+          <li>
+            <button className="settings-row" onClick={() => setReminderOpen(true)}>
+              <Icon icon={BellRing} />
+              <span className="row-main">{t('reminderDaily.screen')}</span>
+              <span className="muted">{reminderLine(store)}</span>
+              <Icon icon={ChevronRight} className="chevron" />
+            </button>
+          </li>
           {row('language', Languages, t('settings.language'), <LanguagePicker />)}
         </ul>
       </div>
       {countersOpen && <FirstNumbersSheet store={store} onClose={() => setCountersOpen(false)} notify={notify} />}
       {salaryOpen && <SalaryDefaultsSheet store={store} onClose={() => setSalaryOpen(false)} notify={notify} />}
+      {reminderOpen && <DailyReminderSheet store={store} onClose={() => setReminderOpen(false)} notify={notify} />}
       {goalOpen && <GoalSheet store={store} current={yearGoal(settings)} onClose={() => setGoalOpen(false)} notify={notify} />}
 
       <DemoSection />

@@ -216,6 +216,8 @@ export interface Settings extends SyncRecord {
   orgAnswered?: string[]
   /** Standaardsalaris per organisatie; vult alleen trips zonder salaris die nog niet voorbij zijn. */
   salaryDefaults?: Partial<Record<Organisation, SalaryDefault>>
+  /** Dagelijkse herinnering in de eigen agenda (Instellingen → Herinnering): tijd (uu:mm) en alleen op werkdagen. */
+  dailyReminder?: { time: string; workdaysOnly: boolean }
 }
 
 /** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */
