@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, ShieldCheck, Wallet, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { FirstNumbersSheet, firstNumbersLine } from '../components/CounterSheets'
 import { GoalSheet, type Notify } from '../components/EditSheets'
+import { SalaryDefaultsSheet, salaryDefaultsLine } from '../components/SalarySheets'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { APP_VERSION, BUILD_DATE, COMMIT } from '../build-info'
@@ -22,6 +23,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [goalOpen, setGoalOpen] = useState(false)
   const [countersOpen, setCountersOpen] = useState(false)
+  const [salaryOpen, setSalaryOpen] = useState(false)
   const session = useSession()
   const [panel, setPanel] = useState<Panel>('none')
   const [fingerprintPossible, setFingerprintPossible] = useState(false)
@@ -78,10 +80,19 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
               <Icon icon={ChevronRight} className="chevron" />
             </button>
           </li>
+          <li>
+            <button className="settings-row" onClick={() => setSalaryOpen(true)}>
+              <Icon icon={Wallet} />
+              <span className="row-main">{t('salary.defaults')}</span>
+              <span className="muted">{salaryDefaultsLine(store)}</span>
+              <Icon icon={ChevronRight} className="chevron" />
+            </button>
+          </li>
           {row('language', Languages, t('settings.language'), <LanguagePicker />)}
         </ul>
       </div>
       {countersOpen && <FirstNumbersSheet store={store} onClose={() => setCountersOpen(false)} notify={notify} />}
+      {salaryOpen && <SalaryDefaultsSheet store={store} onClose={() => setSalaryOpen(false)} notify={notify} />}
       {goalOpen && <GoalSheet store={store} current={yearGoal(settings)} onClose={() => setGoalOpen(false)} notify={notify} />}
 
       <div className="section">

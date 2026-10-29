@@ -9,6 +9,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'trips.json.enc': [
     // Aangemaakt via Toevoegen → Dag: de datums volgen de dagen.
     { id: 'upg-trip-dag', name: 'Nepdag upgrade', startDate: '2026-10-12', endDate: '2026-10-12', datesFromDays: true, updatedAt: T, deletedAt: null },
+    // Salaris per trip (eigen bedrag, verwacht): na de einddatum vraagt Vandaag of het ontvangen is.
+    { id: 'upg-trip-salaris', name: 'Nepsalaris upgrade', organisation: 'sailing-virgins', startDate: '2026-10-01', endDate: '2026-10-07', salary: { amount: 1200, currency: 'EUR', status: 'verwacht', source: 'eigen' }, updatedAt: T, deletedAt: null },
     { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [
@@ -20,7 +22,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-2', date: '2026-10-21', kind: 'fooi', amount: 40, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipFrom: { kind: 'groep' }, updatedAt: T, deletedAt: null },
   ],
   'settings.json.enc': [
-    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], updatedAt: T, deletedAt: null },
+    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, updatedAt: T, deletedAt: null },
   ],
   'curricula.json.enc': [
     { id: 'upg-course-1', body: 'eigen', courseCode: 'NEP 1', name: { nl: 'Nepcursus', en: 'Fake course' }, groups: [{ id: 'g1', title: { nl: 'Nepdeel', en: 'Fake part' }, topics: [{ id: 't1', title: { nl: 'Nepknoop', en: 'Fake knot' }, kind: 'praktijk', examCritical: true }] }], source: 'eigen', updatedAt: T, deletedAt: null },

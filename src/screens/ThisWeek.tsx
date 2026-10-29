@@ -19,7 +19,7 @@ import { tripIncomplete } from '../model/gaps'
 import { answerReturning, guestLabel, participantName, returningGuests } from '../model/guests'
 import { IncompleteBadge } from '../components/Incomplete'
 import { activeWeek, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
-import type { Leg, Participant, Trip, WeekType } from '../model/types'
+import type { Leg, Participant, Trip, TripSalary, WeekType } from '../model/types'
 import { tripOverlaps } from '../model/trip-ops'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
@@ -192,7 +192,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
         <>
           <TripChecklists store={store} notify={notify} trip={week} type={view.type} />
           <SailedDays store={store} notify={notify} legs={view.legs} nm={view.nm} onAdd={() => onAddDay({ date: nextDay, tripId: week.id })} />
-          <WeekMoney store={store} weekId={week.id} />
+          <WeekMoney store={store} weekId={week.id} salary={week.salary} />
           {upcomingSection}
         </>
       )}
@@ -287,11 +287,11 @@ function UpcomingTrips({ trips, counters, onOpen }: { trips: Trip[]; counters: R
 }
 
 /** Fooien en kosten van de week in euro, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee). */
-function WeekMoney({ store, weekId }: { store: Store; weekId: string }) {
+function WeekMoney({ store, weekId, salary }: { store: Store; weekId: string; salary?: TripSalary }) {
   const transactions = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.tripId === weekId)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
-  if (transactions.length === 0) return null
+  if (transactions.length === 0 && !salary) return null
   const sum = totals(transactions)
   const provisional = transactions.some((tx) => eurValue(tx)?.provisional)
   return (
@@ -321,11 +321,12 @@ function WeekMoney({ store, weekId }: { store: Store; weekId: string }) {
             </p>
           ))}
           {provisional && <p className="muted small">{t('money.provisionalHint')}</p>}
+          {salary && <p className="salary-line">{t('salary.line', { amount: formatMoney(salary.amount, salary.currency), status: t(`salaryStatus.${salary.status}`), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}</p>}
         </>
       ) : (
         <p className="muted small">
           <Icon icon={ChevronRight} />
-          {t('week.amountsHidden', { n: transactions.length })}
+          {[transactions.length > 0 ? t('week.amountsHidden', { n: transactions.length }) : '', salary ? t('salary.hiddenLine', { status: t(`salaryStatus.${salary.status}`) }) : ''].filter(Boolean).join(' · ')}
         </p>
       )}
     </div>

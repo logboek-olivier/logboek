@@ -4,6 +4,8 @@ import { suggestType, weekFields, MAX_WEEK_DAYS, type WeekInput } from '../model
 import { DAY_TYPES, newId, ORGANISATIONS, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type Trip, type WeekType } from '../model/types'
 import type { Lang } from '../i18n'
 import type { Store } from '../storage/store'
+import { withSalaryDefault } from '../model/salary'
+import { currentSettings } from '../model/settings'
 import { FileFormatError, readRowSources, type SheetCell } from './rows'
 
 // Planning importeren uit CSV (of Excel) met de kolommen start, eind, soort, naam, type, organisatie, boot, gebied,
@@ -172,6 +174,7 @@ export function hasOverlap(item: PlanItem): boolean {
  * wordt overschreven: een trip komt ernaast, zelf ingestelde dagen alleen bij aangezette regels.
  */
 export async function applyPlan(store: Store, items: readonly PlanItem[], include: ReadonlySet<number>, lang: Lang): Promise<{ trips: number; days: number }> {
+  const settings = currentSettings(store.list('settings.json.enc'))
   const now = new Date().toISOString()
   const trips: Trip[] = []
   const days = new Map<string, CalendarDay>()
@@ -194,7 +197,8 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
         participants: [],
         note: row.note,
       }
-      trips.push({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null })
+      // Een werkregel met organisatie krijgt het standaardsalaris van die organisatie.
+      trips.push(withSalaryDefault({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null }, settings))
     } else {
       for (const date of datesBetween(row.start, row.end)) {
         days.set(date, { id: `dag:${date}`, date, type: row.kind, ...(row.note ? { note: row.note } : {}), updatedAt: now, deletedAt: null })

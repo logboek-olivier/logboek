@@ -29,6 +29,7 @@ import { Icon } from './Icon'
 import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
 import { DeleteTrip } from './TripSheets'
+import { SalaryFields, useSalaryDraft } from './SalaryFields'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -64,6 +65,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const [filledFrom, setFilledFrom] = useState(false)
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
+  const salary = useSalaryDraft(trip, organisation, currentSettings(store.get('settings.json.enc')))
   // Nieuwe trip bij Sailing Virgins of Yacht Week: naamvoorstel met teller ("SV #4 · BVI").
   const namePlaceholder = newTripName(trips, legs, currentSettings(store.get('settings.json.enc')), organisation, startDate || todayIso(), area, defaultWeekName(startDate || todayIso(), lang, base))
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
@@ -144,7 +146,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     e.preventDefault()
     if (busy) return
     setBusy(true)
-    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route }
+    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route, salary: salary.input() }
     try {
       if (trip) {
         await updateWeek(store, trip, input, getLang())
@@ -285,6 +287,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </select>
         </label>
+        <SalaryFields {...salary.props} />
         <fieldset className="participants">
           <legend>{t('week.participants')}</legend>
           <p className="muted small">{t('week.participantsHint')}</p>
