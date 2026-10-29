@@ -1,9 +1,8 @@
-import { Plus, Repeat, Route, Trash2, X } from 'lucide-react'
+import { Plus, Repeat, Route, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from '../format'
 import { getLang, t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
-import { deleteTrip } from '../model/edit'
 import { MAX_COUNTRY, MAX_TAG, needsDistinction, norm, participantName, usedCountries } from '../model/guests'
 import { addDays, parseAmount, totals } from '../model/money'
 import { currentSettings } from '../model/settings'
@@ -28,6 +27,7 @@ import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
+import { DeleteTrip } from './TripSheets'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -154,13 +154,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     } finally {
       setBusy(false)
     }
-  }
-
-  async function remove() {
-    if (!trip) return
-    const undo = await deleteTrip(store, trip)
-    onClose()
-    notify(t('toast.deleted'), undo)
   }
 
   return (
@@ -383,12 +376,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
               </>
             )}
           </button>
-          {trip && (
-            <button className="btn danger" type="button" onClick={() => void remove()}>
-              <Icon icon={Trash2} />
-              {t('trip.deleteWithDays')}
-            </button>
-          )}
+          {trip && <DeleteTrip store={store} trip={trip} notify={notify} onDone={onClose} />}
         </div>
       </form>
     </Sheet>

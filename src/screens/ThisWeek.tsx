@@ -20,7 +20,9 @@ import { legGaps, tripIncomplete } from '../model/gaps'
 import { answerReturning, guestLabel, participantName, returningGuests } from '../model/guests'
 import { IncompleteBadge } from '../components/Incomplete'
 import { activeWeek, feetToMetres, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
-import type { Leg, Trip, WeekType } from '../model/types'
+import type { Leg, Participant, Trip, WeekType } from '../model/types'
+import { tripOverlaps } from '../model/trip-ops'
+import { OverlapNotices, ParticipantSheet } from '../components/TripSheets'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { PlansView } from './Planning'
@@ -45,6 +47,8 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
   const curricula = effectiveCurricula(stored)
   const lang = useLang()
   const [sheet, setSheet] = useState<'new' | 'edit' | 'close' | null>(null)
+  const [otherTrip, setOtherTrip] = useState<Trip | null>(null)
+  const [participant, setParticipant] = useState<Participant | null>(null)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
   // Een open planning of student vult het hele scherm; de andere onderdelen wijken dan.
   const [planOpen, setPlanOpen] = useState(false)
@@ -110,6 +114,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
             <span className="muted small">{boatLine(week, view.boat)}</span>
             <span className="muted small">{[week.base, week.area, week.charter, week.organisation ? organisationLabel(week.organisation) : ''].filter(Boolean).join(' · ')}</span>
           </button>
+          <OverlapNotices store={store} overlaps={tripOverlaps(trips, legs).filter((o) => o.a.id === week.id || o.b.id === week.id)} notify={notify} onEditTrip={setOtherTrip} />
           {missing.length > 0 && (
             <div className="notice">
               <p className="small">{t('trip.missingDays', { n: missing.length })}</p>
@@ -140,12 +145,14 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
                 {participants.map((p) => {
                   const course = curricula.find((c) => c.id === p.curriculumId)
                   return (
-                    <li key={p.id} className="chip-static">
-                      <Icon icon={Users} />
-                      <span>{participantName(p, participants)}</span>
-                      {(p.level || course) && (
-                        <span className="muted small">{[p.level ? t(`level.${p.level}`) : '', course ? courseLabel(course, lang) : ''].filter(Boolean).join(' · ')}</span>
-                      )}
+                    <li key={p.id}>
+                      <button type="button" className="chip-static participant-chip" onClick={() => setParticipant(p)} aria-label={`${t('participant.edit')}: ${participantName(p, participants)}`}>
+                        <Icon icon={Users} />
+                        <span>{participantName(p, participants)}</span>
+                        {(p.level || course) && (
+                          <span className="muted small">{[p.level ? t(`level.${p.level}`) : '', course ? courseLabel(course, lang) : ''].filter(Boolean).join(' · ')}</span>
+                        )}
+                      </button>
                     </li>
                   )
                 })}
@@ -203,6 +210,8 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
         </>
       )}
       {sheet === 'edit' && <WeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
+      {otherTrip && <WeekSheet key={otherTrip.id} store={store} trip={otherTrip} notify={notify} onClose={() => setOtherTrip(null)} />}
+      {participant && <ParticipantSheet store={store} trip={week} participant={participant} notify={notify} onClose={() => setParticipant(null)} />}
       {sheet === 'close' && <CloseWeekSheet store={store} trip={week} notify={notify} onClose={() => setSheet(null)} />}
     </section>
   )

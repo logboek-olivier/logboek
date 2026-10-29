@@ -5,6 +5,7 @@ import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { PeriodSheet, PlanningImportSheet } from '../components/PeriodSheets'
 import { ReminderSheet } from '../components/ReminderSheet'
+import { OverlapNotices } from '../components/TripSheets'
 import { useCollection } from '../components/useCollection'
 import { WeekSheet } from '../components/WeekSheet'
 import { recordError } from '../errors'
@@ -13,7 +14,8 @@ import { t, useLang } from '../i18n'
 import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
 import { buildIndex, dayInfo, monthIncome, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
-import { todayIso, type Reminder } from '../model/types'
+import { tripOverlaps } from '../model/trip-ops'
+import { todayIso, type Reminder, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { AgendaShare } from './AgendaShare'
 import { useDueItems } from './Deadlines'
@@ -47,6 +49,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   // Termijn bewerken of toevoegen vanuit het dagblad (reminder null = nieuwe termijn op die dag).
   const [reminder, setReminder] = useState<{ reminder: Reminder | null; date: string } | null>(null)
   const [showAmounts, setShowAmounts] = useState(false)
+  const [editTrip, setEditTrip] = useState<Trip | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const touch = useRef<{ x: number; y: number } | null>(null)
   const transactions = useCollection(store, 'transactions.json.enc')
@@ -64,6 +67,10 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   if (view === 'delen') return <AgendaShare store={store} onBack={() => setView('maand')} />
 
   const weeks = monthWeeks(month)
+  // Trips op dezelfde dagen in het zichtbare raster: melding met samenvoegen, vervangen of datums aanpassen.
+  const gridStart = weeks[0]?.[0] ?? `${month}-01`
+  const gridEnd = weeks.at(-1)?.at(-1) ?? `${month}-31`
+  const overlaps = tripOverlaps(trips, legs).filter((o) => o.from <= gridEnd && o.to >= gridStart)
   const summary = monthSummary(index, month, today)
   const income = showAmounts ? monthIncome(index, transactions, month, today) : null
 
@@ -119,6 +126,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           {t('nav.logbook')}
         </button>
       </header>
+      <OverlapNotices store={store} overlaps={overlaps} notify={notify} onEditTrip={setEditTrip} />
       <div className="agenda-month">
         <button className="btn icon" aria-label={t('calendar.prev')} onClick={() => setMonth(shiftMonth(month, -1))}>
           <Icon icon={ChevronLeft} />
@@ -224,8 +232,13 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             setReminder({ reminder: r, date: open })
             setOpen(null)
           }}
+          onEditTrip={(trip) => {
+            setOpen(null)
+            setEditTrip(trip)
+          }}
         />
       )}
+      {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
       {reminder && <ReminderSheet store={store} reminder={reminder.reminder} initialDate={reminder.date} notify={notify} onClose={() => setReminder(null)} />}
       {period && (
         <PeriodSheet

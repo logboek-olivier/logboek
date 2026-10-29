@@ -17,7 +17,8 @@ import { nmInYear } from '../model/derive'
 import { ReminderSheet } from '../components/ReminderSheet'
 import { DueList, useDueItems } from './Deadlines'
 import { currentSettings, yearGoal } from '../model/settings'
-import { todayIso, type Reminder } from '../model/types'
+import { todayIso, type Reminder, type Trip } from '../model/types'
+import { WeekSheet } from '../components/WeekSheet'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
 import { TodayPlan } from './Planning'
@@ -75,6 +76,7 @@ export function Today({
   const nothingToLog = day.type === 'reis' || day.type === 'rust' || day.type === 'thuis'
   const [dayOpen, setDayOpen] = useState(false)
   const [reminderFromDay, setReminderFromDay] = useState<{ reminder: Reminder | null } | null>(null)
+  const [editTrip, setEditTrip] = useState<Trip | null>(null)
   const planned = nothingToLog ? null : plannedFor(running, legs, today)
   const plannedDistance = planned ? plannedNm(legs, planned) : null
   async function logAsPlanned() {
@@ -214,8 +216,13 @@ export function Today({
             setDayOpen(false)
             setReminderFromDay({ reminder })
           }}
+          onEditTrip={(trip) => {
+            setDayOpen(false)
+            setEditTrip(trip)
+          }}
         />
       )}
+      {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
       {reminderFromDay && <ReminderSheet store={store} reminder={reminderFromDay.reminder} initialDate={today} notify={notify} onClose={() => setReminderFromDay(null)} />}
       {filling && <FillSheet store={store} gaps={gaps} notify={notify} onClose={() => setFilling(false)} />}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}

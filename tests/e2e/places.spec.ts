@@ -44,9 +44,10 @@ test('Mijlenvoorstel uit de historie: spaties en spelvarianten, samenvoegen, pla
 
   // Meer → Plaatsen: zonder punt; één tik op de kaart zet de plaats vast.
   await openMore(page, 'Plaatsen')
-  const row = page.getByRole('button', { name: /^Nep Baai Tiha op de kaart zetten|^nepbaaitiha op de kaart zetten|^Nepbaai tiha op de kaart zetten/ })
+  const row = page.getByRole('button', { name: /^Plaats bewerken: (Nep Baai Tiha|nepbaaitiha|Nepbaai tiha)$/ })
   await expect(row).toContainText('Geen punt')
   await row.click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Op de kaart zetten' }).click()
   const sheet = page.getByRole('dialog')
   await expect(sheet.locator('.map-land').first()).toBeAttached({ timeout: 15_000 })
   const canvas = sheet.locator('.sea-map-canvas')
