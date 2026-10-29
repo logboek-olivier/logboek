@@ -35,7 +35,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const nav = page.getByRole('navigation')
       const sheet = page.getByRole('dialog')
       const day = (n: number) => page.locator('.cal-day:not(.other-month)').nth(n - 1)
-      const today = page.locator('.today-kind')
+      // Vandaag: met een lopende trip staat de dagsoort als pil in de tripkaart (tik = dagkaart).
+      const today = page.locator('.today-trip-day')
+      const card = page.locator('.today-trip')
 
       // Een trip van 6 tot en met 13 maart, via periode markeren.
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
@@ -50,7 +52,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Vandaag (werk): de trip en "Dag van vandaag loggen".
       await nav.getByRole('button', { name: L('nav.today'), exact: true }).click()
       await expect(today).toHaveClass(/day-werk/)
-      await expect(today).toContainText('Nepweek Koppel')
+      await expect(card).toContainText('Nepweek Koppel')
+      await expect(card).toContainText(L('today.dayOf', { n: 3, total: 8 }))
       await expect(page.getByRole('button', { name: L('today.logDay') })).toBeVisible()
 
       // Thuis: niets te loggen.
@@ -59,7 +62,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await sheet.getByRole('radio', { name: L('dayType.thuis') }).click()
       await sheet.getByRole('button', { name: L('common.close') }).click()
       await expect(today).toHaveClass(/day-thuis/)
-      await expect(today).toContainText(L('today.nothingToLog'))
+      await expect(card).toContainText(L('today.nothingToLog'))
       await expect(page.getByRole('button', { name: L('today.logDay') })).toHaveCount(0)
 
       // Reis: de reisgegevens.
@@ -71,7 +74,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await sheet.getByLabel(L('day.flight')).fill('NP 42')
       await sheet.getByRole('button', { name: L('common.save') }).click()
       await expect(today).toHaveClass(/day-reis/)
-      await expect(today).toContainText('Nepstad → Nephaven · NP 42')
+      await expect(card).toContainText('Nepstad → Nephaven · NP 42')
       await expect(page.getByRole('button', { name: L('today.logDay') })).toHaveCount(0)
       await shots(page, 'vandaag-reis', lang)
 

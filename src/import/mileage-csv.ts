@@ -1,6 +1,6 @@
+import { defaultTripName } from '../model/trip-name'
 import { tripShip } from '../model/boats'
 import { summarize, type SailingSummary } from '../model/derive'
-import { formatMonthName } from '../format'
 import { t } from '../i18n'
 import { roleLabel } from '../i18n/labels'
 import { newId, ROLES, type Leg, type Role, type Trip } from '../model/types'
@@ -336,8 +336,4 @@ export function parseNumber(text: string, rowNumber: number | null = null, colum
   return n
 }
 
-export function defaultTripName(boat: string, date: string): string {
-  const [y, m] = date.split('-')
-  const month = m ? formatMonthName(Number(m)) : ''
-  return `${boat} ${month} ${y}`.trim()
-}
+export { defaultTripName }

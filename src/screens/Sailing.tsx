@@ -2,7 +2,7 @@ import { CalendarPlus, FileText, FileSpreadsheet, LoaderCircle, Upload } from 'l
 import { useRef, useState } from 'react'
 import { BarChart } from '../components/BarChart'
 import type { Notify } from '../components/EditSheets'
-import { RouteThumb } from '../components/RouteMap'
+import { RouteThumb } from '../components/RouteThumb'
 import { TripOverviewSheet } from '../components/TripOverview'
 import { routeOf } from '../model/trip-route'
 import { WeekSheet } from '../components/WeekSheet'

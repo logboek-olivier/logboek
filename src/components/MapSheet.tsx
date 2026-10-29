@@ -8,7 +8,8 @@ import type { Place } from '../model/types'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { PinQuestionBox } from './PinQuestion'
-import { SeaMap, type LatLon, type MapPlace } from './SeaMap'
+import { SeaMap } from './LazyMap'
+import type { LatLon, MapPlace } from './SeaMap'
 import { Sheet } from './Sheet'
 
 // Plaats kiezen op de offline kaart: tik op een bekende plaats (direct gekozen) of zet een nieuw punt, geef het een

@@ -4,7 +4,8 @@ import { findPlace, pinPlace, pinQuestion, savePlace, type PinQuestion, type Pla
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { PinQuestionBox } from './PinQuestion'
-import { SeaMap, type LatLon } from './SeaMap'
+import { SeaMap } from './LazyMap'
+import type { LatLon } from './SeaMap'
 import { Sheet } from './Sheet'
 
 const FALLBACK: LatLon = { lat: 18, lon: -63 }

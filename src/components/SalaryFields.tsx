@@ -6,7 +6,7 @@ import { parseAmount } from '../model/money'
 import { salaryDefault, withSalaryDefault } from '../model/salary'
 import { CURRENCIES, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
 import { Icon } from './Icon'
-import { organisationLabel } from './WeekSheet'
+import { organisationLabel } from '../i18n/labels'
 
 // Salaris in het tripscherm, standaard ingeklapt (geen bedragen in beeld zolang Olivier er niet om vraagt). Zolang
 // Olivier niets aanpast, geldt het standaardbedrag van de organisatie; een getypt bedrag is "eigen" en wordt nooit

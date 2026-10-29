@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { BottomBar, type Tab } from '../components/BottomBar'
 import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
@@ -10,21 +10,25 @@ import { t } from '../i18n'
 import type { Store } from '../storage/store'
 import type { AddTab } from '../model/types'
 import { SCREEN_FILES } from '../screen-files'
-import { Money } from './Money'
+import { lazyComponent } from '../lazy'
 import { BackToMore, More, type MoreScreen } from './More'
-import { QuickAdd, type AddInit } from './QuickAdd'
-import { Sailing } from './Sailing'
-import { Settings } from './Settings'
-import { StudentArchive } from './StudentArchive'
-import { ThisWeek } from './ThisWeek'
+import type { AddInit } from './QuickAdd'
 import { Today } from './Today'
-import { Courses } from './Courses'
-import { Deadlines } from './Deadlines'
-import { Boats } from './Boats'
-import { Places } from './Places'
-import { Agenda } from './Agenda'
-import { Storage } from './Storage'
-import { Stats } from './Stats'
+
+// Vandaag laadt direct; de andere schermen pas als ze geopend worden (src/lazy.ts), zodat de app snel opent.
+const Money = lazyComponent(() => import('./Money').then((m) => m.Money))
+const QuickAdd = lazyComponent(() => import('./QuickAdd').then((m) => m.QuickAdd))
+const Sailing = lazyComponent(() => import('./Sailing').then((m) => m.Sailing))
+const Settings = lazyComponent(() => import('./Settings').then((m) => m.Settings))
+const StudentArchive = lazyComponent(() => import('./StudentArchive').then((m) => m.StudentArchive))
+const ThisWeek = lazyComponent(() => import('./ThisWeek').then((m) => m.ThisWeek))
+const Courses = lazyComponent(() => import('./Courses').then((m) => m.Courses))
+const Deadlines = lazyComponent(() => import('./Deadlines').then((m) => m.Deadlines))
+const Boats = lazyComponent(() => import('./Boats').then((m) => m.Boats))
+const Places = lazyComponent(() => import('./Places').then((m) => m.Places))
+const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
+const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
+const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -130,6 +134,7 @@ export function Home({ store }: { store: Store }) {
   return (
     <main className="app with-bar">
       <SyncStatusLine store={store} files={SCREEN_FILES[screen]} onStorage={screen === 'opslag' ? undefined : () => select('opslag')} />
+      <Suspense fallback={<ScreenLoading />}>
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {
             select('toevoegen')
@@ -222,8 +227,14 @@ export function Home({ store }: { store: Store }) {
           <Storage store={store} notify={notify} />
         </>
       )}
+      </Suspense>
       <Toast message={toast} onDone={clearToast} />
       <BottomBar active={activeTab} onSelect={select} />
     </main>
   )
+}
+
+/** Een scherm dat nog laadt (meestal korter dan een tel): een rustig vlak, geen spinner die knippert. */
+function ScreenLoading() {
+  return <div className="screen-loading" aria-busy="true" />
 }
