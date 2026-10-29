@@ -1,5 +1,5 @@
 import type { Store } from '../storage/store'
-import { followTrip, type DateRange } from './calendar'
+import type { DateRange } from './calendar'
 import { active } from './derive'
 import { addDays } from './money'
 import type { Leg, Trip } from './types'
@@ -30,9 +30,11 @@ export function endedFor(trip: Trip, endDate: string): string {
 }
 
 /**
- * Na een nieuwe, gewijzigde, verplaatste of verwijderde dag (en na het ongedaan maken daarvan): de datums van deze trips
- * volgen hun dagen. Een trip zonder dagen houdt zijn datums; een trip met zelf ingestelde datums blijft ongemoeid. De
- * agenda volgt mee (zie followTrip).
+ * Na een nieuwe, verschoven, verplaatste of verwijderde dag (en na het ongedaan maken daarvan): de datums van deze trips
+ * volgen hun dagen. Een trip met zelf ingestelde datums blijft ongemoeid, net als een geïmporteerde tocht zonder datums
+ * (die volgt de import). De agenda wordt hier niet aangepast: zelf ingestelde dagen tussen twee gelogde dagen blijven
+ * staan (eigen instelling gaat voor), zodat een verkeerd getypte datum nooit dagen in de agenda wist. Raakt een trip uit
+ * Toevoegen → Dag zijn laatste dag kwijt en hangt er verder niets aan, dan verdwijnt hij, zoals bij een dag verwijderen.
  */
 export async function followDays(store: Store, tripIds: readonly (string | null | undefined)[]): Promise<void> {
   const ids = [...new Set(tripIds.filter((id): id is string => !!id))]
@@ -41,12 +43,35 @@ export async function followDays(store: Store, tripIds: readonly (string | null 
     const legs = store.list('legs.json.enc')
     const trip = store.list('trips.json.enc').find((t) => t.id === id)
     if (!trip || !datesFollowDays(trip)) continue
+    const own = legs.filter((l) => l.tripId === id)
+    // Een geïmporteerde tocht zonder datums: de datums komen uit de import, niet vastleggen.
+    if (!trip.datesFromDays && own.some((l) => l.source === 'import')) continue
     const range = daysRange(id, legs)
-    if (!range || (trip.startDate === range.start && trip.endDate === range.end && trip.datesFromDays)) continue
-    const before = trip.startDate && trip.endDate ? { start: trip.startDate, end: trip.endDate } : range
+    if (!range) {
+      if (trip.datesFromDays && !hasOtherData(store, trip)) {
+        const now = new Date().toISOString()
+        await store.put('trips.json.enc', { ...trip, updatedAt: now, deletedAt: now })
+        const settings = store.list('settings.json.enc').find((x) => x.id === 'settings')
+        if (settings?.activeWeekId === id) await store.put('settings.json.enc', { ...settings, activeWeekId: null, updatedAt: now })
+        changed = true
+      }
+      continue
+    }
+    if (trip.startDate === range.start && trip.endDate === range.end && trip.datesFromDays) continue
     await store.put('trips.json.enc', { ...trip, startDate: range.start, endDate: range.end, datesFromDays: true, updatedAt: new Date().toISOString() })
-    await followTrip(store, id, before, range)
     changed = true
   }
   if (changed) void store.sync()
+}
+
+/** Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, review of afgevinkte lijsten)? */
+function hasOtherData(store: Store, trip: Trip): boolean {
+  return (
+    (trip.participants?.length ?? 0) > 0 ||
+    !!trip.review ||
+    Object.keys(trip.checks ?? {}).length > 0 ||
+    store.list('transactions.json.enc').some((t) => t.tripId === trip.id) ||
+    store.list('students.json.enc').some((s) => s.weekId === trip.id) ||
+    store.list('plans.json.enc').some((p) => p.tripId === trip.id)
+  )
 }

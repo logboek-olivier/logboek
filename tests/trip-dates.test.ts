@@ -154,13 +154,62 @@ describe('Datums uit de dagen', () => {
     expect(needsClosing(weekView(trip('vast', { startDate: '2026-11-10', endDate: '2026-11-12' }), []), '2026-11-13')).toBe(true)
   })
 
-  it('de agenda volgt: zelf ingestelde dagen in de nieuwe periode maken plaats voor werk', async () => {
+  it('zelf ingestelde agendadagen blijven staan, ook na een verkeerd getypte datum die weer hersteld wordt', async () => {
     const s = await store()
-    const rust: CalendarDay = { id: 'dag:2026-11-12', date: '2026-11-12', type: 'rust', updatedAt: T0, deletedAt: null }
-    await s.put('calendar.json.enc', rust)
-    await s.put('trips.json.enc', trip('dag', { startDate: '2026-11-10', endDate: '2026-11-10', datesFromDays: true }))
-    await s.putMany('legs.json.enc', [leg('l1', 'dag', '2026-11-10'), leg('l2', 'dag', '2026-11-13')])
-    await followDays(s, ['dag'])
-    expect(s.list('calendar.json.enc').find((d) => d.id === rust.id)).toBeUndefined()
+    const thuis: CalendarDay = { id: 'dag:2026-11-05', date: '2026-11-05', type: 'thuis', updatedAt: T0, deletedAt: null }
+    await s.put('calendar.json.enc', thuis)
+    await s.put('trips.json.enc', trip('dag', { startDate: '2026-11-01', endDate: '2026-11-03', datesFromDays: true }))
+    await s.putMany('legs.json.enc', [leg('l1', 'dag', '2026-11-01'), leg('l2', 'dag', '2026-11-03')])
+    // Typfout: een jaar later. De trip rekt op, maar de agenda verliest niets.
+    const l2 = s.list('legs.json.enc').find((l) => l.id === 'l2')!
+    await updateLeg(s, l2, patchOf(l2, '2027-11-03'), { id: 'dag' })
+    expect(get(s, 'dag')).toMatchObject({ startDate: '2026-11-01', endDate: '2027-11-03' })
+    expect(s.list('calendar.json.enc').find((d) => d.id === thuis.id)?.type).toBe('thuis')
+    const wrong = s.list('legs.json.enc').find((l) => l.id === 'l2')!
+    await updateLeg(s, wrong, patchOf(wrong, '2026-11-03'), { id: 'dag' })
+    expect(get(s, 'dag')).toMatchObject({ startDate: '2026-11-01', endDate: '2026-11-03' })
+    expect(s.list('calendar.json.enc').find((d) => d.id === thuis.id)?.type).toBe('thuis')
+  })
+
+  it('een geïmporteerde tocht zonder datums blijft zo; alleen een notitie wijzigen verandert geen datums', async () => {
+    const s = await store()
+    await s.put('trips.json.enc', trip('import'))
+    await s.putMany('legs.json.enc', [{ ...leg('i1', 'import', '2025-06-01'), source: 'import' }, { ...leg('i2', 'import', '2025-06-03'), source: 'import' }])
+    const i2 = s.list('legs.json.enc').find((l) => l.id === 'i2')!
+    await updateLeg(s, i2, patchOf(i2, '2025-06-04'), { id: 'import' })
+    expect(get(s, 'import').startDate).toBeUndefined()
+    expect(get(s, 'import').datesFromDays).toBeUndefined()
+
+    await s.put('trips.json.enc', trip('dag', { startDate: '2026-11-01', endDate: '2026-11-01' }))
+    await s.put('legs.json.enc', leg('d1', 'dag', '2026-11-01'))
+    const d1 = s.list('legs.json.enc').find((l) => l.id === 'd1')!
+    await updateLeg(s, d1, { ...patchOf(d1, '2026-11-01'), notes: 'Nepnotitie' }, { id: 'dag' })
+    expect(get(s, 'dag').updatedAt).toBe(T0)
+  })
+
+  it('verliest een trip uit Dag zijn laatste dag en hangt er niets aan, dan verdwijnt hij; met gegevens blijft hij', async () => {
+    const s = await store()
+    await s.putMany('trips.json.enc', [
+      trip('vergissing', { startDate: '2026-11-10', endDate: '2026-11-10', datesFromDays: true }),
+      trip('met-fooi', { startDate: '2026-11-10', endDate: '2026-11-10', datesFromDays: true }),
+      trip('goed', { startDate: '2026-11-08', endDate: '2026-11-14' }),
+    ])
+    await s.putMany('legs.json.enc', [leg('v1', 'vergissing', '2026-11-10'), leg('f1', 'met-fooi', '2026-11-10')])
+    await s.put('transactions.json.enc', { id: 'tx', date: '2026-11-10', kind: 'fooi', amount: 20, currency: 'EUR', source: 'overig', tripId: 'met-fooi', updatedAt: T0, deletedAt: null })
+    for (const id of ['v1', 'f1']) {
+      const l = s.list('legs.json.enc').find((x) => x.id === id)!
+      await updateLeg(s, l, patchOf(l, '2026-11-10'), { id: 'goed' })
+    }
+    expect(s.list('trips.json.enc').some((t) => t.id === 'vergissing')).toBe(false)
+    expect(s.list('trips.json.enc').some((t) => t.id === 'met-fooi')).toBe(true)
+    expect(get(s, 'goed')).toMatchObject({ startDate: '2026-11-08', endDate: '2026-11-14' })
+  })
+
+  it('lopend: drie dagen na de laatste gelogde dag nog; een trip met eigen datums waarin vandaag valt gaat voor', () => {
+    const dag = trip('dag', { startDate: '2026-11-10', endDate: '2026-11-12', datesFromDays: true })
+    expect(activeWeek([dag], DEFAULT_SETTINGS, '2026-11-15')?.id).toBe('dag')
+    expect(activeWeek([dag], DEFAULT_SETTINGS, '2026-11-16')).toBeNull()
+    const gepland = trip('gepland', { startDate: '2026-11-14', endDate: '2026-11-20' })
+    expect(activeWeek([dag, gepland], DEFAULT_SETTINGS, '2026-11-14')?.id).toBe('gepland')
   })
 })

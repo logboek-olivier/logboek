@@ -666,6 +666,11 @@ export class Store {
       if (!again || this.locked) return null
       result.files = again
     }
+    // Wie elk bestand het laatst schreef (versie en apparaat uit het commitbericht): tegelijk en buiten het slot, zodat
+    // opslaan en syncen niet wachten. Lukt het niet, dan zonder; de controle zelf staat al vast.
+    const writers = await Promise.all(result.files.map((f) => (f.state === 'leeg' || f.state === 'ontbreekt' ? null : this.lastWriter(f.path))))
+    if (this.locked) return null
+    result.files = result.files.map((f, i) => ({ ...f, ...writers[i] }))
     const log = readStorageLog(this.db.name)
     writeStorageLog(this.db.name, { ...log, check: result })
     this.notify()
@@ -681,8 +686,6 @@ export class Store {
       if (error instanceof NetworkError || error instanceof GithubError) return null
       throw error
     }
-    // Wie het bestand het laatst schreef (versie en apparaat uit het commitbericht); lukt dat niet, dan zonder.
-    const writer = file ? await this.lastWriter(path) : null
     // Wat nog wacht (opgeslagen maar nog niet gesynct, ook in een ander venster) telt niet als verschil.
     await this.absorbDisk(path)
     const pending = new Set(Object.keys(this.outbox[path] ?? {}))
@@ -692,13 +695,13 @@ export class Store {
     try {
       const remote = await decryptRecords(this.masterKey, path, file.content)
       const differences = countDifferences(local, remote, pending)
-      return { path, local: localActive, remote: remote.filter((r) => r.deletedAt === null).length, state: differences === 0 ? 'gelijk' : 'verschil', differences, ...writer }
+      return { path, local: localActive, remote: remote.filter((r) => r.deletedAt === null).length, state: differences === 0 ? 'gelijk' : 'verschil', differences }
     } catch (error) {
       if (!(error instanceof DecryptError) && !(error instanceof InvalidDataError) && !(error instanceof NewerSchemaError)) throw error
       // Een versie die dit apparaat al verving: GitHub loopt nog achter, geen nieuw probleem.
-      if (wasReplaced(this.db.name, path, file.sha)) return { path, local: localActive, remote: null, state: 'wacht', differences: 0, ...writer }
+      if (wasReplaced(this.db.name, path, file.sha)) return { path, local: localActive, remote: null, state: 'wacht', differences: 0 }
       const reason = error instanceof DecryptError ? `${error.name}/${decryptFailureKind(file.content)}` : error.name
-      return { path, local: localActive, remote: null, state: 'onleesbaar', differences: 0, reason, ...writer }
+      return { path, local: localActive, remote: null, state: 'onleesbaar', differences: 0, reason }
     }
   }
 

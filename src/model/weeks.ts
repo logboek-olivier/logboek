@@ -131,7 +131,11 @@ export function activeWeek(trips: readonly Trip[], settings: Settings, today: st
   const open = trips.filter((t) => t.deletedAt === null && !t.closedAt)
   const chosen = settings.activeWeekId ? open.find((t) => t.id === settings.activeWeekId) : undefined
   if (chosen) return chosen
-  return open.find((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate) ?? null
+  const inside = open.find((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate)
+  if (inside) return inside
+  // Een trip uit Toevoegen → Dag (datums volgen de dagen) blijft drie dagen na de laatste gelogde dag lopend, zodat
+  // hij 's ochtends vóór het loggen nog in Deze trip staat. Een trip met eigen datums waarin vandaag valt, gaat voor.
+  return open.find((t) => t.datesFromDays && t.startDate && t.endDate && t.startDate <= today && today <= endedFor(t, t.endDate)) ?? null
 }
 
 /** Komende trips (start na vandaag), eerstvolgende eerst. */

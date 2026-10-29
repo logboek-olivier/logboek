@@ -149,7 +149,7 @@ export async function updateLeg(store: Store, leg: Leg, patch: LegPatch, trip: {
   }
   await store.put('legs.json.enc', next)
   // Een andere datum of een andere trip: de datums van beide trips volgen hun dagen (als ze dat doen).
-  await followDays(store, [leg.tripId, tripId])
+  if (next.date !== leg.date || tripId !== leg.tripId) await followDays(store, [leg.tripId, tripId])
   void store.sync()
 }
 
