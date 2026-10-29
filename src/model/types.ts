@@ -155,7 +155,7 @@ export interface Transaction extends SyncRecord {
   tipFrom?: TipFrom
 }
 
-export type AddTab = 'dag' | 'inkomsten' | 'uitgave'
+export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave'
 export type Water = 'zee' | 'getij' | 'binnen'
 
 export interface Settings extends SyncRecord {

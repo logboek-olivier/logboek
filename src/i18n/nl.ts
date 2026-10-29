@@ -1059,6 +1059,12 @@ export const nl = {
   'pin.nameTaken': 'Die naam bestaat al; kies een andere.',
   'pin.anyway': 'Toch hier',
   'pin.moveIt': 'Verplaatsen',
+  'quick.tabTrip': 'Trip',
+  'trip.start': 'Startdatum',
+  'trip.end': 'Einddatum',
+  'quick.tripPeople': 'Deelnemers',
+  'quick.tripPeopleHint': 'Alleen voornamen, één per regel; land of kenmerk kan later bij de deelnemer.',
+  'quick.tripLater': 'Alleen de datums zijn nodig. Type, organisatie, boot, gebied en deelnemers zijn later aan te vullen in Deze trip.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

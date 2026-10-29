@@ -3223,3 +3223,25 @@ body.presenting .bottom-bar {
   flex-wrap: wrap;
   gap: var(--s-2);
 }
+
+/* Toevoegen: vier tabs (Trip · Dag · Inkomsten · Uitgave), op 360 px het pictogram boven de tekst. */
+.add-tabs .segment {
+  flex-direction: column;
+  gap: 2px;
+  min-height: 52px;
+  padding: var(--s-1) 2px;
+  font-size: var(--fs-xs);
+}
+
+.add-tabs .segment .icon {
+  --icon: 18px;
+}
+
+@media (min-width: 520px) {
+  .add-tabs .segment {
+    flex-direction: row;
+    gap: var(--s-2);
+    min-height: 44px;
+    font-size: var(--fs-sm);
+  }
+}
