@@ -79,6 +79,7 @@ async function expectSynced(page: Page): Promise<void> {
  */
 async function deployAndReopen(page: Page, server: SwitchableServer): Promise<number> {
   await page.evaluate(() => navigator.serviceWorker.ready)
+  const deployedAt = Date.now() - 1000
   server.root = current
   await page.reload()
   let taps = 0
@@ -96,20 +97,25 @@ async function deployAndReopen(page: Page, server: SwitchableServer): Promise<nu
       { timeout: 60_000 },
     )
     .toBe(true)
-  // De nieuwe service worker neemt over en herlaadt open vensters: pas verder als dat achter de rug is, anders valt
-  // dat herladen midden in een volgende stap.
+  // De nieuwe service worker neemt over en herlaadt open vensters (public/sw-vensters.js zet daarbij het tijdstip
+  // 'herladen' in zijn eigen cache): pas verder als dit venster daarna geladen is (of, als het venster halverwege iets
+  // is en zelf wacht, een paar seconden later), anders valt dat herladen midden in een volgende stap.
   await expect
     .poll(
       () =>
         page
-          .evaluate(async () => {
-            const r = await navigator.serviceWorker.getRegistration()
-            return !!r?.active && r.active.state === 'activated' && !r.installing && !r.waiting && !!navigator.serviceWorker.controller
-          })
+          .evaluate(async (since) => {
+            const cache = await caches.open('logboek-sw-vensters')
+            const hit = await cache.match('herladen')
+            const at = hit ? Number(await hit.text()) : 0
+            if (at < since) return false
+            return performance.timeOrigin >= at || Date.now() - at > 3000
+          }, deployedAt)
           .catch(() => false),
       { timeout: 60_000 },
     )
     .toBe(true)
+  await page.waitForLoadState('load')
   await expect.poll(() => loadedScript(page), { timeout: 30_000 }).toBe(NEW_SCRIPT)
   return taps
 }
