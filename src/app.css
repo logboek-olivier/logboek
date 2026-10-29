@@ -4019,3 +4019,56 @@ body.demo-on .group-head {
 .day-chip.day-onbeschikbaar::before {
   background: repeating-linear-gradient(135deg, var(--day-onbeschikbaar) 0 3px, var(--surface-2) 3px 6px);
 }
+
+/* Meten op de kaart: genummerde meetpunten, hemelsbreed gestippeld, over water als route; de uitkomst onder de kaart. */
+.map-measure-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 4;
+}
+
+.map-route.measure {
+  stroke-dasharray: none;
+}
+
+.map-measure-point circle {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+
+.map-measure-point text {
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  text-anchor: middle;
+  fill: var(--text);
+  pointer-events: none;
+}
+
+.map-measure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin-top: var(--s-2);
+}
+
+.map-measure p {
+  margin: 0;
+}
+
+.map-measure-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  align-items: baseline;
+}
+
+.map-measure-result strong {
+  font-size: var(--fs-lg);
+}
+
+.sea-map-controls .btn.icon.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}

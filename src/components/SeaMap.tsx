@@ -1,6 +1,8 @@
-import { Crosshair, Minus, Plus } from 'lucide-react'
+import { Crosshair, Minus, Plus, Ruler, Undo2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from 'react'
+import { formatNm } from '../format'
 import { t } from '../i18n'
+import { measure as measureRoute, straightNm, type Measurement } from '../model/measure'
 import { loadLabels, loadOsmIndex, tileKey, tileUrl, type OsmIndex, type OsmLabel } from '../model/osm'
 import { Icon } from './Icon'
 import { placeLabels, POINT_KINDS, rankLabels, type ShownLabel } from './map-labels'
@@ -232,9 +234,16 @@ export function SeaMap({
     samples: [],
   })
   const animation = useRef<number | null>(null)
+  /** Loopt de uitloop na het schuiven (een tik die die stopt, zet niets; een tik tijdens het zoomen wel). */
+  const flinging = useRef(false)
   /** Doelzoom van een lopende zoomanimatie: twee keer snel op + is twee stappen. */
   const zoomTarget = useRef<number | null>(null)
   const lastTap = useRef<{ t: number; p: Point } | null>(null)
+  // Meten: in deze stand zet elke tik een meetpunt (geen plaats of pin), met de afstand over water en hemelsbreed.
+  const [measuring, setMeasuring] = useState(false)
+  const [measurePoints, setMeasurePoints] = useState<LatLon[]>([])
+  const [measured, setMeasured] = useState<{ key: string; result: Measurement } | null>(null)
+  const measureKey = measurePoints.map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join('|')
   const pendingTap = useRef<number | null>(null)
 
   useEffect(() => {
@@ -278,6 +287,19 @@ export function SeaMap({
     }
     // show, stopAnimation en cancelPendingTap werken alleen met refs en de vaste setView.
   }, [])
+
+  // De waterroute tussen de meetpunten (dezelfde als het mijlenvoorstel), op de achtergrond uitgerekend.
+  useEffect(() => {
+    if (measurePoints.length < 2) return
+    let active = true
+    void measureRoute(measurePoints).then((result) => {
+      if (active) setMeasured({ key: measureKey, result })
+    })
+    return () => {
+      active = false
+    }
+    // measureKey staat voor de punten zelf.
+  }, [measureKey])
 
   // Pixels per wereldeenheid.
   const scale = scaleOf(view.zoom)
@@ -374,6 +396,7 @@ export function SeaMap({
     cancelAnimationFrame(animation.current)
     animation.current = null
     zoomTarget.current = null
+    flinging.current = false
     return true
   }
 
@@ -416,7 +439,9 @@ export function SeaMap({
       const off = flingOffset(v, dt)
       show(clampView({ ...from, x: from.x - off.x / s, y: from.y - off.y / s }, dims))
       animation.current = Math.hypot(v.x, v.y) * Math.exp(-dt / FLING_TAU) > 0.02 ? requestAnimationFrame(step) : null
+      if (animation.current === null) flinging.current = false
     }
+    flinging.current = true
     animation.current = requestAnimationFrame(step)
   }
 
@@ -435,7 +460,8 @@ export function SeaMap({
     const p = local(e)
     if (pointers.current.size === 0) {
       // Een vinger die de uitloop stopt, is geen tik (dan zou stoppen meteen een punt zetten).
-      g.stopped = stopAnimation()
+      g.stopped = flinging.current
+      stopAnimation()
       g.moved = false
       g.multi = false
       g.start = p
@@ -501,6 +527,15 @@ export function SeaMap({
       return
     }
     lastTap.current = { t: at, p }
+    if (measuring) {
+      const point = toLatLon(p.x, p.y)
+      cancelPendingTap()
+      pendingTap.current = window.setTimeout(() => {
+        pendingTap.current = null
+        setMeasurePoints((current) => [...current, point])
+      }, DOUBLE_TAP_MS)
+      return
+    }
     if (!onPick && !onSelectPlace) return
     // Tik dicht bij een bekende plaats: die plaats kiezen; anders een nieuw punt. Bepaald bij de tik zelf.
     const near = places
@@ -537,7 +572,7 @@ export function SeaMap({
     return [p.x - 12, p.y - 12, p.x + 12, p.y + 12]
   }
   // Ook niet onder de knoppen rechtsboven (48 px met 4 px ertussen, 8 px van de rand) en de naamsvermelding linksonder.
-  const controls = 2 + (selected ? 1 : 0)
+  const controls = 2 + (small ? 0 : 1) + (selected ? 1 : 0)
   const reserved: [number, number, number, number][] = [
     [size.w - 64, 0, size.w, 8 + controls * 52 + 4],
     [0, size.h - 28, 220, size.h],
@@ -547,126 +582,188 @@ export function SeaMap({
     const p = toScreen(point)
     return [p.x - 10, p.y - 10, p.x + 10, p.y + 10]
   }
-  const taken = [...places.map(placeBox), ...(stops ?? []).map(pointBox), ...(selected ? [markerBox(selected)] : []), ...reserved]
+  const taken = [...places.map(placeBox), ...(stops ?? []).map(pointBox), ...(selected ? [markerBox(selected)] : []), ...(measuring ? measurePoints.map(pointBox) : []), ...reserved]
   const shownLabels = placeLabels(rankedLabels, view.zoom, toScreen, size, taken)
   const stopGroups = groupStops(stops ?? [])
   const line = (path: readonly LatLon[]) => path.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('')
   const maxCount = Math.max(1, ...(hotspots ?? []).map((h) => h.count))
+  const result = measured && measured.key === measureKey && measurePoints.length >= 2 ? measured.result : null
+
+  function stopMeasuring() {
+    cancelPendingTap()
+    setMeasuring(false)
+    setMeasurePoints([])
+  }
 
   return (
-    <div className={`sea-map${small ? ' small' : ''}`}>
-      <div
-        ref={box}
-        className="sea-map-canvas"
-        role="application"
-        aria-label={label ?? t('map.label')}
-        data-zoom={view.zoom.toFixed(2)}
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={(e) => release(e, false)}
-        onPointerCancel={(e) => release(e, true)}
-        onTouchStart={keepTouch}
-        onTouchMove={keepTouch}
-        onTouchEnd={keepTouch}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        <svg width={size.w} height={size.h} viewBox={`0 0 ${size.w} ${size.h}`} aria-hidden="true">
-          <rect className="map-sea" x={0} y={0} width={size.w} height={size.h} />
-          <g transform={transform}>
-            {clip && (
-              <clipPath id={clipId}>
-                <path d={clip} clipRule="evenodd" />
-              </clipPath>
-            )}
-            <g clipPath={clip ? `url(#${clipId})` : undefined}>
-              {(fine ? wanted : ['wereld']).map((name) => (paths[name] ? <path key={name} className="map-land" d={paths[name]} vectorEffect="non-scaling-stroke" /> : null))}
-            </g>
-            {shownOsm.map((tile) =>
-              osmPaths[tile.id] ? (
-                <g key={tile.id}>
-                  <path className="map-land map-osm" d={osmPaths[tile.id]!.land} vectorEffect="non-scaling-stroke" />
-                  {osmPaths[tile.id]!.lakes && <path className="map-lake" d={osmPaths[tile.id]!.lakes} />}
-                </g>
-              ) : null,
-            )}
-          </g>
-          {routes?.map((path, i) => (path.length > 1 ? <path key={i} className="map-route solid all" d={line(path)} /> : null))}
-          {routeLine && <path className={`map-route${stops?.length ? ' solid' : ''}`} d={routeLine} />}
-          {hotspots?.map((h) => {
-            const s = toScreen(h)
-            if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
-            const r = 4 + 6 * Math.sqrt(h.count / maxCount)
-            return (
-              <g key={`${h.lat}|${h.lon}`} className="map-hotspot">
-                <circle cx={s.x} cy={s.y} r={r} />
-                <text x={s.x + r + 4} y={s.y + 4}>
-                  {h.name}
-                </text>
+    <>
+      {/* De uitkomst van het meten staat onder de kaart, buiten het kaartvak (daar staan de knoppen en de naamsvermelding). */}
+      <div className={`sea-map${small ? ' small' : ''}`}>
+        <div
+          ref={box}
+          className="sea-map-canvas"
+          role="application"
+          aria-label={label ?? t('map.label')}
+          data-zoom={view.zoom.toFixed(2)}
+          onPointerDown={down}
+          onPointerMove={move}
+          onPointerUp={(e) => release(e, false)}
+          onPointerCancel={(e) => release(e, true)}
+          onTouchStart={keepTouch}
+          onTouchMove={keepTouch}
+          onTouchEnd={keepTouch}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <svg width={size.w} height={size.h} viewBox={`0 0 ${size.w} ${size.h}`} aria-hidden="true">
+            <rect className="map-sea" x={0} y={0} width={size.w} height={size.h} />
+            <g transform={transform}>
+              {clip && (
+                <clipPath id={clipId}>
+                  <path d={clip} clipRule="evenodd" />
+                </clipPath>
+              )}
+              <g clipPath={clip ? `url(#${clipId})` : undefined}>
+                {(fine ? wanted : ['wereld']).map((name) => (paths[name] ? <path key={name} className="map-land" d={paths[name]} vectorEffect="non-scaling-stroke" /> : null))}
               </g>
-            )
-          })}
-          {shownLabels.map((l) => (
-            <MapLabel key={`${l.k}|${l.n}|${l.lat}|${l.lon}`} label={l} />
-          ))}
-          {places.map((place) => {
-            const s = toScreen(place)
-            if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
-            return (
-              <g key={place.id} className="map-place">
-                <circle cx={s.x} cy={s.y} r={5} />
-                {view.zoom >= 8 && (
-                  <text x={s.x + 8} y={s.y + 4}>
-                    {place.name}
+              {shownOsm.map((tile) =>
+                osmPaths[tile.id] ? (
+                  <g key={tile.id}>
+                    <path className="map-land map-osm" d={osmPaths[tile.id]!.land} vectorEffect="non-scaling-stroke" />
+                    {osmPaths[tile.id]!.lakes && <path className="map-lake" d={osmPaths[tile.id]!.lakes} />}
+                  </g>
+                ) : null,
+              )}
+            </g>
+            {routes?.map((path, i) => (path.length > 1 ? <path key={i} className="map-route solid all" d={line(path)} /> : null))}
+            {routeLine && <path className={`map-route${stops?.length ? ' solid' : ''}`} d={routeLine} />}
+            {hotspots?.map((h) => {
+              const s = toScreen(h)
+              if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
+              const r = 4 + 6 * Math.sqrt(h.count / maxCount)
+              return (
+                <g key={`${h.lat}|${h.lon}`} className="map-hotspot">
+                  <circle cx={s.x} cy={s.y} r={r} />
+                  <text x={s.x + r + 4} y={s.y + 4}>
+                    {h.name}
                   </text>
-                )}
+                </g>
+              )
+            })}
+            {shownLabels.map((l) => (
+              <MapLabel key={`${l.k}|${l.n}|${l.lat}|${l.lon}`} label={l} />
+            ))}
+            {places.map((place) => {
+              const s = toScreen(place)
+              if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
+              return (
+                <g key={place.id} className="map-place">
+                  <circle cx={s.x} cy={s.y} r={5} />
+                  {view.zoom >= 8 && (
+                    <text x={s.x + 8} y={s.y + 4}>
+                      {place.name}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+            {stopGroups.map((g) => {
+              const s = toScreen(g)
+              if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
+              const text = g.numbers.length > 2 ? `${g.numbers[0]}…${g.numbers.at(-1)}` : g.numbers.join('·')
+              const r = text.length > 2 ? 12 : 10
+              return (
+                <g key={`${g.lat}|${g.lon}`} className={`map-stop${g.kinds.has('start') ? ' start' : ''}${g.kinds.has('end') ? ' end' : ''}`}>
+                  <circle cx={s.x} cy={s.y} r={r} />
+                  <text x={s.x} y={s.y + 4}>
+                    {text}
+                  </text>
+                </g>
+              )
+            })}
+            {measuring && measurePoints.length > 1 && <path className="map-measure-line" d={line(measurePoints)} />}
+            {measuring && result && result.path.length > 1 && <path className="map-route measure" d={line(result.path)} />}
+            {measuring &&
+              measurePoints.map((point, i) => {
+                const s = toScreen(point)
+                return (
+                  <g key={i} className="map-measure-point">
+                    <circle cx={s.x} cy={s.y} r={7} />
+                    <text x={s.x} y={s.y + 3.5}>
+                      {i + 1}
+                    </text>
+                  </g>
+                )
+              })}
+            {marker && (
+              <g className="map-marker">
+                <circle cx={marker.x} cy={marker.y} r={9} />
+                <circle cx={marker.x} cy={marker.y} r={3} />
               </g>
-            )
-          })}
-          {stopGroups.map((g) => {
-            const s = toScreen(g)
-            if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
-            const text = g.numbers.length > 2 ? `${g.numbers[0]}…${g.numbers.at(-1)}` : g.numbers.join('·')
-            const r = text.length > 2 ? 12 : 10
-            return (
-              <g key={`${g.lat}|${g.lon}`} className={`map-stop${g.kinds.has('start') ? ' start' : ''}${g.kinds.has('end') ? ' end' : ''}`}>
-                <circle cx={s.x} cy={s.y} r={r} />
-                <text x={s.x} y={s.y + 4}>
-                  {text}
-                </text>
-              </g>
-            )
-          })}
-          {marker && (
-            <g className="map-marker">
-              <circle cx={marker.x} cy={marker.y} r={9} />
-              <circle cx={marker.x} cy={marker.y} r={3} />
-            </g>
-          )}
-        </svg>
-      </div>
-      {shownOsm.length > 0 && <p className="map-attribution">{t('map.osmAttribution')}</p>}
-      <div className="sea-map-controls">
-        <button type="button" className="btn icon" aria-label={t('map.zoomIn')} disabled={(zoomTarget.current ?? view.zoom) >= MAX_ZOOM} onClick={() => zoomTo(1)}>
-          <Icon icon={Plus} />
-        </button>
-        <button type="button" className="btn icon" aria-label={t('map.zoomOut')} disabled={(zoomTarget.current ?? view.zoom) <= MIN_ZOOM} onClick={() => zoomTo(-1)}>
-          <Icon icon={Minus} />
-        </button>
-        {selected && (
-          <button
-            type="button"
-            className="btn icon"
-            aria-label={t('map.center')}
-            onClick={() => {
-              stopAnimation()
-              show(clampView({ ...viewRef.current, x: mercX(selected.lon), y: mercY(selected.lat) }, sizeRef.current))
-            }}
-          >
-            <Icon icon={Crosshair} />
+            )}
+          </svg>
+        </div>
+        {shownOsm.length > 0 && <p className="map-attribution">{t('map.osmAttribution')}</p>}
+        <div className="sea-map-controls">
+          <button type="button" className="btn icon" aria-label={t('map.zoomIn')} disabled={(zoomTarget.current ?? view.zoom) >= MAX_ZOOM} onClick={() => zoomTo(1)}>
+            <Icon icon={Plus} />
           </button>
-        )}
+          <button type="button" className="btn icon" aria-label={t('map.zoomOut')} disabled={(zoomTarget.current ?? view.zoom) <= MIN_ZOOM} onClick={() => zoomTo(-1)}>
+            <Icon icon={Minus} />
+          </button>
+          {!small && (
+            <button
+              type="button"
+              className={`btn icon${measuring ? ' active' : ''}`}
+              aria-label={t('map.measure')}
+              aria-pressed={measuring}
+              onClick={() => (measuring ? stopMeasuring() : setMeasuring(true))}
+            >
+              <Icon icon={Ruler} />
+            </button>
+          )}
+          {selected && (
+            <button
+              type="button"
+              className="btn icon"
+              aria-label={t('map.center')}
+              onClick={() => {
+                stopAnimation()
+                show(clampView({ ...viewRef.current, x: mercX(selected.lon), y: mercY(selected.lat) }, sizeRef.current))
+              }}
+            >
+              <Icon icon={Crosshair} />
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+      {measuring && (
+        <div className="map-measure" aria-live="polite">
+          {measurePoints.length < 2 ? (
+            <p className="muted small">{t(measurePoints.length === 0 ? 'map.measureHint' : 'map.measureNext')}</p>
+          ) : (
+            <p className="map-measure-result">
+              <span>
+                <strong className="num">{result ? (result.water !== null ? formatNm(result.water) : '–') : '…'}</strong> {t('map.measureWater')}
+              </span>
+              <span className="muted">
+                <span className="num">{formatNm(straightNm(measurePoints))}</span> {t('map.measureStraight')}
+              </span>
+            </p>
+          )}
+          {result && result.water === null && <p className="muted small">{t('map.measureNoWater')}</p>}
+          <div className="row">
+            <button type="button" className="btn small" aria-label={t('map.measureUndo')} disabled={measurePoints.length === 0} onClick={() => setMeasurePoints((current) => current.slice(0, -1))}>
+              <Icon icon={Undo2} />
+              {t('map.measureUndoShort')}
+            </button>
+            <button type="button" className="btn small" aria-label={t('map.measureDone')} onClick={stopMeasuring}>
+              <Icon icon={X} />
+              {t('map.measureDoneShort')}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
