@@ -4156,3 +4156,42 @@ body.demo-on .group-head {
   margin: 0;
   font-style: italic;
 }
+
+/* Jaaroverzicht voor de belasting (Meer → Geld): totalen per organisatie; de PDF heeft alle regels, zwart op wit. */
+.tax-totals .total-row td {
+  font-weight: var(--fw-bold);
+}
+
+@media print {
+  .tax-print h2 {
+    margin: 6mm 0 2mm;
+    font-size: 12pt;
+  }
+
+  .tax-print .table-scroll {
+    overflow: visible;
+    border: none;
+    background: none;
+  }
+
+  .tax-print .table {
+    width: 100%;
+    font-size: 9pt;
+  }
+
+  .tax-print .table th,
+  .tax-print .table td {
+    padding: 1.5mm 2mm;
+    border-bottom: 0.5pt solid #999;
+    white-space: normal;
+    color: #000;
+  }
+
+  .tax-print .table tr {
+    break-inside: avoid;
+  }
+
+  .tax-print .muted {
+    color: #333;
+  }
+}
