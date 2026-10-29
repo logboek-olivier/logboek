@@ -46,6 +46,32 @@ export type TipFrom =
   /** Eén of meer deelnemers van de trip; `amounts` per persoon, zonder = samen gegeven. */
   | { kind: 'personen'; participantIds: string[]; amounts?: Record<string, number> }
 
+/** Salaris van een trip: verwacht of ontvangen. */
+export type SalaryStatus = 'verwacht' | 'ontvangen'
+/** standaard: het standaardbedrag van de organisatie (Instellingen); eigen: zelf ingevuld of aangepast. */
+export type SalarySource = 'standaard' | 'eigen'
+
+/**
+ * Olivier wordt per trip betaald. Een eigen bedrag en een ontvangen salaris worden nooit automatisch overschreven
+ * (src/model/salary.ts).
+ */
+export interface TripSalary {
+  amount: number
+  currency: Currency
+  status: SalaryStatus
+  source: SalarySource
+  /** Het inkomen dat bij "ontvangen" is gemaakt. */
+  transactionId?: string
+  /** jjjj-mm-dd: na "Nog niet" vraagt Vandaag pas vanaf deze datum opnieuw. */
+  askAfter?: string
+}
+
+/** Standaardbedrag per organisatie (Instellingen → Salaris per organisatie). */
+export interface SalaryDefault {
+  amount: number
+  currency: Currency
+}
+
 export interface WeekReview {
   /** Reviewscore zoals de organisatie die geeft, bijvoorbeeld 9,4. */
   score?: number
@@ -103,6 +129,8 @@ export interface Trip extends SyncRecord {
    * weggaan. Stelt Olivier de datums zelf in, dan vervalt dit (src/model/trip-dates.ts).
    */
   datesFromDays?: boolean
+  /** Salaris voor deze trip (bedrag, valuta, verwacht of ontvangen, standaard of eigen). */
+  salary?: TripSalary
 }
 
 export interface Leg extends SyncRecord {
@@ -186,6 +214,8 @@ export interface Settings extends SyncRecord {
   orgFirst?: Partial<Record<CountedOrganisation, number>>
   /** Trips met alleen een afkorting in de naam (YW, SV) waarvan Olivier zei dat ze niet bij die organisatie horen. */
   orgAnswered?: string[]
+  /** Standaardsalaris per organisatie; vult alleen trips zonder salaris die nog niet voorbij zijn. */
+  salaryDefaults?: Partial<Record<Organisation, SalaryDefault>>
 }
 
 /** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */

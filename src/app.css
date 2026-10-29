@@ -3615,3 +3615,50 @@ body.presenting .bottom-bar {
   gap: var(--s-2);
   flex-wrap: wrap;
 }
+
+/* Salaris: standaard ingeklapt in het tripscherm (geen bedragen zonder erom te vragen). */
+.salary-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.btn.disclosure {
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+}
+
+.salary-question p {
+  align-items: flex-start;
+  margin: 0;
+  font-weight: 600;
+}
+
+.salary-line {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Vooruitblik: het totaal groot, de schatting van de fooi duidelijk anders (cursief en gedempt). */
+.outlook h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.outlook-total {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.outlook-table .estimate,
+.estimate-note {
+  color: var(--text-muted);
+  font-style: italic;
+}

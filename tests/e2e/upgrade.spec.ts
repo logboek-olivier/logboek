@@ -217,6 +217,15 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('settings.json.enc'), { timeout: 20_000 }).toBeGreaterThan(settingsPuts)
     await expectSynced(page)
+    // Salaris per trip (nieuw veld in trips, standaardbedragen in de instellingen): Vandaag vraagt na de einddatum of
+    // het salaris ontvangen is; "Ja" maakt een inkomen bij de trip en zet de status op ontvangen.
+    await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
+    const salaryQuestion = page.locator('.salary-question', { hasText: 'Nepsalaris upgrade' })
+    await expect(salaryQuestion).toBeVisible()
+    const salaryPuts = puts('trips.json.enc')
+    await salaryQuestion.getByRole('button', { name: L('salary.yes'), exact: true }).click()
+    await expect.poll(() => puts('trips.json.enc'), { timeout: 20_000 }).toBeGreaterThan(salaryPuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -234,9 +243,13 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       ]),
     )
     const settings = await decryptRecords(key, 'settings.json.enc', Uint8Array.from(Buffer.from(github.files.get('settings.json.enc')!.content, 'base64')))
-    expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'] })
+    expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } } })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
+    // Het salaris is ontvangen (eigen bedrag blijft), met het inkomen bij de trip.
+    const salaryTrip = trips.find((t) => t.id === 'upg-trip-salaris') as { salary?: { transactionId?: string } } | undefined
+    expect(salaryTrip).toMatchObject({ salary: { amount: 1200, currency: 'EUR', status: 'ontvangen', source: 'eigen' } })
+    expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({ id: salaryTrip?.salary?.transactionId, kind: 'loon', amount: 1200, tripId: 'upg-trip-salaris', deletedAt: null })]))
     expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
   } finally {
     await server.close()

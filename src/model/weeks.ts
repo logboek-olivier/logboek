@@ -6,8 +6,9 @@ import { followTrip, tripRange } from './calendar'
 import { MAX_COUNTRY, MAX_TAG } from './guests'
 import type { Undo } from './edit'
 import { addDays } from './money'
-import { saveSettings } from './settings'
-import { newId, todayIso, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { currentSettings, saveSettings } from './settings'
+import { cleanSalary, withSalaryDefault } from './salary'
+import { newId, todayIso, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
 // charterbedrijf), gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een naam; dan worden type
@@ -208,6 +209,11 @@ export interface WeekInput {
   note: string
   /** Geplande etappes (sjabloon of vorige trip); ontbreekt het, dan blijft een bestaande planning staan. */
   route?: PlannedLeg[]
+  /**
+   * Salaris zoals in het bewerkscherm gekozen; null = weggehaald. Ontbreekt het, dan geldt het standaardbedrag van de
+   * organisatie (alleen zonder eigen of ontvangen salaris, src/model/salary.ts).
+   */
+  salary?: TripSalary | null
 }
 
 /** Geplande etappes: korte plaatsnamen, hoogstens 120 dagen. */
@@ -264,7 +270,9 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
 
 /** Nieuwe trip: opslaan maakt hem lopend als vandaag erin valt; eerdere en komende trips laten de lopende staan. */
 export async function startWeek(store: Store, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
-  const trip: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
+  const fields: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
+  const settings = currentSettings(store.list('settings.json.enc'))
+  const trip = input.salary ? { ...fields, salary: cleanSalary(input.salary) } : input.salary === null ? fields : withSalaryDefault(fields, settings)
   await store.put('trips.json.enc', trip)
   // De agenda volgt direct: zelf ingestelde dagen in de nieuwe trip maken plaats voor werk.
   await followTrip(store, trip.id, null, tripRange(trip, store.list('legs.json.enc')))
@@ -281,7 +289,16 @@ export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lan
   void [_s, _e, _b, _m, _l, _k, _ba, _c, _a, _o, _n]
   // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
   const keep = input.route === undefined && route ? { route } : {}
-  const next: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
+  const merged: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
+  // Salaris: wat in het bewerkscherm staat; anders volgt een standaardbedrag de (nieuwe) organisatie.
+  const { salary: _old, ...withoutSalary } = merged
+  void _old
+  const next: Trip =
+    input.salary === undefined
+      ? withSalaryDefault(merged, currentSettings(store.list('settings.json.enc')), trip)
+      : input.salary === null
+        ? withoutSalary
+        : { ...merged, salary: cleanSalary(input.salary) }
   // Zelf andere datums gekozen: die staan voortaan vast en volgen de dagen niet meer.
   if (next.datesFromDays && (next.startDate !== trip.startDate || next.endDate !== trip.endDate)) delete next.datesFromDays
   const legs = store.list('legs.json.enc')

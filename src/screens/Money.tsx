@@ -3,6 +3,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
 import type { Notify } from '../components/EditSheets'
 import { TransactionView } from '../components/Views'
+import { SalaryOutlook } from '../components/SalaryOutlook'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -62,6 +63,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           {t('money.empty')}
         </Empty>
       )}
+      {live.length === 0 && <SalaryOutlook store={store} />}
       {live.length > 0 && (
         <>
           <dl className="grid">
@@ -76,6 +78,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
             <OtherStat other={all.other} />
           </dl>
+
+          <SalaryOutlook store={store} />
 
           <div className="section card card-body">
             <div className="section-head">
