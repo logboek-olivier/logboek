@@ -1,14 +1,38 @@
 import { Crosshair, Minus, Plus } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from 'react'
 import { t } from '../i18n'
 import { loadLabels, loadOsmIndex, tileKey, tileUrl, type LabelKind, type OsmIndex, type OsmLabel } from '../model/osm'
 import { Icon } from './Icon'
+import {
+  anchorOf,
+  clampView,
+  DOUBLE_TAP_MS,
+  DOUBLE_TAP_PX,
+  FLING_MIN,
+  FLING_TAU,
+  flingOffset,
+  gestureView,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  scaleOf,
+  tapSlop,
+  velocity,
+  viewWith,
+  worldAt,
+  zoomAround,
+  type Anchor,
+  type MapView,
+  type Point,
+  type Sample,
+} from './map-view'
 
 // Offline zeekaart in eigen SVG: alleen land. Overal Natural Earth uit public/coast/ (publiek domein, in de precache;
 // zie scripts/build-coast.mjs). In vier vaargebieden vanaf zoom 9 gedetailleerde OpenStreetMap-kustlijnen met meren en
 // namen van eilanden, havens en plaatsen (public/osm/, scripts/build-osm.mjs), pas geladen als het gebied in beeld
 // komt en daarna offline bewaard; daar wordt Natural Earth weggeknipt. Geen kaartdienst, geen netwerk buiten de eigen
-// site. Verschuiven met één vinger, zoomen met twee vingers of de knoppen; tikken zet een punt.
+// site. Eén vinger schuift (met lichte uitloop), twee vingers zoomen rond het midden tussen de vingers en schuiven
+// tegelijk, dubbeltik zoomt in rond het tikpunt, de knoppen en het muiswiel zoomen ook; één tik zet een punt. De
+// gebaren zelf staan als pure functies in map-view.ts. Zolang een vinger op de kaart staat, scrolt de pagina niet.
 
 export interface LatLon {
   lat: number
@@ -51,8 +75,6 @@ const TILE_DEG = 10
 const FINE_SPAN_DEG = 40
 /** Wereldcoördinaten (Mercator, 0..1) maal deze factor in de SVG-paden, zodat afronding geen rol speelt. */
 const WORLD = 1_000_000
-const MIN_ZOOM = 2
-const MAX_ZOOM = 16
 /** Niet verder inzoomen dan dit om een route of één plaats in beeld te brengen. */
 const FIT_MAX_ZOOM = 12
 
@@ -182,7 +204,14 @@ export function SeaMap({
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 360, h: small ? 200 : 420 })
-  const [view, setView] = useState(() => (fit && fit.length > 0 ? fitView(fit, 360, small ? 200 : 420) : { x: mercX(center.lon), y: mercY(center.lat), zoom: 9 }))
+  const [view, setView] = useState<MapView>(() => clampView(fit && fit.length > 0 ? fitView(fit, 360, small ? 200 : 420) : { x: mercX(center.lon), y: mercY(center.lat), zoom: 9 }, { w: 360, h: small ? 200 : 420 }))
+  // Het actuele beeld en de maat ook buiten React om (gebaren, uitloop en het muiswiel rekenen ermee tussen renders).
+  const viewRef = useRef(view)
+  const sizeRef = useRef(size)
+  const show = (next: MapView) => {
+    viewRef.current = next
+    setView(next)
+  }
   // Zodra de echte maat bekend is, de route nog één keer in beeld brengen (tenzij Olivier al verschoof of zoomde).
   const touched = useRef(false)
   const fitKey = fit?.map((p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`).join('|') ?? ''
@@ -191,13 +220,30 @@ export function SeaMap({
   const [osmPaths, setOsmPaths] = useState<Record<string, { land: string; lakes: string }>>({})
   const [labels, setLabels] = useState<Record<string, OsmLabel[]>>({})
   const [clipId] = useState(() => `buiten-osm-${++clipCounter}`)
-  const pointers = useRef(new Map<number, { x: number; y: number }>())
-  const gesture = useRef<{ moved: boolean; startDist: number; startZoom: number; last: { x: number; y: number } | null }>({ moved: false, startDist: 0, startZoom: 9, last: null })
+  const pointers = useRef(new Map<number, Point>())
+  const gesture = useRef<{ anchor: Anchor | null; start: Point | null; moved: boolean; multi: boolean; stopped: boolean; type: string; samples: Sample[] }>({
+    anchor: null,
+    start: null,
+    moved: false,
+    multi: false,
+    stopped: false,
+    type: 'touch',
+    samples: [],
+  })
+  const animation = useRef<number | null>(null)
+  /** Doelzoom van een lopende zoomanimatie: twee keer snel op + is twee stappen. */
+  const zoomTarget = useRef<number | null>(null)
+  const lastTap = useRef<{ t: number; p: Point } | null>(null)
+  const pendingTap = useRef<number | null>(null)
 
   useEffect(() => {
     const el = box.current
     if (!el) return
-    const measure = () => setSize({ w: el.clientWidth || 360, h: el.clientHeight || 420 })
+    const measure = () => {
+      const next = { w: el.clientWidth || 360, h: el.clientHeight || 420 }
+      sizeRef.current = next
+      setSize(next)
+    }
     measure()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
     observer?.observe(el)
@@ -206,12 +252,34 @@ export function SeaMap({
 
   useEffect(() => {
     if (!fit || fit.length === 0 || touched.current) return
-    setView(fitView(fit, size.w, size.h))
+    show(clampView(fitView(fit, size.w, size.h), size))
     // fitKey staat voor de punten zelf; een nieuwe array met dezelfde punten verandert niets.
   }, [fitKey, size.w, size.h])
 
+  // Muiswiel en touchpad (desktop): zoomen rond de muis, zonder dat de pagina scrolt (daarom geen passieve listener).
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1
+      const delta = Math.max(-0.5, Math.min(0.5, (-e.deltaY * unit) / 200))
+      touched.current = true
+      stopAnimation()
+      show(zoomAround(viewRef.current, sizeRef.current, { x: e.clientX - rect.left, y: e.clientY - rect.top }, viewRef.current.zoom + delta))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      stopAnimation()
+      cancelPendingTap()
+    }
+    // show, stopAnimation en cancelPendingTap werken alleen met refs en de vaste setView.
+  }, [])
+
   // Pixels per wereldeenheid.
-  const scale = 256 * 2 ** view.zoom
+  const scale = scaleOf(view.zoom)
   const west = lonOf(view.x - size.w / 2 / scale)
   const east = lonOf(view.x + size.w / 2 / scale)
   const north = latOf(view.y - size.h / 2 / scale)
@@ -297,37 +365,87 @@ export function SeaMap({
   const toScreen = (p: LatLon) => ({ x: (mercX(p.lon) - view.x) * scale + size.w / 2, y: (mercY(p.lat) - view.y) * scale + size.h / 2 })
   const toLatLon = (sx: number, sy: number): LatLon => ({ lon: lonOf(view.x + (sx - size.w / 2) / scale), lat: latOf(view.y + (sy - size.h / 2) / scale) })
 
-  function zoomBy(delta: number, around?: { x: number; y: number }) {
-    touched.current = true
-    setView((v) => {
-      const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom + delta))
-      if (!around) return { ...v, zoom }
-      const s0 = 256 * 2 ** v.zoom
-      const s1 = 256 * 2 ** zoom
-      const wx = v.x + (around.x - size.w / 2) / s0
-      const wy = v.y + (around.y - size.h / 2) / s0
-      return { zoom, x: wx - (around.x - size.w / 2) / s1, y: wy - (around.y - size.h / 2) / s1 }
-    })
+  function stopAnimation(): boolean {
+    if (animation.current === null) return false
+    cancelAnimationFrame(animation.current)
+    animation.current = null
+    zoomTarget.current = null
+    return true
   }
 
-  function local(e: ReactPointerEvent) {
+  function cancelPendingTap() {
+    if (pendingTap.current !== null) window.clearTimeout(pendingTap.current)
+    pendingTap.current = null
+  }
+
+  /** Vloeiend naar een andere zoom rond punt p (knoppen, dubbeltik): het wereldpunt onder p blijft staan. */
+  function zoomTo(delta: number, around?: Point) {
+    touched.current = true
+    const base = zoomTarget.current ?? viewRef.current.zoom
+    stopAnimation()
+    const from = viewRef.current
+    const dims = sizeRef.current
+    const p = around ?? { x: dims.w / 2, y: dims.h / 2 }
+    const world = worldAt(from, dims, p)
+    const target = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, base + delta))
+    zoomTarget.current = target
+    const t0 = performance.now()
+    const step = (now: number) => {
+      // De tijd van het eerste beeld kan net vóór t0 liggen.
+      const k = Math.max(0, Math.min(1, (now - t0) / 220))
+      const eased = 1 - (1 - k) ** 3
+      show(clampView(viewWith(world, p, from.zoom + (target - from.zoom) * eased, dims), dims))
+      animation.current = k < 1 ? requestAnimationFrame(step) : null
+      if (k >= 1) zoomTarget.current = null
+    }
+    animation.current = requestAnimationFrame(step)
+  }
+
+  /** Uitloop na snel schuiven: de snelheid neemt exponentieel af (licht, binnen een halve seconde vrijwel stil). */
+  function fling(v: Point) {
+    const from = viewRef.current
+    const dims = sizeRef.current
+    const s = scaleOf(from.zoom)
+    const t0 = performance.now()
+    const step = (now: number) => {
+      const dt = Math.max(0, now - t0)
+      const off = flingOffset(v, dt)
+      show(clampView({ ...from, x: from.x - off.x / s, y: from.y - off.y / s }, dims))
+      animation.current = Math.hypot(v.x, v.y) * Math.exp(-dt / FLING_TAU) > 0.02 ? requestAnimationFrame(step) : null
+    }
+    animation.current = requestAnimationFrame(step)
+  }
+
+  function local(e: ReactPointerEvent): Point {
     const rect = box.current!.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
 
+  /** De vingers die meetellen: de eerste twee. */
+  const fingers = () => [...pointers.current.values()].slice(0, 2)
+
   function down(e: ReactPointerEvent<HTMLDivElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    pointers.current.set(e.pointerId, local(e))
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.currentTarget.setPointerCapture?.(e.pointerId)
     const g = gesture.current
-    if (pointers.current.size === 1) {
+    const p = local(e)
+    if (pointers.current.size === 0) {
+      // Een vinger die de uitloop stopt, is geen tik (dan zou stoppen meteen een punt zetten).
+      g.stopped = stopAnimation()
       g.moved = false
-      g.last = local(e)
-    } else if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()]
-      g.startDist = Math.hypot(a!.x - b!.x, a!.y - b!.y)
-      g.startZoom = view.zoom
-      g.moved = true
+      g.multi = false
+      g.start = p
+      g.type = e.pointerType
+      g.samples = [{ ...p, t: e.timeStamp }]
     }
+    pointers.current.set(e.pointerId, p)
+    if (pointers.current.size >= 2) {
+      g.multi = true
+      stopAnimation()
+      cancelPendingTap()
+      lastTap.current = null
+    }
+    g.anchor = anchorOf(viewRef.current, sizeRef.current, fingers())
   }
 
   function move(e: ReactPointerEvent<HTMLDivElement>) {
@@ -335,40 +453,68 @@ export function SeaMap({
     const p = local(e)
     pointers.current.set(e.pointerId, p)
     const g = gesture.current
-    if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()]
-      const dist = Math.hypot(a!.x - b!.x, a!.y - b!.y)
-      if (g.startDist > 0) {
-        const target = g.startZoom + Math.log2(dist / g.startDist)
-        zoomBy(target - view.zoom, { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 })
-      }
-      return
-    }
-    if (!g.last) return
-    const dx = p.x - g.last.x
-    const dy = p.y - g.last.y
-    if (!g.moved && Math.hypot(dx, dy) < 6) return
+    if (!g.anchor) return
+    // Binnen de tikdrempel is het nog een tik; daarna ligt de kaart weer precies onder de vinger (het anker is de plek
+    // waar de vinger neerkwam).
+    if (pointers.current.size === 1 && !g.moved && (!g.start || Math.hypot(p.x - g.start.x, p.y - g.start.y) < tapSlop(g.type))) return
     g.moved = true
-    g.last = p
     touched.current = true
-    setView((v) => ({ ...v, x: v.x - dx / scale, y: v.y - dy / scale }))
+    if (pointers.current.size === 1) {
+      g.samples.push({ ...p, t: e.timeStamp })
+      if (g.samples.length > 20) g.samples.shift()
+    }
+    show(gestureView(g.anchor, sizeRef.current, fingers()))
   }
 
-  function up(e: ReactPointerEvent<HTMLDivElement>) {
+  function release(e: ReactPointerEvent<HTMLDivElement>, cancelled: boolean) {
+    if (!pointers.current.has(e.pointerId)) return
     const g = gesture.current
-    const wasTap = pointers.current.size === 1 && !g.moved
-    pointers.current.delete(e.pointerId)
-    if (pointers.current.size === 0) g.last = null
-    if (!wasTap || (!onPick && !onSelectPlace)) return
     const p = local(e)
-    // Tik dicht bij een bekende plaats: die plaats kiezen; anders een nieuw punt.
+    pointers.current.delete(e.pointerId)
+    if (pointers.current.size > 0) {
+      // Eén vinger los na knijpen: verder met de andere vinger vanaf waar die nu is (geen sprong, geen uitloop).
+      g.anchor = anchorOf(viewRef.current, sizeRef.current, fingers())
+      g.samples = []
+      return
+    }
+    g.anchor = null
+    if (cancelled || g.multi) return
+    if (g.moved) {
+      const v = velocity(g.samples, e.timeStamp)
+      if (Math.hypot(v.x, v.y) >= FLING_MIN) fling(v)
+      return
+    }
+    if (!g.stopped) tap(p, e.timeStamp)
+  }
+
+  /** Een tik: bij een tweede tik vlak erna en dichtbij inzoomen; anders (na de dubbeltiktijd) een punt kiezen. */
+  function tap(p: Point, at: number) {
+    const last = lastTap.current
+    if (last && at - last.t <= DOUBLE_TAP_MS && Math.hypot(p.x - last.p.x, p.y - last.p.y) <= DOUBLE_TAP_PX) {
+      lastTap.current = null
+      cancelPendingTap()
+      zoomTo(1, p)
+      return
+    }
+    lastTap.current = { t: at, p }
+    if (!onPick && !onSelectPlace) return
+    // Tik dicht bij een bekende plaats: die plaats kiezen; anders een nieuw punt. Bepaald bij de tik zelf.
     const near = places
       .map((place) => ({ place, d: Math.hypot(toScreen(place).x - p.x, toScreen(place).y - p.y) }))
       .filter((c) => c.d <= 22)
       .sort((a, b) => a.d - b.d)[0]
-    if (near) onSelectPlace?.(near.place)
-    else onPick?.(toLatLon(p.x, p.y))
+    const point = toLatLon(p.x, p.y)
+    cancelPendingTap()
+    pendingTap.current = window.setTimeout(() => {
+      pendingTap.current = null
+      if (near) onSelectPlace?.(near.place)
+      else onPick?.(point)
+    }, DOUBLE_TAP_MS)
   }
+
+  // Touchgebeurtenissen niet doorgeven: zolang een vinger op de kaart staat, geen omlaag-trekken-om-te-synchroniseren
+  // (Vandaag) en geen vegen naar een andere maand (agenda). Scrollen houdt touch-action: none al tegen.
+  const keepTouch = (e: ReactTouchEvent) => e.stopPropagation()
 
   const transform = `translate(${size.w / 2 - view.x * scale} ${size.h / 2 - view.y * scale}) scale(${scale / WORLD})`
   const marker = selected ? toScreen(selected) : null
@@ -388,14 +534,15 @@ export function SeaMap({
         className="sea-map-canvas"
         role="application"
         aria-label={label ?? t('map.label')}
+        data-zoom={view.zoom.toFixed(2)}
         onPointerDown={down}
         onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={(e) => {
-          pointers.current.delete(e.pointerId)
-          gesture.current.last = null
-        }}
-        onWheel={(e) => zoomBy(e.deltaY < 0 ? 0.5 : -0.5, local(e as unknown as ReactPointerEvent))}
+        onPointerUp={(e) => release(e, false)}
+        onPointerCancel={(e) => release(e, true)}
+        onTouchStart={keepTouch}
+        onTouchMove={keepTouch}
+        onTouchEnd={keepTouch}
+        onContextMenu={(e) => e.preventDefault()}
       >
         <svg width={size.w} height={size.h} viewBox={`0 0 ${size.w} ${size.h}`} aria-hidden="true">
           <rect className="map-sea" x={0} y={0} width={size.w} height={size.h} />
@@ -475,14 +622,22 @@ export function SeaMap({
       </div>
       {shownOsm.length > 0 && <p className="map-attribution">{t('map.osmAttribution')}</p>}
       <div className="sea-map-controls">
-        <button type="button" className="btn icon" aria-label={t('map.zoomIn')} onClick={() => zoomBy(1)}>
+        <button type="button" className="btn icon" aria-label={t('map.zoomIn')} disabled={(zoomTarget.current ?? view.zoom) >= MAX_ZOOM} onClick={() => zoomTo(1)}>
           <Icon icon={Plus} />
         </button>
-        <button type="button" className="btn icon" aria-label={t('map.zoomOut')} onClick={() => zoomBy(-1)}>
+        <button type="button" className="btn icon" aria-label={t('map.zoomOut')} disabled={(zoomTarget.current ?? view.zoom) <= MIN_ZOOM} onClick={() => zoomTo(-1)}>
           <Icon icon={Minus} />
         </button>
         {selected && (
-          <button type="button" className="btn icon" aria-label={t('map.center')} onClick={() => setView((v) => ({ ...v, x: mercX(selected.lon), y: mercY(selected.lat) }))}>
+          <button
+            type="button"
+            className="btn icon"
+            aria-label={t('map.center')}
+            onClick={() => {
+              stopAnimation()
+              show(clampView({ ...viewRef.current, x: mercX(selected.lon), y: mercY(selected.lat) }, sizeRef.current))
+            }}
+          >
             <Icon icon={Crosshair} />
           </button>
         )}
