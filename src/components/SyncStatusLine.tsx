@@ -1,4 +1,4 @@
-import { CircleCheck, CloudOff, CloudUpload, LoaderCircle, RefreshCw, RotateCcw, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { CircleCheck, CloudOff, CloudUpload, LoaderCircle, RefreshCw, RotateCcw, ShieldAlert, TriangleAlert, Presentation } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { checkHasProblem } from '../storage/storage-log'
 import { recordError } from '../errors'
@@ -17,6 +17,7 @@ export function useSyncStatus(store: Store) {
 
 const ICONS = {
   synced: CircleCheck,
+  demo: Presentation,
   syncing: LoaderCircle,
   pending: RefreshCw,
   offline: CloudOff,
@@ -77,7 +78,8 @@ function StatusButton({ store, status }: { store: Store; status: SyncStatus }) {
       aria-label={`${describeStatus(status)} · ${t('sync.now')}`}
       // "Werk de app bij": herladen haalt de nieuwste versie op (de app-pagina komt altijd van het netwerk).
       onClick={() => (status.kind === 'error' && status.code === 'update' ? window.location.reload() : void store.sync())}
-      disabled={status.kind === 'syncing'}
+      // Demomodus: er valt niets te synchroniseren.
+      disabled={status.kind === 'syncing' || status.kind === 'demo'}
     >
       <Icon icon={ICONS[status.kind]} className={status.kind === 'syncing' ? 'spin' : ''} />
       {saved && (

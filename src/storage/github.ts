@@ -94,6 +94,29 @@ export function parseCommitMessage(message: string): CommitInfo {
   return { at: m[1] ?? null, version: m[2] ?? null, device: m[3] ?? null }
 }
 
+// Demomodus (src/demo.ts): zolang die loopt, gaat er geen enkel verzoek naar GitHub, van geen enkele client (ook niet
+// van de eigen Store, die open blijft). Het verzoek komt niet eens bij fetch; de app ziet "geen verbinding".
+let networkBlocked = false
+// Verzoeken die al onderweg waren toen de blokkade begon, worden afgebroken (de app ziet "geen verbinding").
+let blockController = new AbortController()
+
+export function blockNetwork(on: boolean): void {
+  if (on && !networkBlocked) blockController.abort()
+  if (!on && networkBlocked) blockController = new AbortController()
+  networkBlocked = on
+}
+
+export function isNetworkBlocked(): boolean {
+  return networkBlocked
+}
+
+/** Stopt na 60 seconden, en direct als de demo begint (als de browser beide signalen kan combineren). */
+function requestSignal(): AbortSignal | undefined {
+  const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined
+  if (typeof AbortSignal.any !== 'function') return timeout
+  return AbortSignal.any(timeout ? [timeout, blockController.signal] : [blockController.signal])
+}
+
 export class GithubClient {
   /** Vervaldatum van de token (jjjj-mm-dd) als GitHub die in een antwoord meegaf en de browser de header mag lezen. */
   tokenExpiresAt: string | null = null
@@ -105,11 +128,12 @@ export class GithubClient {
   ) {}
 
   private async request(path: string, init: RequestInit = {}): Promise<Response> {
+    if (networkBlocked) throw new NetworkError()
     let response: Response
     try {
       response = await this.fetchImpl(`${API_BASE}${path}`, {
         ...init,
-        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined,
+        signal: requestSignal(),
         // Nooit uit de browsercache: GitHub stuurt max-age=60 mee, en een oudere versie van een net hersteld bestand
         // liet de app denken dat het nog onleesbaar was.
         cache: 'no-store',

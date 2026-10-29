@@ -1229,6 +1229,13 @@ export const nl = {
   'today.tripEnded': 'Laatste dag voorbij',
   'today.tripStarts': (p: { n: number }) => (p.n === 1 ? 'Begint morgen' : `Begint over ${p.n} dagen`),
   'today.soFar': 'tot nu toe',
+  'sync.demo': 'Demo · niets wordt gesynct',
+  'demo.title': 'Demomodus',
+  'demo.bar': 'Demo · voorbeelddata',
+  'demo.start': 'Demomodus starten',
+  'demo.stop': 'Demo stoppen',
+  'demo.starting': 'Demo laden…',
+  'demo.hint': 'De app draait dan op verzonnen voorbeelddata, in het Engels, om hem te laten zien. Je eigen gegevens blijven onaangeroerd en er gaat niets naar GitHub. Stoppen brengt direct je eigen gegevens en taal terug.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

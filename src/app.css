@@ -90,6 +90,7 @@
   --bar-height: 64px;
   --icon: 20px;
   --page-max: 640px;
+  --demo-bar: 48px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -3835,4 +3836,36 @@ body.presenting .bottom-bar {
 
 .card .section-head h2 {
   font-size: var(--fs-md);
+}
+
+/* Demomodus: een duidelijke balk bovenaan (één regel, vaste hoogte), in de kleur van de waarschuwing. De vaste
+   maandkoppen schuiven eronder in plaats van erachter. */
+.demo-bar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--demo-bar);
+  padding: 0 var(--s-2) 0 var(--s-4);
+  white-space: nowrap;
+  background: var(--warning-soft);
+  border-bottom: 1px solid var(--warning);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.demo-bar > .icon {
+  color: var(--warning);
+}
+
+.demo-bar .grow {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.demo-on .group-head {
+  top: var(--demo-bar);
 }

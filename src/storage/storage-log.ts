@@ -106,3 +106,12 @@ export function writeStorageLog(dbName: string, log: StorageLog): void {
     // Geen localStorage: het overzicht toont dan alleen wat deze sessie weet.
   }
 }
+
+/** Het overzicht van een database vergeten (de demo-database na de demo). */
+export function forgetStorageLog(dbName: string): void {
+  try {
+    globalThis.localStorage?.removeItem(key(dbName))
+  } catch {
+    // Geen localStorage: niets te vergeten.
+  }
+}

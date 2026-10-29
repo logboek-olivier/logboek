@@ -1192,4 +1192,11 @@ export const en: Messages = {
   'today.tripEnded': 'Last day has passed',
   'today.tripStarts': (p) => (p.n === 1 ? 'Starts tomorrow' : `Starts in ${p.n} days`),
   'today.soFar': 'so far',
+  'sync.demo': 'Demo · nothing is synced',
+  'demo.title': 'Demo mode',
+  'demo.bar': 'Demo · sample data',
+  'demo.start': 'Start demo mode',
+  'demo.stop': 'Stop demo',
+  'demo.starting': 'Loading demo…',
+  'demo.hint': 'The app then runs on made-up sample data, in English, to show it to someone. Your own data stays untouched and nothing goes to GitHub. Stopping brings back your own data and language straight away.',
 }
