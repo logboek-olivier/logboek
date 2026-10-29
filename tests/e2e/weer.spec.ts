@@ -80,7 +80,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await map.getByLabel(L('map.placeName')).fill('Nepgorda')
       await map.getByRole('button', { name: L('map.choose') }).click()
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.getByRole('heading', { name: L('nav.today'), level: 1 })).toBeVisible()
 
       const card = page.locator('.weather-card')
       await expect(card.getByRole('heading', { name: L('weather.title', { area: 'BVI' }) })).toBeVisible()
@@ -101,14 +101,14 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // tijd van ophalen.
       weather = fakeWeather(new Date(Date.now() - 48 * 3_600_000))
       await page.reload()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.getByRole('heading', { name: L('nav.today'), level: 1 })).toBeVisible()
       await expect(card.locator('.weather-stale')).toBeVisible()
 
       // Geen weather.json (404): geen kaart, de rest van Vandaag werkt gewoon.
       await page.unroute('**/logboek/weather.json')
       await page.route('**/logboek/weather.json', (route) => route.fulfill({ status: 404, body: '' }))
       await page.reload()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.getByRole('heading', { name: L('nav.today'), level: 1 })).toBeVisible()
       await expect(page.getByRole('button', { name: L('today.logDay') })).toBeVisible()
       await expect(card).toHaveCount(0)
 
