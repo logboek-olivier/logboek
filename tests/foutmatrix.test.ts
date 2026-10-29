@@ -399,6 +399,7 @@ describe('Foutmatrix: documentbestanden in de kluis', () => {
       await expect(store(s).documentFile(FILE)).rejects.toThrow()
       // Geen herstelscherm, geen syncfout: het bestand hoort bij geen enkel databestand.
       await store(s).putDocumentFile(OTHER, utf8('%PDF-ander nepdocument'))
+      await store(s).put('documents/index.json.enc', { id: 'nep-ander-document', title: 'Nepdocument', category: 'overig', mime: 'application/pdf', size: 22, offline: false, fileId: OTHER, updatedAt: new Date().toISOString(), deletedAt: null })
       await store(s).sync()
       expect(store(s).getStatus()).toEqual({ kind: 'synced' })
       expect(putsTo(path)).toBe(0)
@@ -408,6 +409,27 @@ describe('Foutmatrix: documentbestanden in de kluis', () => {
       expect(new TextDecoder().decode(await store(clean).documentFile(OTHER))).toBe('%PDF-ander nepdocument')
     }, 60_000)
   }
+
+  it('verbinding weg tijdens de upload van een documentbestand: de databestanden staan op GitHub, het document wacht en gaat bij de volgende sync', async () => {
+    const { name } = await phone()
+    const s = await openApp(name, false)
+    await store(s).putDocumentFile(OTHER, utf8('%PDF-ander nepdocument'))
+    await store(s).put('documents/index.json.enc', { id: 'nep-ander-document', title: 'Nepdocument', category: 'overig', mime: 'application/pdf', size: 22, offline: false, fileId: OTHER, updatedAt: new Date().toISOString(), deletedAt: null })
+    github.beforePut = (p) => {
+      if (p.endsWith('.bin')) throw new TypeError('Failed to fetch')
+    }
+    await store(s).sync()
+    github.beforePut = null
+    // De index staat er al, het bestand nog niet: het telt als wachtende wijziging, de ronde zelf is geen fout.
+    expect(store(s).getStatus()).toEqual({ kind: 'pending', count: 1 })
+    expect(github.files.has(`documents/${OTHER}.bin`)).toBe(false)
+    await expectSamplesOnGithub()
+    await store(s).sync()
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+    const clean = await cleanDevice()
+    expect(store(clean).getStatus()).toEqual({ kind: 'synced' })
+    expect(new TextDecoder().decode(await store(clean).documentFile(OTHER))).toBe('%PDF-ander nepdocument')
+  }, 60_000)
 })
 
 describe('Foutmatrix: commits-API (wie schreef het laatst)', () => {

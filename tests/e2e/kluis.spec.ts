@@ -92,6 +92,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.locator('.row-button', { hasText: 'Nepverzekering' }).click()
       await expect(sheet.locator('.vault-pdf')).toHaveText(L('vault.pdf'))
       await expect(sheet.getByRole('button', { name: L('vault.open') })).toBeVisible()
+      // Openen of delen maakt een onversleutelde kopie: dat staat erbij.
+      await expect(sheet.getByText(L('vault.openWarning'))).toBeVisible()
       // Verwijderen en ongedaan maken.
       await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('button', { name: L('common.delete') }).click()
@@ -104,6 +106,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await openMore(page, L('reminder.screen'), L('nav.more'))
       await expect(page.locator('.due-list')).toContainText('Nepcertificaat VHF')
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
+      // Vandaag (studenten kijken mee): wel de termijn, niet de titel van het document.
+      await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
+      await expect(page.locator('.due-list')).toContainText(L('vault.dueTitle'))
+      await expect(page.locator('.due-list')).not.toContainText('Nepcertificaat')
       // Alleen api.github.com, nooit een andere bestemming.
       expect(github.requests.every((r) => r.url.startsWith('https://api.github.com/'))).toBe(true)
       expect(errors).toEqual([])

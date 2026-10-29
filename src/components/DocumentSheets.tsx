@@ -36,10 +36,12 @@ function fileError(error: unknown): string {
   return t('vault.failed')
 }
 
-/** Een bestandsnaam voor delen of downloaden: de titel zonder tekens die een bestandsnaam breken. */
+/**
+ * Een neutrale bestandsnaam voor delen of downloaden: nooit de titel, die dan in Downloads of in de andere app zou staan
+ * (beveiligingsreview, PR 13).
+ */
 function downloadName(document: VaultDocument): string {
-  const base = document.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'document'
-  return `${base}${document.mime === 'application/pdf' ? '.pdf' : '.jpg'}`
+  return document.mime === 'application/pdf' ? 'document.pdf' : 'document.jpg'
 }
 
 function DocumentFields({ value, onChange, offlineTouched, onOfflineTouched }: { value: DocumentInput; onChange: (next: DocumentInput) => void; offlineTouched: boolean; onOfflineTouched: () => void }) {
@@ -215,7 +217,8 @@ export function DocumentView({ store, document, notify, onClose }: { store: Stor
     if (!bytes) return
     setBusy(true)
     try {
-      await shareOrDownload(new File([bytes], downloadName(current), { type: current.mime }), current.title)
+      // Zonder titel: de andere app krijgt alleen het bestand.
+      await shareOrDownload(new File([bytes], downloadName(current), { type: current.mime }))
     } finally {
       setBusy(false)
     }
@@ -239,10 +242,13 @@ export function DocumentView({ store, document, notify, onClose }: { store: Stor
           </div>
         )}
         {bytes && (
-          <button type="button" className="btn" disabled={busy} onClick={() => void open()}>
-            <Icon icon={Download} />
-            {t('vault.open')}
-          </button>
+          <>
+            <button type="button" className="btn" disabled={busy} onClick={() => void open()}>
+              <Icon icon={Download} />
+              {t('vault.open')}
+            </button>
+            <p className="muted small">{t('vault.openWarning')}</p>
+          </>
         )}
         <ViewRows
           rows={[

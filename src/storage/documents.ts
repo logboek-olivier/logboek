@@ -36,3 +36,32 @@ export class DocumentTooLargeError extends Error {
     this.name = 'DocumentTooLargeError'
   }
 }
+
+/** Een verwijderd document: na een dag (ongedaan maken) gaat ook het bestand weg, van dit apparaat en van GitHub. */
+export const DOCUMENT_GRACE_MS = 24 * 3_600_000
+
+/** Na een mislukte upload (trage of geen verbinding) probeert de sync na een opslag het pas na 10 minuten opnieuw. */
+export const DOCUMENT_RETRY_MS = 10 * 60_000
+
+// De bestands-id's (willekeurige UUID's, geen inhoud) die dit apparaat al van GitHub haalde, zodat het niet bij elke
+// volledige sync opnieuw kijkt. Zonder localStorage alleen in het geheugen van de Store.
+const removedKey = (dbName: string) => `logboek-kluis-weg:${dbName}`
+
+export function removedDocumentFiles(dbName: string): Set<string> {
+  try {
+    const raw: unknown = JSON.parse(globalThis.localStorage?.getItem(removedKey(dbName)) ?? '[]')
+    return new Set(Array.isArray(raw) ? raw.filter(isFileId) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+export function rememberRemovedDocumentFile(dbName: string, fileId: string): void {
+  try {
+    const all = removedDocumentFiles(dbName)
+    all.add(fileId)
+    globalThis.localStorage?.setItem(removedKey(dbName), JSON.stringify([...all].slice(-500)))
+  } catch {
+    // Geen localStorage: dan kijkt een volgende sessie nog één keer (een 404 is ook goed).
+  }
+}

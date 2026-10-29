@@ -4,9 +4,9 @@ import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, ty
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, BUILD, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
+import { AuthError, BUILD, ConflictError, DOCUMENT_TIMEOUT_MS, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { deleteObject, getLocal, getObject, listObjectPaths, putObject, putObjectAndLocal, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
-import { documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, MAX_DOCUMENT_BYTES } from './documents'
+import { DOCUMENT_GRACE_MS, DOCUMENT_RETRY_MS, documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, isFileId, MAX_DOCUMENT_BYTES, rememberRemovedDocumentFile, removedDocumentFiles } from './documents'
 import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
 import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, sameRecords, sealForUpload, syncCollection } from './sync'
@@ -325,8 +325,9 @@ export class Store {
     await this.put(path, { ...current, updatedAt: now, deletedAt: now })
   }
 
+  /** Wachtende wijzigingen: de outbox plus de documentbestanden die nog niet op GitHub staan. */
   pendingCount(): number {
-    return pendingCount(this.outbox)
+    return pendingCount(this.outbox) + this.pendingDocs.size
   }
 
   /**
@@ -419,14 +420,18 @@ export class Store {
     // een andere sleutel naast de echte te staan, die de andere apparaten niet kunnen lezen.
     let meta: MetaCheck
     let paths: CollectionPath[]
+    let uploadDocs: boolean
     try {
       await this.assertVault()
       // Wat andere vensters van de app intussen lokaal opsloegen, gaat in deze ronde mee.
       await this.absorbAll()
       paths = full ? [...COLLECTION_PATHS] : COLLECTION_PATHS.filter((p) => Object.keys(this.outbox[p] ?? {}).length > 0)
+      this.pendingDocs = new Set(await this.pendingDocumentFiles())
       if (this.locked) return
-      // Documentbestanden die nog niet op GitHub staan, gaan ook zonder andere wijzigingen mee (na de meta-controle).
-      if (paths.length === 0 && (await this.pendingDocumentFiles()).length === 0) {
+      // Documentbestanden die nog niet op GitHub staan, gaan ook zonder andere wijzigingen mee (na de meta-controle);
+      // vanzelf na een opslag niet als de vorige upload kort geleden mislukte (een groot bestand op een trage lijn).
+      uploadDocs = this.pendingDocs.size > 0 && (full || Date.now() >= this.documentRetryAt)
+      if (paths.length === 0 && !uploadDocs) {
         // Vanzelf na een opslag, maar niets wacht meer (een ander venster synct het al): niets op het netwerk.
         this.syncedSeq = Math.max(this.syncedSeq, covered)
         this.setStatus(this.idleStatus())
@@ -542,20 +547,6 @@ export class Store {
         }
       }
     }
-    // Kluis: documentbestanden die nog niet op GitHub staan, eerst (dan staat het bestand er al als de index het noemt).
-    // Alleen na een bevestigde meta-controle: nooit een bestand naast een logboek van een andere sleutel.
-    if (meta === 'match' && !this.outdated) {
-      try {
-        await this.uploadDocumentFiles()
-      } catch (error) {
-        if (this.locked || error instanceof KeyMismatchError) return
-        if (error instanceof NetworkError || error instanceof AuthError) {
-          this.reportFailure(error)
-          return
-        }
-        failure = error
-      }
-    }
     // Eén onleesbaar of blijvend conflicterend bestand houdt de andere bestanden niet tegen;
     // zonder verbinding of met een ongeldige token stoppen we wel direct.
     for (const path of COLLECTION_PATHS) {
@@ -578,6 +569,21 @@ export class Store {
           break
         }
         if (error instanceof NetworkError || error instanceof AuthError) break
+      }
+    }
+    if (this.locked) return
+    // Kluis: na de databestanden, zodat een groot document trips en dagen nooit ophoudt. Alleen na een bevestigde
+    // meta-controle: nooit een bestand naast een logboek van een andere sleutel. Een document dat niet lukt, wacht op een
+    // volgende ronde (telt als wachtende wijziging); de ronde zelf slaagt.
+    const offline = failure instanceof NetworkError || failure instanceof AuthError
+    if (meta === 'match' && !this.outdated && !offline) {
+      try {
+        if (uploadDocs) await this.uploadDocumentFiles()
+        if (full) await this.removeDeletedDocumentFiles()
+      } catch (error) {
+        if (this.locked || error instanceof KeyMismatchError) return
+        if (error instanceof AuthError && failure === null) failure = error
+        else recordError(error)
       }
     }
     if (this.locked) return
@@ -1116,6 +1122,12 @@ export class Store {
 
   /** In deze ronde geüploade bestanden: hun kopie op het apparaat blijft tot een volgende ronde (GitHub loopt soms achter). */
   private readonly uploadedThisRound = new Set<string>()
+  /** Documentbestanden die nog niet op GitHub staan (tellen als wachtende wijziging). */
+  private pendingDocs = new Set<string>()
+  /** Na een mislukte upload: vanzelf na een opslag pas na dit tijdstip opnieuw proberen (verversen probeert altijd). */
+  private documentRetryAt = 0
+  /** Bestanden die deze sessie al van GitHub haalde (naast localStorage). */
+  private readonly removedFiles = new Set<string>()
 
   /** Een documentbestand versleuteld op dit apparaat zetten (AAD = pad); de volgende sync zet het op GitHub. */
   async putDocumentFile(fileId: string, bytes: Bytes): Promise<void> {
@@ -1126,7 +1138,8 @@ export class Store {
     const blob = await encryptObject(this.masterKey, path, bytes)
     // Dezelfde controle als sealForUpload: wat niet terug te lezen is, komt niet op het apparaat en niet op GitHub.
     await decryptObject(this.masterKey, path, blob)
-    await this.putObjectGuarded({ path, blob, sha: null })
+    await this.putObjectGuarded({ path, blob, sha: null, addedAt: Date.now() })
+    this.pendingDocs.add(fileId)
     this.scheduleSync()
   }
 
@@ -1164,13 +1177,17 @@ export class Store {
     if (local && local.sha !== null) await deleteObject(this.db, path)
   }
 
-  /** De documentbestanden op dit apparaat die nog niet op GitHub staan. */
+  /**
+   * De documentbestanden op dit apparaat die nog niet op GitHub staan, van een document dat in de index staat en niet
+   * verwijderd is. Een losgeraakt bestand (de index werd nooit opgeslagen) gaat nooit naar GitHub.
+   */
   async pendingDocumentFiles(): Promise<string[]> {
     if (this.demo) return []
+    const live = new Set(this.get('documents/index.json.enc').filter((d) => d.deletedAt === null).map((d) => d.fileId))
     const out: string[] = []
     for (const path of await listObjectPaths(this.db, DOCUMENTS_PREFIX)) {
       const fileId = fileIdOf(path)
-      if (!fileId) continue
+      if (!fileId || !live.has(fileId)) continue
       const object = await getObject(this.db, path)
       if (object && object.sha === null) out.push(fileId)
     }
@@ -1197,17 +1214,59 @@ export class Store {
       }
       let sha: string
       try {
-        sha = await this.client.putFile(path, local.blob, null)
+        try {
+          sha = await this.client.putFile(path, local.blob, null, DOCUMENT_TIMEOUT_MS)
+        } catch (error) {
+          if (!(error instanceof ConflictError)) throw error
+          const remote = await this.client.getFile(path, DOCUMENT_TIMEOUT_MS)
+          if (!remote) throw error
+          await decryptObject(this.masterKey, path, remote.content)
+          sha = remote.sha
+        }
       } catch (error) {
-        if (!(error instanceof ConflictError)) throw error
-        const remote = await this.client.getFile(path)
-        if (!remote) throw error
-        await decryptObject(this.masterKey, path, remote.content)
-        sha = remote.sha
+        if (error instanceof AuthError) throw error
+        // Geen of een trage verbinding (of GitHub hapert): de andere documenten in deze ronde ook niet, en vanzelf na een
+        // opslag pas over 10 minuten opnieuw. Een conflict dat niet bij deze sleutel hoort: alleen dit bestand overslaan.
+        if (error instanceof NetworkError || (error instanceof GithubError && !(error instanceof ConflictError))) {
+          this.documentRetryAt = Date.now() + DOCUMENT_RETRY_MS
+          return
+        }
+        recordError(error)
+        continue
       }
       if (this.locked) return
       this.uploadedThisRound.add(fileId)
       await this.putObjectGuarded({ ...local, sha })
+      this.pendingDocs.delete(fileId)
+    }
+    this.documentRetryAt = 0
+  }
+
+  /**
+   * Na een volledige ronde: het bestand van een document dat langer dan een dag verwijderd is, ook van GitHub halen (met
+   * de SHA als voorwaarde; de geschiedenis van logboek-data houdt de versleutelde oude versie). Elk bestand één keer per
+   * apparaat; een bestand dat er al niet meer staat, is goed.
+   */
+  private async removeDeletedDocumentFiles(now = Date.now()): Promise<void> {
+    if (this.demo) return
+    const done = removedDocumentFiles(this.db.name)
+    for (const document of this.get('documents/index.json.enc')) {
+      if (this.locked) return
+      const { fileId } = document
+      if (document.deletedAt === null || now - Date.parse(document.deletedAt) <= DOCUMENT_GRACE_MS) continue
+      if (!isFileId(fileId) || done.has(fileId) || this.removedFiles.has(fileId)) continue
+      const path = documentPath(fileId)
+      try {
+        const sha = await this.client.fileSha(path)
+        if (sha) await this.client.deleteFile(path, sha)
+      } catch (error) {
+        if (error instanceof NetworkError || error instanceof AuthError) throw error
+        // Een conflict of een andere fout: een volgende volledige ronde probeert het opnieuw.
+        recordError(error)
+        continue
+      }
+      this.removedFiles.add(fileId)
+      rememberRemovedDocumentFile(this.db.name, fileId)
     }
   }
 
@@ -1224,10 +1283,14 @@ export class Store {
       const fileId = fileIdOf(path)
       if (!fileId || this.uploadedThisRound.has(fileId)) continue
       const document = documents.get(fileId)
-      if (!document) continue
       const object = await getObject(this.db, path)
       if (!object) continue
-      const deletedLongAgo = document.deletedAt !== null && now - Date.parse(document.deletedAt) > 24 * 3_600_000
+      // Losgeraakt (de index werd nooit opgeslagen): na een dag weg; zo'n bestand gaat nooit naar GitHub.
+      if (!document) {
+        if (object.sha === null && object.addedAt !== undefined && now - object.addedAt > DOCUMENT_GRACE_MS) await deleteObject(this.db, path)
+        continue
+      }
+      const deletedLongAgo = document.deletedAt !== null && now - Date.parse(document.deletedAt) > DOCUMENT_GRACE_MS
       const notNeeded = document.deletedAt === null && !document.offline && object.sha !== null
       if (deletedLongAgo || notNeeded) await deleteObject(this.db, path)
     }

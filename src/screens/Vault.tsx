@@ -59,6 +59,7 @@ export function Vault({ store, notify }: { store: Store; notify: Notify }) {
         <Icon icon={Plus} />
         {t('vault.add')}
       </button>
+      {groups.length > 0 && <p className="muted small">{t('vault.deleteNote')}</p>}
       {adding && <AddDocumentSheet store={store} notify={notify} onClose={() => setAdding(false)} />}
       {viewing && <DocumentView key={viewing.id} store={store} document={viewing} notify={notify} onClose={() => setViewing(null)} />}
     </section>

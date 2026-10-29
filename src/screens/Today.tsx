@@ -236,7 +236,7 @@ export function Today({
             <Icon icon={ChevronRight} />
           </button>
         </div>
-        {due.length > 0 && <DueList store={store} items={due.slice(0, 3)} notify={notify} onToken={onSettings} />}
+        {due.length > 0 && <DueList store={store} items={due.slice(0, 3)} notify={notify} onToken={onSettings} discreet />}
         <button className="btn" onClick={() => setAddingReminder(true)}>
           <Icon icon={Plus} />
           {t('reminder.new')}

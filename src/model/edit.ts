@@ -1,5 +1,6 @@
 import type { Store } from '../storage/store'
 import { tripForDate } from './derive'
+import { scrubbedDocument } from './documents'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
@@ -80,8 +81,15 @@ export function deleteSkill(store: Store, skill: Skill): Promise<Undo> {
 }
 
 /** Een document uit de kluis verwijderen (tombstone). Het bestand blijft nog een dag op het apparaat, voor ongedaan maken. */
-export function deleteDocument(store: Store, document: VaultDocument): Promise<Undo> {
-  return removeWithUndo(store, [{ path: 'documents/index.json.enc', record: document }])
+/** Een document verwijderen: een tombstone zonder titel en notitie; ongedaan maken zet het uit het geheugen terug. */
+export async function deleteDocument(store: Store, document: VaultDocument): Promise<Undo> {
+  const original = { ...document }
+  await store.put('documents/index.json.enc', scrubbedDocument(document, new Date().toISOString()))
+  void store.sync()
+  return async () => {
+    await store.put('documents/index.json.enc', { ...original, updatedAt: new Date().toISOString(), deletedAt: null })
+    void store.sync()
+  }
 }
 
 export function deleteSession(store: Store, session: Session): Promise<Undo> {

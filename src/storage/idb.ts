@@ -14,6 +14,8 @@ export interface StoredObject {
   path: string
   blob: Bytes
   sha: string | null
+  /** Alleen bij een documentbestand: wanneer het op dit apparaat kwam (een losgeraakt bestand wordt na een dag opgeruimd). */
+  addedAt?: number
 }
 
 export interface SessionKeyRecord {

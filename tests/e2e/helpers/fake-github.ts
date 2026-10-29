@@ -77,6 +77,13 @@ export async function mockGithub(page: Page, initial?: E2eGithub): Promise<E2eGi
       github.files.set(path, { sha, content: req.content ?? '', ...(req.message ? { message: req.message } : {}) })
       return json(file ? 200 : 201, { content: { sha, path } })
     }
+    if (method === 'DELETE') {
+      const req = JSON.parse(body ?? '{}') as { sha?: string }
+      if (!file) return json(404, {})
+      if (req.sha !== file.sha) return json(409, {})
+      github.files.delete(path)
+      return json(200, { content: null })
+    }
     return json(405, {})
   })
   return github

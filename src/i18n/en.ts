@@ -1502,4 +1502,7 @@ export const en: Messages = {
   'more.vaultHint': 'Encrypted documents, with expiry dates',
   'storage.file.documents': 'Vault (index)',
   'key.file.documents': 'Vault (index)',
+  'vault.openWarning': 'Opening or sharing makes an unencrypted copy outside the app (in Downloads or in the app you choose). Delete that copy afterwards.',
+  'vault.dueTitle': 'Document in the vault',
+  'vault.deleteNote': 'A deleted document is also removed from GitHub and this device after a day; older versions stay encrypted in the history of logboek-data.',
 }

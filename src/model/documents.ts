@@ -69,6 +69,10 @@ export class UnsupportedFileError extends Error {
 
 /** Een gekozen bestand klaarmaken: foto verkleinen, PDF ongewijzigd, anders geweigerd. Groter dan 20 MB: geweigerd. */
 export async function prepareFile(file: File): Promise<{ bytes: Bytes; mime: string }> {
+  // Eerst de grootte: een PDF boven de 20 MB wordt niet eens ingelezen. Een foto mag groter binnenkomen (hij wordt
+  // verkleind), maar niet onbeperkt.
+  const pdfByName = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+  if (file.size > (pdfByName ? MAX_DOCUMENT_BYTES : MAX_DOCUMENT_BYTES * 3)) throw new RangeError('te groot')
   const raw = new Uint8Array(await file.arrayBuffer())
   if (isPdf(file.type, raw)) {
     if (raw.length > MAX_DOCUMENT_BYTES) throw new RangeError('te groot')
@@ -119,6 +123,15 @@ export async function updateDocument(store: Store, document: VaultDocument, inpu
   await store.put('documents/index.json.enc', next)
   if (next.offline !== document.offline) await store.setDocumentOffline(document.fileId, next.offline).catch(() => undefined)
   return next
+}
+
+/**
+ * Tombstone zonder inhoud: alleen id, het willekeurige bestands-id (om het bestand later van GitHub en het apparaat te
+ * halen) en tijden. Titel, categorie, datums en notitie staan daarna niet meer in de index of in een back-up; oudere
+ * versies van de index blijven versleuteld in de geschiedenis van logboek-data.
+ */
+export function scrubbedDocument(document: VaultDocument, now: string): VaultDocument {
+  return { id: document.id, title: '', category: 'overig', mime: '', size: 0, offline: false, fileId: document.fileId, updatedAt: now, deletedAt: now }
 }
 
 /** Documenten met een vervaldatum, voor de termijnen (verlopen bovenaan, zoals alle termijnen). */

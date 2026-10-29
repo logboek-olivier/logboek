@@ -49,7 +49,10 @@ export function dueLabel(item: Pick<DueItem, 'date' | 'kind'>, today = todayIso(
   return item.kind === 'deadline' ? t('reminder.late', { n: -days }) : t('expiry.expired')
 }
 
-export function DueList({ store, items, notify, onToken }: { store: Store; items: DueItem[]; notify: Notify; onToken?: () => void }) {
+/**
+ * `discreet` (Vandaag, waar studenten kunnen meekijken): een document uit de kluis zonder zijn titel.
+ */
+export function DueList({ store, items, notify, onToken, discreet = false }: { store: Store; items: DueItem[]; notify: Notify; onToken?: () => void; discreet?: boolean }) {
   const reminders = useCollection(store, 'reminders.json.enc')
   const [editing, setEditing] = useState<Reminder | null>(null)
   const today = todayIso()
@@ -63,7 +66,7 @@ export function DueList({ store, items, notify, onToken }: { store: Store; items
             <>
               <Icon icon={icon} />
               <span className="row-main">
-                <span>{item.title}</span>
+                <span>{discreet && item.source === 'document' ? t('vault.dueTitle') : item.title}</span>
                 <span className="muted small">
                   {[item.kind === 'trip' ? '' : t(`reminderKind.${item.kind}`), formatDate(item.date), item.repeat ? t(`reminderRepeat.${item.repeat}`) : ''].filter(Boolean).join(' · ')}
                 </span>

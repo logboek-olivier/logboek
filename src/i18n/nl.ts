@@ -1539,6 +1539,9 @@ export const nl = {
   'more.vaultHint': 'Documenten versleuteld, met vervaldatums',
   'storage.file.documents': 'Kluis (index)',
   'key.file.documents': 'Kluis (index)',
+  'vault.openWarning': 'Openen of delen maakt een onversleutelde kopie buiten de app (in Downloads of in de app die je kiest). Verwijder die kopie daarna.',
+  'vault.dueTitle': 'Document in de kluis',
+  'vault.deleteNote': 'Een verwijderd document gaat na een dag ook van GitHub en van dit apparaat; oudere versies blijven versleuteld in de geschiedenis van logboek-data.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
