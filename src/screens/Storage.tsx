@@ -113,7 +113,8 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
                 <span className="row-main">
                   <span>{t(FILE_NAME[path])}</span>
                   <span className="muted small">
-                    {t('storage.counts', { here: formatNumber(store.localCount(path)), github: file?.remote != null ? formatNumber(file.remote) : '–' })}
+                    {/* Hier en op GitHub van hetzelfde moment: de laatste controle; zonder controle alleen hier. */}
+                    {t('storage.counts', { here: formatNumber(file ? file.local : store.localCount(path)), github: file?.remote != null ? formatNumber(file.remote) : '–' })}
                     {' · '}
                     {synced ? t('storage.syncedAt', { when: formatMoment(synced) }) : t('storage.notSynced')}
                   </span>
