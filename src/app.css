@@ -3206,3 +3206,20 @@ body.presenting .bottom-bar {
 .delete-choice p {
   margin: 0;
 }
+
+/* Vraag vóór een pin: verplaatsen, of ver van het land van de plaats. */
+.pin-question {
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--s-3);
+}
+
+.pin-question p {
+  margin: 0;
+}
+
+.pin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}

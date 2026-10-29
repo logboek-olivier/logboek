@@ -3,10 +3,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { formatNumber } from '../format'
 import { t } from '../i18n'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
-import { findPlace, nearestPlace, savePlace } from '../model/places'
+import { findPlace, nearestPlace, pinQuestion, savePlace, type PinQuestion } from '../model/places'
 import type { Place } from '../model/types'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
+import { PinQuestionBox } from './PinQuestion'
 import { SeaMap, type LatLon, type MapPlace } from './SeaMap'
 import { Sheet } from './Sheet'
 
@@ -45,6 +46,8 @@ export function MapSheet({
   const [locating, setLocating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Pin koppelen of vervangen nooit stil: eerst de vraag (pin verplaatsen, of ver van het land van de plaats).
+  const [question, setQuestion] = useState<PinQuestion | null>(null)
   const mapPlaces: MapPlace[] = places.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lon: p.lon }))
   const other = routeFrom ? findPlace(places, routeFrom) : null
   const [estimate, setEstimate] = useState<WaterEstimate | null>(null)
@@ -59,6 +62,7 @@ export function MapSheet({
   }, [other?.id, other?.lat, other?.lon, point?.lat, point?.lon])
 
   function pick(p: LatLon) {
+    setQuestion(null)
     setPoint(p)
     setError(null)
     const close = nearestPlace(places, p)
@@ -84,12 +88,19 @@ export function MapSheet({
     )
   }
 
-  async function submit(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault()
     if (!point || !placeName.trim() || busy) return
+    const q = pinQuestion(store.list('legs.json.enc'), places, placeName, point)
+    if (q) setQuestion(q)
+    else void save(placeName)
+  }
+
+  async function save(name: string) {
+    if (!point || busy) return
     setBusy(true)
     try {
-      const saved = await savePlace(store, placeName, point)
+      const saved = await savePlace(store, name, point)
       void store.sync()
       onChoose(saved.name)
     } finally {
@@ -129,11 +140,34 @@ export function MapSheet({
             )}
             <label>
               {t('map.placeName')}
-              <input type="text" autoComplete="off" maxLength={80} value={placeName} onChange={(e) => setPlaceName(e.target.value)} />
+              <input
+                type="text"
+                autoComplete="off"
+                maxLength={80}
+                value={placeName}
+                onChange={(e) => {
+                  setPlaceName(e.target.value)
+                  setQuestion(null)
+                }}
+              />
             </label>
-            <button className="btn primary" type="submit" disabled={!placeName.trim() || busy}>
-              {t('map.choose')}
-            </button>
+            {question ? (
+              <PinQuestionBox
+                question={question}
+                point={point}
+                places={places}
+                onConfirm={() => void save(placeName)}
+                onOther={() => {
+                  setQuestion(null)
+                  setPoint(null)
+                }}
+                onNew={(name) => void save(name)}
+              />
+            ) : (
+              <button className="btn primary" type="submit" disabled={!placeName.trim() || busy}>
+                {t('map.choose')}
+              </button>
+            )}
           </>
         )}
       </form>
