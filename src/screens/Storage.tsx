@@ -11,6 +11,7 @@ import { t, type MessageKey } from '../i18n'
 import { COLLECTION_PATHS, todayIso, type CollectionPath } from '../model/types'
 import { describeError } from '../session'
 import { shareOrDownload } from '../share'
+import { ExportSection } from '../components/ExportSection'
 import { applyRestore, backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
 import { deviceId } from '../storage/device'
@@ -140,6 +141,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
       </div>
 
       <Backup store={store} notify={notify} />
+      <ExportSection store={store} />
     </section>
   )
 }

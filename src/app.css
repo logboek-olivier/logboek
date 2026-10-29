@@ -4100,3 +4100,22 @@ body.demo-on .group-head {
   display: inline-flex;
   color: var(--positive);
 }
+
+/* Exporteren: de waarschuwing dat het bestand niet versleuteld is, en welke bestanden erin zitten. */
+.export-warning {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+}
+
+.export-warning .icon {
+  flex: none;
+  color: var(--warning);
+}
+
+.export-files li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+}
