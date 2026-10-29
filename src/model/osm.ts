@@ -30,13 +30,16 @@ export interface OsmIndex {
   areas: OsmArea[]
 }
 
-export type LabelKind = 'eiland' | 'eilandje' | 'haven' | 'plaats' | 'dorp'
+/** Soorten namen op de kaart; `plaats` is de oude naam van `stad` (kaartdata van vóór de soorten). */
+export type LabelKind = 'stad' | 'plaats' | 'dorp' | 'eiland' | 'eilandje' | 'baai' | 'marina' | 'haven' | 'ankerplek'
 
 export interface OsmLabel {
   n: string
   k: LabelKind
   lat: number
   lon: number
+  /** Vanaf welke zoom het label verschijnt (ontbreekt in oudere kaartdata: dan per soort). */
+  z?: number
 }
 
 const base = () => `${import.meta.env.BASE_URL}osm/`

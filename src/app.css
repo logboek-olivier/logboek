@@ -32,6 +32,9 @@
   --map-sea: #d4e6ef;
   --map-land: #efe4cc;
   --map-coast: #c2ae88;
+  /* Namen op de kaart: baaien en ankerplekken zeeblauw, eilanden zandbruin. */
+  --map-bay-text: #2b6894;
+  --map-island-text: #6b5430;
   --warning: #a86a12;
   --warning-soft: #fbf0dc;
   --negative-soft: #f8e4de;
@@ -115,6 +118,8 @@
     /* Land zandkleurig, ook in het donker. */
     --map-land: #3a3529;
     --map-coast: #5f5641;
+    --map-bay-text: #8cc4ea;
+    --map-island-text: #e2cfa6;
     --warning: #e9b45c;
     --warning-soft: #3a2f1a;
     --negative-soft: #3d2420;
@@ -2242,6 +2247,9 @@ body.presenting .bottom-bar {
   stroke-linejoin: round;
 }
 
+/* Namen op de kaart, met een eigen stijl per soort: steden vet, dorpen kleiner, eilanden zandbruin met wat ruimte
+   tussen de letters, eilandjes cursief, baaien cursief in zeeblauw, marina's in het accent met een stip, havens met een
+   open rondje, ankerplekken met een ankertje. Een rand in de kleur eronder (land of zee) houdt ze leesbaar. */
 .map-label {
   font-size: 11px;
   text-anchor: middle;
@@ -2249,19 +2257,75 @@ body.presenting .bottom-bar {
   paint-order: stroke;
   stroke: var(--map-land);
   stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
-.map-label-eiland,
-.map-label-plaats {
-  font-size: 12px;
+.map-label-stad {
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  fill: var(--text);
+}
+
+.map-label-dorp {
   font-weight: var(--fw-medium);
   fill: var(--text);
-  stroke: var(--map-land);
+}
+
+.map-label-eiland {
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  fill: var(--map-island-text);
 }
 
 .map-label-eilandje {
+  font-size: 10.5px;
   font-style: italic;
+  fill: var(--map-island-text);
   stroke: var(--map-sea);
+}
+
+.map-label-baai {
+  font-size: 11.5px;
+  font-style: italic;
+  fill: var(--map-bay-text);
+  stroke: var(--map-sea);
+}
+
+.map-poi .map-label {
+  text-anchor: start;
+  stroke: var(--map-sea);
+}
+
+.map-label-marina {
+  font-weight: var(--fw-medium);
+  fill: var(--accent-strong);
+}
+
+.map-label-ankerplek {
+  font-size: 10.5px;
+  font-style: italic;
+  fill: var(--map-bay-text);
+}
+
+.map-poi-marina circle {
+  fill: var(--accent);
+  stroke: var(--map-sea);
+  stroke-width: 1.5px;
+}
+
+.map-poi-haven circle {
+  fill: var(--map-sea);
+  stroke: var(--text-muted);
+  stroke-width: 1.5px;
+}
+
+.map-anchor {
+  fill: none;
+  stroke: var(--map-bay-text);
+  stroke-width: 1.3px;
+  stroke-linecap: round;
 }
 
 .map-attribution {
