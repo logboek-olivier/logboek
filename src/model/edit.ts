@@ -1,9 +1,10 @@
 import type { Store } from '../storage/store'
 import { tripForDate } from './derive'
+import { scrubbedDocument } from './documents'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, Transaction, Trip, WeekClosing } from './types'
+import type { CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -54,6 +55,8 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'sessions.json.enc':
       return store.put(item.path, item.record)
+    case 'documents/index.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 
@@ -75,6 +78,18 @@ export function deleteGoal(store: Store, goal: Goal): Promise<Undo> {
 export function deleteSkill(store: Store, skill: Skill): Promise<Undo> {
   const own = store.list('sessions.json.enc').filter((s) => s.skillId === skill.id)
   return removeWithUndo(store, [{ path: 'skills.json.enc', record: skill }, ...own.map((record): Removal => ({ path: 'sessions.json.enc', record }))])
+}
+
+/** Een document uit de kluis verwijderen (tombstone). Het bestand blijft nog een dag op het apparaat, voor ongedaan maken. */
+/** Een document verwijderen: een tombstone zonder titel en notitie; ongedaan maken zet het uit het geheugen terug. */
+export async function deleteDocument(store: Store, document: VaultDocument): Promise<Undo> {
+  const original = { ...document }
+  await store.put('documents/index.json.enc', scrubbedDocument(document, new Date().toISOString()))
+  void store.sync()
+  return async () => {
+    await store.put('documents/index.json.enc', { ...original, updatedAt: new Date().toISOString(), deletedAt: null })
+    void store.sync()
+  }
 }
 
 export function deleteSession(store: Store, session: Session): Promise<Undo> {

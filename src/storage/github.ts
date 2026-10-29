@@ -10,6 +10,8 @@ export const DATA_REPO = 'logboek-olivier/logboek-data'
 const API_VERSION = '2022-11-28'
 /** Een verzoek dat zo lang niets oplevert, telt als geen verbinding (anders blijft een sync op zee eeuwig hangen). */
 const REQUEST_TIMEOUT_MS = 60_000
+/** Een documentbestand uit de kluis (tot 20 MB, als base64 ruim 27 MB) krijgt langer. */
+export const DOCUMENT_TIMEOUT_MS = 5 * 60_000
 
 /** Soort GitHub-fout; de app toont hiervoor een vertaalde melding (zie describeError). */
 export type GithubErrorCode = 'auth' | 'conflict' | 'rateLimit' | 'repoNotFound' | 'read' | 'write' | 'unexpected'
@@ -110,9 +112,9 @@ export function isNetworkBlocked(): boolean {
   return networkBlocked
 }
 
-/** Stopt na 60 seconden, en direct als de demo begint (als de browser beide signalen kan combineren). */
-function requestSignal(): AbortSignal | undefined {
-  const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined
+/** Stopt na 60 seconden (een documentbestand na 5 minuten), en direct als de demo begint (als de browser beide signalen kan combineren). */
+function requestSignal(timeoutMs: number): AbortSignal | undefined {
+  const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : undefined
   if (typeof AbortSignal.any !== 'function') return timeout
   return AbortSignal.any(timeout ? [timeout, blockController.signal] : [blockController.signal])
 }
@@ -127,13 +129,13 @@ export class GithubClient {
     private readonly repo: string = DATA_REPO,
   ) {}
 
-  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+  private async request(path: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
     if (networkBlocked) throw new NetworkError()
     let response: Response
     try {
       response = await this.fetchImpl(`${API_BASE}${path}`, {
         ...init,
-        signal: requestSignal(),
+        signal: requestSignal(timeoutMs),
         // Nooit uit de browsercache: GitHub stuurt max-age=60 mee, en een oudere versie van een net hersteld bestand
         // liet de app denken dat het nog onleesbaar was.
         cache: 'no-store',
@@ -187,8 +189,8 @@ export class GithubClient {
   }
 
   /** Haalt een bestand op; null als het niet bestaat. Een repo zonder commits geeft 404 of 409: ook "bestaat niet". */
-  async getFile(path: string): Promise<RemoteFile | null> {
-    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`)
+  async getFile(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<RemoteFile | null> {
+    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {}, timeoutMs)
     if (response.status === 404 || response.status === 409) return null
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
     const body = await this.json(response)
@@ -196,11 +198,21 @@ export class GithubClient {
     const base64 = typeof body.content === 'string' ? body.content.replace(/\s/g, '') : ''
     if (base64.length > 0) return { sha: body.sha, content: this.decode(base64, response.status) }
     // Boven 1 MB geeft de contents-API geen inhoud; dan via de blob-API.
-    return { sha: body.sha, content: await this.getBlob(body.sha) }
+    return { sha: body.sha, content: await this.getBlob(body.sha, timeoutMs) }
   }
 
-  private async getBlob(sha: string): Promise<Bytes> {
-    const response = await this.request(`/repos/${this.repo}/git/blobs/${sha}`)
+  /** Alleen de SHA van een bestand (zonder de inhoud van een groot bestand op te halen); null als het niet bestaat. */
+  async fileSha(path: string): Promise<string | null> {
+    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`)
+    if (response.status === 404 || response.status === 409) return null
+    if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
+    const body = await this.json(response)
+    if (typeof body.sha !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
+    return body.sha
+  }
+
+  private async getBlob(sha: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Bytes> {
+    const response = await this.request(`/repos/${this.repo}/git/blobs/${sha}`, {}, timeoutMs)
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
     const body = await this.json(response)
     if (typeof body.content !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
@@ -229,15 +241,19 @@ export class GithubClient {
    * Schrijft een bestand. `sha` is de laatst bekende SHA (voorwaarde); null bij een nieuw bestand.
    * Bij een conflict (bestand ondertussen gewijzigd of ontstaan) volgt ConflictError.
    */
-  async putFile(path: string, content: Bytes, sha: string | null): Promise<string> {
-    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: commitMessage(),
-        content: toBase64(content),
-        ...(sha ? { sha } : {}),
-      }),
-    })
+  async putFile(path: string, content: Bytes, sha: string | null, timeoutMs = REQUEST_TIMEOUT_MS): Promise<string> {
+    const response = await this.request(
+      `/repos/${this.repo}/contents/${encodePath(path)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          message: commitMessage(),
+          content: toBase64(content),
+          ...(sha ? { sha } : {}),
+        }),
+      },
+      timeoutMs,
+    )
     if (response.status === 409 || response.status === 422) throw new ConflictError(response.status)
     if (!response.ok) throw new GithubError('Schrijven mislukt', response.status, 'write')
     const body = await this.json(response)
@@ -245,6 +261,21 @@ export class GithubClient {
       throw new GithubError('Onverwacht antwoord', response.status)
     }
     return body.content.sha
+  }
+
+  /**
+   * Verwijdert een bestand, met de SHA als voorwaarde (alleen voor documentbestanden van verwijderde documenten). Een
+   * bestand dat er al niet meer staat, is goed; bij een conflict volgt ConflictError. De geschiedenis van de repo
+   * houdt de versleutelde oude versie.
+   */
+  async deleteFile(path: string, sha: string): Promise<void> {
+    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ message: commitMessage(), sha }),
+    })
+    if (response.status === 404) return
+    if (response.status === 409 || response.status === 422) throw new ConflictError(response.status)
+    if (!response.ok) throw new GithubError('Schrijven mislukt', response.status, 'write')
   }
 }
 

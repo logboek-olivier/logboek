@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { META_PATH, parseMeta, unlock } from '../../src/crypto/keys'
+import { decryptObject } from '../../src/crypto/encrypt'
 import { translate } from '../../src/i18n'
 import { COLLECTION_PATHS } from '../../src/model/types'
 import { decryptRecords } from '../../src/storage/sync'
@@ -20,6 +21,8 @@ import { startStaticServer, type SwitchableServer } from './helpers/static-serve
 const previous = fileURLToPath(new URL('../../.vorige/', import.meta.url))
 const current = fileURLToPath(new URL('../../dist/', import.meta.url))
 const L = (key: Parameters<typeof translate>[1]) => translate('nl', key)
+/** Een verzonnen foto van 1 × 1 pixel. */
+const NEP_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 let portCounter = 0
 /** Eigen poort per test en worker; elke server is een eigen origin, dus een eigen browseropslag. */
 const nextPort = () => 4200 + test.info().workerIndex * 20 + portCounter++
@@ -253,6 +256,17 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect.poll(() => puts('sessions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(sessionPuts)
     await expect.poll(() => puts('skills.json.enc'), { timeout: 20_000 }).toBeGreaterThan(0)
     await expectSynced(page)
+    // Kluis (documents/index.json.enc en een documentbestand, nieuw in ronde 2): een nepdocument toevoegen.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await openMore(page, L('vault.screen'), L('nav.more'))
+    await page.getByRole('button', { name: L('vault.add') }).click()
+    await page.getByLabel(L('vault.chooseFile')).setInputFiles({ name: 'nep.png', mimeType: 'image/png', buffer: Buffer.from(NEP_PNG, 'base64') })
+    await expect(page.locator('.vault-preview')).toBeVisible()
+    await page.getByRole('dialog').getByLabel(L('vault.titleField')).fill('Nepdocument upgrade')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect.poll(() => github.requests.filter((r) => r.method === 'PUT' && /documents\/[0-9a-f-]{36}\.bin/.test(r.url)).length, { timeout: 20_000 }).toBeGreaterThan(0)
+    await expect.poll(() => puts('documents/index.json.enc'), { timeout: 20_000 }).toBeGreaterThan(0)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -289,6 +303,14 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(kite).toBeDefined()
     const sessions = await decryptRecords(key, 'sessions.json.enc', Uint8Array.from(Buffer.from(github.files.get('sessions.json.enc')!.content, 'base64')))
     expect(sessions).toEqual(expect.arrayContaining([expect.objectContaining({ skillId: kite!.id, minutes: 45, deletedAt: null })]))
+    // Het document: de index noemt het bestand met een willekeurige naam, en het bestand ontsleutelt tot een JPEG.
+    const documents = await decryptRecords(key, 'documents/index.json.enc', Uint8Array.from(Buffer.from(github.files.get('documents/index.json.enc')!.content, 'base64')))
+    const doc = documents.find((d) => (d as { title?: string }).title === 'Nepdocument upgrade') as { fileId: string } | undefined
+    expect(doc).toBeDefined()
+    expect([...github.files.keys()].some((path) => path.includes('Nepdocument'))).toBe(false)
+    const docPath = `documents/${doc!.fileId}.bin`
+    const plain = await decryptObject(key, docPath, Uint8Array.from(Buffer.from(github.files.get(docPath)!.content, 'base64')))
+    expect([plain[0], plain[1]]).toEqual([0xff, 0xd8])
   } finally {
     await server.close()
   }

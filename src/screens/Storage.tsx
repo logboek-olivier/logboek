@@ -38,6 +38,7 @@ export const FILE_NAME: Record<CollectionPath, MessageKey> = {
   'goals.json.enc': 'storage.file.goals',
   'skills.json.enc': 'storage.file.skills',
   'sessions.json.enc': 'storage.file.sessions',
+  'documents/index.json.enc': 'storage.file.documents',
 }
 
 const STATE_LABEL: Record<FileState, MessageKey> = {

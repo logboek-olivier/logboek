@@ -125,6 +125,14 @@ export class FakeGithub {
       this.afterPut?.(path, sha)
       return json(current ? 200 : 201, { content: { sha, path }, commit: { message: req.message } })
     }
+    if (method === 'DELETE') {
+      const req = (body ? JSON.parse(body) : {}) as { message?: string; sha?: string }
+      if (typeof req.message !== 'string' || typeof req.sha !== 'string') return json(422, {})
+      if (!file) return json(404, { message: 'Not Found' })
+      if (req.sha !== file.sha) return json(409, { message: 'is at ... but expected ...' })
+      this.files.delete(path)
+      return json(200, { content: null, commit: { message: req.message } })
+    }
     return json(405, {})
   }
 }

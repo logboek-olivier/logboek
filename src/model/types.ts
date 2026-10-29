@@ -481,6 +481,27 @@ export interface Session extends SyncRecord {
   note?: string
 }
 
+export type DocumentCategory = 'identiteit' | 'certificaten' | 'verzekering' | 'reis-visa' | 'werk-contracten' | 'financieel' | 'overig'
+export const DOCUMENT_CATEGORIES: readonly DocumentCategory[] = ['certificaten', 'verzekering', 'reis-visa', 'werk-contracten', 'financieel', 'overig', 'identiteit']
+
+/**
+ * Document in de kluis (documents/index.json.enc, src/model/documents.ts). De echte naam staat alleen hier, in de
+ * versleutelde index; het bestand zelf staat versleuteld in `documents/<fileId>.bin`, met een willekeurige UUID als
+ * naam (regel 8). Een nieuw bestand voor hetzelfde document krijgt een nieuwe `fileId`.
+ */
+export interface VaultDocument extends SyncRecord {
+  title: string
+  category: DocumentCategory
+  issuedAt?: string
+  expiresAt?: string
+  notes?: string
+  mime: string
+  size: number
+  /** Ook zonder verbinding te openen: een versleutelde kopie blijft op het apparaat. */
+  offline: boolean
+  fileId: string
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -498,6 +519,7 @@ export interface Collections {
   'goals.json.enc': Goal
   'skills.json.enc': Skill
   'sessions.json.enc': Session
+  'documents/index.json.enc': VaultDocument
 }
 
 export type CollectionPath = keyof Collections
@@ -518,6 +540,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'goals.json.enc',
   'skills.json.enc',
   'sessions.json.enc',
+  'documents/index.json.enc',
 ]
 
 export function newId(): string {

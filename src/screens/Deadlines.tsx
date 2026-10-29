@@ -1,9 +1,10 @@
-import { CalendarClock, Plane, Plus, KeyRound } from 'lucide-react'
+import { CalendarClock, FileText, Plane, Plus, KeyRound } from 'lucide-react'
 import { Suspense, useState } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { lazyComponent } from '../lazy'
+import { documentDueItems } from '../model/documents'
 import { useCollection } from '../components/useCollection'
 import { formatDate } from '../format'
 import { t } from '../i18n'
@@ -34,6 +35,9 @@ export function useDueItems(store: Store): DueItem[] {
   const running = activeWeek(trips, settings)
   const next = upcomingTrips(trips).find((trip) => trip.id !== running?.id)
   if (next?.startDate) extra.push({ title: t('reminder.tripStart', { name: next.name }), date: next.startDate, kind: 'trip', source: 'trip' })
+  // Kluis: documenten met een vervaldatum (niet in de demo, die heeft geen kluis).
+  const documents = useCollection(store, 'documents/index.json.enc')
+  if (!demo) extra.push(...documentDueItems(documents))
   return dueItems(reminders, extra)
 }
 
@@ -45,7 +49,10 @@ export function dueLabel(item: Pick<DueItem, 'date' | 'kind'>, today = todayIso(
   return item.kind === 'deadline' ? t('reminder.late', { n: -days }) : t('expiry.expired')
 }
 
-export function DueList({ store, items, notify, onToken }: { store: Store; items: DueItem[]; notify: Notify; onToken?: () => void }) {
+/**
+ * `discreet` (Vandaag, waar studenten kunnen meekijken): een document uit de kluis zonder zijn titel.
+ */
+export function DueList({ store, items, notify, onToken, discreet = false }: { store: Store; items: DueItem[]; notify: Notify; onToken?: () => void; discreet?: boolean }) {
   const reminders = useCollection(store, 'reminders.json.enc')
   const [editing, setEditing] = useState<Reminder | null>(null)
   const today = todayIso()
@@ -54,12 +61,12 @@ export function DueList({ store, items, notify, onToken }: { store: Store; items
       <ul className="rows due-list">
         {items.map((item) => {
           const days = daysUntil(item.date, today) ?? 0
-          const icon = item.source === 'token' ? KeyRound : item.source === 'trip' ? Plane : CalendarClock
+          const icon = item.source === 'token' ? KeyRound : item.source === 'trip' ? Plane : item.source === 'document' ? FileText : CalendarClock
           const content = (
             <>
               <Icon icon={icon} />
               <span className="row-main">
-                <span>{item.title}</span>
+                <span>{discreet && item.source === 'document' ? t('vault.dueTitle') : item.title}</span>
                 <span className="muted small">
                   {[item.kind === 'trip' ? '' : t(`reminderKind.${item.kind}`), formatDate(item.date), item.repeat ? t(`reminderRepeat.${item.repeat}`) : ''].filter(Boolean).join(' · ')}
                 </span>
