@@ -114,9 +114,18 @@ export function Home({ store }: { store: Store }) {
   const tripsVersion = store.list('trips.json.enc').length + store.list('legs.json.enc').length
   useEffect(() => {
     if (demo) return
-    void import('../model/offline-maps').then((m) =>
-      m.offlineActiveTrip(store.list('trips.json.enc'), store.list('legs.json.enc'), store.list('places.json.enc'), currentSettings(store.list('settings.json.enc')), todayIso()),
-    )
+    // De gegevens nu lezen, nu de sessie open is: na het laden van de module kan de Store al vergrendeld zijn.
+    let input: Parameters<typeof import('../model/offline-maps').offlineActiveTrip>
+    try {
+      input = [store.list('trips.json.enc'), store.list('legs.json.enc'), store.list('places.json.enc'), currentSettings(store.list('settings.json.enc')), todayIso()]
+    } catch {
+      return
+    }
+    void import('../model/offline-maps')
+      .then((m) => m.offlineActiveTrip(...input))
+      .catch(() => {
+        // Kaarten offline zetten is een extraatje: een mislukte poging komt de volgende sessie terug.
+      })
   }, [store, demo, tripsVersion])
   useEffect(() => {
     if (backfilled.current || !rates || !store.hasSynced()) return
