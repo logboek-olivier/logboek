@@ -1,8 +1,9 @@
 import { Crosshair, Minus, Plus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from 'react'
 import { t } from '../i18n'
-import { loadLabels, loadOsmIndex, tileKey, tileUrl, type LabelKind, type OsmIndex, type OsmLabel } from '../model/osm'
+import { loadLabels, loadOsmIndex, tileKey, tileUrl, type OsmIndex, type OsmLabel } from '../model/osm'
 import { Icon } from './Icon'
+import { placeLabels, POINT_KINDS, rankLabels, type ShownLabel } from './map-labels'
 import {
   anchorOf,
   clampView,
@@ -84,8 +85,8 @@ let tileIndex: Promise<Set<string>> | null = null
 const osmCache = new Map<string, Promise<{ land: string; lakes: string } | null>>()
 let clipCounter = 0
 
-/** Vanaf welke zoom een soort naam verschijnt. */
-const LABEL_ZOOM: Record<LabelKind, number> = { eiland: 10, plaats: 10, dorp: 12, haven: 12, eilandje: 13 }
+/** Vanaf deze zoom laden we de namen van een vaargebied (de grootste steden verschijnen het eerst). */
+const LABELS_FROM_ZOOM = 7
 
 function mercX(lon: number): number {
   return (lon + 180) / 360
@@ -324,7 +325,7 @@ export function SeaMap({
     return out
   }, [osm, view.zoom, west, east, north, south])
   const osmAreas = useMemo(
-    () => (osm?.areas ?? []).filter((a) => LABEL_ZOOM.eiland <= view.zoom && west <= a.east && a.west <= east && south <= a.north && a.south <= north),
+    () => (osm?.areas ?? []).filter((a) => LABELS_FROM_ZOOM <= view.zoom && west <= a.east && a.west <= east && south <= a.north && a.south <= north),
     [osm, view.zoom, west, east, north, south],
   )
 
@@ -361,6 +362,9 @@ export function SeaMap({
       active = false
     }
   }, [wanted, fine])
+
+  // Alle namen van de vaargebieden in beeld, belangrijkste eerst (één keer per geladen bestand).
+  const rankedLabels = useMemo(() => rankLabels(osmAreas.flatMap((a) => labels[a.id] ?? [])), [osmAreas, labels])
 
   const toScreen = (p: LatLon) => ({ x: (mercX(p.lon) - view.x) * scale + size.w / 2, y: (mercY(p.lat) - view.y) * scale + size.h / 2 })
   const toLatLon = (sx: number, sy: number): LatLon => ({ lon: lonOf(view.x + (sx - size.w / 2) / scale), lat: latOf(view.y + (sy - size.h / 2) / scale) })
@@ -516,13 +520,35 @@ export function SeaMap({
   // (Vandaag) en geen vegen naar een andere maand (agenda). Scrollen houdt touch-action: none al tegen.
   const keepTouch = (e: ReactTouchEvent) => e.stopPropagation()
 
+  const placeBox = (p: MapPlace): [number, number, number, number] => {
+    const s = toScreen(p)
+    return [s.x - 6, s.y - 10, s.x + 8 + p.name.length * 7, s.y + 8]
+  }
+
   const transform = `translate(${size.w / 2 - view.x * scale} ${size.h / 2 - view.y * scale}) scale(${scale / WORLD})`
   const marker = selected ? toScreen(selected) : null
   const shownOsm = osmTiles.filter((tile) => !tile.url || osmPaths[tile.id])
   // Natural Earth wegknippen waar het gedetailleerde vak al getekend is.
   const clip = shownOsm.length > 0 ? `M-1 -1H${WORLD + 1}V${WORLD + 1}H-1Z${shownOsm.map(({ rect: [x0, y0, x1, y1] }) => `M${x0} ${y0}H${x1}V${y1}H${x0}Z`).join('')}` : null
   const routeLine = route && route.length > 1 ? route.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('') : null
-  const shownLabels = placeLabels(osmAreas.flatMap((a) => labels[a.id] ?? []), view.zoom, toScreen, size, places)
+  // Niet over de eigen plaatsen en de genummerde stops van een route heen.
+  const pointBox = (point: LatLon): [number, number, number, number] => {
+    const p = toScreen(point)
+    return [p.x - 12, p.y - 12, p.x + 12, p.y + 12]
+  }
+  // Ook niet onder de knoppen rechtsboven (48 px met 4 px ertussen, 8 px van de rand) en de naamsvermelding linksonder.
+  const controls = 2 + (selected ? 1 : 0)
+  const reserved: [number, number, number, number][] = [
+    [size.w - 64, 0, size.w, 8 + controls * 52 + 4],
+    [0, size.h - 28, 220, size.h],
+  ]
+  // Het gekozen punt is een cirkel van 9 px.
+  const markerBox = (point: LatLon): [number, number, number, number] => {
+    const p = toScreen(point)
+    return [p.x - 10, p.y - 10, p.x + 10, p.y + 10]
+  }
+  const taken = [...places.map(placeBox), ...(stops ?? []).map(pointBox), ...(selected ? [markerBox(selected)] : []), ...reserved]
+  const shownLabels = placeLabels(rankedLabels, view.zoom, toScreen, size, taken)
   const stopGroups = groupStops(stops ?? [])
   const line = (path: readonly LatLon[]) => path.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('')
   const maxCount = Math.max(1, ...(hotspots ?? []).map((h) => h.count))
@@ -580,9 +606,7 @@ export function SeaMap({
             )
           })}
           {shownLabels.map((l) => (
-            <text key={`${l.k}|${l.n}|${l.x}|${l.y}`} className={`map-label map-label-${l.k}`} x={l.x} y={l.y}>
-              {l.n}
-            </text>
+            <MapLabel key={`${l.k}|${l.n}|${l.lat}|${l.lon}`} label={l} />
           ))}
           {places.map((place) => {
             const s = toScreen(place)
@@ -659,32 +683,33 @@ function groupStops(stops: readonly MapStop[]): { lat: number; lon: number; numb
   return [...groups.values()]
 }
 
-interface ShownLabel extends OsmLabel {
-  x: number
-  y: number
-}
-
-/** Namen die bij deze zoom horen, zonder elkaar of de eigen plaatsen te overlappen; eilanden eerst. */
-function placeLabels(all: readonly OsmLabel[], zoom: number, toScreen: (p: LatLon) => { x: number; y: number }, size: { w: number; h: number }, places: readonly MapPlace[]): ShownLabel[] {
-  const order: LabelKind[] = ['eiland', 'plaats', 'haven', 'dorp', 'eilandje']
-  const boxes: [number, number, number, number][] = places.map((p) => {
-    const s = toScreen(p)
-    return [s.x - 6, s.y - 10, s.x + 8 + p.name.length * 7, s.y + 8]
-  })
-  const out: ShownLabel[] = []
-  for (const kind of order) {
-    if (zoom < LABEL_ZOOM[kind]) continue
-    for (const label of all) {
-      if (label.k !== kind) continue
-      const s = toScreen(label)
-      if (s.x < 0 || s.y < 12 || s.x > size.w || s.y > size.h - 4) continue
-      const width = label.n.length * 6.5
-      const box: [number, number, number, number] = [s.x - width / 2 - 2, s.y - 11, s.x + width / 2 + 2, s.y + 3]
-      if (boxes.some((b) => box[0] < b[2] && b[0] < box[2] && box[1] < b[3] && b[1] < box[3])) continue
-      boxes.push(box)
-      out.push({ ...label, x: s.x, y: s.y })
-      if (out.length >= 60) return out
-    }
+/**
+ * Eén naam op de kaart. Steden, dorpen, eilanden en baaien staan gecentreerd op hun punt (baaien cursief in zeeblauw);
+ * marina's, havens en ankerplekken krijgen een teken op het punt met de naam ernaast.
+ */
+function MapLabel({ label }: { label: ShownLabel }) {
+  const kind = label.k === 'plaats' ? 'stad' : label.k
+  const { x, y, tx, ty, anchor } = label
+  if (!POINT_KINDS.has(kind)) {
+    return (
+      <text className={`map-label map-label-${kind}`} x={tx} y={ty}>
+        {label.text}
+      </text>
+    )
   }
-  return out
+  return (
+    <g className={`map-poi map-poi-${kind}`}>
+      {kind === 'ankerplek' ? (
+        <g className="map-anchor">
+          <circle cx={x} cy={y - 3.6} r={1.3} />
+          <path d={`M${x} ${y - 2.3}V${y + 4.2}M${x - 2.2} ${y - 0.6}H${x + 2.2}M${x - 3.6} ${y + 1.3}Q${x - 3} ${y + 4.6} ${x} ${y + 4.4}Q${x + 3} ${y + 4.6} ${x + 3.6} ${y + 1.3}`} />
+        </g>
+      ) : (
+        <circle cx={x} cy={y} r={kind === 'marina' ? 3.6 : 3} />
+      )}
+      <text className={`map-label map-label-${kind}${anchor === 'end' ? ' end' : ''}`} x={tx} y={ty}>
+        {label.text}
+      </text>
+    </g>
+  )
 }

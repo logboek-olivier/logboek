@@ -1,20 +1,22 @@
 // Bouwt gedetailleerde OpenStreetMap-kaartdata (© OpenStreetMap-bijdragers, ODbL) voor vier vaargebieden naar
 // public/osm/. Draait in GitHub Actions (.github/workflows/kaart.yml), want de bronnen staan buiten de app:
 // - land: osmdata.openstreetmap.de, land-polygons-split-4326 (shapefile, uit de OSM-kustlijnen);
-// - meren in Nederland (IJsselmeer, Markermeer, …) en labels (eilanden, havens, plaatsen): de Overpass API.
+// - meren in Nederland (IJsselmeer, Markermeer, …) en labels (steden, dorpen, eilanden, eilandjes, baaien, marina's,
+//   havens en ankerplekken): de Overpass API.
 // Gebruik: node scripts/build-osm.mjs <land_polygons.shp>
 //
 // Uitvoer (de app laadt alleen deze bestanden van de eigen site, pas als een gebied in beeld komt, en bewaart ze
 // daarna offline):
-// - public/osm/gebieden.json: de gebieden met hun kader, detailniveaus, vakken en raster;
+// - public/osm/gebieden.json: de gebieden met hun kader, detailniveaus, vakken, raster en grootte in bytes (voor
+//   Meer → Kaarten);
 // - public/osm/<gebied>/<niveau>/<vak>.json: {scale, rings, lakes}, ringen als [x0, y0, dx1, dy1, …];
 // - public/osm/<gebied>/water.bin: raster water/land (run-length, zie scripts/osm-lib.mjs) voor de waterroute;
-// - public/osm/<gebied>/labels.json: [{n, k, lat, lon}] met k = eiland | eilandje | haven | plaats | dorp (dorpen niet in
-//   Nederland: daar zijn het er te veel).
+// - public/osm/<gebied>/labels.json: [{n, k, lat, lon, z}] met k = stad | dorp | eiland | eilandje | baai | marina | haven
+//   | ankerplek en z = vanaf welke zoom (grote eerder dan kleine; zie labelZoom in osm-lib.mjs), belangrijkste eerst.
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { assembleRings, clipRect, encodeRing, rasterize, readShpPolygons, ringBox, rleEncode, simplify } from './osm-lib.mjs'
+import { assembleRings, buildLabels, clipRect, encodeRing, rasterize, readShpPolygons, ringBox, rleEncode, simplify } from './osm-lib.mjs'
 
 export const AREAS = [
   { id: 'bovenwinds', name: { nl: 'Bovenwindse Eilanden en BVI', en: 'Leeward Islands and BVI' }, west: -65.15, south: 17.4, east: -62.55, north: 18.8 },
@@ -70,33 +72,24 @@ function latinName(tags) {
 
 async function labels(area) {
   const b = bbox(area)
-  const data = await overpass(`[out:json][timeout:180];
+  // Eerst elk element met zijn middelpunt (het label), dan de vlakken nog eens met hun kader (de grootte, voor de zoom
+  // vanaf waar het label verschijnt).
+  const data = await overpass(`[out:json][timeout:240];
 (
-  node["place"~"^(island|islet)$"]["name"](${b});
-  way["place"~"^(island|islet)$"]["name"](${b});
-  relation["place"~"^(island|islet)$"]["name"](${b});
-  node["leisure"="marina"]["name"](${b});
-  way["leisure"="marina"]["name"](${b});
+  nwr["place"~"^(island|islet)$"]["name"](${b});
+  node["place"~"^(city|town|village)$"]["name"](${b});
+  nwr["natural"="bay"]["name"](${b});
+  nwr["leisure"="marina"]["name"](${b});
+  nwr["seamark:type"~"^(harbour|anchorage)$"]["name"](${b});
   node["harbour"="yes"]["name"](${b});
-  node["seamark:type"="harbour"]["name"](${b});
-  node["place"~"^(city|town${area.id === 'nederland' ? '' : '|village'})$"]["name"](${b});
-);
-out center tags;`)
-  const out = []
-  const seen = new Set()
-  for (const el of data.elements ?? []) {
-    const tags = el.tags ?? {}
-    const lat = el.lat ?? el.center?.lat
-    const lon = el.lon ?? el.center?.lon
-    const n = latinName(tags).trim().slice(0, 40)
-    if (!n || typeof lat !== 'number' || typeof lon !== 'number') continue
-    const k =
-      tags.place === 'island' ? 'eiland' : tags.place === 'islet' ? 'eilandje' : tags.leisure === 'marina' || tags.harbour || tags['seamark:type'] === 'harbour' ? 'haven' : tags.place === 'village' ? 'dorp' : 'plaats'
-    const key = `${k}|${n}|${lat.toFixed(2)}|${lon.toFixed(2)}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push({ n, k, lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5 })
-  }
+)->.all;
+.all out center tags;
+(way.all; relation.all;)->.vlakken;
+.vlakken out bb tags;`)
+  const out = buildLabels(data.elements ?? [], latinName)
+  const counts = {}
+  for (const l of out) counts[l.k] = (counts[l.k] ?? 0) + 1
+  console.log(`${area.id} labels: ${JSON.stringify(counts)}`)
   return out
 }
 
@@ -172,7 +165,7 @@ for (const area of AREAS) {
   const lonScale = Math.cos((((area.south + area.north) / 2) * Math.PI) / 180)
   const waterRings = await lakes(area)
   const areaLabels = await labels(area)
-  const entry = { ...area, levels: [], grid: null, labels: areaLabels.length }
+  const entry = { ...area, levels: [], grid: null, labels: areaLabels.length, bytes: 0 }
   for (const level of LEVELS) {
     const landTiles = tiled(rings, level, lonScale, outer(area))
     const lakeTiles = tiled(waterRings, level, lonScale, outer(area))
@@ -184,6 +177,7 @@ for (const area of AREAS) {
       bytes += text.length
       writeFileSync(`public/osm/${area.id}/${level.id}/${key}.json`, text)
     }
+    entry.bytes += bytes
     entry.levels.push({ id: level.id, minZoom: level.minZoom, tile: level.tile, tiles: keys })
     console.log(`${area.id} ${level.id}: ${keys.length} vakken, ${(bytes / 1024 / 1024).toFixed(1)} MB`)
   }
@@ -200,7 +194,9 @@ for (const area of AREAS) {
   const rle = rleEncode(cells, grid.cols, grid.rows)
   writeFileSync(`public/osm/${area.id}/water.bin`, rle)
   entry.grid = grid
-  writeFileSync(`public/osm/${area.id}/labels.json`, JSON.stringify(areaLabels))
+  const labelText = JSON.stringify(areaLabels)
+  writeFileSync(`public/osm/${area.id}/labels.json`, labelText)
+  entry.bytes += rle.length + labelText.length
   index.areas.push(entry)
   console.log(`${area.id}: ${rings.length} landringen, ${waterRings.length} meren, ${areaLabels.length} labels, raster ${grid.cols}×${grid.rows} (${(rle.length / 1024).toFixed(0)} kB)`)
 }

@@ -296,3 +296,87 @@ export function assembleRings(ways) {
   }
   return rings
 }
+
+// ---------- Labels ----------
+
+/** Soort label uit de OSM-tags; null = geen label. */
+export function labelKind(tags) {
+  if (tags.place === 'city' || tags.place === 'town') return 'stad'
+  if (tags.place === 'village') return 'dorp'
+  if (tags.place === 'island') return 'eiland'
+  if (tags.place === 'islet') return 'eilandje'
+  if (tags.natural === 'bay') return 'baai'
+  if (tags.leisure === 'marina') return 'marina'
+  if (tags['seamark:type'] === 'anchorage') return 'ankerplek'
+  if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return 'haven'
+  return null
+}
+
+/** Grootte in km (diagonaal van het kader) van een vlak, of null voor een punt. */
+export function sizeKm(bounds) {
+  if (!bounds) return null
+  const lat = (bounds.minlat + bounds.maxlat) / 2
+  const dx = (bounds.maxlon - bounds.minlon) * 111.32 * Math.cos((lat * Math.PI) / 180)
+  const dy = (bounds.maxlat - bounds.minlat) * 110.57
+  return Math.hypot(dx, dy)
+}
+
+/**
+ * Vanaf welke zoom een label verschijnt: grote steden, eilanden en baaien eerder, kleine pas verder ingezoomd. Zo komen
+ * er bij het inzoomen steeds meer namen bij.
+ */
+export function labelZoom(kind, tags, km) {
+  const bySize = (base, offset, min, max) => (km === null || !(km > 0) ? base : Math.max(min, Math.min(max, Math.round(offset - Math.log2(km)))))
+  const population = Number(tags.population) || 0
+  switch (kind) {
+    case 'stad':
+      return tags.place === 'city' ? (population >= 250_000 ? 7 : 8) : 10
+    case 'dorp':
+      return population >= 3_000 ? 11 : 12
+    case 'eiland':
+      // Tortola (19 km) vanaf 8, Norman Island (2,5 km) vanaf 11, een eiland van 1 km vanaf 12.
+      return bySize(11, 12.5, 8, 12)
+    case 'eilandje':
+      return km !== null && km >= 1 ? 12 : 13
+    case 'baai':
+      return bySize(12, 13.5, 10, 13)
+    case 'marina':
+    case 'haven':
+      return 12
+    case 'ankerplek':
+      return 13
+    default:
+      return 13
+  }
+}
+
+/** Volgorde bij gelijke zoom: wat het belangrijkst is, krijgt eerst een plek (labels overlappen elkaar nooit). */
+export const LABEL_ORDER = ['stad', 'eiland', 'dorp', 'baai', 'marina', 'haven', 'ankerplek', 'eilandje']
+
+/**
+ * Labels uit de Overpass-elementen: elementen met coördinaten (`center` of `lat`/`lon`) worden labels; elementen met
+ * `bounds` (dezelfde vlakken, tweede uitvoer) geven alleen de grootte. Per soort en naam binnen ca. 2 km één label;
+ * gesorteerd op zoom, dan soort, dan grootte (groot eerst).
+ */
+export function buildLabels(elements, latinName) {
+  const sizes = new Map()
+  for (const el of elements) if (el.bounds) sizes.set(`${el.type}/${el.id}`, sizeKm(el.bounds))
+  const out = []
+  const seen = new Set()
+  for (const el of elements) {
+    if (el.bounds && el.lat === undefined && !el.center) continue
+    const tags = el.tags ?? {}
+    const lat = el.lat ?? el.center?.lat
+    const lon = el.lon ?? el.center?.lon
+    const k = labelKind(tags)
+    const n = latinName(tags).trim().slice(0, 40)
+    if (!k || !n || typeof lat !== 'number' || typeof lon !== 'number') continue
+    const key = `${k}|${n}|${lat.toFixed(2)}|${lon.toFixed(2)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const km = sizes.get(`${el.type}/${el.id}`) ?? null
+    out.push({ n, k, lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5, z: labelZoom(k, tags, km), s: km === null ? 0 : Math.round(km * 10) / 10 })
+  }
+  out.sort((a, b) => a.z - b.z || LABEL_ORDER.indexOf(a.k) - LABEL_ORDER.indexOf(b.k) || b.s - a.s || a.n.localeCompare(b.n))
+  return out.map(({ n, k, lat, lon, z }) => ({ n, k, lat, lon, z }))
+}
