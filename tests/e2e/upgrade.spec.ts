@@ -7,7 +7,7 @@ import { COLLECTION_PATHS } from '../../src/model/types'
 import { decryptRecords } from '../../src/storage/sync'
 import { UPGRADE_SAMPLES } from '../upgrade/upgrade-samples'
 import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
-import { enterToken, lock, PASSPHRASE } from './helpers/logbook'
+import { enterToken, lock, openMore, PASSPHRASE } from './helpers/logbook'
 import { startStaticServer, type SwitchableServer } from './helpers/static-server'
 
 // Verplichte upgradetest (harde regel 16): gegevens van de vorige release, bijwerken in dezelfde browseropslag,
@@ -169,6 +169,18 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('transactions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(tipPuts)
     await expectSynced(page)
+    // Teller per organisatie (nieuwe velden in de instellingen): beginnummer Yacht Week, het voorbeeld voor SV blijft.
+    await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+    // De melding na opslaan ligt over het menu Meer: eerst laten verdwijnen.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await openMore(page, L('nav.settings'), L('nav.more'))
+    await page.getByRole('button', { name: new RegExp(`^${L('counter.title')}`) }).click()
+    await expect(page.getByLabel(translate('nl', 'counter.first', { org: 'SV' }))).toHaveValue('3')
+    await page.getByLabel(translate('nl', 'counter.first', { org: 'YW' })).fill('10')
+    const settingsPuts = puts('settings.json.enc')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect.poll(() => puts('settings.json.enc'), { timeout: 20_000 }).toBeGreaterThan(settingsPuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -185,6 +197,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
         expect.objectContaining({ amount: 25, tripId: 'upg-trip-1', tipFrom: { kind: 'personen', participantIds: ['upg-p-1'] } }),
       ]),
     )
+    const settings = await decryptRecords(key, 'settings.json.enc', Uint8Array.from(Buffer.from(github.files.get('settings.json.enc')!.content, 'base64')))
+    expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'] })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
   } finally {

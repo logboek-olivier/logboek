@@ -2,10 +2,12 @@ import { ChevronLeft, ChevronUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
+import { useCounters } from '../components/useCounters'
 import { weekTypeLabel } from '../components/WeekSheet'
 import { formatDateRange } from '../format'
 import { t } from '../i18n'
 import { buildIndex, planningEnd, seasonWeeks, weekStart, type SeasonItem } from '../model/calendar'
+import { nameWithCounter, type TripCounter } from '../model/counters'
 import { addDays } from '../model/money'
 import { todayIso } from '../model/types'
 import { isoWeek } from '../model/weeks'
@@ -16,10 +18,10 @@ import type { Store } from '../storage/store'
 
 const EARLIER_WEEKS = 26
 
-export function itemLabel(item: SeasonItem): string {
+export function itemLabel(item: SeasonItem, counters?: ReadonlyMap<string, TripCounter>): string {
   if (item.kind === 'trip') {
     const v = item.view
-    return [v.trip.name, weekTypeLabel(v.type), v.boat, v.trip.area ?? ''].filter(Boolean).join(' · ')
+    return [nameWithCounter(v.trip, counters?.get(v.trip.id)), weekTypeLabel(v.type), v.boat, v.trip.area ?? ''].filter(Boolean).join(' · ')
   }
   const travel = item.travel && (item.travel.from || item.travel.to) ? ` ${[item.travel.from, item.travel.to].filter(Boolean).join(' → ')}` : ''
   return `${t(`dayType.${item.type}`)}:${travel} ${formatDateRange(item.from, item.to)}`
@@ -31,6 +33,7 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
+  const counters = useCounters(store)
   const [start, setStart] = useState(weekStart(today))
   const lastPlanned = planningEnd(index)
   const end = lastPlanned && lastPlanned > addDays(weekStart(today), 6) ? lastPlanned : addDays(weekStart(today), 6)
@@ -65,11 +68,11 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
                   <li key={i} className={`season-item day-${item.kind === 'trip' ? 'werk' : item.type}`}>
                     {item.kind === 'trip' ? (
                       <>
-                        <span>{itemLabel(item)}</span>
+                        <span>{itemLabel(item, counters)}</span>
                         <span className="muted small"> · {formatDateRange(item.view.startDate, item.view.endDate)}</span>
                       </>
                     ) : (
-                      <span>{itemLabel(item)}</span>
+                      <span>{itemLabel(item, counters)}</span>
                     )}
                   </li>
                 ))}

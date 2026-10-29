@@ -3,6 +3,8 @@ import { useState, type FormEvent } from 'react'
 import { formatDateRange } from '../format'
 import { getLang, t } from '../i18n'
 import { daysBetween } from '../model/calendar'
+import { newTripName } from '../model/counters'
+import { currentSettings } from '../model/settings'
 import { addDays } from '../model/money'
 import { tripOverlaps, type Overlap } from '../model/trip-ops'
 import { ORGANISATIONS, todayIso, WEEK_TYPES, type Organisation, type Trip, type WeekType } from '../model/types'
@@ -30,11 +32,16 @@ export function TripForm({ store, onDone, notify }: { store: Store; onDone: (mes
   const [typeChoice, setType] = useState<WeekType | null>(null)
   const type = typeChoice ?? previous?.type ?? 'training-geven'
   const [name, setName] = useState('')
-  const suggestion = suggestTripName(previous, start, getLang())
   const [more, setMore] = useState(false)
-  const [organisation, setOrganisation] = useState<Organisation | ''>('')
+  // Organisatie en gebied volgen de vorige trip zolang Olivier niets anders kiest (zichtbaar onder Meer).
+  const [orgChoice, setOrganisation] = useState<Organisation | '' | null>(null)
+  const organisation = orgChoice ?? previous?.organisation ?? ''
   const [boat, setBoat] = useState('')
-  const [area, setArea] = useState('')
+  const [areaChoice, setArea] = useState<string | null>(null)
+  const area = areaChoice ?? previous?.area ?? ''
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  // Voorstel: "SV #4 · BVI" bij een getelde organisatie, anders uit de naam van de vorige trip.
+  const suggestion = newTripName(trips, legs, settings, organisation, start, area, suggestTripName(previous, start, getLang()))
   const [people, setPeople] = useState('')
   const [busy, setBusy] = useState(false)
   const [overlap, setOverlap] = useState<Overlap | null>(null)

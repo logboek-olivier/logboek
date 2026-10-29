@@ -1065,6 +1065,16 @@ export const nl = {
   'quick.tripPeople': 'Deelnemers',
   'quick.tripPeopleHint': 'Alleen voornamen, één per regel; land of kenmerk kan later bij de deelnemer.',
   'quick.tripLater': 'Alleen de datums zijn nodig. Type, organisatie, boot, gebied en deelnemers zijn later aan te vullen in Deze trip.',
+  'counter.doubt': (p: { name: string; org: string }) => `Hoort ${p.name} bij ${p.org}? Dan telt de trip mee in de teller.`,
+  'counter.doubtLeft': (p: { n: number }) => `Daarna nog ${p.n}`,
+  'counter.yes': 'Ja',
+  'counter.no': 'Nee',
+  'counter.counted': (p: { name: string; label: string }) => `${p.name} is ${p.label}`,
+  'counter.notCounted': (p: { name: string }) => `${p.name} telt niet mee`,
+  'counter.title': 'Teller per organisatie',
+  'counter.first': (p: { org: string }) => `Eerste nummer ${p.org}`,
+  'counter.firstHint': 'Voor trips van vóór de app: had je al 9 Yacht Weeks, vul dan 10 in. Trips in de app tellen op datum verder.',
+  'counter.saved': 'Teller opgeslagen',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
