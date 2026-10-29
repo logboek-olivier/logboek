@@ -1,4 +1,4 @@
-import { Archive, BarChart3, BookOpen, CalendarClock, ChevronLeft, ChevronRight, HardDrive, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { Archive, BarChart3, BookOpen, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { t, type MessageKey } from '../i18n'
@@ -6,7 +6,7 @@ import { t, type MessageKey } from '../i18n'
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
 // hier ook.
 
-export type MoreScreen = 'logboek' | 'statistieken' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'cursussen' | 'archief' | 'opslag' | 'instellingen'
+export type MoreScreen = 'logboek' | 'statistieken' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
   { id: 'logboek', label: 'nav.logbook', hint: 'more.logbookHint', icon: NotebookPen },
@@ -15,6 +15,7 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
   { id: 'termijnen', label: 'reminder.screen', hint: 'more.remindersHint', icon: CalendarClock },
   { id: 'boten', label: 'boats.screen', hint: 'more.boatsHint', icon: Sailboat },
   { id: 'plaatsen', label: 'places.screen', hint: 'more.placesHint', icon: MapPin },
+  { id: 'kaarten', label: 'maps.title', hint: 'more.mapsHint', icon: MapIcon },
   { id: 'cursussen', label: 'curriculum.courses', hint: 'more.coursesHint', icon: BookOpen },
   { id: 'archief', label: 'nav.studentArchive', hint: 'more.archiveHint', icon: Archive },
   { id: 'opslag', label: 'nav.storage', hint: 'more.storageHint', icon: HardDrive },

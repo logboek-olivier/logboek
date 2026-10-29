@@ -4072,3 +4072,31 @@ body.demo-on .group-head {
   background: var(--accent);
   color: var(--accent-text);
 }
+
+/* Meer → Kaarten: per vaargebied naam, grootte en status, met de knop eronder. */
+.maps-list .map-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+
+.map-area .row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.map-area .row {
+  align-items: center;
+}
+
+.map-area progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.map-area-done {
+  display: inline-flex;
+  color: var(--positive);
+}

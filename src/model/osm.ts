@@ -22,6 +22,8 @@ export interface OsmArea {
   north: number
   levels: OsmLevel[]
   grid: GridMeta
+  /** Grootte van alle bestanden van het gebied (Meer → Kaarten); ontbreekt in oudere kaartdata. */
+  bytes?: number
 }
 
 export interface OsmIndex {
@@ -43,6 +45,16 @@ export interface OsmLabel {
 }
 
 const base = () => `${import.meta.env.BASE_URL}osm/`
+
+/** Map van de kaartdata op de eigen site. */
+export function osmBase(): string {
+  return base()
+}
+
+/** Het overzicht van de gebieden. */
+export function osmIndexUrl(): string {
+  return `${base()}gebieden.json`
+}
 let index: Promise<OsmIndex | null> | null = null
 const grids = new Map<string, Promise<WaterGrid | null>>()
 const labels = new Map<string, Promise<OsmLabel[]>>()
