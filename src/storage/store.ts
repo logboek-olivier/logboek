@@ -1,11 +1,12 @@
-import { DecryptError, utf8 } from '../crypto/encrypt'
+import { decryptObject, DecryptError, encryptObject, utf8, type Bytes } from '../crypto/encrypt'
 import { recordError } from '../errors'
 import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../crypto/keys'
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, BUILD, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
-import { getLocal, getObject, putObject, putObjectAndLocal, setAsideIfVault, type Db, type StoredObject } from './idb'
+import { deleteObject, getLocal, getObject, listObjectPaths, putObject, putObjectAndLocal, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
+import { documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, MAX_DOCUMENT_BYTES } from './documents'
 import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
 import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, sameRecords, sealForUpload, syncCollection } from './sync'
@@ -412,6 +413,7 @@ export class Store {
       return
     }
     this.setStatus({ kind: 'syncing' })
+    this.uploadedThisRound.clear()
     let failure: unknown = null
     // Hoort logboek-data bij deze hoofdsleutel? Zo niet, dan niets schrijven: anders komen er bestanden onder
     // een andere sleutel naast de echte te staan, die de andere apparaten niet kunnen lezen.
@@ -423,7 +425,8 @@ export class Store {
       await this.absorbAll()
       paths = full ? [...COLLECTION_PATHS] : COLLECTION_PATHS.filter((p) => Object.keys(this.outbox[p] ?? {}).length > 0)
       if (this.locked) return
-      if (paths.length === 0) {
+      // Documentbestanden die nog niet op GitHub staan, gaan ook zonder andere wijzigingen mee (na de meta-controle).
+      if (paths.length === 0 && (await this.pendingDocumentFiles()).length === 0) {
         // Vanzelf na een opslag, maar niets wacht meer (een ander venster synct het al): niets op het netwerk.
         this.syncedSeq = Math.max(this.syncedSeq, covered)
         this.setStatus(this.idleStatus())
@@ -539,6 +542,20 @@ export class Store {
         }
       }
     }
+    // Kluis: documentbestanden die nog niet op GitHub staan, eerst (dan staat het bestand er al als de index het noemt).
+    // Alleen na een bevestigde meta-controle: nooit een bestand naast een logboek van een andere sleutel.
+    if (meta === 'match' && !this.outdated) {
+      try {
+        await this.uploadDocumentFiles()
+      } catch (error) {
+        if (this.locked || error instanceof KeyMismatchError) return
+        if (error instanceof NetworkError || error instanceof AuthError) {
+          this.reportFailure(error)
+          return
+        }
+        failure = error
+      }
+    }
     // Eén onleesbaar of blijvend conflicterend bestand houdt de andere bestanden niet tegen;
     // zonder verbinding of met een ongeldige token stoppen we wel direct.
     for (const path of COLLECTION_PATHS) {
@@ -569,6 +586,8 @@ export class Store {
       failure = new UnreadableFileError([...unreadable.keys()], [...new Set(reasons)].join(', '))
     }
     if (failure === null) {
+      await this.cleanupDocumentFiles().catch(recordError)
+      if (this.locked) return
       if (!waiting && full) this.syncedOnce = true
       if (!waiting) this.syncedSeq = Math.max(this.syncedSeq, covered)
       this.setStatus(this.idleStatus())
@@ -1088,6 +1107,142 @@ export class Store {
       if (await putObjectAndLocal(this.db, META_PATH, this.vaultCheck, object, local)) return
       if (this.locked) return
       // Andere meta: hoort die bij deze sleutel, dan opnieuw met het nieuwe check-veld; anders stoppen.
+      await this.assertVault()
+    }
+    this.tripMismatch('local')
+  }
+
+  // ---------- Kluis: documentbestanden (src/storage/documents.ts) ----------
+
+  /** In deze ronde geüploade bestanden: hun kopie op het apparaat blijft tot een volgende ronde (GitHub loopt soms achter). */
+  private readonly uploadedThisRound = new Set<string>()
+
+  /** Een documentbestand versleuteld op dit apparaat zetten (AAD = pad); de volgende sync zet het op GitHub. */
+  async putDocumentFile(fileId: string, bytes: Bytes): Promise<void> {
+    this.assertUnlocked()
+    if (this.frozen.size > 0) throw new NewerSchemaError(0)
+    if (bytes.length > MAX_DOCUMENT_BYTES) throw new DocumentTooLargeError()
+    const path = documentPath(fileId)
+    const blob = await encryptObject(this.masterKey, path, bytes)
+    // Dezelfde controle als sealForUpload: wat niet terug te lezen is, komt niet op het apparaat en niet op GitHub.
+    await decryptObject(this.masterKey, path, blob)
+    await this.putObjectGuarded({ path, blob, sha: null })
+    this.scheduleSync()
+  }
+
+  /** Het bestand van een document: de kopie op dit apparaat, anders van GitHub (alleen bewaard met `keep`). */
+  async documentFile(fileId: string, keep = false): Promise<Bytes> {
+    this.assertUnlocked()
+    const path = documentPath(fileId)
+    const local = await getObject(this.db, path)
+    if (local) return decryptObject(this.masterKey, path, local.blob)
+    if (this.demo) throw new DocumentUnavailableError('demo')
+    const remote = await this.client.getFile(path)
+    if (!remote) throw new DocumentUnavailableError('missing')
+    const plain = await decryptObject(this.masterKey, path, remote.content)
+    this.assertUnlocked()
+    if (keep) await this.putObjectGuarded({ path, blob: remote.content, sha: remote.sha })
+    return plain
+  }
+
+  /** Staat er een kopie van dit bestand op het apparaat, en is die al op GitHub? */
+  async documentFileState(fileId: string): Promise<'none' | 'pending' | 'local'> {
+    this.assertUnlocked()
+    const local = await getObject(this.db, documentPath(fileId))
+    return !local ? 'none' : local.sha === null ? 'pending' : 'local'
+  }
+
+  /** Offline beschikbaar: een kopie op het apparaat houden (zo nodig ophalen), of weghalen als hij al op GitHub staat. */
+  async setDocumentOffline(fileId: string, offline: boolean): Promise<void> {
+    this.assertUnlocked()
+    const path = documentPath(fileId)
+    const local = await getObject(this.db, path)
+    if (offline) {
+      if (!local) await this.documentFile(fileId, true)
+      return
+    }
+    if (local && local.sha !== null) await deleteObject(this.db, path)
+  }
+
+  /** De documentbestanden op dit apparaat die nog niet op GitHub staan. */
+  async pendingDocumentFiles(): Promise<string[]> {
+    if (this.demo) return []
+    const out: string[] = []
+    for (const path of await listObjectPaths(this.db, DOCUMENTS_PREFIX)) {
+      const fileId = fileIdOf(path)
+      if (!fileId) continue
+      const object = await getObject(this.db, path)
+      if (object && object.sha === null) out.push(fileId)
+    }
+    return out
+  }
+
+  /**
+   * In een syncronde, na een bevestigde meta-controle: elk documentbestand dat nog niet op GitHub staat, als nieuw bestand
+   * uploaden. Eerst weer ontsleuteld met dezelfde sleutel en hetzelfde pad; lukt dat niet, dan gaat dat bestand niet. Bestaat
+   * het pad al (een eerdere ronde brak af na het schrijven), dan telt de versie op GitHub als die met deze sleutel te lezen is.
+   */
+  private async uploadDocumentFiles(): Promise<void> {
+    for (const fileId of await this.pendingDocumentFiles()) {
+      if (this.locked) return
+      const path = documentPath(fileId)
+      const local = await getObject(this.db, path)
+      if (!local || local.sha !== null) continue
+      try {
+        await decryptObject(this.masterKey, path, local.blob)
+      } catch (error) {
+        // Een kapotte kopie op dit apparaat: niet uploaden, de andere bestanden wel.
+        recordError(error)
+        continue
+      }
+      let sha: string
+      try {
+        sha = await this.client.putFile(path, local.blob, null)
+      } catch (error) {
+        if (!(error instanceof ConflictError)) throw error
+        const remote = await this.client.getFile(path)
+        if (!remote) throw error
+        await decryptObject(this.masterKey, path, remote.content)
+        sha = remote.sha
+      }
+      if (this.locked) return
+      this.uploadedThisRound.add(fileId)
+      await this.putObjectGuarded({ ...local, sha })
+    }
+  }
+
+  /**
+   * Opruimen op dit apparaat na een geslaagde ronde: de kopie van een verwijderd document na een dag (zodat ongedaan
+   * maken werkt), en de kopie van een document dat niet offline hoeft en al op GitHub staat. Nooit iets dat nog niet op
+   * GitHub staat, behalve van een document dat al een dag verwijderd is.
+   */
+  private async cleanupDocumentFiles(now = Date.now()): Promise<void> {
+    if (this.demo) return
+    const documents = new Map(this.get('documents/index.json.enc').map((d) => [d.fileId, d]))
+    for (const path of await listObjectPaths(this.db, DOCUMENTS_PREFIX)) {
+      if (this.locked) return
+      const fileId = fileIdOf(path)
+      if (!fileId || this.uploadedThisRound.has(fileId)) continue
+      const document = documents.get(fileId)
+      if (!document) continue
+      const object = await getObject(this.db, path)
+      if (!object) continue
+      const deletedLongAgo = document.deletedAt !== null && now - Date.parse(document.deletedAt) > 24 * 3_600_000
+      const notNeeded = document.deletedAt === null && !document.offline && object.sha !== null
+      if (deletedLongAgo || notNeeded) await deleteObject(this.db, path)
+    }
+  }
+
+  /** Eén object schrijven onder de sleutel-invariant (zoals putGuarded, zonder outbox). */
+  private async putObjectGuarded(object: StoredObject): Promise<void> {
+    if (this.mismatch) throw new KeyMismatchError('local')
+    if (this.vaultCheck === null) {
+      await putObject(this.db, object)
+      return
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (await putObjectIfVault(this.db, META_PATH, this.vaultCheck, object)) return
+      if (this.locked) return
       await this.assertVault()
     }
     this.tripMismatch('local')

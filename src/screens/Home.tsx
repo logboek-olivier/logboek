@@ -30,6 +30,7 @@ const Boats = lazyComponent(() => import('./Boats').then((m) => m.Boats))
 const Places = lazyComponent(() => import('./Places').then((m) => m.Places))
 const Maps = lazyComponent(() => import('./Maps').then((m) => m.Maps))
 const Goals = lazyComponent(() => import('./Goals').then((m) => m.Goals))
+const Vault = lazyComponent(() => import('./Vault').then((m) => m.Vault))
 const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
@@ -53,6 +54,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   plaatsen: 'Plaatsen',
   kaarten: 'Kaarten',
   doelen: 'Doelen',
+  kluis: 'Kluis',
   cursussen: 'Cursussen',
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
@@ -151,7 +153,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
         ? 'meer'
         : screen
 
@@ -219,6 +221,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Places store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'kluis' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Vault store={store} notify={notify} />
         </>
       )}
       {screen === 'doelen' && (

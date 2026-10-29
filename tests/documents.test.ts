@@ -1,0 +1,198 @@
+import 'fake-indexeddb/auto'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { decryptObject, DecryptError, encryptObject, fromBase64, toBase64, utf8, type Bytes } from '../src/crypto/encrypt'
+import { META_PATH, serializeMeta } from '../src/crypto/keys'
+import { documentDueItems, scaledSize } from '../src/model/documents'
+import { deleteDocument } from '../src/model/edit'
+import type { VaultDocument } from '../src/model/types'
+import { documentPath, DocumentTooLargeError, DocumentUnavailableError, fileIdOf, isFileId, MAX_DOCUMENT_BYTES } from '../src/storage/documents'
+import { GithubClient } from '../src/storage/github'
+import { openLogboekDb, putObject } from '../src/storage/idb'
+import { Store } from '../src/storage/store'
+import { FakeGithub } from './helpers/fake-github'
+import { createVault, parseWordlistForTests } from './helpers/vault'
+
+// Kluis: documentbestanden versleuteld op het apparaat en op GitHub, met een willekeurige naam; alleen te lezen met de
+// hoofdsleutel en het eigen pad. Alle bestanden zijn verzonnen bytes.
+
+const TOKEN = 'github_pat_KLUIS_0123456789abcdefghijklmnopqrstuvwxyz'
+const wordlist = parseWordlistForTests()
+let k1: Awaited<ReturnType<typeof createVault>>
+let k2: Awaited<ReturnType<typeof createVault>>
+let github: FakeGithub
+let counter = 0
+
+beforeAll(async () => {
+  k1 = await createVault('nep wachtzin van de kluis', wordlist)
+  k2 = await createVault('nep wachtzin van een ander logboek', wordlist)
+}, 30_000)
+
+beforeEach(() => {
+  github = new FakeGithub()
+  github.write(META_PATH, toBase64(utf8(serializeMeta(k1.meta))))
+})
+
+/** Een apparaat met het logboek onder K1 (zoals na koppelen): lokale meta, Store gebonden aan het check-veld. */
+async function device(vault = k1): Promise<Store> {
+  const db = await openLogboekDb(`logboek-kluis-${++counter}`)
+  await putObject(db, { path: META_PATH, blob: utf8(serializeMeta(vault.meta)), sha: github.files.get(META_PATH)!.sha })
+  return Store.open(db, vault.masterKey, new GithubClient(TOKEN, github.fetch), vault.meta.check ?? null)
+}
+
+const FILE_A = '3b241101-e2bb-4255-8caf-4136c566a962'
+const FILE_B = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+const bytes = (text: string): Bytes => utf8(`%PDF-nepdocument ${text}`)
+const doc = (fileId: string, extra: Partial<VaultDocument> = {}): VaultDocument => ({
+  id: `doc-${fileId.slice(0, 4)}`,
+  title: 'Nepcertificaat',
+  category: 'certificaten',
+  mime: 'application/pdf',
+  size: 20,
+  offline: false,
+  fileId,
+  updatedAt: new Date().toISOString(),
+  deletedAt: null,
+  ...extra,
+})
+const blobPuts = () => github.requests.filter((r) => r.method === 'PUT' && r.url.includes('/contents/documents/') && r.url.endsWith('.bin'))
+
+describe('paden', () => {
+  it('alleen een UUID wordt een pad; nooit een naam, een map of ../', () => {
+    expect(documentPath(FILE_A)).toBe(`documents/${FILE_A}.bin`)
+    expect(fileIdOf(`documents/${FILE_A}.bin`)).toBe(FILE_A)
+    expect(fileIdOf('documents/index.json.enc')).toBeNull()
+    for (const bad of ['', 'paspoort', '../meta.json', `${FILE_A}/x`, FILE_A.toUpperCase()]) {
+      expect(isFileId(bad)).toBe(false)
+      expect(() => documentPath(bad)).toThrow()
+    }
+  })
+})
+
+describe('documentbestanden', () => {
+  it('versleuteld op het apparaat, bij de sync als nieuw bestand naar GitHub; alleen met de sleutel en het eigen pad te lezen', async () => {
+    const phone = await device()
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    expect(await phone.documentFileState(FILE_A)).toBe('pending')
+    expect(await phone.pendingDocumentFiles()).toEqual([FILE_A])
+    await phone.sync()
+    expect(blobPuts()).toHaveLength(1)
+    const remote = github.files.get(documentPath(FILE_A))!
+    const sealed = fromBase64(remote.content)
+    // Niets leesbaars op GitHub: geen tekst van het document, en de naam is de UUID.
+    expect(new TextDecoder().decode(sealed)).not.toContain('nepdocument')
+    expect(await decryptObject(k1.masterKey, documentPath(FILE_A), sealed)).toEqual(bytes('A'))
+    // Onder een ander pad of met een andere sleutel: niet te ontsleutelen (AAD = pad).
+    await expect(decryptObject(k1.masterKey, documentPath(FILE_B), sealed)).rejects.toBeInstanceOf(DecryptError)
+    await expect(decryptObject(k2.masterKey, documentPath(FILE_A), sealed)).rejects.toBeInstanceOf(DecryptError)
+    expect(await phone.documentFileState(FILE_A)).toBe('local')
+    expect(await phone.pendingDocumentFiles()).toEqual([])
+    // Een volgende sync uploadt niets opnieuw.
+    await phone.sync()
+    expect(blobPuts()).toHaveLength(1)
+  })
+
+  it('een tweede apparaat opent het bestand van GitHub; offline bewaart een versleutelde kopie, uitzetten haalt hem weg', async () => {
+    const phone = await device()
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    await phone.sync()
+    const laptop = await device()
+    expect(await laptop.documentFileState(FILE_A)).toBe('none')
+    expect(await laptop.documentFile(FILE_A)).toEqual(bytes('A'))
+    expect(await laptop.documentFileState(FILE_A)).toBe('none')
+    await laptop.setDocumentOffline(FILE_A, true)
+    expect(await laptop.documentFileState(FILE_A)).toBe('local')
+    // Zonder verbinding: uit de kopie.
+    github.offline = true
+    expect(await laptop.documentFile(FILE_A)).toEqual(bytes('A'))
+    github.offline = false
+    await laptop.setDocumentOffline(FILE_A, false)
+    expect(await laptop.documentFileState(FILE_A)).toBe('none')
+    // Een bestand dat nergens staat (het andere apparaat synchroniseerde nog niet).
+    await expect(laptop.documentFile(FILE_B)).rejects.toBeInstanceOf(DocumentUnavailableError)
+  })
+
+  it('niet offline: na de upload blijft de kopie tot de volgende ronde, daarna alleen nog op GitHub', async () => {
+    const phone = await device()
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    await phone.put('documents/index.json.enc', doc(FILE_A, { offline: false }))
+    await phone.sync()
+    // Net geüpload: de kopie blijft (GitHub geeft vlak na schrijven soms nog niets terug).
+    expect(await phone.documentFileState(FILE_A)).toBe('local')
+    await phone.sync()
+    expect(await phone.documentFileState(FILE_A)).toBe('none')
+    expect(await phone.documentFile(FILE_A)).toEqual(bytes('A'))
+  })
+
+  it('nooit naar een logboek van een andere sleutel: dan geen enkel bestand naar GitHub', async () => {
+    const phone = await device()
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    github.write(META_PATH, toBase64(utf8(serializeMeta(k2.meta))))
+    await phone.sync()
+    expect(blobPuts()).toHaveLength(0)
+    expect(github.files.has(documentPath(FILE_A))).toBe(false)
+  })
+
+  it('zonder verbinding wacht het bestand; de volgende sync uploadt het, ook zonder andere wijzigingen', async () => {
+    const phone = await device()
+    github.offline = true
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    await phone.sync()
+    expect(github.files.has(documentPath(FILE_A))).toBe(false)
+    github.offline = false
+    await phone.sync({ changedOnly: true })
+    expect(github.files.has(documentPath(FILE_A))).toBe(true)
+  })
+
+  it('een afgebroken upload (het bestand staat er al): de versie op GitHub telt als die met deze sleutel te lezen is', async () => {
+    const phone = await device()
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    github.write(documentPath(FILE_A), toBase64(await encryptObject(k1.masterKey, documentPath(FILE_A), bytes('A'))))
+    await phone.sync()
+    expect(await phone.documentFileState(FILE_A)).toBe('local')
+    expect(phone.getStatus().kind).toBe('synced')
+  })
+
+  it('een onleesbaar bestand op GitHub blokkeert alleen dat document', async () => {
+    const phone = await device()
+    github.write(documentPath(FILE_B), toBase64(utf8('kapot')))
+    await expect(phone.documentFile(FILE_B)).rejects.toBeInstanceOf(DecryptError)
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    await phone.sync()
+    expect(github.files.has(documentPath(FILE_A))).toBe(true)
+  })
+
+  it('verwijderen: de kopie blijft een dag (ongedaan maken), daarna weg; groter dan 20 MB en na vergrendelen: geweigerd', async () => {
+    const phone = await device()
+    await phone.putDocumentFile(FILE_A, bytes('A'))
+    await phone.put('documents/index.json.enc', doc(FILE_A, { offline: true }))
+    await phone.sync()
+    const undo = await deleteDocument(phone, phone.list('documents/index.json.enc')[0]!)
+    await phone.sync()
+    expect(await phone.documentFileState(FILE_A)).toBe('local')
+    await undo()
+    expect(phone.list('documents/index.json.enc')).toHaveLength(1)
+    // Twee dagen geleden verwijderd: de volgende ronde haalt de kopie weg.
+    const old = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString()
+    await phone.put('documents/index.json.enc', { ...phone.list('documents/index.json.enc')[0]!, updatedAt: new Date().toISOString(), deletedAt: old })
+    await phone.sync()
+    await phone.sync()
+    expect(await phone.documentFileState(FILE_A)).toBe('none')
+    await expect(phone.putDocumentFile(FILE_B, new Uint8Array(MAX_DOCUMENT_BYTES + 1))).rejects.toBeInstanceOf(DocumentTooLargeError)
+    phone.lock()
+    await expect(phone.documentFile(FILE_A)).rejects.toThrow()
+    await expect(phone.putDocumentFile(FILE_B, bytes('B'))).rejects.toThrow()
+  })
+})
+
+describe('kluis in de app', () => {
+  it('vervaldatums bij de termijnen; verwijderd of zonder datum niet', () => {
+    const items = documentDueItems([doc(FILE_A, { expiresAt: '2027-03-01' }), doc(FILE_B, { id: 'weg', expiresAt: '2027-01-01', deletedAt: '2026-10-01T00:00:00.000Z' }), doc(FILE_B, { id: 'zonder' })])
+    expect(items).toEqual([{ id: `doc-${FILE_A.slice(0, 4)}`, title: 'Nepcertificaat', date: '2027-03-01', kind: 'vervalt', source: 'document' }])
+  })
+
+  it('foto verkleinen tot 1600 px aan de lange kant, nooit vergroten', () => {
+    expect(scaledSize(4000, 3000)).toEqual({ width: 1600, height: 1200 })
+    expect(scaledSize(3000, 4000)).toEqual({ width: 1200, height: 1600 })
+    expect(scaledSize(800, 600)).toEqual({ width: 800, height: 600 })
+  })
+})

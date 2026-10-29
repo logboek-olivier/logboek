@@ -47,7 +47,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 8. **Bestandsnamen in de kluis zijn willekeurige UUID's.** Echte namen staan alleen in de versleutelde index.
 9. **Logs bevatten nooit inhoud.** Geen bedragen, plaatsnamen, documentnamen of sleutels in `console.log`, foutmeldingen of commitberichten. Commitberichten in `logboek-data` zijn altijd `sync <ISO-tijd> v<versie>+<commit> d<apparaat-id>` (`commitMessage` in `src/storage/github.ts`): de app-versie uit `package.json` met de korte commit-hash van de build, en een apparaat-id van acht willekeurige hexadecimale tekens, één keer per apparaat gemaakt en in `localStorage` bewaard (`src/storage/device.ts`, niet gesynct). Het id zegt niets over Olivier of het apparaat; het onderscheidt alleen welk apparaat schreef. Verder staat er niets in, ook geen pad of aantal.
 10. **Vergrendelen na 5 minuten zonder gebruik.** Binnen die 5 minuten blijft de niet-exporteerbare hoofdsleutel in IndexedDB staan, zodat verversen of wisselen van app niet vergrendelt; daarna wordt hij gewist. Toelichting: gebruik = tikken, typen of scrollen in de app; openen of hervatten telt niet. Wissen gebeurt door de timer zolang de app draait, anders uiterlijk bij het volgende openen (een opgeslagen sleutel ouder dan 5 minuten, of met een tijdstip in de toekomst, wordt nooit gebruikt). Ook de browser sluiten of de telefoon herstarten binnen 5 minuten hervat dus. Niet-exporteerbaar betekent dat JavaScript de bytes niet kan uitlezen; de browser bewaart ze wel op de schijf van het apparaat, beschermd door de apparaatversleuteling. Vergrendelen (na 5 minuten of handmatig, in elk tabblad) = sleutels en ontsleutelde data uit het geheugen wissen én de opgeslagen hoofdsleutel uit IndexedDB verwijderen.
-11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6; de opgeslagen sessiesleutel (regel 10) door een review-agent in release 1. Documenten pas na de volledige beveiligingsreview uit Werkwijze.**
+11. **Mijlen en zeilgeld zijn in gebruik sinds 25 oktober 2026; crypto en storage zijn onafhankelijk gereviewd in PR 2, 3 en 6; de opgeslagen sessiesleutel (regel 10) door een review-agent in release 1. Documenten pas na de volledige beveiligingsreview uit Werkwijze.** De kluis is gebouwd en werkt met nepdocumenten; het rapport van de volledige review staat in PR 13. Tot Olivier dat rapport goedkeurt, toont de kluis "Testfase: zet hier alleen nepdocumenten in" (`VAULT_REVIEWED` in `src/model/documents.ts`, na zijn akkoord in een eigen PR op true).
 12. **Identiteitsdocumenten (paspoort, rijbewijs, ID) alleen als het nodig is.** De categorie `identiteit` bestaat, maar blijft standaard leeg. De app vraagt er nooit om.
 13. **Nooit een tweede GitHub Pages-site in organisatie logboek-olivier: die deelt opslag en vingerafdruk met Logboek.**
 14. **Deelnemers (studenten en gasten): alleen voornaam, optioneel land en optioneel kort kenmerk (initiaal of bijnaam). Geen achternaam, geen contactgegevens, geen gezondheids- of identiteitsgegevens. Studenten daarnaast alleen cursus, niveau, voortgang en examenuitslag; gasten alleen de fooi die ze gaven. Nooit in logs of foutdetails. Studenten na 12 maanden automatisch archiveren; archief is te wissen.** Een terugkerende gast wordt alleen gekoppeld als Olivier "ja" zegt op "Is dit dezelfde persoon als in <trip>?".
@@ -95,8 +95,8 @@ logboek-data/
   goals.json.enc         # doelen: zelfvullend uit de app of zelf gemeten
   skills.json.enc        # skills met mijlpalen
   sessions.json.enc      # sessies van skills en metingen van doelen, elk een eigen record
-  documents/index.json.enc   # release 3
-  documents/<uuid>.bin       # release 3
+  documents/index.json.enc   # kluis: titels, categorieën, datums en de bestandsnaam (fileId) per document
+  documents/<uuid>.bin       # kluis: elk documentbestand versleuteld, willekeurige UUID als naam
 ```
 
 - **Bron van waarheid:** `logboek-data` op GitHub. Elk apparaat heeft een versleutelde kopie in IndexedDB plus een outbox.
@@ -133,6 +133,8 @@ logboek-data/
   | App gesloten na "Opgeslagen", vóór de sync | Niets kwijt: de wijziging staat op het apparaat en in de outbox, de volgende sync stuurt hem |
   | Back-up beschadigd, van een nieuwere versie of verkeerde wachtzin | Melding, niets teruggezet |
   | Commits-API geeft een fout (schrijver per bestand onbekend) | Controle gaat door zonder schrijver; niets anders verandert |
+  | Documentbestand in de kluis op GitHub leeg, afgekapt of onder een andere sleutel | Alleen dat document is niet te openen ("Dit bestand is niet te lezen", met Kopieer foutdetails); syncen en de andere documenten gaan gewoon; nooit vanzelf overschreven |
+  | Documentbestand nog niet op GitHub (het andere apparaat synchroniseerde nog niet) | "Dit bestand staat nog niet op GitHub"; het wachtende bestand gaat bij de volgende sync van dat apparaat, ook zonder andere wijzigingen (getest in `tests/documents.test.ts`) |
 
 - **Sleutel-invariant:** een hoofdsleutel (wachtzin, herstelcode, vingerafdruk of opgeslagen sessiesleutel) wordt alleen gebruikt als hij via het check-veld bij de lokale `meta.json.enc` hoort. Vóór elke schrijfactie naar IndexedDB moet die meta nog dezelfde zijn, vóór elke schrijfactie naar GitHub moet `meta.json.enc` daar bij de sleutel horen. Klopt dat niet: niets schrijven, sessiesleutel wissen, scherm "Sleutel past niet bij je logboek" met "Kopieer foutdetails". Nieuw logboek of koppelen vergrendelt de andere tabbladen. Hoort `meta.json.enc` op GitHub wel bij de sleutel, maar zijn lokale gegevens, de outbox of de token op het apparaat niet met die sleutel te lezen, dan toont de app één scherm "Logboek herstellen" (`src/repair.ts`); een bestand dat alleen op GitHub onleesbaar is, krijgt nooit dit scherm (zie Onleesbaar bestand): in gewone taal wat er verloren gaat, dan één tik op "Herstellen" plus wachtzin of herstelcode. Herstellen wist lokaal alleen wat niet te ontsleutelen is, en vervangt op GitHub alleen bestanden die niet te ontsleutelen zijn (met de oude SHA als voorwaarde) door de leesbare lokale kopie of een lege versie; de oude versie blijft in de geschiedenis. Wat met de sleutel leesbaar is, of wel ontsleutelt maar ongeldig is, blijft altijd staan. Blijkt bij de tik meer verloren te gaan dan getoond, dan eerst opnieuw tonen. Een token vraagt het scherm alleen als de token op het apparaat onleesbaar is. Het verslag (alleen paden) staat in `localStorage`, zodat het scherm bij het volgende openen al vóór de wachtzin toont wat er verloren gaat.
 
@@ -140,7 +142,7 @@ logboek-data/
 
 Instellingen → Demomodus (`src/demo.ts`, voorbeelddata in `src/demo/data.ts`): de app draait op verzonnen voorbeelddata (trips met routes in de BVI en Kroatië, boten, studenten met checklists, een planning, termijnen), standaard in het Engels, om hem aan iemand te laten zien. Geen echte namen (alleen verzonnen voornamen) en geen bedragen (geen transacties). Harde regels, getest in `tests/demo.test.ts` en `tests/e2e/demo.spec.ts`:
 - **Nooit iets van of naar GitHub.** De demo-Store synct en controleert nooit (status "Demo · niets wordt gesynct") en heeft een GitHub-client zonder netwerk; zolang de demo loopt, blokkeert `blockNetwork` in `src/storage/github.ts` élk verzoek naar api.github.com vóór fetch, ook van de eigen Store (die open blijft; die ziet dan "geen verbinding").
-- **De eigen lokale data wordt niet aangeraakt.** De demo heeft een eigen IndexedDB (`logboek-demo`, nooit de eigen database) met een eigen willekeurige sleutel in het geheugen; stoppen wist die database. Onder Meer staat in de demo geen Opslag, en Instellingen toont geen wachtzin, herstelcode, vingerafdruk of token; Vandaag en Termijnen tonen de token niet.
+- **De eigen lokale data wordt niet aangeraakt.** De demo heeft een eigen IndexedDB (`logboek-demo`, nooit de eigen database) met een eigen willekeurige sleutel in het geheugen; stoppen wist die database. Onder Meer staat in de demo geen Opslag en geen Kluis, en Instellingen toont geen wachtzin, herstelcode, vingerafdruk of token; Vandaag en Termijnen tonen de token niet.
 - Bovenaan staat de balk "Demo · voorbeelddata" met "Demo stoppen" (daaronder de syncstatus "Demo · niets wordt gesynct"). Stoppen brengt direct de eigen gegevens en de eigen taal terug (de taalkeuze in `localStorage` verandert niet, ook niet als in de demo een andere taal gekozen wordt) en synchroniseert daarna één keer. Vergrendelen (ook na 5 minuten) stopt de demo; herladen ook (de demo-database wordt dan bij de volgende start gewist).
 
 ## Datamodel
@@ -266,11 +268,17 @@ Meer → Doelen (`src/screens/Goals.tsx`, `src/components/GoalSheets.tsx`, `src/
 `id, date, skillId?, goalId?, minutes?, value?, note?, updatedAt, deletedAt`
 - Losse records, zodat twee apparaten nooit elkaars sessies of metingen overschrijven (een skill of doel zelf wordt zelden tegelijk bewerkt). Een skill of doel verwijderen neemt zijn sessies mee; ongedaan maken zet alles terug.
 
-### Kluis (release 3)
+### Kluis
 
-**Document**
-`id, title, category (identiteit|certificaten|verzekering|reis-visa|werk-contracten|financieel|overig), issuedAt?, expiresAt?, notes?, mime, size, offline, updatedAt, deletedAt`
-Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB. `identiteit` en `certificaten` standaard offline beschikbaar.
+Meer → Kluis (`src/screens/Vault.tsx`, `src/components/DocumentSheets.tsx`, `src/model/documents.ts`, `src/storage/documents.ts`; niet in de demo).
+
+**VaultDocument** (`documents/index.json.enc`)
+`id, title, category (identiteit|certificaten|verzekering|reis-visa|werk-contracten|financieel|overig), issuedAt?, expiresAt?, notes?, mime, size, offline, fileId, updatedAt, deletedAt`
+- Toevoegen: "Foto maken" (achtercamera) of "Bestand kiezen" (zonder accept-filter), dan naam, categorie, uitgifte- en vervaldatum, notitie en "Ook zonder verbinding te openen". Foto's schalen tot max 1600 px lange zijde, JPEG 0,8 (op het apparaat, canvas). PDF ongewijzigd (herkend aan de inhoud, `%PDF`). Ander bestand: geweigerd. Max 20 MB. `identiteit` en `certificaten` standaard offline beschikbaar. De categorie `identiteit` staat onderaan de lijst en de app vraagt er nooit om (regel 12).
+- **Het bestand** staat in `documents/<fileId>.bin`: AES-GCM onder de hoofdsleutel, AAD = dat pad, zelfde formaat als elk object (regel 1). `fileId` is een willekeurige UUID; een pad ontstaat alleen uit een geldige UUID (`documentPath`), en de echte naam staat alleen in de versleutelde index (regel 8). Bij toevoegen eerst versleuteld op het apparaat (IndexedDB `objects`, sha leeg = wacht op upload, onder de sleutel-invariant), en meteen weer ontsleuteld als controle; dan de index.
+- **Upload** in de syncronde (`Store.uploadDocumentFiles`), alleen na een bevestigde meta-controle ('match'), vóór de databestanden: als nieuw bestand (PUT zonder sha), na nog eens ontsleutelen met dezelfde sleutel en hetzelfde pad. Bestaat het pad al (een eerdere ronde brak af na het schrijven), dan telt de versie op GitHub als die met deze sleutel te lezen is. Een wachtend bestand gaat ook mee als er verder niets te syncen is. Een kapotte kopie op het apparaat gaat niet; de rest wel.
+- **Openen:** de kopie op het apparaat, anders van GitHub (blob-API boven 1 MB), pas in het geheugen ontsleuteld bij openen; een foto in beeld (`blob:`-URL, losgelaten bij sluiten), een PDF via "Openen of delen" (`navigator.share`, anders downloaden). Offline aan: een versleutelde kopie blijft op het apparaat (zo nodig opgehaald); uit: de kopie gaat weg als hij op GitHub staat. Een document dat niet offline hoeft, houdt zijn kopie tot de ronde na de upload. Verwijderen is een tombstone; de kopie op het apparaat blijft een dag (ongedaan maken), het bestand op GitHub blijft versleuteld staan (net als oude versies in de geschiedenis).
+- Een vervaldatum staat bij de termijnen (Meer → Termijnen, Vandaag, stip in de agenda). Back-up en export bevatten de index (back-up) of niets uit de kluis (export), nooit de bestanden zelf.
 
 ### Instellingen
 
@@ -300,7 +308,7 @@ Testfixtures `tests/fixtures/mijlen-nep.xlsx` (gegenereerd met `npm run fixtures
 
 ## Schermen
 
-Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Statistieken, Doelen, Geld, Termijnen, Boten, Plaatsen, Kaarten, Cursussen, Studentenarchief, Opslag en Instellingen (met een terugknop naar Meer of naar de agenda). Kluis komt erbij zodra die gebouwd is.
+Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vakken met het + in het midden als ronde knop. Onder **Meer**: Logboek (ook bereikbaar vanuit de agenda), Statistieken, Doelen, Geld, Termijnen, Kluis, Boten, Plaatsen, Kaarten, Cursussen, Studentenarchief, Opslag en Instellingen (met een terugknop naar Meer of naar de agenda).
 
 1. **Ontgrendelen:** wachtzin of vingerafdruk. Niets anders zichtbaar. Binnen 5 minuten na het laatste gebruik hervat de app zonder dit scherm (regel 10).
 2. **Eerste keer:** zie "Eerste keer op een apparaat".
@@ -381,20 +389,20 @@ logboek/
     crypto/          keys.ts, encrypt.ts, passphrase.ts, recovery.ts, webauthn.ts
     i18n/            index.ts (t, translate, taalkeuze), nl.ts (bron, getypeerde sleutels), en.ts, labels.ts
     storage/         idb.ts, outbox.ts, github.ts (ook `blockNetwork` voor de demo), sync.ts, store.ts, token.ts, fingerprint.ts, writer.ts (één schrijver), storage-log.ts (Opslag controleren),
-                     backup.ts, device.ts (apparaat-id voor commitberichten)
+                     backup.ts, device.ts (apparaat-id voor commitberichten), documents.ts (kluis: paden en grenzen van documentbestanden)
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
                      weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts, ics.ts, daily.ts (dagelijkse herinnering),
                      checklists.ts, seed-checklists.ts, sailtime.ts, calendar.ts (agenda), guests.ts (deelnemers en fooi per persoon), tip-draft.ts,
                      osm.ts (kaartdata laden), waterroute.ts, estimate.ts (waterroute × persoonlijke factor), trip-ops.ts (verwijderen, overlap, samenvoegen),
                      countries.ts (grove landvakken voor de pinregels), counters.ts (teller per organisatie), stats.ts (statistieken), trip-dates.ts (datums uit de dagen),
                      trip-route.ts (route en stops van een trip), measure.ts (afstand meten op de kaart), offline-maps.ts (vaargebieden offline), pin-suggest.ts (pin-assistent), salary.ts (salaris en vooruitblik), student-groups.ts (studentenarchief),
-                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting), tax-year.ts (jaaroverzicht voor de belasting), weather.ts (wind en weer), goals.ts (doelen en skills)
+                     trip-name.ts, export.ts (exporteren naar Excel), week-close.ts (weekafsluiting), tax-year.ts (jaaroverzicht voor de belasting), weather.ts (wind en weer), goals.ts (doelen en skills), documents.ts (kluis)
     import/          mileage-csv.ts (mijlenregels), planning.ts (planning importeren), rows.ts (formaat herkennen), csv.ts, xlsx.ts, xml.ts
     screens/         Unlock, Setup, Home, Today, ThisWeek, Planning, Students, StudentArchive, Courses, Sailing (Logboek), SailingExport, Deadlines, Boats, Places,
-                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten), Goals (Doelen)
+                     Money, QuickAdd, More, Settings, Agenda, Season, AgendaShare, Storage (Opslag), Stats (Statistieken), Maps (Kaarten), Goals (Doelen), Vault (Kluis)
     components/      kleine herbruikbare onderdelen (BottomBar, BarChart, SeaMap, map-view (kaartgebaren), map-labels (namen op de kaart), LazyMap, RouteMap, RouteThumb, MapSheet, Sheet, Views (leesweergaven), EditSheets, WeekSheet,
                      TripOverview, TripShare, SailedMap, PinSheet, SalaryFields, SalarySheets, SalaryOutlook, DemoBar, boat-line, CurriculumSheets, DaySheet, PeriodSheets,
-                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, NoteField, WeatherCard, GoalSheets, Icon, Toast, …)
+                     TipFromPicker, TripSheets, PinQuestion, QuickTrip, CounterSheets, HBars, SyncStatusLine, WeekClose, TaxYear, NoteField, WeatherCard, GoalSheets, DocumentSheets, Icon, Toast, …)
     demo/            data.ts (voorbeelddata voor de demomodus)
     demo.ts          demomodus: aparte demo-database, nooit netwerk naar GitHub (zie Demomodus)
     lazy.ts          schermen, kaarten en bladen pas laden bij openen
@@ -409,10 +417,10 @@ logboek/
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
                      foutmatrix, screen-files, upgrade-samples, calendar, planning, trip-agenda, guests, osm-lib, waterroute, opslag, github-gedrag, trip-ops, pins,
-                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year, weather, goals) + playwright (upgrade, updates, setup, unlock, sessie, import,
+                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily, export, week-close, tax-year, weather, goals, documents) + playwright (upgrade, updates, setup, unlock, sessie, import,
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
-                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer, doelen,
+                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer, doelen, kluis,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)
@@ -446,7 +454,7 @@ Elke release bestaat uit losse PR's. Wat niet in de huidige release staat, wordt
 
 1. **Bruikbaar (gedaan).** Basis afgerond op 25 oktober 2026 (skelet en deploy, versleuteling en ontgrendelen, sync, logboek met import, zeilgeld, Vandaag, Instellingen, vingerafdruk, PWA op telefoon; in gebruik voor mijlen en zeilgeld). Daarbovenop: import van Excel en CSV ook op Android, sessie die verversen en wisselen van app overleeft, vast ontwerpsysteem met iconen en grafieken, bewerken met ongedaan maken, onderhoud vanaf de telefoon (versie, foutdetails).
 2. **Instructeur (deze release).** Logboek is ook de trainingsapp als zeilinstructeur: taal (Nederlands en Engels), Vandaag zonder geld, curricula en checklists (ASA, RYA, CWO, eigen), studenten en voortgang (regel 14), weekplanning met tonen aan studenten en delen. Daarna: herstel bij een onleesbaar bestand op GitHub, Toevoegen met Dag eerst, weken (type, deelnemers, afronden met review), onderbalk Vandaag · Deze trip · + · Logboek · Meer, en geld in euro met ECB-koersen. Daarna gebruiksvriendelijk: Deze trip (trips van elke lengte, bootgegevens, eerdere en komende trips, vergeten dagen), Toevoegen met Dag · Inkomsten · Uitgave, offline kaart met afstandsvoorstel uit eerdere routes, termijnen (deadlines en vervaldatums samen) en planning met grote thema's. Daarna overzicht: de agenda als centraal overzicht van het seizoen (dagsoort per dag, periode markeren, planning importeren, seizoensoverzicht, delen), koppelingen met Vandaag, trips, termijnen en geld, fooi per persoon met terugkerende gasten, en een gedetailleerde OpenStreetMap-kaart met waterroute en persoonlijke factor. Daarna betrouwbaar: één schrijver met Meer → Opslag en een versleutelde back-up, één vast bewerk- en verwijderpatroon, pins die nooit stil verschuiven, Trip via het plusje, de teller per organisatie en Meer → Statistieken. Daarna laten zien: diagnose in de commitberichten (versie en apparaat) met de controle na elke update, tripdatums uit de dagen, eerst bekijken en dan bewerken, het tripoverzicht met de route op de kaart, de dagkaart, Logboek-kaartjes en de pin-assistent, salaris per trip met vooruitblik, het studentenarchief per trip, een ontwerpronde met eigen icoon en een nieuwe Vandaag, snel openen, de demomodus, "Waar ik gevaren heb" en een trip delen als afbeelding of PDF.
-3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera, vervaldatums en de vervaldatum-Action, back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
+3. **Kluis en volledige beveiligingsreview.** Kluis met nepdocumenten, scannen met camera en vervaldatums zijn in release 2 gebouwd (PR 13, met het rapport van de volledige review); nog te doen: de vervaldatum-Action en de back-up-Action. Daarna de volledige beveiligingsreview en Oliviers handtest uit Werkwijze, dan de live-gang; pas dan echte documenten erin.
 4. **Geld compleet.** Volledige geldmodule: rekeningen ASN, Revolut, BUX, DEGIRO, Excel sinds 2023, netto waarde, maanden te gaan, aandelenkoersen, scenario's.
 5. **Doelen en skills.** De basis is in release 2 gebouwd (Meer → Doelen: zelfvullende jaardoelen, zelf gemeten doelen, skills met sessies, trend en mijlpalen, + → Skill). Later: ademtrainer, voortgang ASA.
 6. **Carrière.** Sollicitaties en netwerk, status andere projecten.

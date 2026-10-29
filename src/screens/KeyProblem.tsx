@@ -168,6 +168,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'goals.json.enc': 'key.file.goals',
   'skills.json.enc': 'key.file.skills',
   'sessions.json.enc': 'key.file.sessions',
+  'documents/index.json.enc': 'key.file.documents',
 }
 
 /** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */

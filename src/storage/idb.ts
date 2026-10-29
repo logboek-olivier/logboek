@@ -69,6 +69,12 @@ export async function deleteObject(db: Db, path: string): Promise<void> {
   await db.delete('objects', path)
 }
 
+/** De paden van de objecten die met `prefix` beginnen (bijvoorbeeld de documentbestanden van de kluis). */
+export async function listObjectPaths(db: Db, prefix: string): Promise<string[]> {
+  const keys = await db.getAllKeys('objects', IDBKeyRange.bound(prefix, `${prefix}\uffff`))
+  return keys.map(String)
+}
+
 /** Het check-veld van de lokale meta.json.enc in de opgeslagen (onversleutelde) meta-tekst, of null. */
 function storedCheck(meta: StoredObject | undefined): string | null {
   if (!meta) return null

@@ -385,6 +385,31 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
   }
 })
 
+describe('Foutmatrix: documentbestanden in de kluis', () => {
+  const FILE = '9a1f4c2e-5b3d-4e6f-8a7b-0c1d2e3f4a5b'
+  const OTHER = '1b2c3d4e-5f60-4718-9a2b-3c4d5e6f7a8b'
+  const path = `documents/${FILE}.bin`
+  for (const fault of ['andere sleutel', 'afgekapt', 'leeg'] as const) {
+    it(`documentbestand op GitHub ${fault}: alleen dat document is niet te openen; de rest synct, een ander document gaat gewoon`, async () => {
+      const { name } = await phone()
+      const sealed = await encryptObject(k1.masterKey, path, utf8('%PDF-nepdocument'))
+      const bad = fault === 'andere sleutel' ? await encryptObject(k2.masterKey, path, utf8('%PDF-nepdocument')) : fault === 'afgekapt' ? sealed.slice(0, 10) : new Uint8Array(0)
+      github.write(path, toBase64(bad as Bytes))
+      const s = await openApp(name, false)
+      await expect(store(s).documentFile(FILE)).rejects.toThrow()
+      // Geen herstelscherm, geen syncfout: het bestand hoort bij geen enkel databestand.
+      await store(s).putDocumentFile(OTHER, utf8('%PDF-ander nepdocument'))
+      await store(s).sync()
+      expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+      expect(putsTo(path)).toBe(0)
+      await expectSamplesOnGithub()
+      const clean = await cleanDevice()
+      expect(store(clean).getStatus()).toEqual({ kind: 'synced' })
+      expect(new TextDecoder().decode(await store(clean).documentFile(OTHER))).toBe('%PDF-ander nepdocument')
+    }, 60_000)
+  }
+})
+
 describe('Foutmatrix: commits-API (wie schreef het laatst)', () => {
   it('de commits-API geeft een fout: Controleer nu gaat door zonder schrijver, niets anders verandert', async () => {
     const { name } = await phone()
