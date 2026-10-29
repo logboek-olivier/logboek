@@ -3869,3 +3869,62 @@ body.presenting .bottom-bar {
 body.demo-on .group-head {
   top: var(--demo-bar);
 }
+
+/* Statistieken → Waar ik gevaren heb: alle routes iets doorschijnend over elkaar, de meest bezochte plaatsen als stip. */
+.map-route.all {
+  stroke-width: 2;
+  opacity: 0.7;
+}
+
+.map-hotspot circle {
+  fill: var(--accent);
+  fill-opacity: 0.75;
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.map-hotspot text {
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--map-sea);
+  stroke-width: 3px;
+}
+
+/* Trip delen: voorbeeld van de kaart in de verhouding van de afbeelding. */
+.trip-share-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-4);
+}
+
+.trip-share-name {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-tight);
+}
+
+.trip-share-card .sea-map.small .sea-map-canvas {
+  height: auto;
+  aspect-ratio: 952 / 760;
+}
+
+.trip-share-card .sea-map {
+  margin: var(--s-2) 0;
+}
+
+.trip-share-stats {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+@media print {
+  .trip-share-print img {
+    display: block;
+    width: 100%;
+    max-width: 160mm;
+    margin: 0 auto;
+  }
+}

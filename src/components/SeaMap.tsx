@@ -21,6 +21,11 @@ export interface MapPlace extends LatLon {
 }
 
 /** Een genummerde stop van een route; start en eind zijn duidelijk anders getekend. */
+export interface MapHotspot extends LatLon {
+  name: string
+  count: number
+}
+
 export interface MapStop extends LatLon {
   n: number
   kind: 'start' | 'stop' | 'end'
@@ -149,6 +154,8 @@ export function SeaMap({
   onSelectPlace,
   fit,
   stops,
+  routes,
+  hotspots,
   small = false,
   label,
 }: {
@@ -164,6 +171,10 @@ export function SeaMap({
   fit?: readonly LatLon[]
   /** Genummerde stops van een route. */
   stops?: readonly MapStop[]
+  /** Meerdere routes tegelijk (Statistieken → Waar ik gevaren heb). */
+  routes?: readonly (readonly LatLon[])[]
+  /** Meest bezochte plaatsen: een stip die groter is naarmate de plaats vaker voorkomt, met de naam. */
+  hotspots?: readonly MapHotspot[]
   /** Kleiner kaartje (dagkaart, plaats). */
   small?: boolean
   /** Beschrijving voor schermlezers (bijvoorbeeld de route in woorden). */
@@ -367,6 +378,8 @@ export function SeaMap({
   const routeLine = route && route.length > 1 ? route.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('') : null
   const shownLabels = placeLabels(osmAreas.flatMap((a) => labels[a.id] ?? []), view.zoom, toScreen, size, places)
   const stopGroups = groupStops(stops ?? [])
+  const line = (path: readonly LatLon[]) => path.map((p, i) => `${i === 0 ? 'M' : 'L'}${toScreen(p).x.toFixed(1)} ${toScreen(p).y.toFixed(1)}`).join('')
+  const maxCount = Math.max(1, ...(hotspots ?? []).map((h) => h.count))
 
   return (
     <div className={`sea-map${small ? ' small' : ''}`}>
@@ -404,7 +417,21 @@ export function SeaMap({
               ) : null,
             )}
           </g>
+          {routes?.map((path, i) => (path.length > 1 ? <path key={i} className="map-route solid all" d={line(path)} /> : null))}
           {routeLine && <path className={`map-route${stops?.length ? ' solid' : ''}`} d={routeLine} />}
+          {hotspots?.map((h) => {
+            const s = toScreen(h)
+            if (s.x < -40 || s.y < -20 || s.x > size.w + 40 || s.y > size.h + 20) return null
+            const r = 4 + 6 * Math.sqrt(h.count / maxCount)
+            return (
+              <g key={`${h.lat}|${h.lon}`} className="map-hotspot">
+                <circle cx={s.x} cy={s.y} r={r} />
+                <text x={s.x + r + 4} y={s.y + 4}>
+                  {h.name}
+                </text>
+              </g>
+            )
+          })}
           {shownLabels.map((l) => (
             <text key={`${l.k}|${l.n}|${l.x}|${l.y}`} className={`map-label map-label-${l.k}`} x={l.x} y={l.y}>
               {l.n}

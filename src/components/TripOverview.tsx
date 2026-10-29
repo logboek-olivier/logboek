@@ -1,5 +1,5 @@
-import { MapPin, Pencil } from 'lucide-react'
-import { useState } from 'react'
+import { MapPin, Pencil, Share2 } from 'lucide-react'
+import { Suspense, useState } from 'react'
 import { formatDate, formatDateRangeShort, formatHours, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import { nameWithCounter, type TripCounter } from '../model/counters'
@@ -18,6 +18,7 @@ import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { boatLine } from './boat-line'
 import { Icon } from './Icon'
+import { lazyComponent } from '../lazy'
 import { IncompleteBadge } from './Incomplete'
 import { tripIncomplete } from '../model/gaps'
 import { PinSheet } from './PinSheet'
@@ -31,6 +32,9 @@ import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
 // Tripoverzicht (lopende trip in Deze trip, en elke eerdere trip uit het Logboek): kop "SV #3 · BVI · 8–21 nov ·
 // Lagoon 42", een kaart met de hele route (lijnen tussen de stops, genummerde stops, start en eind duidelijk), plaatsen
 // zonder pin met "Pin zetten", totalen, de dagen, deelnemers en planning. Alles eerst bekijken; bewerken via het potlood.
+
+// Trip delen (afbeelding of PDF) laadt pas bij de tik.
+const TripShareSheet = lazyComponent(() => import('./TripShare').then((m) => m.TripShareSheet))
 
 /** De kop: "SV #3 · BVI · 8–21 nov · Lagoon 42". */
 export function tripTitle(view: WeekView, counter: TripCounter | undefined): string {
@@ -69,6 +73,7 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
   const places = useCollection(store, 'places.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const [pinning, setPinning] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
   const route = routeOf(view.legs, places)
   const nights = view.startDate && view.endDate ? Math.max(0, daysBetween(view.startDate, view.endDate)) : 0
   const use = pinning ? placeUses(legs, places).find((u) => u.name.toLowerCase() === pinning.toLowerCase()) ?? null : null
@@ -111,7 +116,18 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
           </div>
         )}
       </dl>
+      {view.legs.length > 0 && (
+        <button type="button" className="btn" onClick={() => setSharing(true)}>
+          <Icon icon={Share2} />
+          {t('tripShare.open')}
+        </button>
+      )}
       {use && <PinSheet store={store} use={use} notify={notify} onClose={() => setPinning(null)} />}
+      {sharing && (
+        <Suspense fallback={null}>
+          <TripShareSheet store={store} trip={view.trip} onClose={() => setSharing(false)} />
+        </Suspense>
+      )}
     </div>
   )
 }
