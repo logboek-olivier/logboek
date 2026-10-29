@@ -1022,4 +1022,10 @@ export const en: Messages = {
   'pin.nameTaken': 'That name already exists; choose another.',
   'pin.anyway': 'Here anyway',
   'pin.moveIt': 'Move',
+  'quick.tabTrip': 'Trip',
+  'trip.start': 'Start date',
+  'trip.end': 'End date',
+  'quick.tripPeople': 'Participants',
+  'quick.tripPeopleHint': 'First names only, one per line; country or tag can be added later on the participant.',
+  'quick.tripLater': 'Only the dates are needed. Type, organisation, boat, area and participants can be filled in later in This trip.',
 }

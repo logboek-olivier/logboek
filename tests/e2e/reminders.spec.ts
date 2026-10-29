@@ -88,7 +88,7 @@ test('Terugkerende termijn en Zet in agenda (.ics met herinnering vooraf); snelk
 
   // Snelkoppelingen in het manifest, en ?toevoegen=inkomsten opent Toevoegen op Inkomsten (de sessie loopt nog).
   const manifest = await (await page.request.get('manifest.webmanifest')).json()
-  expect(manifest.shortcuts.map((s: { url: string }) => s.url)).toEqual(['/logboek/?toevoegen=dag', '/logboek/?toevoegen=inkomsten', '/logboek/?toevoegen=uitgave'])
+  expect(manifest.shortcuts.map((s: { url: string }) => s.url)).toEqual(['/logboek/?toevoegen=trip', '/logboek/?toevoegen=dag', '/logboek/?toevoegen=inkomsten', '/logboek/?toevoegen=uitgave'])
   await page.goto('?toevoegen=inkomsten')
   await expect(page.getByRole('heading', { name: 'Toevoegen' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Inkomsten' })).toHaveAttribute('aria-selected', 'true')

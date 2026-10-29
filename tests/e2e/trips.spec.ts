@@ -65,6 +65,7 @@ test('Deze trip: eerdere en komende trips invoeren, bootgegevens van een bekende
   await page.getByLabel('Naar', { exact: true }).fill('Nepeiland')
   await page.getByLabel('Zeemijlen').fill('18')
   await page.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
   await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
   await expect(page.getByText('3 dagen in deze trip nog niet gelogd')).toBeVisible()
 

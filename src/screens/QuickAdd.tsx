@@ -1,4 +1,5 @@
-import { Coins, MapPin, Receipt, Sailboat } from 'lucide-react'
+import { CalendarPlus, Coins, MapPin, Receipt, Sailboat } from 'lucide-react'
+import { TripForm } from '../components/QuickTrip'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
 import { MapSheet } from '../components/MapSheet'
@@ -71,8 +72,8 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
       <header className="page-header">
         <h1>{t('nav.add')}</h1>
       </header>
-      <div className="segments" role="tablist">
-        {(['dag', 'inkomsten', 'uitgave'] as AddTab[]).map((id) => (
+      <div className="segments add-tabs" role="tablist">
+        {(['trip', 'dag', 'inkomsten', 'uitgave'] as AddTab[]).map((id) => (
           <button
             key={id}
             role="tab"
@@ -80,11 +81,12 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
             className={`segment${tab === id ? ' active' : ''}`}
             onClick={() => choose(id)}
           >
-            <Icon icon={id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : Sailboat} />
-            {t(id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : 'quick.tabDay')}
+            <Icon icon={id === 'trip' ? CalendarPlus : id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : Sailboat} />
+            {t(id === 'trip' ? 'quick.tabTrip' : id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : 'quick.tabDay')}
           </button>
         ))}
       </div>
+      {tab === 'trip' && <TripForm store={store} onDone={onDone} notify={notify} />}
       {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} notify={notify} />}
       {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}

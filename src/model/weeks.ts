@@ -368,3 +368,35 @@ export async function addParticipant(store: Store, trip: Trip, student: Student)
   const participant: Participant = { id: student.id, firstName: student.firstName, level: student.level, curriculumId: student.curriculumId }
   await store.put('trips.json.enc', { ...trip, participants: [...participants, participant], updatedAt: new Date().toISOString() })
 }
+
+/** De laatste trip die vóór of op `date` begint (voor naam- en typevoorstel van een nieuwe trip); anders de laatste. */
+export function latestTripBefore(trips: readonly Trip[], legs: readonly Leg[], date: string): Trip | null {
+  const dated = active(trips)
+    .map((trip) => ({ trip, start: weekView(trip, legs).startDate }))
+    .filter((x) => x.start)
+    .sort((a, b) => (a.start < b.start ? 1 : a.start > b.start ? -1 : 0))
+  return (dated.find((x) => x.start <= date) ?? dated.at(-1))?.trip ?? null
+}
+
+/**
+ * Naamvoorstel uit de vorige trip: eindigt die op een getal ("Yacht week 7", "Sailing Virgins week 2"), dan het
+ * volgende getal; anders "<basis> <maand jaar>".
+ */
+export function suggestTripName(previous: Trip | null, startDate: string, lang: Lang): string {
+  const m = previous ? /^(.*?)(\d+)(\s*)$/.exec(previous.name.trim()) : null
+  if (m) return `${m[1]}${Number(m[2]) + 1}`
+  return defaultWeekName(startDate, lang, previous?.base ?? '')
+}
+
+/** Eerste vrije dag vanaf vandaag: valt vandaag in een trip, dan de dag na die trip. */
+export function nextFreeDay(trips: readonly Trip[], legs: readonly Leg[], today: string): string {
+  let day = today
+  for (let i = 0; i < 10; i++) {
+    const inside = active(trips)
+      .map((trip) => weekView(trip, legs))
+      .find((v) => v.startDate && v.endDate && v.startDate <= day && day <= v.endDate)
+    if (!inside) return day
+    day = addDays(inside.endDate, 1)
+  }
+  return day
+}

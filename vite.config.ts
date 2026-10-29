@@ -58,6 +58,7 @@ export default defineConfig({
         ],
         // Lang indrukken op het app-icoon: direct naar Toevoegen (na ontgrendelen of binnen de 5 minuten van de sessie).
         shortcuts: [
+          { name: 'Trip toevoegen', short_name: 'Trip', url: '/logboek/?toevoegen=trip', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
           { name: 'Dag loggen', short_name: 'Dag', url: '/logboek/?toevoegen=dag', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
           { name: 'Inkomsten', short_name: 'Inkomsten', url: '/logboek/?toevoegen=inkomsten', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
           { name: 'Uitgave', short_name: 'Uitgave', url: '/logboek/?toevoegen=uitgave', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },

@@ -48,14 +48,14 @@ const SCREEN_NAMES: Record<Screen, string> = {
 
 
 /**
- * Snelkoppeling op het app-icoon (?toevoegen=dag|inkomsten|uitgave): opent Toevoegen op dat tabblad. De parameter
+ * Snelkoppeling op het app-icoon (?toevoegen=trip|dag|inkomsten|uitgave): opent Toevoegen op dat tabblad. De parameter
  * verdwijnt direct uit de adresbalk, zodat verversen niet opnieuw Toevoegen opent.
  */
 function shortcutTab(): AddTab | null {
   const value = new URLSearchParams(window.location.search).get('toevoegen')
   if (value === null) return null
   window.history.replaceState(null, '', window.location.pathname)
-  return value === 'inkomsten' || value === 'uitgave' || value === 'dag' ? value : null
+  return value === 'inkomsten' || value === 'uitgave' || value === 'dag' || value === 'trip' ? value : null
 }
 
 export function Home({ store }: { store: Store }) {
