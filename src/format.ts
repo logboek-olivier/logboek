@@ -96,6 +96,14 @@ export function formatDateRange(start: string, end: string, lang?: Lang): string
   return `${formatDateShort(start, lang)} – ${formatDate(end, lang)}`
 }
 
+/** Korte periode voor koppen: "8–21 nov", "28 okt – 3 nov"; in een ander jaar dan nu met het jaar erachter. */
+export function formatDateRangeShort(start: string, end: string, lang?: Lang, today: string = new Date().toISOString().slice(0, 10)): string {
+  const year = end.slice(0, 4) === today.slice(0, 4) ? '' : ` ${end.slice(0, 4)}`
+  if (start === end) return `${formatDateShort(start, lang)}${year}`
+  if (start.slice(0, 7) === end.slice(0, 7)) return `${parseIsoDate(start).getDate()}–${formatDateShort(end, lang)}${year}`
+  return `${formatDateShort(start, lang)} – ${formatDateShort(end, lang)}${year}`
+}
+
 /** 18.4271, -64.6182 → "18,427° N · 64,618° W" (Engels met punt). */
 export function formatCoordinate(lat: number, lon: number, lang?: Lang): string {
   const n = new Intl.NumberFormat(locale(lang ?? getLang()), { minimumFractionDigits: 3, maximumFractionDigits: 3 })

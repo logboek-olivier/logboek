@@ -92,7 +92,15 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
     dialogs++
     void d.dismiss()
   })
-  await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
+  // Tikken toont de transactie (zonder Verwijderen); het potlood opent bewerken.
+  const editTaxi = async () => {
+    await page.getByRole('button', { name: /Taxi haven.*Bekijken/ }).click()
+    const view = page.getByRole('dialog', { name: 'Kosten' })
+    await expect(view).toContainText('€ 35,00')
+    await expect(view.getByRole('button', { name: 'Verwijderen' })).toHaveCount(0)
+    await view.getByRole('button', { name: 'Bewerken' }).click()
+  }
+  await editTaxi()
   await expect(page.getByRole('dialog', { name: 'Kosten bewerken' })).toBeVisible()
   await page.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.tx')).toHaveCount(2)
@@ -103,14 +111,15 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   await expect(grid).toContainText('Kosten€ 35,00')
 
   // Bewerken: bedrag van de kosten aanpassen.
-  await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
+  await editTaxi()
   await page.getByRole('dialog').getByLabel('Bedrag').fill('40')
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(grid).toContainText('Kosten€ 40,00')
 
   // En definitief verwijderen; de melding verdwijnt na 5 seconden.
-  await page.getByRole('button', { name: /Taxi haven.*Bewerken/ }).click()
+  await page.getByRole('button', { name: /Taxi haven.*Bekijken/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Bewerken' }).click()
   await page.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.tx')).toHaveCount(2)
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 12_000 })

@@ -29,7 +29,7 @@ test('pin ver van het land van de plaats: eerst de vraag; een bestaande pin verp
   await page.getByRole('button', { name: 'Overslaan', exact: true }).click()
 
   await openMore(page, 'Plaatsen')
-  await page.getByRole('button', { name: 'Plaats bewerken: Shamrock Nepquay' }).click()
+  await page.getByRole('button', { name: 'Plaats bekijken: Shamrock Nepquay' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Op de kaart zetten' }).click()
   // De kaart begint zonder punten in het Caribisch gebied: ver van Engeland.
   await tapMap(page, 0.5, 0.5)
@@ -46,7 +46,7 @@ test('pin ver van het land van de plaats: eerst de vraag; een bestaande pin verp
   await expect(page.getByText(/Shamrock Nepquay staat op de kaart/)).toBeVisible()
 
   // De pin verplaatsen: eerst "Pin van … verplaatsen?" met oud en nieuw.
-  await page.getByRole('button', { name: 'Plaats bewerken: Shamrock Nepquay' }).click()
+  await page.getByRole('button', { name: 'Plaats bekijken: Shamrock Nepquay' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Pin verplaatsen' }).click()
   await tapMap(page, 0.25, 0.25)
   const move = page.locator('.pin-question')

@@ -4,12 +4,16 @@ import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
 import { useCollection } from '../components/useCollection'
-import { formatNumber } from '../format'
+import { formatDateRange, formatNm, formatNumber } from '../format'
+import { useCounters } from '../components/useCounters'
+import { ViewRows } from '../components/Views'
+import { nameWithCounter } from '../model/counters'
+import { active, round1, totalNm } from '../model/derive'
 import { t } from '../i18n'
 import { boatList, confirmBoats, deleteBoat, mergeBoat, skipBoats, type BoatEntry, type BoatInput } from '../model/boats'
 import { parseAmount } from '../model/money'
 import { type BoatKind } from '../model/types'
-import { feetToMetres } from '../model/weeks'
+import { feetToMetres, weekView } from '../model/weeks'
 import type { Store } from '../storage/store'
 
 // Bootgegevens controleren: per boot naam, model, soort en lengte, met het voorstel uit het model zichtbaar
@@ -144,8 +148,11 @@ export function BoatCheck({
 
 /** Meer → Boten: alle boten uit de trips; tikken opent bewerken, samenvoegen met een andere boot of verwijderen. */
 export function Boats({ store, notify }: { store: Store; notify: Notify }) {
-  const boats = boatList(useCollection(store, 'trips.json.enc'), useCollection(store, 'legs.json.enc'))
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const boats = boatList(trips, legs)
   const [open, setOpen] = useState<BoatEntry | null>(null)
+  const [viewing, setViewing] = useState<BoatEntry | null>(null)
   return (
     <section className="stack-lg">
       <header className="page-header">
@@ -159,7 +166,7 @@ export function Boats({ store, notify }: { store: Store; notify: Notify }) {
           <ul className="rows">
             {boats.map((b) => (
               <li key={b.key}>
-                <button type="button" className="row-button" onClick={() => setOpen(b)} aria-label={`${t('boat.edit')}: ${b.name || b.model}`}>
+                <button type="button" className="row-button" onClick={() => setViewing(b)} aria-label={`${t('boat.open')}: ${b.name || b.model}`}>
                   <span className="row-main">
                     <span>{b.name || b.model}</span>
                     <span className="muted small">{boatDetails(b)}</span>
@@ -171,8 +178,63 @@ export function Boats({ store, notify }: { store: Store; notify: Notify }) {
           </ul>
         </>
       )}
+      {viewing && (
+        <BoatView
+          store={store}
+          boat={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            setOpen(viewing)
+            setViewing(null)
+          }}
+        />
+      )}
       {open && <BoatSheet key={open.key} store={store} boat={open} boats={boats} notify={notify} onClose={() => setOpen(null)} />}
     </section>
+  )
+}
+
+/** Eén boot bekijken: model, soort, lengte, totalen en de trips; bewerken (ook samenvoegen en verwijderen) via het potlood. */
+function BoatView({ store, boat, onClose, onEdit }: { store: Store; boat: BoatEntry; onClose: () => void; onEdit: () => void }) {
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const counters = useCounters(store)
+  const current = boatList(trips, legs).find((b) => b.key === boat.key) ?? boat
+  const own = trips.filter((x) => current.tripIds.includes(x.id) && x.deletedAt === null)
+  const boatLegs = active(legs).filter((l) => current.tripIds.includes(l.tripId))
+  const nm = boatLegs.reduce((n, l) => n + totalNm(l), 0)
+  return (
+    <Sheet title={current.name || current.model} onClose={onClose} onEdit={onEdit}>
+      <div className="stack view">
+        <ViewRows
+          rows={[
+            [t('boat.model'), current.name ? current.model : ''],
+            [t('boat.kind'), current.kind && t(`boatKind.${current.kind}`)],
+            [t('boat.length'), current.lengthFt && `${formatNumber(current.lengthFt)} ft · ${formatNumber(feetToMetres(current.lengthFt))} m`],
+            [t('stat.total'), boatLegs.length > 0 && t('boat.totals', { nm: formatNm(round1(nm)), days: boatLegs.length })],
+          ]}
+        />
+        {own.length > 0 && (
+          <div className="stack-sm">
+            <h3>{t('boat.trips')}</h3>
+            <ul className="rows">
+              {own.map((x) => {
+                const v = weekView(x, legs)
+                return (
+                  <li key={x.id} className="row-item">
+                    <span className="row-main">
+                      <span>{nameWithCounter(x, counters.get(x.id))}</span>
+                      <span className="muted small">{v.startDate && v.endDate ? formatDateRange(v.startDate, v.endDate) : ''}</span>
+                    </span>
+                    <span className="row-value small">{formatNm(v.nm)}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Sheet>
   )
 }
 

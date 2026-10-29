@@ -1,6 +1,8 @@
 import { CalendarRange, ChevronLeft, ChevronRight, Eye, EyeOff, FileUp, ListOrdered, NotebookPen, Share2, X } from 'lucide-react'
 import { useMemo, useRef, useState, useSyncExternalStore, type TouchEvent } from 'react'
-import { DaySheet } from '../components/DaySheet'
+import { DayView } from '../components/DaySheet'
+import { TripOverviewSheet } from '../components/TripOverview'
+import { ReminderView } from '../components/Views'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { PeriodSheet, PlanningImportSheet } from '../components/PeriodSheets'
@@ -52,6 +54,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [reminder, setReminder] = useState<{ reminder: Reminder | null; date: string } | null>(null)
   const [showAmounts, setShowAmounts] = useState(false)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
+  const [viewTrip, setViewTrip] = useState<Trip | null>(null)
   const counters = useCounters(store)
   const fileInput = useRef<HTMLInputElement>(null)
   const touch = useRef<{ x: number; y: number } | null>(null)
@@ -221,7 +224,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
       </div>
       <ErrorLine error={importError} />
       {open && (
-        <DaySheet
+        <DayView
           store={store}
           index={index}
           date={open}
@@ -239,10 +242,20 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             setOpen(null)
             setEditTrip(trip)
           }}
+          onOpenTrip={(trip) => {
+            setOpen(null)
+            setViewTrip(trip)
+          }}
         />
       )}
       {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
-      {reminder && <ReminderSheet store={store} reminder={reminder.reminder} initialDate={reminder.date} notify={notify} onClose={() => setReminder(null)} />}
+      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} />}
+      {reminder &&
+        (reminder.reminder ? (
+          <ReminderView store={store} reminder={reminder.reminder} notify={notify} onClose={() => setReminder(null)} />
+        ) : (
+          <ReminderSheet store={store} reminder={null} initialDate={reminder.date} notify={notify} onClose={() => setReminder(null)} />
+        ))}
       {period && (
         <PeriodSheet
           store={store}

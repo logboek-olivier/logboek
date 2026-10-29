@@ -21,31 +21,45 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
   await createNewLogbook(page)
   await importFixture(page)
 
-  // Tocht (week) hernoemen.
-  await page.locator('.trip').filter({ hasText: 'Cursus binnenwater' }).getByRole('button').first().click()
-  await page.getByRole('button', { name: 'Trip bewerken' }).click()
+  // Tocht (week) hernoemen: tikken opent het tripoverzicht, het potlood opent Trip bewerken.
+  const openTrip = async (name: string) => {
+    await page.locator('.trip').filter({ hasText: name }).getByRole('button').first().click()
+    return page.getByRole('dialog')
+  }
+  let overview = await openTrip('Cursus binnenwater')
+  await expect(overview.getByRole('button', { name: 'Verwijderen' })).toHaveCount(0)
+  await overview.getByRole('button', { name: 'Bewerken' }).first().click()
   await page.getByRole('dialog').getByLabel('Naam', { exact: true }).fill('Cursus op het meer')
   // Een geïmporteerde trip heeft nog geen model, lengte en basis: opslaan kan toch, met "Onvolledig".
   await expect(page.getByRole('dialog').getByText('Onvolledig')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.trip').first()).toContainText('Cursus op het meer')
   await expect(page.locator('.trip').first().locator('.badge-incomplete')).toHaveText('Onvolledig')
 
-  // Dag naar de tocht "Oefentocht noord" verplaatsen.
-  await page.getByRole('button', { name: /Rietmeer → Meerdorp.*Bewerken/ }).click()
+  // Dag naar de tocht "Oefentocht noord" verplaatsen: dag bekijken in het overzicht, dan het potlood.
+  overview = await openTrip('Cursus op het meer')
+  await overview.locator('.leg-button', { hasText: 'Rietmeer → Meerdorp' }).click()
+  await page.getByRole('dialog', { name: 'Rietmeer → Meerdorp' }).getByRole('button', { name: 'Bewerken' }).click()
   const sheet = page.getByRole('dialog', { name: 'Dag bewerken' })
   await expect(sheet).toContainText('Geïmporteerde dag')
   await sheet.getByLabel('Trip').selectOption({ label: 'Oefentocht noord' })
   await sheet.getByLabel('Zee (nm)').fill('50')
   await expectNoHorizontalOverflow(page)
   await sheet.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(sheet).toHaveCount(0)
+  // Het overzicht blijft open en volgt: de dag is weg uit deze trip.
+  await expect(overview.locator('.leg-button')).toHaveCount(1)
+  await overview.getByRole('button', { name: 'Sluiten' }).click()
   await expect(page.locator('.trip').filter({ hasText: 'Oefentocht noord' })).toContainText('120 nm')
   await expect(page.locator('.trip').filter({ hasText: 'Cursus op het meer' })).toContainText('15 nm')
 
   // Laatste dag van een tocht verwijderen: tocht verdwijnt, ongedaan maken zet hem terug.
-  await page.getByRole('button', { name: /Meerdorp → Rietmeer.*Bewerken/ }).click()
-  await page.getByRole('button', { name: 'Verwijderen' }).click()
+  overview = await openTrip('Cursus op het meer')
+  await overview.locator('.leg-button', { hasText: 'Meerdorp → Rietmeer' }).click()
+  await page.getByRole('dialog', { name: 'Meerdorp → Rietmeer' }).getByRole('button', { name: 'Bewerken' }).click()
+  await page.getByRole('dialog', { name: 'Dag bewerken' }).getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.trip')).toHaveCount(2)
   await page.getByRole('button', { name: 'Ongedaan maken' }).click()
   await expect(page.locator('.trip')).toHaveCount(3)

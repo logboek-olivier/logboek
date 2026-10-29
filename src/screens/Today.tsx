@@ -3,7 +3,9 @@ import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { activeWeek } from '../model/weeks'
 import type { AddInit } from './QuickAdd'
 import { useMemo, useRef, useState, type TouchEvent } from 'react'
-import { DaySheet } from '../components/DaySheet'
+import { DayView } from '../components/DaySheet'
+import { ReminderView } from '../components/Views'
+import { TripOverviewSheet } from '../components/TripOverview'
 import { FillSheet } from '../components/FillSheet'
 import { collectGaps, isSunday } from '../model/gaps'
 import { GoalSheet, type Notify } from '../components/EditSheets'
@@ -77,6 +79,7 @@ export function Today({
   const [dayOpen, setDayOpen] = useState(false)
   const [reminderFromDay, setReminderFromDay] = useState<{ reminder: Reminder | null } | null>(null)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
+  const [viewTrip, setViewTrip] = useState<Trip | null>(null)
   const planned = nothingToLog ? null : plannedFor(running, legs, today)
   const plannedDistance = planned ? plannedNm(legs, planned) : null
   async function logAsPlanned() {
@@ -202,7 +205,7 @@ export function Today({
       </div>
       {addingReminder && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAddingReminder(false)} />}
       {dayOpen && (
-        <DaySheet
+        <DayView
           store={store}
           index={index}
           date={today}
@@ -220,10 +223,20 @@ export function Today({
             setDayOpen(false)
             setEditTrip(trip)
           }}
+          onOpenTrip={(trip) => {
+            setDayOpen(false)
+            setViewTrip(trip)
+          }}
         />
       )}
+      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} />}
       {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
-      {reminderFromDay && <ReminderSheet store={store} reminder={reminderFromDay.reminder} initialDate={today} notify={notify} onClose={() => setReminderFromDay(null)} />}
+      {reminderFromDay &&
+        (reminderFromDay.reminder ? (
+          <ReminderView store={store} reminder={reminderFromDay.reminder} notify={notify} onClose={() => setReminderFromDay(null)} />
+        ) : (
+          <ReminderSheet store={store} reminder={null} initialDate={today} notify={notify} onClose={() => setReminderFromDay(null)} />
+        ))}
       {filling && <FillSheet store={store} gaps={gaps} notify={notify} onClose={() => setFilling(false)} />}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}
     </section>

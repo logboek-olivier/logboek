@@ -1,7 +1,8 @@
 import { ChevronRight, Coins, Receipt, Wallet } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
-import { TransactionSheet, type Notify } from '../components/EditSheets'
+import type { Notify } from '../components/EditSheets'
+import { TransactionView } from '../components/Views'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -213,7 +214,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
                       <li key={tx.id} className="tx">
                         <button
                           className="row-item"
-                          aria-label={`${tx.note ?? kindLabel(tx.kind)}, ${formatDate(tx.date)}, ${amountLabel(tx)} · ${t('common.edit')}`}
+                          aria-label={`${tx.note ?? kindLabel(tx.kind)}, ${formatDate(tx.date)}, ${amountLabel(tx)} · ${t('tx.open')}`}
                           onClick={() => setEditing(tx)}
                         >
                           <span className={`row-icon${isIncome(tx.kind) ? '' : ' cost'}`}>
@@ -237,7 +238,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           </div>
         </>
       )}
-      {editing && <TransactionSheet store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
+      {editing && <TransactionView store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
     </section>
   )
 }
