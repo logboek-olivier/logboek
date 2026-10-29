@@ -3084,3 +3084,61 @@ body.presenting .bottom-bar {
 .tip-overview .table td:first-child {
   overflow-wrap: anywhere;
 }
+
+/* ---------- Opslag ---------- */
+
+/* "Opgeslagen · Synchroniseren…": na een opslag eerst op deze telefoon, daarna gesynct. */
+.saved-here {
+  color: var(--positive);
+  font-weight: var(--fw-bold);
+}
+
+.storage-ok,
+.storage-problem {
+  justify-content: flex-start;
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+}
+
+.storage-ok {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.storage-ok .icon,
+.storage-problem .icon {
+  flex-shrink: 0;
+}
+
+.storage-file .row-main {
+  min-width: 0;
+}
+
+.storage-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-shrink: 0;
+  max-width: 45%;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  text-align: right;
+}
+
+.storage-state .icon {
+  --icon: 16px;
+  flex-shrink: 0;
+}
+
+.storage-state.good {
+  color: var(--positive);
+}
+
+.storage-state.bad {
+  color: var(--negative);
+}
+
+.backup-preview h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}

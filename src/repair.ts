@@ -5,7 +5,7 @@ import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from './model/
 import { ConflictError, type GithubClient } from './storage/github'
 import { deleteIfUnchanged, getLocal, getObject, type Db } from './storage/idb'
 import { loadOutbox, OUTBOX_NAME } from './storage/outbox'
-import { decryptRecords, encryptRecords, InvalidDataError } from './storage/sync'
+import { decryptRecords, InvalidDataError, sealForUpload } from './storage/sync'
 import { loadToken } from './storage/token'
 
 // Logboek herstellen: gegevens die met de sleutel uit meta.json.enc (de wachtzin) niet te lezen zijn, opruimen.
@@ -189,7 +189,7 @@ async function replaceUnreadable(client: GithubClient, masterKey: CryptoKey, pat
   let current = sha
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await client.putFile(path, await encryptRecords(masterKey, path, records), current)
+      await client.putFile(path, await sealForUpload(masterKey, path, records), current)
       return
     } catch (error) {
       if (!(error instanceof ConflictError) || attempt === 1) throw error

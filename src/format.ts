@@ -14,6 +14,7 @@ interface Formatters {
   monthShort: Intl.DateTimeFormat
   monthLong: Intl.DateTimeFormat
   monthName: Intl.DateTimeFormat
+  time: Intl.DateTimeFormat
 }
 
 const cache = new Map<Lang, Formatters>()
@@ -33,6 +34,7 @@ function f(lang: Lang = getLang()): Formatters {
       monthShort: new Intl.DateTimeFormat(loc, { month: 'short' }),
       monthLong: new Intl.DateTimeFormat(loc, { month: 'long', year: 'numeric' }),
       monthName: new Intl.DateTimeFormat(loc, { month: 'long' }),
+      time: new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit' }),
     }
     cache.set(lang, found)
   }
@@ -92,6 +94,14 @@ export function formatDateRange(start: string, end: string, lang?: Lang): string
   if (start === end) return formatDate(start, lang)
   if (start.slice(0, 7) === end.slice(0, 7)) return `${parseIsoDate(start).getDate()}–${formatDate(end, lang)}`
   return `${formatDateShort(start, lang)} – ${formatDate(end, lang)}`
+}
+
+/** ISO-tijd → "3 mei, 14:05" (lokale tijd van het apparaat). */
+export function formatMoment(isoTime: string, lang?: Lang): string {
+  const d = new Date(isoTime)
+  if (Number.isNaN(d.getTime())) return ''
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${formatDateShort(day, lang)}, ${f(lang).time.format(d)}`
 }
 
 export function parseIsoDate(iso: string): Date {

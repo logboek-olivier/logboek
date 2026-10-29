@@ -1,11 +1,11 @@
-import { Archive, BookOpen, CalendarClock, ChevronLeft, ChevronRight, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { Archive, BookOpen, CalendarClock, ChevronLeft, ChevronRight, HardDrive, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { t, type MessageKey } from '../i18n'
 
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
 // hier ook.
 
-export type MoreScreen = 'logboek' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'cursussen' | 'archief' | 'instellingen'
+export type MoreScreen = 'logboek' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'cursussen' | 'archief' | 'opslag' | 'instellingen'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
   { id: 'logboek', label: 'nav.logbook', hint: 'more.logbookHint', icon: NotebookPen },
@@ -15,6 +15,7 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
   { id: 'plaatsen', label: 'places.screen', hint: 'more.placesHint', icon: MapPin },
   { id: 'cursussen', label: 'curriculum.courses', hint: 'more.coursesHint', icon: BookOpen },
   { id: 'archief', label: 'nav.studentArchive', hint: 'more.archiveHint', icon: Archive },
+  { id: 'opslag', label: 'nav.storage', hint: 'more.storageHint', icon: HardDrive },
   { id: 'instellingen', label: 'nav.settings', hint: 'more.settingsHint', icon: SettingsIcon },
 ]
 

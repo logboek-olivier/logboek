@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Cloud, Download, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
@@ -11,9 +11,10 @@ import { describeError, MIN_PASSPHRASE_LENGTH, useSession } from '../session'
 import { ErrorLine, TokenForm } from './Setup'
 import { LANGS, setLang, t, useLang } from '../i18n'
 
-// Instellingen: vergrendelen, wachtzin wijzigen, herstelcode tonen, vingerafdruk aan/uit, token vervangen, back-up.
+// Instellingen: vergrendelen, wachtzin wijzigen, herstelcode tonen, vingerafdruk aan/uit, token vervangen. De back-up
+// staat onder Meer → Opslag.
 
-type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'backup' | 'language'
+type Panel = 'none' | 'passphrase' | 'recovery' | 'fingerprint' | 'token' | 'language'
 
 export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const onDone = (message: string) => notify(message)
@@ -118,7 +119,6 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
               }}
             />,
           )}
-          {row('backup', Download, t('settings.backup'), <Backup />)}
         </ul>
       </div>
 
@@ -308,21 +308,6 @@ function ReplaceToken({ onDone }: { onDone: () => void }) {
 }
 
 /** Back-up van logboek-data op een eigen computer. De app doet hiervoor geen netwerkverkeer; dit is alleen tekst. */
-function Backup() {
-  return (
-    <div className="stack">
-      <p className="muted">
-        {t('backup.intro')}
-      </p>
-      <pre className="code">{`git clone https://github.com/logboek-olivier/logboek-data.git
-cd logboek-data
-git pull`}</pre>
-      <p className="muted">
-        {t('backup.outro')}
-      </p>
-    </div>
-  )
-}
 
 /** Taal van de app op dit apparaat; standaard de taal van de telefoon. */
 function LanguagePicker() {

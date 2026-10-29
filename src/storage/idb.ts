@@ -96,6 +96,29 @@ export async function putObjectIfVault(db: Db, metaPath: string, expectedCheck: 
 }
 
 /**
+ * Een bestand en de outbox samen schrijven, in één transactie: sluit de app midden in het opslaan, dan staat óf allebei
+ * óf geen van beide op het apparaat. Met `expectedCheck` (de sleutel-invariant) alleen als de lokale meta nog dat
+ * check-veld heeft; null: geen controle (alleen tests van de opslaglaag). Geeft false als er niets geschreven is.
+ */
+export async function putObjectAndLocal(
+  db: Db,
+  metaPath: string,
+  expectedCheck: string | null,
+  object: StoredObject,
+  local: { name: string; blob: Bytes },
+): Promise<boolean> {
+  const tx = db.transaction(['objects', 'local'], 'readwrite')
+  const objects = tx.objectStore('objects')
+  const ok = expectedCheck === null || storedCheck(await objects.get(metaPath)) === expectedCheck
+  if (ok) {
+    await objects.put(object)
+    await tx.objectStore('local').put(local)
+  }
+  await tx.done
+  return ok
+}
+
+/**
  * Een lokaal bestand apart zetten onder `toKey` (nooit weggooien), in één transactie: alleen als de lokale meta nog bij
  * `expectedCheck` hoort (null: geen controle, alleen tests van de opslaglaag) en het bestand intussen niet veranderd is.
  */

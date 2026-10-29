@@ -1,5 +1,6 @@
-import { CircleCheck, CloudOff, CloudUpload, LoaderCircle, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react'
+import { CircleCheck, CloudOff, CloudUpload, LoaderCircle, RefreshCw, RotateCcw, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { checkHasProblem } from '../storage/storage-log'
 import { recordError } from '../errors'
 import type { CollectionPath } from '../model/types'
 import { describeStatus, type RepairOption, type Store, type SyncStatus } from '../storage/store'
@@ -27,12 +28,24 @@ const ICONS = {
  * Een onleesbaar bestand blokkeert alleen zijn eigen onderdeel: de melding met de herstelknop staat alleen op de
  * schermen van dat bestand; de status bovenaan noemt het pad overal.
  */
-export function SyncStatusLine({ store, files }: { store: Store; files?: readonly CollectionPath[] }) {
+export function SyncStatusLine({ store, files, onStorage }: { store: Store; files?: readonly CollectionPath[]; onStorage?: () => void }) {
   const status: SyncStatus = useSyncStatus(store)
   const here = status.kind === 'error' && status.code === 'unreadable' ? (status.paths ?? []).filter((p) => !files || files.includes(p)) : []
+  const check = store.storageLog().check
   return (
     <>
       <StatusButton store={store} status={status} />
+      {onStorage && check && checkHasProblem(check) && (
+        <div className="notice sync-problem" role="alert">
+          <p>
+            <Icon icon={ShieldAlert} />
+            {t('storage.problemNotice')}
+          </p>
+          <button type="button" className="btn small" onClick={onStorage}>
+            {t('storage.open')}
+          </button>
+        </div>
+      )}
       {status.kind === 'error' && status.code === 'unreadable' && here.length > 0 && <SyncProblem store={store} status={{ ...status, paths: here }} />}
       {status.kind === 'error' && (status.code === 'otherKey' || status.code === 'noMeta') && <SyncProblem store={store} status={status} />}
       {store.setAside().some((p) => !files || files.includes(p)) && (
@@ -54,6 +67,9 @@ export function SyncStatusLine({ store, files }: { store: Store; files?: readonl
 }
 
 function StatusButton({ store, status }: { store: Store; status: SyncStatus }) {
+  // Na een opslag eerst "Opgeslagen" (op deze telefoon), daarna "Gesynct" zodra de sync klaar is.
+  const { saved: savedSeq, synced } = store.saveState()
+  const saved = savedSeq > synced && (status.kind === 'syncing' || status.kind === 'pending' || status.kind === 'offline')
   return (
     <button
       type="button"
@@ -64,6 +80,12 @@ function StatusButton({ store, status }: { store: Store; status: SyncStatus }) {
       disabled={status.kind === 'syncing'}
     >
       <Icon icon={ICONS[status.kind]} className={status.kind === 'syncing' ? 'spin' : ''} />
+      {saved && (
+        <span className="saved-here">
+          {t('sync.saved')}
+          {' · '}
+        </span>
+      )}
       <span role="status">{describeStatus(status)}</span>
     </button>
   )

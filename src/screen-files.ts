@@ -1,4 +1,4 @@
-import type { CollectionPath } from './model/types'
+import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 
 // Welke databestanden bij welk scherm horen. Is een bestand onleesbaar, dan staat de melding met de herstelknop alleen
 // op de schermen van dat onderdeel; de syncstatus bovenaan noemt het pad overal (CLAUDE.md, regel 16). Elk databestand
@@ -18,6 +18,7 @@ export type ScreenId =
   | 'cursussen'
   | 'archief'
   | 'instellingen'
+  | 'opslag'
 
 export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
   vandaag: ['calendar.json.enc', 'trips.json.enc', 'legs.json.enc', 'plans.json.enc', 'students.json.enc', 'reminders.json.enc', 'settings.json.enc'],
@@ -33,4 +34,5 @@ export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
   cursussen: ['curricula.json.enc'],
   archief: ['students.json.enc'],
   instellingen: ['settings.json.enc'],
+  opslag: COLLECTION_PATHS,
 }

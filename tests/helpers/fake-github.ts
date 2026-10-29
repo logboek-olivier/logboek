@@ -39,6 +39,10 @@ export class FakeGithub {
    */
   staleReadsAfterPut = 0
   private readonly stale = new Map<string, { file: StoredFile; remaining: number }>()
+  /** Zoveel GET's van dit pad geven nog 404, ook als het bestand bestaat (GitHub loopt even achter na een schrijfactie). */
+  readonly notFoundReads = new Map<string, number>()
+  /** Wordt na elke geslaagde PUT aangeroepen (pad en nieuwe SHA). */
+  afterPut: ((path: string, sha: string) => void) | null = null
   private shaCounter = 0
 
   /** Schrijft direct in de nagebootste repo, zoals een ander apparaat dat zou doen. */
@@ -83,6 +87,11 @@ export class FakeGithub {
 
     if (method === 'GET') {
       if (this.emptyRepo && this.files.size === 0) return json(409, { message: 'Git Repository is empty.' })
+      const hidden = this.notFoundReads.get(path) ?? 0
+      if (hidden > 0) {
+        this.notFoundReads.set(path, hidden - 1)
+        return json(404, { message: 'Not Found' })
+      }
       const old = this.stale.get(path)
       if (old && old.remaining > 0) {
         old.remaining--
@@ -101,6 +110,7 @@ export class FakeGithub {
       if (!current && req.sha) return json(422, { message: 'sha wasn’t supplied' })
       if (current && this.staleReadsAfterPut > 0) this.stale.set(path, { file: current, remaining: this.staleReadsAfterPut })
       const sha = this.write(path, req.content)
+      this.afterPut?.(path, sha)
       return json(current ? 200 : 201, { content: { sha, path }, commit: { message: req.message } })
     }
     return json(405, {})

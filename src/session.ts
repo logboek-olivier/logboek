@@ -307,6 +307,7 @@ export class Session {
     this.setState({ phase: 'unlocked', store })
     previous.lock()
     this.touch()
+    store.enableAutoSync()
     void store.sync()
   }
 
@@ -1012,7 +1013,12 @@ export class Session {
       this.lastWritten = resumedLastUsed
       this.scheduleLock(Math.max(0, LOCK_AFTER_MS - (this.clock() - resumedLastUsed)))
     }
-    void store.sync()
+    store.enableAutoSync()
+    // Eén keer per week vanzelf controleren of GitHub en dit apparaat gelijk zijn (Meer → Opslag).
+    void store
+      .sync()
+      .then(() => store.weeklyCheck())
+      .catch(recordError)
     void this.refreshMeta(client, db, masterKey, this.generation)
   }
 
@@ -1106,6 +1112,10 @@ export function describeError(error: unknown): string {
         return t('error.decrypt')
       case 'KeyMismatchError':
         return t('key.mismatchTitle')
+      case 'InvalidBackupError':
+        return t('backup.invalid')
+      case 'RestoreNeedsSyncError':
+        return t('backup.syncFirst')
       case 'WebAuthnError':
         return describeWebAuthnError(error.message)
     }

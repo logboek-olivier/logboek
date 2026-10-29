@@ -45,7 +45,11 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       github.files.set('meta.json.enc', { sha: `${meta.sha}-ander`, content: Buffer.from(JSON.stringify(parsed)).toString('base64') })
       const puts = github.requests.filter((r) => r.method === 'PUT').length
 
-      await page.getByRole('button', { name: new RegExp(L('sync.now')) }).click()
+      // Synchroniseren; de sync die vanzelf na een opslag start, kan het al eerder zien (dan is de knop al weg).
+      await page
+        .getByRole('button', { name: new RegExp(L('sync.now')) })
+        .click({ timeout: 3_000 })
+        .catch(() => undefined)
       await expect(page.getByRole('heading', { name: L('key.mismatchTitle') })).toBeVisible()
       await expect(page.getByRole('button', { name: L('error.copyDetails') })).toBeVisible()
       await expect(page.getByRole('navigation')).toHaveCount(0)

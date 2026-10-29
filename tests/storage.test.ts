@@ -332,17 +332,19 @@ describe('sync tussen twee apparaten', () => {
     expect(b.store.list('legs.json.enc')).toHaveLength(1)
   })
 
-  it('schrijft niets meer naar IndexedDB na vergrendelen tijdens een lopende put', async () => {
+  it('maakt een lopende opslag af als er intussen vergrendeld wordt, en schrijft daarna niets meer', async () => {
     const github = new FakeGithub()
     const a = await device(github)
     await a.store.put('trips.json.enc', trip('t1', 'x'))
     const pending = a.store.put('trips.json.enc', trip('t2', 'y'))
     a.store.lock()
     await pending
+    // Na vergrendelen komt er niets meer bij.
+    await expect(a.store.put('trips.json.enc', trip('t3', 'z'))).rejects.toThrow()
     const again = await Store.open(a.db, masterKey, new GithubClient(TOKEN, github.fetch))
-    // t2 is na lock() niet meer weggeschreven; t1 en de outbox van t1 staan er nog.
-    expect(again.list('trips.json.enc').map((t) => t.id)).toEqual(['t1'])
-    expect(again.pendingCount()).toBe(1)
+    // t2 was al opgeslagen toen er vergrendeld werd: die opslag wordt afgemaakt, met de outbox in dezelfde transactie.
+    expect(again.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['t1', 't2'])
+    expect(again.pendingCount()).toBe(2)
   })
 
   it('verwijdert met een tombstone die op het andere apparaat aankomt', async () => {
