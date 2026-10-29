@@ -1,0 +1,34 @@
+/* Opstartscherm (index.html): het anker op de achtergrond van de app, tot de app geladen is. Los van app.css, zodat
+   het er direct staat; dezelfde kleuren als het ontwerpsysteem. */
+.splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #f6f3ec;
+  color: #12263f;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.splash-icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  box-shadow: 0 6px 20px rgb(18 38 63 / 0.18);
+}
+
+.splash-name {
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .splash {
+    background: #0b1a2b;
+    color: #e7edf3;
+  }
+}

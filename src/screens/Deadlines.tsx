@@ -1,9 +1,8 @@
 import { CalendarClock, Plane, Plus, KeyRound } from 'lucide-react'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
-import { ReminderSheet } from '../components/ReminderSheet'
-import { ReminderView } from '../components/Views'
+import { lazyComponent } from '../lazy'
 import { useCollection } from '../components/useCollection'
 import { formatDate } from '../format'
 import { t } from '../i18n'
@@ -13,6 +12,10 @@ import { todayIso, type Reminder } from '../model/types'
 import { activeWeek, upcomingTrips } from '../model/weeks'
 import { daysUntil, useSession } from '../session'
 import type { Store } from '../storage/store'
+
+// De bladen laden pas bij een tik (src/lazy.ts): de lijst staat ook op Vandaag.
+const ReminderSheet = lazyComponent(() => import('../components/ReminderSheet').then((m) => m.ReminderSheet))
+const ReminderView = lazyComponent(() => import('../components/Views').then((m) => m.ReminderView))
 
 // Termijnen: deadlines en vervaldatums samen, met de token en de volgende trip erbij. Vandaag toont de eerstvolgende
 // drie; onder Meer staan ze allemaal, ook de afgeronde.
@@ -76,7 +79,7 @@ export function DueList({ store, items, notify, onToken }: { store: Store; items
           )
         })}
       </ul>
-      {editing && <ReminderView store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}
+      <Suspense fallback={null}>{editing && <ReminderView store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}</Suspense>
     </>
   )
 }
@@ -114,8 +117,8 @@ export function Deadlines({ store, notify, onToken }: { store: Store; notify: No
           </ul>
         </div>
       )}
-      {adding && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAdding(false)} />}
-      {editing && <ReminderView store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}
+      <Suspense fallback={null}>{adding && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAdding(false)} />}</Suspense>
+      <Suspense fallback={null}>{editing && <ReminderView store={store} reminder={editing} notify={notify} onClose={() => setEditing(null)} />}</Suspense>
     </section>
   )
 }

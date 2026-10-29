@@ -13,7 +13,7 @@ import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
-import { organisationLabel } from './WeekSheet'
+import { organisationLabel } from '../i18n/labels'
 
 // Salaris: standaardbedrag per organisatie (Instellingen), en op Vandaag "Salaris van <trip> ontvangen?" na de
 // einddatum. Vandaag toont geen bedragen; het werkelijke bedrag staat pas in het blad "Ander bedrag".
@@ -115,7 +115,7 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
 export function salaryDefaultsLine(store: Store): string {
   const defaults = currentSettings(store.get('settings.json.enc')).salaryDefaults ?? {}
   const orgs = ORGANISATIONS.filter((o) => (defaults[o]?.amount ?? 0) > 0)
-  return orgs.length > 0 ? orgs.map(organisationLabel).join(', ') : t('salary.noDefaults')
+  return orgs.length > 0 ? orgs.map((o) => organisationLabel(o)).join(', ') : t('salary.noDefaults')
 }
 
 /** Vandaag: "Salaris van <trip> ontvangen?" voor trips die voorbij zijn, zonder bedragen. */

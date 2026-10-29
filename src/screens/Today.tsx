@@ -1,14 +1,18 @@
 import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane, Plus } from 'lucide-react'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
-import { activeWeek } from '../model/weeks'
+import { activeWeek, dayCountOf, missingDays, weekView } from '../model/weeks'
+import { addDays } from '../model/money'
+import { daysBetween } from '../model/calendar'
+import { routeOf } from '../model/trip-route'
+import { totalNm } from '../model/derive'
+import { nameWithCounter } from '../model/counters'
+import { useCounters } from '../components/useCounters'
+import { RouteMap } from '../components/LazyMap'
+import { boatLine } from '../components/boat-line'
 import type { AddInit } from './QuickAdd'
-import { useMemo, useRef, useState, type TouchEvent } from 'react'
-import { DayView } from '../components/DaySheet'
-import { ReminderView } from '../components/Views'
-import { TripOverviewSheet } from '../components/TripOverview'
-import { FillSheet } from '../components/FillSheet'
+import { Suspense, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { collectGaps, isSunday } from '../model/gaps'
-import { GoalSheet, type Notify } from '../components/EditSheets'
+import type { Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
@@ -16,21 +20,29 @@ import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
 import { buildIndex, dayInfo } from '../model/calendar'
 import { nmInYear } from '../model/derive'
-import { ReminderSheet } from '../components/ReminderSheet'
 import { DueList, useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso, type Reminder, type Trip } from '../model/types'
-import { WeekSheet } from '../components/WeekSheet'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
-import { TodayPlan } from './Planning'
 import { t } from '../i18n'
+import { lazyComponent } from '../lazy'
 
 // Vandaag volgt de dagsoort uit de agenda (tik = dagblad): bij werk de planning van vandaag, "Zoals gepland" en "Dag van
 // vandaag loggen"; bij reis de reisgegevens; bij rust en thuis niets om te loggen. Verder nm dit jaar met voortgang
 // naar het jaardoel, op zondag "N dingen aanvullen", en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
 // Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
+
+// De bladen die Vandaag opent, laden pas bij de tik (src/lazy.ts): Vandaag zelf opent zo snel mogelijk.
+const DayView = lazyComponent(() => import('../components/DaySheet').then((m) => m.DayView))
+const ReminderView = lazyComponent(() => import('../components/Views').then((m) => m.ReminderView))
+const TripOverviewSheet = lazyComponent(() => import('../components/TripOverview').then((m) => m.TripOverviewSheet))
+const FillSheet = lazyComponent(() => import('../components/FillSheet').then((m) => m.FillSheet))
+const GoalSheet = lazyComponent(() => import('../components/EditSheets').then((m) => m.GoalSheet))
+const ReminderSheet = lazyComponent(() => import('../components/ReminderSheet').then((m) => m.ReminderSheet))
+const WeekSheet = lazyComponent(() => import('../components/WeekSheet').then((m) => m.WeekSheet))
+const TodayPlan = lazyComponent(() => import('./Planning').then((m) => m.TodayPlan))
 
 const TOKEN_WARNING_DAYS = 30
 /** Zo ver omlaag trekken (px) start een sync. */
@@ -82,6 +94,8 @@ export function Today({
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
   const [viewTrip, setViewTrip] = useState<Trip | null>(null)
   const planned = nothingToLog ? null : plannedFor(running, legs, today)
+  // Open vragen: vergeten dagen van de lopende trip tot en met gisteren (vandaag heeft zijn eigen knop).
+  const forgotten = running ? missingDays(weekView(running, legs), addDays(today, -1)) : []
   const plannedDistance = planned ? plannedNm(legs, planned) : null
   async function logAsPlanned() {
     if (!running || !planned) return
@@ -129,8 +143,11 @@ export function Today({
           onSettings={onSettings}
         />
       )}
-      <DayKind day={day} onOpen={() => setDayOpen(true)} />
-      {!nothingToLog && <TodayPlan store={store} notify={notify} />}
+      {running ? (
+        <TodayTrip store={store} trip={running} day={day} onOpen={() => setViewTrip(running)} onDay={() => setDayOpen(true)} />
+      ) : (
+        <DayKind day={day} onOpen={() => setDayOpen(true)} />
+      )}
       {planned && running && (
         <div className="card card-body planned-today">
           <span className="label">{t('route.today')}</span>
@@ -151,10 +168,23 @@ export function Today({
         </div>
       )}
       {!nothingToLog && (
+        <Suspense fallback={null}>
+          <TodayPlan store={store} notify={notify} />
+        </Suspense>
+      )}
+      {!nothingToLog && (
         <button className={`btn${planned ? '' : ' primary'} log-day`} onClick={() => onAdd()}>
           <Icon icon={NotebookPen} />
           {t('today.logDay')}
         </button>
+      )}
+      {forgotten.length > 0 && running && (
+        <div className="notice">
+          <p className="small">{t('trip.missingDays', { n: forgotten.length })}</p>
+          <button className="btn small primary" onClick={() => onAdd({ date: forgotten[0]!, tripId: running.id })}>
+            {t('trip.logMissing', { date: formatDate(forgotten[0]!) })}
+          </button>
+        </div>
       )}
       <SalaryQuestions store={store} notify={notify} />
       {gaps.length > 0 && (
@@ -205,6 +235,7 @@ export function Today({
           {t('reminder.new')}
         </button>
       </div>
+      <Suspense fallback={null}>
       {addingReminder && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAddingReminder(false)} />}
       {dayOpen && (
         <DayView
@@ -241,7 +272,51 @@ export function Today({
         ))}
       {filling && <FillSheet store={store} gaps={gaps} notify={notify} onClose={() => setFilling(false)} />}
       {goalOpen && <GoalSheet store={store} current={goal} onClose={() => setGoalOpen(false)} notify={notify} />}
+      </Suspense>
     </section>
+  )
+}
+
+/**
+ * De lopende trip groot bovenaan: teller en naam, dag x van y, boot, nm en dagen tot nu toe en de route op de kaart.
+ * Tik = tripoverzicht; de dagsoort bovenin opent de dagkaart. Geen bedragen.
+ */
+function TodayTrip({ store, trip, day, onOpen, onDay }: { store: Store; trip: Trip; day: ReturnType<typeof dayInfo>; onOpen: () => void; onDay: () => void }) {
+  const dayType = day.type ?? 'leeg'
+  const legs = useCollection(store, 'legs.json.enc')
+  const places = useCollection(store, 'places.json.enc')
+  const counters = useCounters(store)
+  const today = todayIso()
+  const view = weekView(trip, legs)
+  const total = dayCountOf(view)
+  const dayNumber = view.startDate ? daysBetween(view.startDate, today) + 1 : null
+  const soFar = view.legs.filter((l) => l.date <= today)
+  const nm = Math.round(soFar.reduce((n, l) => n + totalNm(l), 0) * 10) / 10
+  const name = nameWithCounter(trip, counters.get(trip.id))
+  const when =
+    dayNumber === null ? '' : dayNumber > total ? t('today.tripEnded') : dayNumber < 1 ? t('today.tripStarts', { n: 1 - dayNumber }) : t('today.dayOf', { n: dayNumber, total })
+  return (
+    <div className="card today-trip">
+      <div className="today-trip-top">
+        <button type="button" className={`today-trip-day day-${dayType}`} onClick={onDay} aria-label={`${t('today.kind')}: ${t(`dayType.${dayType}`)}. ${t('today.change')}`}>
+          {t(`dayType.${dayType}`)}
+          <Icon icon={ChevronRight} />
+        </button>
+        {when && <span className="today-trip-when">{when}</span>}
+      </div>
+      {dayType !== 'werk' && <DayDetails day={day} />}
+      <button type="button" className="today-trip-main" onClick={onOpen} aria-label={t('trip.open', { name })}>
+        <span className="today-trip-name">{name}</span>
+        {boatLine(trip, view.boat) && <span className="muted">{boatLine(trip, view.boat)}</span>}
+        <span className="today-trip-totals">
+          <span>
+            <strong>{formatNm(nm)}</strong> {t('today.soFar')}
+          </span>
+          <span>{t('unit.days', { n: soFar.length })}</span>
+        </span>
+      </button>
+      <RouteMap route={routeOf(soFar, places)} small />
+    </div>
   )
 }
 
@@ -249,7 +324,6 @@ export function Today({
 function DayKind({ day, onOpen }: { day: ReturnType<typeof dayInfo>; onOpen: () => void }) {
   const type = day.type ?? 'leeg'
   const trip = day.type === 'werk' ? day.trips.at(-1)?.trip.name : undefined
-  const travel = day.type === 'reis' ? day.own?.travel : undefined
   const place = day.type !== 'werk' && day.type !== 'reis' ? day.own?.location : undefined
   return (
     <button type="button" className={`today-kind day-${type}`} onClick={onOpen} aria-label={`${t('today.kind')}: ${t(`dayType.${type}`)}${trip ? `, ${trip}` : ''}. ${t('today.change')}`}>
@@ -260,6 +334,17 @@ function DayKind({ day, onOpen }: { day: ReturnType<typeof dayInfo>; onOpen: () 
           {place ? ` · ${place}` : ''}
         </strong>
       </span>
+      <DayDetails day={day} />
+      <Icon icon={ChevronRight} className="today-kind-chevron" />
+    </button>
+  )
+}
+
+/** Reisgegevens, notitie en "niets te loggen" bij de dagsoort van vandaag. */
+function DayDetails({ day }: { day: ReturnType<typeof dayInfo> }) {
+  const travel = day.type === 'reis' ? day.own?.travel : undefined
+  return (
+    <>
       {travel && (travel.from || travel.to || travel.flight) && (
         <span className="today-travel">
           <Icon icon={Plane} />
@@ -269,8 +354,7 @@ function DayKind({ day, onOpen }: { day: ReturnType<typeof dayInfo>; onOpen: () 
       )}
       {day.own?.note && <span className="muted small">{day.own.note}</span>}
       {(day.type === 'rust' || day.type === 'thuis') && <span className="muted small">{t('today.nothingToLog')}</span>}
-      <Icon icon={ChevronRight} className="today-kind-chevron" />
-    </button>
+    </>
   )
 }
 

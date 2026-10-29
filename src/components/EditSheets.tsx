@@ -26,7 +26,7 @@ import {
   type TransactionSource,
 } from '../model/types'
 import type { Store } from '../storage/store'
-import { defaultTripName } from '../import/mileage-csv'
+import { defaultTripName } from '../model/trip-name'
 import { Icon } from './Icon'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'

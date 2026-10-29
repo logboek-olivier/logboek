@@ -10,9 +10,16 @@
     <link rel="icon" href="/logboek/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/logboek/apple-touch-icon.png" />
     <title>Logboek</title>
+    <link rel="stylesheet" href="/src/splash.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Opstartscherm tot de app geladen is (React vervangt de inhoud van #root); stijl in src/splash.css, geen inline stijl (CSP). -->
+    <div id="root">
+      <div class="splash" aria-hidden="true">
+        <img class="splash-icon" src="/logboek/icon.svg" alt="" width="88" height="88" />
+        <span class="splash-name">Logboek</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -10,17 +10,18 @@ import { participantName } from '../model/guests'
 import { placeUses } from '../model/places'
 import { routeOf } from '../model/trip-route'
 import type { Leg, Participant, Trip } from '../model/types'
-import { feetToMetres, planWeek, studentWeek, weekView, type WeekView } from '../model/weeks'
+import { planWeek, studentWeek, weekView, type WeekView } from '../model/weeks'
 import { activeStudents } from '../model/students'
 import { openStudent } from '../navigation'
 import { StudentRow } from '../screens/Students'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
+import { boatLine } from './boat-line'
 import { Icon } from './Icon'
 import { IncompleteBadge } from './Incomplete'
 import { tripIncomplete } from '../model/gaps'
 import { PinSheet } from './PinSheet'
-import { RouteMap } from './RouteMap'
+import { RouteMap } from './LazyMap'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
@@ -31,27 +32,25 @@ import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
 // Lagoon 42", een kaart met de hele route (lijnen tussen de stops, genummerde stops, start en eind duidelijk), plaatsen
 // zonder pin met "Pin zetten", totalen, de dagen, deelnemers en planning. Alles eerst bekijken; bewerken via het potlood.
 
-/** Bootgegevens op één regel: naam · model · lengte in voet en meter · soort. */
-export function boatLine(trip: Trip, fallbackBoat = ''): string {
-  const length = trip.boatLengthFt ? t('boat.feet', { ft: formatNumber(trip.boatLengthFt), m: formatNumber(feetToMetres(trip.boatLengthFt)) }) : ''
-  // De boot uit de dagen alleen als de trip zelf geen naam en geen model heeft (geïmporteerd: "Naam (Model)").
-  return [trip.boat || (trip.boatModel ? '' : fallbackBoat), trip.boatModel ?? '', length, trip.boatKind ? t(`boatKind.${trip.boatKind}`) : ''].filter(Boolean).join(' · ')
-}
-
 /** De kop: "SV #3 · BVI · 8–21 nov · Lagoon 42". */
 export function tripTitle(view: WeekView, counter: TripCounter | undefined): string {
   const range = view.startDate && view.endDate ? formatDateRangeShort(view.startDate, view.endDate) : ''
   return [nameWithCounter(view.trip, counter), range, view.trip.boatModel || view.trip.boat || view.boat].filter(Boolean).join(' · ')
 }
 
-export function TripHead({ view, counter, onEdit, legs }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[] }) {
+/** `compact`: zonder de titel (in het tripoverzicht staat die al bovenaan het blad). */
+export function TripHead({ view, counter, onEdit, legs, compact = false }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean }) {
   const trip = view.trip
   return (
     <div className="card trip-head">
       <div className="trip-head-title">
-        <h2>
-          {tripTitle(view, counter)} {tripIncomplete(trip, legs) && <IncompleteBadge />}
-        </h2>
+        {compact ? (
+          tripIncomplete(trip, legs) && <IncompleteBadge />
+        ) : (
+          <h2>
+            {tripTitle(view, counter)} {tripIncomplete(trip, legs) && <IncompleteBadge />}
+          </h2>
+        )}
         {onEdit && (
           <button type="button" className="btn icon" aria-label={`${t('week.edit')}: ${trip.name}`} onClick={onEdit}>
             <Icon icon={Pencil} />
@@ -164,7 +163,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
   return (
     <Sheet title={tripTitle(view, counter)} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack-lg view trip-overview">
-        <TripHead view={view} counter={counter} legs={legs} />
+        <TripHead view={view} counter={counter} legs={legs} compact />
         <TripRouteSection store={store} view={view} notify={notify} />
         <div className="section">
           <h3>{t('week.sailedDays')}</h3>
@@ -219,3 +218,5 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
     </Sheet>
   )
 }
+
+export { boatLine }

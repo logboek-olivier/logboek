@@ -28,9 +28,10 @@
   --accent-text: #ffffff;
   --positive: #23794c;
   --negative: #b4472f;
-  --map-sea: #d6e7ee;
-  --map-land: #efe6d2;
-  --map-coast: #b7a888;
+  /* Kaart: zee rustig blauw, land zandkleurig, route in het accent. */
+  --map-sea: #d4e6ef;
+  --map-land: #efe4cc;
+  --map-coast: #c2ae88;
   --warning: #a86a12;
   --warning-soft: #fbf0dc;
   --negative-soft: #f8e4de;
@@ -108,8 +109,9 @@
     --positive: #63cf96;
     --negative: #f28e78;
     --map-sea: #0f2a40;
-    --map-land: #2a3a46;
-    --map-coast: #4a5e6d;
+    /* Land zandkleurig, ook in het donker. */
+    --map-land: #3a3529;
+    --map-coast: #5f5641;
     --warning: #e9b45c;
     --warning-soft: #3a2f1a;
     --negative-soft: #3d2420;
@@ -902,6 +904,19 @@ summary:focus-visible {
   color: var(--text-muted);
 }
 
+.loading-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.loading-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -1361,18 +1376,18 @@ button.row-item {
   padding-right: var(--s-4);
 }
 
+/* Een gezeilde dag in het tripoverzicht en Deze trip (tik = de dag bekijken). */
 .leg-button {
   display: flex;
   width: 100%;
   gap: var(--s-3);
   justify-content: space-between;
-  align-items: flex-start;
-  padding: var(--s-3) 0;
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
   border: none;
   background: none;
   color: inherit;
   font: inherit;
-  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -3715,4 +3730,109 @@ body.presenting .bottom-bar {
 .tag.failed {
   background: var(--negative-soft);
   color: var(--negative);
+}
+
+/* Kaart die nog laadt: hetzelfde vlak in de kleur van de zee. */
+.map-placeholder {
+  background: var(--map-sea);
+}
+
+.screen-loading {
+  min-height: 60dvh;
+}
+
+/* Vandaag: de lopende trip groot bovenaan. Dagsoort als pil (tik = dagkaart), dan naam, boot, totalen en de route. */
+.today-trip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.today-trip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.today-trip-day {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--day-leeg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+.today-trip-day .icon {
+  --icon: 16px;
+  color: var(--text-muted);
+}
+
+.today-trip-day.day-werk { background: var(--day-werk); }
+.today-trip-day.day-rust { background: var(--day-rust); }
+.today-trip-day.day-reis { background: var(--day-reis); }
+.today-trip-day.day-thuis { background: var(--day-thuis); }
+.today-trip-day.day-beschikbaar { background: var(--day-beschikbaar); }
+
+.today-trip-when {
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.today-trip-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.today-trip-name {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.today-trip-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-4);
+  margin-top: var(--s-1);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.today-trip-totals strong {
+  color: var(--text);
+  font-size: var(--fs-lg);
+}
+
+/* Ontwerpronde: koppen van onderdelen rustig en gelijk, kaartkoppen iets kleiner dan de paginatitel. */
+.section > h2,
+.section-head h2 {
+  font-size: var(--fs-lg);
+}
+
+.card .section-head h2 {
+  font-size: var(--fs-md);
 }

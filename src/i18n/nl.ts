@@ -1225,6 +1225,10 @@ export const nl = {
   'students.withoutTrip': 'Zonder trip',
   'students.currentTrip': 'Lopend',
   'unit.students': (p: { n: number }) => `${p.n} ${plural(p.n, 'student', 'studenten')}`,
+  'today.dayOf': (p: { n: number; total: number }) => `Dag ${p.n} van ${p.total}`,
+  'today.tripEnded': 'Laatste dag voorbij',
+  'today.tripStarts': (p: { n: number }) => (p.n === 1 ? 'Begint morgen' : `Begint over ${p.n} dagen`),
+  'today.soFar': 'tot nu toe',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

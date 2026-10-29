@@ -2,6 +2,7 @@ import { Plus, Repeat, Route, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatMoney, formatNm, formatNumber } from '../format'
 import { getLang, t, useLang } from '../i18n'
+import { organisationLabel } from '../i18n/labels'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { MAX_COUNTRY, MAX_TAG, needsDistinction, norm, participantName, usedCountries } from '../model/guests'
 import { addDays, parseAmount, totals } from '../model/money'
@@ -37,9 +38,7 @@ export function weekTypeLabel(type: WeekType): string {
   return t(`weekType.${type}`)
 }
 
-export function organisationLabel(org: Organisation): string {
-  return t(`organisation.${org}`)
-}
+export { organisationLabel }
 
 /**
  * `initial`: datums van een nieuwe trip (periode markeren in de agenda). Snel starten neemt dan alles over behalve de

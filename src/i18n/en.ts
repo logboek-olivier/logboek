@@ -1188,4 +1188,8 @@ export const en: Messages = {
   'students.withoutTrip': 'Without a trip',
   'students.currentTrip': 'Current',
   'unit.students': (p) => `${p.n} ${plural(p.n, 'student', 'students')}`,
+  'today.dayOf': (p) => `Day ${p.n} of ${p.total}`,
+  'today.tripEnded': 'Last day has passed',
+  'today.tripStarts': (p) => (p.n === 1 ? 'Starts tomorrow' : `Starts in ${p.n} days`),
+  'today.soFar': 'so far',
 }
