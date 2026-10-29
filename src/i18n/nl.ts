@@ -1236,6 +1236,16 @@ export const nl = {
   'demo.stop': 'Demo stoppen',
   'demo.starting': 'Demo laden…',
   'demo.hint': 'De app draait dan op verzonnen voorbeelddata, in het Engels, om hem te laten zien. Je eigen gegevens blijven onaangeroerd en er gaat niets naar GitHub. Stoppen brengt direct je eigen gegevens en taal terug.',
+  'stats.sailedMap': 'Waar ik gevaren heb',
+  'stats.sailedMapRoutes': (p: { n: number }) => (p.n === 1 ? '1 trip' : `${p.n} trips`),
+  'stats.sailedMapLabel': (p: { places: string }) => `Kaart met alle routes; meest bezocht: ${p.places}`,
+  'stats.sailedMapTop': (p: { places: string }) => `Meest bezocht: ${p.places}`,
+  'tripShare.open': 'Trip delen',
+  'tripShare.title': 'Trip delen',
+  'tripShare.hint': 'Route, teller, nm, dagen en boot. Geen namen van deelnemers en geen bedragen. De afbeelding wordt op dit apparaat gemaakt.',
+  'tripShare.image': 'Als afbeelding',
+  'tripShare.pdf': 'Als PDF (afdrukken)',
+  'tripShare.file': 'trip',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

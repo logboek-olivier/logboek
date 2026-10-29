@@ -1,3 +1,4 @@
+import { SailedMap } from '../components/SailedMap'
 import { BarChart3, Check, Circle, Eye, EyeOff } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
@@ -44,6 +45,7 @@ export function Stats({ store }: { store: Store }) {
   const today = todayIso()
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const places = useCollection(store, 'places.json.enc')
   const calendar = useCollection(store, 'calendar.json.enc')
   const transactions = useCollection(store, 'transactions.json.enc')
   const students = useCollection(store, 'students.json.enc')
@@ -142,6 +144,7 @@ export function Stats({ store }: { store: Store }) {
             </div>
           )}
           <Breakdown title={t('stats.topPlaces')} rows={sailing.topPlaces} format={(n) => t('stats.arrivals', { n })} />
+          {period && <SailedMap legs={legs} places={places} from={period.from} to={period.to} />}
           {sailing.perOrganisation.some((o) => o.org !== '') && (
             <Breakdown
               title={t('stats.perOrganisation')}
