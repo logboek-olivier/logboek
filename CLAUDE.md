@@ -245,7 +245,7 @@ Foto's schalen tot max 1600 px lange zijde, JPEG 0,8. PDF ongewijzigd. Max 20 MB
 
 ### Instellingen
 
-`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); bevestigde of overgeslagen boten (`boatsChecked`, naam|model); herinnering in agenda-bestanden (`reminderAlarmDays`); beginnummers van de teller per organisatie (`orgFirst`) en beantwoorde twijfels (`orgAnswered`, trip-id's); standaardsalaris per organisatie (`salaryDefaults`); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
+`settings.json.enc`: laatst gebruikte boot, rol, valuta, bron, soort, watertype en trip; de lopende trip (`activeWeekId`); bevestigde of overgeslagen boten (`boatsChecked`, naam|model); herinnering in agenda-bestanden (`reminderAlarmDays`); beginnummers van de teller per organisatie (`orgFirst`) en beantwoorde twijfels (`orgAnswered`, trip-id's); standaardsalaris per organisatie (`salaryDefaults`); de dagelijkse herinnering (`dailyReminder`: tijd en alleen op werkdagen); jaardoel in nm; afstudeerdatum (later). Alleen lokaal, niet gesynct: vingerafdruk aan/uit en de taal (`localStorage` `logboek-taal`).
 
 ## Import mijlenregistratie
 
@@ -328,7 +328,7 @@ Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vak
 8. **Plaatsen** (onder Meer): alle plaatsen uit de dagen, meest gebruikt eerst, met of zonder punt; tik = de plaats bekijken (kaart, land, dagen, trips) met "Op de kaart zetten" of "Pin verplaatsen"; voorstellen om spelvarianten samen te voegen bovenaan. **Pin-assistent** ("Plaatsen zonder pin", `src/model/pin-suggest.ts`): de plaatsen zonder pin één voor één, met een voorstel uit de namen op de offline OSM-kaart ("Vis gevonden: klopt?", gekozen op naam, buurplaatsen en land); één tik bevestigt (met ongedaan maken), "Andere plek kiezen" en "Overslaan" mogen; de pinregels blijven gelden.
 9. **Studentenarchief** (onder Meer, `src/model/student-groups.ts`): álle studenten per trip, de lopende trip bovenaan, daarna de nieuwste, zonder trip apart onderaan; zoeken op (een deel van) de voornaam, filteren op cursus en resultaat (geslaagd, niet geslaagd, nog geen examen); tik = checklist. Gearchiveerde studenten apart, terug te zetten en te wissen.
 9. **Opslag** (onder Meer): overzicht per bestand, "Controleer nu", "Back-up downloaden" en "Back-up terugzetten" (zie Opslag en synchronisatie).
-10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, jaardoel, teller per organisatie (beginnummers), salaris per organisatie, taal (Nederlands/Engels), demomodus (zie Demomodus), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash, kaartbronnen met de OpenStreetMap-naamsvermelding).
+10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, jaardoel, teller per organisatie (beginnummers), salaris per organisatie, herinnering (tijd kiezen, standaard 20:00, "Zet in agenda" maakt lokaal een `.ics` met "Logboek: log je dag" en een link naar Toevoegen → Dag, elke dag of alleen op de werkdagen uit de agenda tot het einde van de planning; zwevende tijd, dus overal plaatselijke tijd; vaste UID's, opnieuw toevoegen werkt bij; `src/model/daily.ts`), taal (Nederlands/Engels), demomodus (zie Demomodus), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash, kaartbronnen met de OpenStreetMap-naamsvermelding).
 
 Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
 
@@ -350,7 +350,7 @@ logboek/
     storage/         idb.ts, outbox.ts, github.ts (ook `blockNetwork` voor de demo), sync.ts, store.ts, token.ts, fingerprint.ts, writer.ts (één schrijver), storage-log.ts (Opslag controleren),
                      backup.ts, device.ts (apparaat-id voor commitberichten)
     model/           types.ts, derive.ts, money.ts, rates.ts, settings.ts, schema.ts, edit.ts, reminders.ts,
-                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts, ics.ts,
+                     weeks.ts, curricula.ts, seed-curricula.ts, students.ts, plans.ts, places.ts, gaps.ts, boats.ts, routes.ts, ics.ts, daily.ts (dagelijkse herinnering),
                      checklists.ts, seed-checklists.ts, sailtime.ts, calendar.ts (agenda), guests.ts (deelnemers en fooi per persoon), tip-draft.ts,
                      osm.ts (kaartdata laden), waterroute.ts, estimate.ts (waterroute × persoonlijke factor), trip-ops.ts (verwijderen, overlap, samenvoegen),
                      countries.ts (grove landvakken voor de pinregels), counters.ts (teller per organisatie), stats.ts (statistieken), trip-dates.ts (datums uit de dagen),
@@ -376,10 +376,10 @@ logboek/
   tests/             vitest (crypto, sync, unreadable, session, derive, import, xlsx, edit, errors, i18n, curricula,
                      students, plans, weeks, week-links, rates, gaps, boats, places, routes, checklists, repair-loop, storingen,
                      foutmatrix, screen-files, upgrade-samples, calendar, planning, trip-agenda, guests, osm-lib, waterroute, opslag, github-gedrag, trip-ops, pins,
-                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps) + playwright (upgrade, updates, setup, unlock, sessie, import,
+                     quick-trip, counters, stats, diagnose, trip-dates, trip-route, salary, student-groups, demo, map-view, map-labels, measure, offline-maps, daily) + playwright (upgrade, updates, setup, unlock, sessie, import,
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
-                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline,
+                     agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering,
                      taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)

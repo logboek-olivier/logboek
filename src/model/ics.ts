@@ -19,12 +19,12 @@ export interface IcsInput {
 }
 
 /** Tekst volgens RFC 5545: backslash, puntkomma, komma en regeleinden geëscaped. */
-function escape(text: string): string {
+export function escapeIcs(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
 }
 
 /** Regels langer dan 75 tekens worden gevouwen (vervolgregel begint met een spatie). */
-function fold(line: string): string {
+export function foldIcs(line: string): string {
   const parts: string[] = []
   let rest = line
   while (rest.length > 74) {
@@ -48,8 +48,13 @@ export function alarmTrigger(days: number): string {
   return days <= 0 ? 'PT9H' : `-P${days - 1}DT15H`
 }
 
+/** DTSTAMP: het moment van maken, in UTC. */
+export function icsStamp(now: Date): string {
+  return now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+}
+
 export function buildIcs(input: IcsInput, now: Date = new Date()): string {
-  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const stamp = icsStamp(now)
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -60,16 +65,16 @@ export function buildIcs(input: IcsInput, now: Date = new Date()): string {
     `DTSTAMP:${stamp}`,
     `DTSTART;VALUE=DATE:${compact(input.date)}`,
     `DTEND;VALUE=DATE:${compact(nextDay(input.date))}`,
-    `SUMMARY:${escape(input.title)}`,
-    ...(input.note ? [`DESCRIPTION:${escape(input.note)}`] : []),
+    `SUMMARY:${escapeIcs(input.title)}`,
+    ...(input.note ? [`DESCRIPTION:${escapeIcs(input.note)}`] : []),
     ...(input.repeat === 'maandelijks' ? ['RRULE:FREQ=MONTHLY'] : input.repeat === 'jaarlijks' ? ['RRULE:FREQ=YEARLY'] : []),
     'BEGIN:VALARM',
     'ACTION:DISPLAY',
-    `DESCRIPTION:${escape(input.title)}`,
+    `DESCRIPTION:${escapeIcs(input.title)}`,
     `TRIGGER:${alarmTrigger(input.alarmDays)}`,
     'END:VALARM',
     'END:VEVENT',
     'END:VCALENDAR',
   ]
-  return lines.map(fold).join('\r\n') + '\r\n'
+  return lines.map(foldIcs).join('\r\n') + '\r\n'
 }

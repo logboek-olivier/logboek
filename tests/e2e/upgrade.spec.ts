@@ -245,7 +245,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       ]),
     )
     const settings = await decryptRecords(key, 'settings.json.enc', Uint8Array.from(Buffer.from(github.files.get('settings.json.enc')!.content, 'base64')))
-    expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } } })
+    expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true } })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
     // Het salaris is ontvangen (eigen bedrag blijft), met het inkomen bij de trip.

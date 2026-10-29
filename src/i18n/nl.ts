@@ -1274,6 +1274,19 @@ export const nl = {
   'maps.makeOffline': 'Offline beschikbaar maken',
   'maps.remove': 'Verwijderen',
   'maps.noIndex': 'De kaartdata is nog niet geladen. Open dit scherm opnieuw met verbinding.',
+  'reminderDaily.screen': 'Herinnering',
+  'reminderDaily.title': 'Logboek: log je dag',
+  'reminderDaily.description': 'Open het logboek en log de dag van vandaag.',
+  'reminderDaily.hint': 'Je agenda-app herinnert je op een vaste tijd aan het loggen van je dag, met een link naar de app. De app verstuurt zelf niets.',
+  'reminderDaily.time': 'Tijd',
+  'reminderDaily.when': 'Wanneer',
+  'reminderDaily.everyDay': 'Elke dag',
+  'reminderDaily.workdays': 'Alleen op werkdagen',
+  'reminderDaily.workdaysHint': (p: { n: number; until: string }) => `${p.n} werkdagen uit de agenda, tot en met ${p.until}.`,
+  'reminderDaily.noWorkdays': 'Alleen op werkdagen kan zodra er werkdagen in de agenda staan.',
+  'reminderDaily.add': 'Zet in agenda',
+  'reminderDaily.again': 'Tijd of planning gewijzigd? Zet hem opnieuw in je agenda; het item wordt bijgewerkt.',
+  'reminderDaily.done': 'Herinnering gemaakt',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
