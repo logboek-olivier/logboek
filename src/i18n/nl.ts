@@ -1592,7 +1592,6 @@ export const nl = {
   'accounts.empty': 'Nog geen rekeningen. Voeg je betaalrekening, beleggingen en studieschuld toe; de netto waarde volgt vanzelf.',
   'accounts.netWorth': 'Netto waarde',
   'accounts.noRate': (p: { currency: string }) => `In ${p.currency}, zonder koers`,
-  'accounts.oldStand': (p: { date: string }) => `De oudste meegetelde stand is van ${p.date}: werk die rekening bij voor een kloppende netto waarde.`,
   'accounts.perMonth': 'Per maand',
   'accounts.list': 'Rekeningen',
   'accounts.closedOn': (p: { date: string }) => `Opgeheven ${p.date}`,
@@ -1671,6 +1670,10 @@ export const nl = {
   'accounts.rowColumn': (p: { row: number; column: number }) => `rij ${p.row} kolom ${p.column}`,
   'accounts.importSave': (p: { n: number }) => `${p.n} ${plural(p.n, 'stand', 'standen')} importeren`,
   'accounts.imported': (p: { n: number }) => `${p.n} ${plural(p.n, 'stand', 'standen')} opgeslagen`,
+  'accounts.oldStand': (p: { name: string; date: string }) => `De laatste stand van ${p.name} is van ${p.date}: vul een nieuwe stand in (ook als hij gelijk is) voor een kloppende netto waarde.`,
+  'accounts.pace.noRate': 'Geen tempo: voor een rekening in een andere valuta is nog geen koers.',
+  'accounts.currencyFixed': 'De valuta ligt vast zodra er standen zijn.',
+  'accounts.cutOff': 'Standen vóór een onleesbare regel zijn niet terug te rekenen en worden niet opgeslagen.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

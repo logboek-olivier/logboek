@@ -2,7 +2,7 @@ import type { Store } from '../storage/store'
 import type { Undo } from './edit'
 import { round2 } from './money'
 import { rateFor, type RatesFile } from './rates'
-import { newId, type Account, type AccountKind, type AccountProvider, type Balance, type Currency } from './types'
+import { newId, todayIso, type Account, type AccountKind, type AccountProvider, type Balance, type Currency } from './types'
 
 // Rekeningen en netto waarde (Meer → Rekeningen). Per rekening één stand per maand (balances.json.enc): handmatig
 // ingevuld of uit een export (src/import/accounts.ts). Alleen standen, nooit losse mutaties, omschrijvingen of
@@ -22,13 +22,22 @@ export const DEFAULT_KIND: Record<AccountProvider, AccountKind> = {
 export const isDebt = (account: Pick<Account, 'kind'>): boolean => account.kind === 'schuld'
 
 /**
- * Een ingetypte stand: ook nul en negatief (rood staan). "1.234,56" en "1,234.56": het laatste teken is het decimaalteken;
- * één punt met drie cijfers erachter is een duizendtal ("1.234"), één komma een decimaalteken (in het Engels met drie
- * cijfers erachter een duizendtal).
+ * Een ingetypte stand: ook nul en negatief (rood staan, ook "€ -80" en "(80)"). "1.234,56" en "1,234.56": het laatste
+ * teken is het decimaalteken; één punt met drie cijfers erachter is een duizendtal ("1.234"), één komma een
+ * decimaalteken (in het Engels met drie cijfers erachter een duizendtal). Iets anders dan een bedrag ("2-3", "1e5",
+ * "1O0") is null, nooit een geraden getal.
  */
 export function parseStand(text: string, lang: 'nl' | 'en' = 'nl'): number | null {
-  const negative = /^\s*[-\u2212]/.test(text) || /[-\u2212]\s*$/.test(text)
-  let s = text.replace(/[^\d,.]/g, '')
+  let t = text.replace(/[\s\u00a0]/g, '').replace(/\u2212/g, '-').replace(/^(€|EUR|\$|USD|£|GBP)/i, '').replace(/(€|EUR|\$|USD|£|GBP)$/i, '')
+  let negative = false
+  if (/^\(.*\)$/.test(t)) {
+    negative = true
+    t = t.slice(1, -1)
+  }
+  const sign = /^([-+]?)(?:€|EUR|\$|USD|£|GBP)?(\d[\d.,]*)(-?)$/i.exec(t)
+  if (!sign) return null
+  if (sign[1] === '-' || sign[3] === '-') negative = !negative
+  let s = sign[2]!
   const comma = s.lastIndexOf(',')
   const dot = s.lastIndexOf('.')
   const count = (c: string) => s.split(c).length - 1
@@ -147,6 +156,8 @@ export type Pace =
   | { state: 'op-weg'; perMonth: number; months: number }
   | { state: 'niet'; perMonth: number }
   | { state: 'te-weinig' }
+  /** Een stand in een valuta zonder koers: geen netto waarde in euro, dus ook geen tempo. */
+  | { state: 'geen-koers' }
 
 /** Hoogstens zes maanden terug kijken: het huidige tempo, niet dat van jaren geleden. */
 const PACE_MONTHS = 6
@@ -169,21 +180,27 @@ export function pace(accounts: readonly Account[], balances: readonly Balance[],
   let perMonth = 0
   let contributing = 0
   for (const account of accounts) {
-    if (account.deletedAt !== null || (account.closedAt && account.closedAt <= today)) continue
+    if (account.deletedAt !== null) continue
+    // Een rekening die in deze zes maanden is opgeheven, telt mee tot nul op de dag van opheffen: geld dat naar een
+    // andere rekening ging, is dan geen sparen. Eerder opgeheven: telt niet meer mee.
+    const closed = account.closedAt && account.closedAt <= today ? account.closedAt : null
+    if (closed && closed.slice(0, 7) < first) continue
     const points: { x: number; y: number }[] = []
     for (const b of balances) {
       if (b.deletedAt !== null || b.accountId !== account.id || b.date.slice(0, 7) < first || b.date > today) continue
+      if (closed && b.date >= closed) continue
       const eur = toEur(b.amount, account.currency, today, rates)
       if (eur) points.push({ x: monthPosition(b.date), y: eur.eur })
     }
+    if (closed && points.length > 0) points.push({ x: monthPosition(closed), y: 0 })
     if (new Set(points.map((p) => Math.floor(p.x))).size < 2) continue
     perMonth += slope(points)
     contributing++
   }
   perMonth = Math.round(perMonth)
-  const complete = now.counted > 0 && Object.keys(now.other).length === 0
-  if (complete && now.eur >= 0) return { state: 'positief', perMonth: contributing > 0 ? perMonth : null }
-  if (contributing === 0 || !complete) return { state: 'te-weinig' }
+  if (now.counted > 0 && Object.keys(now.other).length > 0) return { state: 'geen-koers' }
+  if (now.counted > 0 && now.eur >= 0) return { state: 'positief', perMonth: contributing > 0 ? perMonth : null }
+  if (contributing === 0) return { state: 'te-weinig' }
   if (perMonth <= 0) return { state: 'niet', perMonth }
   return { state: 'op-weg', perMonth, months: Math.ceil(-now.eur / perMonth) }
 }
@@ -217,17 +234,23 @@ export async function saveAccount(store: Store, id: string | null, fields: Omit<
   const previous = id ? store.get('accounts.json.enc').find((a) => a.id === id) : undefined
   const record: Account = { ...fields, id: id ?? newId(), updatedAt: new Date().toISOString(), deletedAt: null }
   await store.put('accounts.json.enc', record)
-  // Van gewone rekening naar schuld (of terug): de standen draaien mee, zodat een schuld negatief blijft.
+  // Van gewone rekening naar schuld: de standen worden negatief. Terug van schuld naar een andere soort: het teken draait
+  // om (een schuldstand is altijd negatief, dus zo komt terug wat Olivier typte).
   if (previous && isDebt(previous) !== isDebt(record)) {
-    const flipped = accountBalances(store.get('balances.json.enc'), record.id).map((b) => ({ ...b, amount: signedAmount(record, b.amount), updatedAt: new Date().toISOString() }))
+    const flip = (amount: number) => (isDebt(record) ? signedAmount(record, amount) : round2(Math.abs(amount)))
+    const flipped = accountBalances(store.get('balances.json.enc'), record.id).map((b) => ({ ...b, amount: flip(b.amount), updatedAt: new Date().toISOString() }))
     if (flipped.length > 0) await store.putMany('balances.json.enc', flipped)
   }
   return record
 }
 
-/** Een stand met de hand: geldt voor zijn maand; een stand van een latere dag in die maand blijft staan. */
-export async function setBalance(store: Store, account: Account, date: string, amount: number): Promise<Balance | null> {
-  const [written] = await writeBalances(store, account, [{ date, amount: signedAmount(account, amount) }], 'handmatig', true)
+/**
+ * Een stand met de hand: geldt voor zijn maand; een stand van een latere dag in die maand blijft staan. Een datum in de
+ * toekomst wordt geweigerd (null), zodat een tikfout nooit een juiste stand blokkeert.
+ */
+export async function setBalance(store: Store, account: Account, date: string, amount: number, today = todayIso()): Promise<Balance | null> {
+  if (date > today) return null
+  const [written] = await writeBalances(store, account, [{ date, amount: signedAmount(account, amount) }], 'handmatig', true, today)
   return written ?? null
 }
 
@@ -239,12 +262,14 @@ export interface BalancePoint {
 
 /**
  * Standen opslaan, één per maand. Bestaat er voor die maand al een stand van een latere dag, dan blijft die staan
- * (een oude export overschrijft nooit een nieuwere stand); `force` (met de hand, dezelfde of een latere dag) wint wel.
+ * (een oude export overschrijft nooit een nieuwere stand). Een import vervangt een stand uit een export van dezelfde
+ * dag (zo herstelt opnieuw importeren met de juiste kolommen een verkeerde import), maar niet een stand die Olivier zelf
+ * op die dag invulde; `force` (met de hand, dezelfde of een latere dag) wint wel. Datums in de toekomst gaan niet mee.
  */
-export async function writeBalances(store: Store, account: Account, points: readonly BalancePoint[], source: Balance['source'], force = false): Promise<Balance[]> {
+export async function writeBalances(store: Store, account: Account, points: readonly BalancePoint[], source: Balance['source'], force = false, today = todayIso()): Promise<Balance[]> {
   const perMonth = new Map<string, BalancePoint>()
   for (const p of points) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date) || !Number.isFinite(p.amount)) continue
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date) || !Number.isFinite(p.amount) || p.date > today) continue
     const month = p.date.slice(0, 7)
     const known = perMonth.get(month)
     if (!known || p.date >= known.date) perMonth.set(month, p)
@@ -255,8 +280,14 @@ export async function writeBalances(store: Store, account: Account, points: read
   for (const p of perMonth.values()) {
     const id = balanceId(account.id, p.date)
     const old = existing.get(id)
-    if (old && old.deletedAt === null && (force ? old.date > p.date : old.date >= p.date)) continue
-    out.push({ id, accountId: account.id, date: p.date, amount: round2(p.amount), source, updatedAt: now, deletedAt: null })
+    const amount = round2(p.amount)
+    if (old && old.deletedAt === null) {
+      if (old.date > p.date) continue
+      if (!force && old.date === p.date && old.source === 'handmatig') continue
+      // Precies dezelfde stand: niets schrijven (geen onnodige sync).
+      if (old.date === p.date && old.amount === amount && old.source === source) continue
+    }
+    out.push({ id, accountId: account.id, date: p.date, amount, source, updatedAt: now, deletedAt: null })
   }
   if (out.length > 0) await store.putMany('balances.json.enc', out)
   return out

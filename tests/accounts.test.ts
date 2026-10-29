@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { columnChoices, decimalSeparator, detectPreset, guessMapping, MappingIncompleteError, monthlyPoints, parseDate, parseNumber, readBalances, type ColumnMapping } from '../src/import/accounts'
+import { columnChoices, dateOrder, decimalSeparator, detectPreset, guessMapping, MappingIncompleteError, monthlyPoints, parseDate, parseNumber, readBalances, type ColumnMapping } from '../src/import/accounts'
 import { readRowSources, type SheetRow } from '../src/import/rows'
 import { balanceId, deleteAccount, deleteBalance, netWorth, netWorthSeries, pace, parseStand, saveAccount, setBalance, writeBalances } from '../src/model/accounts'
 import type { RatesFile } from '../src/model/rates'
@@ -41,6 +41,14 @@ describe('getallen en datums uit een export', () => {
     expect(parseNumber(cell('+5'), '.')).toBe(5)
     expect(parseNumber(cell('nep'), '.')).toBeNull()
     expect(parseNumber({ text: '', number: 3.5 }, ',')).toBe(3.5)
+    // Hele bedragen met duizendtallen (Nederlands): de komma is het decimaalteken, nooit 1000× te klein.
+    expect(decimalSeparator(['1.234', '2.500', '10.000'])).toBe(',')
+    expect(decimalSeparator(['1,234', '2,500'])).toBe('.')
+    expect(parseNumber(cell('10.000'), decimalSeparator(['1.234', '10.000']))).toBe(10000)
+    // Een notatie die niet bij de kolom past, is geen getal (melding), nooit een verkeerd getal.
+    expect(parseNumber(cell('1.234,56'), '.')).toBeNull()
+    expect(parseNumber(cell('1,234.56'), ',')).toBeNull()
+    expect(parseNumber(cell('1.2.3'), ',')).toBeNull()
   })
 
   it('datums: ISO (ook met tijd), dag-maand-jaar, jjjjmmdd, Excel; ongeldig is null', () => {
@@ -54,6 +62,11 @@ describe('getallen en datums uit een export', () => {
     expect(parseDate({ text: '46324', isoDate: '2026-10-29' })).toBe('2026-10-29')
     expect(parseDate(cell('31-02-2026'))).toBeNull()
     expect(parseDate(cell('nep'))).toBeNull()
+    // Een Amerikaanse export: herkend aan een tweede getal boven de 12, dan maand eerst voor de hele kolom.
+    expect(dateOrder(['09/03/2026', '09/29/2026'])).toBe('mdy')
+    expect(dateOrder(['29/09/2026', '03/09/2026'])).toBe('dmy')
+    expect(dateOrder(['03/09/2026'])).toBe('dmy')
+    expect(parseDate(cell('09/03/2026'), 'mdy')).toBe('2026-09-03')
   })
 
   it('een ingetypte stand: ook nul en negatief, duizendtallen en beide decimaaltekens', () => {
@@ -69,6 +82,11 @@ describe('getallen en datums uit een export', () => {
     expect(parseStand('1,234', 'nl')).toBe(1.23)
     expect(parseStand('')).toBeNull()
     expect(parseStand('nep')).toBeNull()
+    expect(parseStand('\u20ac -80')).toBe(-80)
+    expect(parseStand('-\u20ac 80')).toBe(-80)
+    expect(parseStand('(80)')).toBe(-80)
+    expect(parseStand('80-')).toBe(-80)
+    for (const bad of ['1e5', '2-3', '1O0', '--5']) expect(parseStand(bad)).toBeNull()
   })
 })
 
@@ -161,6 +179,25 @@ describe('exports herkennen en lezen', () => {
       { row: 5, column: 1 },
       { row: 6, column: 3 },
     ])
+    expect(result.cutOff).toBe(false)
+  })
+
+  it('alleen bedragen: een onleesbare regel; de standen daarvóór zijn niet te berekenen en gaan niet mee', () => {
+    const r = rows(['Datum;Bedrag', '01-09-2026;100,00', '10-09-2026;n.v.t.', '20-09-2026;-10,00', '05-10-2026;50,00'].join('\n'))
+    const result = readBalances(r, guessMapping(r), { currentBalance: 1000 })
+    expect(result.points).toEqual([
+      { date: '2026-09-20', amount: 950 },
+      { date: '2026-10-05', amount: 1000 },
+    ])
+    expect(result.cutOff).toBe(true)
+    expect(result.problems).toEqual([{ row: 3, column: 2 }])
+  })
+
+  it('kolommen raden: saldo vóór de mutatie met een bedrag; een gegevensregel is nooit een kopregel', () => {
+    const before = rows(['Datum,Saldo voor mutatie,Bedrag', '2026-09-01,100.00,5.00'].join('\n'))
+    expect(guessMapping(before)).toMatchObject({ mode: 'voor-plus-bedrag', balance: 1, amount: 2 })
+    const noHeader = rows(['Tijdschrift,2026-09-01,12.50', 'Nep,2026-09-02,10.00'].join('\n'))
+    expect(guessMapping(noHeader).headerRow).toBeNull()
   })
 })
 
@@ -201,6 +238,12 @@ describe('netto waarde en tempo', () => {
     // Een net toegevoegde schuld met één stand telt mee in de netto waarde, niet in het tempo.
     const newDebt = [balance('bank', '2026-07-15', 1000), balance('bank', '2026-08-15', 2000), balance('bank', '2026-09-15', 3000), balance('duo', '2026-09-20', -15000)]
     expect(pace(acc, newDebt, '2026-09-30', RATES)).toEqual({ state: 'op-weg', perMonth: 1000, months: 12 })
+    // Geld van een opgeheven spaarrekening naar de bank is geen sparen: de spaarrekening telt mee tot nul.
+    const closedAcc = [account('spaar', { closedAt: '2026-09-15' }), account('bank'), account('duo', { kind: 'schuld' })]
+    const moved = [balance('spaar', '2026-07-15', 5000), balance('spaar', '2026-08-15', 5000), balance('bank', '2026-07-15', 1000), balance('bank', '2026-08-15', 1000), balance('bank', '2026-09-15', 6000), balance('duo', '2026-07-15', -20000)]
+    expect(pace(closedAcc, moved, '2026-09-30', RATES)).toEqual({ state: 'niet', perMonth: 0 })
+    // Zonder koers voor een rekening: geen tempo, met de juiste reden.
+    expect(pace(acc, [balance('dollar', '2026-08-15', 100), balance('dollar', '2026-09-15', 200), balance('duo', '2026-09-15', -500)], '2026-09-30', null)).toEqual({ state: 'geen-koers' })
     // Een koersverschil is geen sparen: dezelfde dollarstand blijft vlak.
     const dollars = [balance('dollar', '2026-05-10', 100), balance('dollar', '2026-09-10', 100), balance('duo', '2026-09-10', -500)]
     expect(pace(acc, dollars, '2026-09-30', RATES)).toEqual({ state: 'niet', perMonth: 0 })
@@ -222,7 +265,16 @@ describe('opslaan', () => {
         [`stand:${bank.id}:2026-10`, '2026-10-03', 1600],
       ]),
     )
+    // Opnieuw importeren met de juiste kolommen vervangt een stand uit een export van dezelfde dag; precies dezelfde
+    // stand wordt niet opnieuw geschreven.
+    expect((await writeBalances(store, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).map((b) => b.amount)).toEqual([2400])
+    expect(await writeBalances(store, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).toEqual([])
+    // Geen standen in de toekomst.
+    expect(await writeBalances(store, bank, [{ date: '2099-01-01', amount: 1 }], 'import')).toEqual([])
+    expect(await setBalance(store, bank, '2099-01-01', 1)).toBeNull()
     expect(await setBalance(store, bank, '2026-10-20', 1750)).toMatchObject({ amount: 1750, source: 'handmatig' })
+    // Een export van dezelfde dag vervangt een stand met de hand niet.
+    expect(await writeBalances(store, bank, [{ date: '2026-10-20', amount: 1 }], 'import')).toEqual([])
     // Een oude export (3 oktober) laat de stand van 20 oktober staan; een stand met de hand van eerder ook.
     expect(await writeBalances(store, bank, [{ date: '2026-10-03', amount: 1600 }], 'import')).toEqual([])
     expect(await setBalance(store, bank, '2026-10-10', 1)).toBeNull()
@@ -230,13 +282,14 @@ describe('opslaan', () => {
     expect(store.list('balances.json.enc').filter((b) => b.date.startsWith('2026-10')).map((b) => b.amount)).toEqual([1800])
   })
 
-  it('een schuld is altijd negatief; van soort wisselen draait de standen mee', async () => {
+  it('een schuld is altijd negatief; van soort wisselen draait de standen mee, ook terug', async () => {
     const store = await newStore()
     const duo = await saveAccount(store, null, { name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR' })
     await setBalance(store, duo, '2026-10-01', 9876.5)
     expect(store.list('balances.json.enc')[0]!.amount).toBe(-9876.5)
+    // Per ongeluk Schuld gekozen, daarna Spaar: wat Olivier typte komt terug.
     await saveAccount(store, duo.id, { name: 'Nepschuld', provider: 'duo', kind: 'spaar', currency: 'EUR' })
-    expect(store.list('balances.json.enc')[0]!.amount).toBe(-9876.5)
+    expect(store.list('balances.json.enc')[0]!.amount).toBe(9876.5)
     const asDebt = await saveAccount(store, duo.id, { name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR' })
     expect(asDebt.kind).toBe('schuld')
     expect(store.list('balances.json.enc')[0]!.amount).toBe(-9876.5)

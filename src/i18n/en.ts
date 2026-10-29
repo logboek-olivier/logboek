@@ -1555,7 +1555,6 @@ export const en: Messages = {
   'accounts.empty': 'No accounts yet. Add your current account, investments and student loan; the net worth follows.',
   'accounts.netWorth': 'Net worth',
   'accounts.noRate': (p) => `In ${p.currency}, without a rate`,
-  'accounts.oldStand': (p) => `The oldest balance counted is from ${p.date}: update that account for an accurate net worth.`,
   'accounts.perMonth': 'Per month',
   'accounts.list': 'Accounts',
   'accounts.closedOn': (p) => `Closed ${p.date}`,
@@ -1634,4 +1633,8 @@ export const en: Messages = {
   'accounts.rowColumn': (p) => `row ${p.row} column ${p.column}`,
   'accounts.importSave': (p) => `Import ${p.n} ${plural(p.n, 'balance', 'balances')}`,
   'accounts.imported': (p) => `${p.n} ${plural(p.n, 'balance', 'balances')} saved`,
+  'accounts.oldStand': (p) => `The latest balance of ${p.name} is from ${p.date}: enter a new balance (even if it is the same) for an accurate net worth.`,
+  'accounts.pace.noRate': 'No pace: there is no rate yet for an account in another currency.',
+  'accounts.currencyFixed': 'The currency is fixed once there are balances.',
+  'accounts.cutOff': 'Balances before an unreadable line cannot be worked back and are not saved.',
 }

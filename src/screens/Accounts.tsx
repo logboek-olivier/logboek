@@ -58,6 +58,12 @@ export function Accounts({ store, notify }: { store: Store; notify: Notify }) {
   const worth = netWorth(accounts, balances, today, rates)
   const tempo = pace(accounts, balances, today, rates)
   const series = netWorthSeries(accounts, balances, today, rates, 6).filter((m) => m.worth !== null)
+  // De rekening met de oudste meegetelde stand, als die meer dan 45 dagen oud is (bij naam, zodat duidelijk is welke).
+  const oldest = accounts
+    .filter((a) => !a.closedAt || a.closedAt > today)
+    .map((a) => ({ name: a.name, date: balanceOn(balances, a.id, today)?.date }))
+    .filter((a): a is { name: string; date: string } => !!a.date && a.date < addDaysIso(today, -45))
+    .sort((a, b) => a.date.localeCompare(b.date))[0]
 
   return (
     <section className="stack-lg">
@@ -85,15 +91,16 @@ export function Accounts({ store, notify }: { store: Store; notify: Notify }) {
             ))}
           </dl>
           <p className="accounts-pace">{paceText(tempo)}</p>
-          {worth.oldest && worth.oldest < addDaysIso(today, -45) && <p className="muted small">{t('accounts.oldStand', { date: formatDate(worth.oldest) })}</p>}
+          {oldest && <p className="muted small">{t('accounts.oldStand', { name: oldest.name, date: formatDate(oldest.date) })}</p>}
 
           {series.length > 1 && (
             <div className="section">
               <h2>{t('accounts.perMonth')}</h2>
               <ul className="rows">
                 {series.map((m, i) => {
-                  const previous = series[i - 1]?.worth?.eur
-                  const change = previous === undefined ? null : m.worth!.eur - previous
+                  // De verandering alleen als dezelfde rekeningen meetelden (een nieuwe rekening is geen winst of verlies).
+                  const previous = series[i - 1]?.worth
+                  const change = previous && previous.counted === m.worth!.counted ? m.worth!.eur - previous.eur : null
                   return (
                     <li key={m.month} className="row-item">
                       <span className="row-main">{formatMonth(m.month)}</span>
@@ -155,6 +162,7 @@ function addDaysIso(iso: string, days: number): string {
 
 function paceText(p: ReturnType<typeof pace>): string {
   if (p.state === 'te-weinig') return t('accounts.pace.tooLittle')
+  if (p.state === 'geen-koers') return t('accounts.pace.noRate')
   if (p.state === 'positief') return t('accounts.pace.positive')
   const per = `${p.perMonth >= 0 ? '+' : '−'}${formatMoney(Math.abs(p.perMonth), 'EUR')}`
   if (p.state === 'niet') return t('accounts.pace.never', { per })
@@ -219,10 +227,11 @@ function AccountView({ store, account, notify, onClose }: { store: Store; accoun
 
 /** Stand bijwerken: datum (vandaag) en bedrag; bij een schuld het openstaande bedrag. */
 function BalanceForm({ store, account, notify }: { store: Store; account: Account; notify: Notify }) {
-  const [date, setDate] = useState(todayIso())
+  const today = todayIso()
+  const [date, setDate] = useState(today)
   const [amount, setAmount] = useState('')
   const value = parseStand(amount, getLang())
-  const ok = value !== null && /^\d{4}-\d{2}-\d{2}$/.test(date)
+  const ok = value !== null && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -241,7 +250,7 @@ function BalanceForm({ store, account, notify }: { store: Store; account: Accoun
         </label>
         <label>
           {t('field.date')}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
       </div>
       <button className="btn" type="submit" disabled={!ok}>
@@ -316,6 +325,8 @@ function AccountSheet({ store, account, notify, onClose }: { store: Store; accou
     closedAt: account?.closedAt ?? '',
   })
   const [nameTouched, setNameTouched] = useState(!!account)
+  // Met standen ligt de valuta vast: een andere valuta zou de bestaande bedragen stil anders lezen.
+  const hasStands = !!account && accountBalances(useCollection(store, 'balances.json.enc'), account.id).length > 0
   const [busy, setBusy] = useState(false)
   const name = input.name.trim() || providerLabel(input.provider)
 
@@ -376,7 +387,7 @@ function AccountSheet({ store, account, notify, onClose }: { store: Store; accou
           </label>
           <label>
             {t('field.currency')}
-            <select value={input.currency} onChange={(e) => setInput({ ...input, currency: e.target.value as Currency })}>
+            <select value={input.currency} disabled={hasStands} onChange={(e) => setInput({ ...input, currency: e.target.value as Currency })}>
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -385,6 +396,7 @@ function AccountSheet({ store, account, notify, onClose }: { store: Store; accou
             </select>
           </label>
         </div>
+        {hasStands && <p className="muted small">{t('accounts.currencyFixed')}</p>}
         {isDebt(input) && <p className="muted small">{t('accounts.debtHint')}</p>}
         {account && (
           <label>
@@ -563,6 +575,7 @@ function ImportSheet({ store, account, notify, onClose }: { store: Store; accoun
                 ) : (
                   <p className="muted">{t('accounts.previewNone')}</p>
                 )}
+                {result.cutOff && <p className="muted small">{t('accounts.cutOff')}</p>}
                 {result.problems.length > 0 && (
                   <p className="muted small">
                     {t('accounts.problems', {
