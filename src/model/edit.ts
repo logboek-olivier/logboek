@@ -1,5 +1,6 @@
 import type { Store } from '../storage/store'
 import { tripForDate } from './derive'
+import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
 import type { CollectionPath, Collections, Leg, Reminder, TipFrom, Transaction, Trip } from './types'
@@ -56,13 +57,21 @@ export function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> 
   return removeWithUndo(store, [{ path: 'transactions.json.enc', record: tx }])
 }
 
-/** Een dag verwijderen; raakt de tocht daardoor leeg, dan gaat die mee (en komt terug bij ongedaan maken). */
-export function deleteLeg(store: Store, leg: Leg): Promise<Undo> {
+/**
+ * Een dag verwijderen; raakt de tocht daardoor leeg, dan gaat die mee (en komt terug bij ongedaan maken). Volgen de
+ * datums van de trip de dagen, dan schuiven ze mee (ook bij ongedaan maken).
+ */
+export async function deleteLeg(store: Store, leg: Leg): Promise<Undo> {
   const items: Removal[] = [{ path: 'legs.json.enc', record: leg }]
   const others = store.list('legs.json.enc').filter((l) => l.tripId === leg.tripId && l.id !== leg.id)
   const trip = store.list('trips.json.enc').find((t) => t.id === leg.tripId)
   if (others.length === 0 && trip) items.push({ path: 'trips.json.enc', record: trip })
-  return removeWithUndo(store, items)
+  const undo = await removeWithUndo(store, items)
+  await followDays(store, [leg.tripId])
+  return async () => {
+    await undo()
+    await followDays(store, [leg.tripId])
+  }
 }
 
 /** Een tocht met al zijn dagen verwijderen. */
@@ -139,6 +148,8 @@ export async function updateLeg(store: Store, leg: Leg, patch: LegPatch, trip: {
     if (!next[key]) delete next[key]
   }
   await store.put('legs.json.enc', next)
+  // Een andere datum of een andere trip: de datums van beide trips volgen hun dagen (als ze dat doen).
+  await followDays(store, [leg.tripId, tripId])
   void store.sync()
 }
 

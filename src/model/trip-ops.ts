@@ -6,6 +6,7 @@ import { scrubbed } from './students'
 import { active } from './derive'
 import type { CollectionPath, Collections, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
 import { syncParticipants } from './weeks'
+import { datesFollowDays, followDays } from './trip-dates'
 
 // Trips als geheel: verwijderen met de keuze wat er met dagen, inkomsten, deelnemers, studenten en planningen gebeurt
 // ("Meenemen naar trip …" of "Ook verwijderen"), overlappende trips samenvoegen of vervangen, en deelnemers los bewerken
@@ -147,8 +148,14 @@ export async function deleteTripWith(store: Store, trip: Trip, moveTo: Trip | nu
   }
   const undo = await apply(store, changes)
   const calendar = await followUndoable(store, () => followTrip(store, trip.id, range, null))
+  // Dagen naar een trip waarvan de datums de dagen volgen: die schuiven mee (en terug bij ongedaan maken).
+  if (moveTo) await followDays(store, [moveTo.id])
   await forgetActive(store, trip, moveTo)
-  return both(undo, calendar)
+  const back = both(undo, calendar)
+  return async () => {
+    await back()
+    await followDays(store, [moveTo?.id, trip.id])
+  }
 }
 
 /** Twee trips die op dezelfde dagen liggen (meer dan alleen een wisseldag: de laatste dag van de een is de eerste van de ander). */
@@ -198,6 +205,8 @@ export async function mergeTrips(store: Store, keep: Trip, other: Trip): Promise
     if (keep[key] === undefined && other[key] !== undefined) (fill as Record<string, unknown>)[key] = other[key]
   }
   const merged: Trip = moved(keep, { ...fill, ...(start ? { startDate: start } : {}), ...(end ? { endDate: end } : {}), participants: joinParticipants(keep.participants ?? [], other.participants ?? []) }, now)
+  // De datums volgen alleen nog de dagen als dat voor beide trips gold; anders staan de samengevoegde datums vast.
+  if (keep.datesFromDays && !datesFollowDays(other)) delete merged.datesFromDays
   const changes: Change[] = [
     { path: 'trips.json.enc', before: keep, after: merged },
     { path: 'trips.json.enc', before: other, after: gone(other, now) },

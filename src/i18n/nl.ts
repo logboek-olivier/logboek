@@ -981,7 +981,7 @@ export const nl = {
   'storage.metaProblem': 'meta.json.enc op GitHub hoort niet bij de sleutel van deze telefoon. Er wordt niets geschreven.',
   'storage.state.waiting': 'GitHub loopt nog achter',
   'storage.cannotCheck': (p: { reason: string }) => `Controleren lukte nu niet (${p.reason}). Probeer het later opnieuw.`,
-  'storage.weekly': 'De app controleert dit vanzelf één keer per week en meldt alleen een probleem.',
+  'storage.weekly': 'De app controleert dit vanzelf na elke update en één keer per week, en meldt alleen een probleem.',
   'storage.problemNotice': 'De opslagcontrole vond een verschil tussen GitHub en deze telefoon.',
   'storage.open': 'Opslag bekijken',
   'backup.title': 'Back-up',
@@ -1131,6 +1131,12 @@ export const nl = {
   'stats.course': 'Cursus',
   'stats.topTopics': 'Meest geoefende onderwerpen',
   'stats.topicCount': (p: { n: number }) => `${p.n} ${plural(p.n, 'student', 'studenten')}`,
+  'storage.writer': (p: { who: string; version: string }) => `Laatst geschreven door ${p.who} · v${p.version}`,
+  'storage.writerThisDevice': 'dit apparaat',
+  'storage.writerOtherDevice': (p: { id: string }) => `apparaat ${p.id}`,
+  'storage.writerUnknownDevice': 'een onbekend apparaat',
+  'storage.writerOld': 'Laatst geschreven door een oudere versie (zonder versie en apparaat)',
+  'storage.thisDevice': (p: { id: string }) => `Dit apparaat: ${p.id}`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

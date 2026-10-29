@@ -13,6 +13,7 @@ import { describeError } from '../session'
 import { shareOrDownload } from '../share'
 import { applyRestore, backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
+import { deviceId } from '../storage/device'
 import { describeStatus, type Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 
@@ -118,6 +119,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
                     {' · '}
                     {synced ? t('storage.syncedAt', { when: formatMoment(synced) }) : t('storage.notSynced')}
                   </span>
+                  {file?.writer && <span className="muted small storage-writer">{writerLine(file.writer)}</span>}
                 </span>
                 {state && (
                   <span className={`storage-state${good ? ' good' : ' bad'}`}>
@@ -134,11 +136,19 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
           {busy ? t('storage.checking') : t('storage.checkNow')}
         </button>
         <p className="muted small">{t('storage.weekly')}</p>
+        <p className="muted small">{t('storage.thisDevice', { id: deviceId() })}</p>
       </div>
 
       <Backup store={store} notify={notify} />
     </section>
   )
+}
+
+/** "Laatst geschreven door dit apparaat · v1.0.0+6d71ec9"; oudere commitberichten noemen geen versie of apparaat. */
+function writerLine(writer: NonNullable<FileCheck['writer']>): string {
+  if (!writer.version && !writer.device) return t('storage.writerOld')
+  const who = writer.device === null ? t('storage.writerUnknownDevice') : writer.device === deviceId() ? t('storage.writerThisDevice') : t('storage.writerOtherDevice', { id: writer.device })
+  return t('storage.writer', { who, version: writer.version ?? '?' })
 }
 
 function Backup({ store, notify }: { store: Store; notify: Notify }) {

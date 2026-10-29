@@ -4,7 +4,7 @@ import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, ty
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
+import { AuthError, BUILD, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { getLocal, getObject, putObject, putObjectAndLocal, setAsideIfVault, type Db, type StoredObject } from './idb'
 import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
@@ -608,14 +608,15 @@ export class Store {
   }
 
   /**
-   * Eén keer per week vanzelf, na een geslaagde sync; vond de vorige controle een probleem, dan bij elk openen opnieuw
-   * (zodat de melding verdwijnt zodra het opgelost is). Alleen bij een probleem verschijnt een melding.
+   * Eén keer per week vanzelf, na een geslaagde sync, en na elke update (een andere build dan bij de vorige controle);
+   * vond de vorige controle een probleem, dan bij elk openen opnieuw (zodat de melding verdwijnt zodra het opgelost is).
+   * Alleen bij een probleem verschijnt een melding.
    */
-  async weeklyCheck(now = Date.now(), retryMs = CHECK_RETRY_MS): Promise<void> {
+  async weeklyCheck(now = Date.now(), retryMs = CHECK_RETRY_MS, build = BUILD): Promise<void> {
     if (!this.syncedOnce || this.locked || this.outdated) return
     const last = readStorageLog(this.db.name).check
     const at = last ? Date.parse(last.at) : NaN
-    if (last && !checkHasProblem(last) && now - at < CHECK_EVERY_MS && at <= now) return
+    if (last && !checkHasProblem(last) && last.build === build && now - at < CHECK_EVERY_MS && at <= now) return
     await this.check(false, retryMs)
   }
 
@@ -645,7 +646,7 @@ export class Store {
         if (!file) return null
         files.push(file)
       }
-      return { at: new Date().toISOString(), metaOk, files }
+      return { at: new Date().toISOString(), metaOk, files, build: BUILD }
     })
     if (!result || this.locked) return null
     // Een probleem nog één keer bekijken: GitHub geeft vlak na het schrijven soms nog even de vorige versie.
@@ -680,6 +681,8 @@ export class Store {
       if (error instanceof NetworkError || error instanceof GithubError) return null
       throw error
     }
+    // Wie het bestand het laatst schreef (versie en apparaat uit het commitbericht); lukt dat niet, dan zonder.
+    const writer = file ? await this.lastWriter(path) : null
     // Wat nog wacht (opgeslagen maar nog niet gesynct, ook in een ander venster) telt niet als verschil.
     await this.absorbDisk(path)
     const pending = new Set(Object.keys(this.outbox[path] ?? {}))
@@ -689,13 +692,24 @@ export class Store {
     try {
       const remote = await decryptRecords(this.masterKey, path, file.content)
       const differences = countDifferences(local, remote, pending)
-      return { path, local: localActive, remote: remote.filter((r) => r.deletedAt === null).length, state: differences === 0 ? 'gelijk' : 'verschil', differences }
+      return { path, local: localActive, remote: remote.filter((r) => r.deletedAt === null).length, state: differences === 0 ? 'gelijk' : 'verschil', differences, ...writer }
     } catch (error) {
       if (!(error instanceof DecryptError) && !(error instanceof InvalidDataError) && !(error instanceof NewerSchemaError)) throw error
       // Een versie die dit apparaat al verving: GitHub loopt nog achter, geen nieuw probleem.
-      if (wasReplaced(this.db.name, path, file.sha)) return { path, local: localActive, remote: null, state: 'wacht', differences: 0 }
+      if (wasReplaced(this.db.name, path, file.sha)) return { path, local: localActive, remote: null, state: 'wacht', differences: 0, ...writer }
       const reason = error instanceof DecryptError ? `${error.name}/${decryptFailureKind(file.content)}` : error.name
-      return { path, local: localActive, remote: null, state: 'onleesbaar', differences: 0, reason }
+      return { path, local: localActive, remote: null, state: 'onleesbaar', differences: 0, reason, ...writer }
+    }
+  }
+
+  /** Versie en apparaat uit het laatste commitbericht van dit bestand; null als GitHub dat niet geeft. */
+  private async lastWriter(path: CollectionPath): Promise<Pick<FileCheck, 'writer'> | null> {
+    try {
+      const info = await this.client.lastCommit(path)
+      return info ? { writer: { version: info.version, device: info.device } } : null
+    } catch (error) {
+      if (error instanceof NetworkError || error instanceof GithubError) return null
+      throw error
     }
   }
 

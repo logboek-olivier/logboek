@@ -20,6 +20,8 @@ export interface FileCheck {
   differences: number
   /** Soort defect bij 'onleesbaar' (DecryptError/sleutel, InvalidDataError, …). */
   reason?: string
+  /** Wie het bestand op GitHub het laatst schreef, uit het commitbericht: app-versie en apparaat-id (null bij oudere berichten). */
+  writer?: { version: string | null; device: string | null }
 }
 
 export interface StorageCheck {
@@ -28,6 +30,8 @@ export interface StorageCheck {
   /** Hoort meta.json.enc op GitHub bij de sleutel van dit apparaat? */
   metaOk: boolean
   files: FileCheck[]
+  /** De build die controleerde (versie+commit); na een update volgt vanzelf een nieuwe controle. */
+  build?: string
 }
 
 export interface StorageLog {
@@ -82,9 +86,17 @@ function parseCheck(value: unknown): StorageCheck | null {
       state,
       differences: typeof x.differences === 'number' ? x.differences : 0,
       ...(typeof x.reason === 'string' ? { reason: x.reason } : {}),
+      ...(parseWriter(x.writer) ?? {}),
     })
   }
-  return { at: c.at, metaOk: c.metaOk !== false, files }
+  return { at: c.at, metaOk: c.metaOk !== false, files, ...(typeof c.build === 'string' ? { build: c.build } : {}) }
+}
+
+function parseWriter(value: unknown): { writer: NonNullable<FileCheck['writer']> } | null {
+  if (typeof value !== 'object' || value === null) return null
+  const w = value as Record<string, unknown>
+  const text = (v: unknown) => (typeof v === 'string' && v.length <= 80 ? v : null)
+  return { writer: { version: text(w.version), device: text(w.device) } }
 }
 
 export function writeStorageLog(dbName: string, log: StorageLog): void {

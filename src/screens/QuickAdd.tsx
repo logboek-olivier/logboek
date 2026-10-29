@@ -9,6 +9,8 @@ import { formatNm, formatNumber } from '../format'
 import { defaultFromPlace, findPlace, knownPlaceNames, mergeCandidates, nearestKnownPlace, placeCountry, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
 import { MergeProposal } from './Places'
 import { plannedFor } from '../model/routes'
+import { followDays } from '../model/trip-dates'
+import { followTrip } from '../model/calendar'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { useCollection } from '../components/useCollection'
@@ -527,13 +529,19 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
       const day = date || today
       let id = tripId === NEW_WEEK ? undefined : tripId
       if (!id) {
+        // Een trip vanuit Dag: begin en eind volgen de dagen (src/model/trip-dates.ts); valt vandaag erin, dan is hij lopend.
         const trip: Trip = {
           id: newId(),
           name: tripName.trim() || defaultTripName(boat.trim() || t('field.trip'), day),
+          startDate: day,
+          endDate: day,
+          datesFromDays: true,
           updatedAt: now,
           deletedAt: null,
         }
         await store.put('trips.json.enc', trip)
+        await followTrip(store, trip.id, null, { start: day, end: day })
+        if (day === today) await saveSettings(store, { activeWeekId: trip.id })
         id = trip.id
       }
       // Landen: niet in beeld. Van de plaats zelf (punt of eerdere dagen), anders het land van de vorige dag in deze
@@ -563,6 +571,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
       if (wind.trim()) leg.windBft = wind.trim()
       if (notes.trim()) leg.notes = notes.trim()
       await store.put('legs.json.enc', leg)
+      await followDays(store, [id])
       await saveSettings(store, { ...(boat.trim() ? { lastBoat: boat.trim() } : {}), lastRole: role, lastTripId: id, lastWater: water })
       confirmVibration()
       void store.sync()

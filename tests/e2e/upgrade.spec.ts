@@ -148,8 +148,19 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     }
     await page.getByRole('status').first().click()
     await expectSynced(page)
-    // Agenda (calendar.json.enc, nieuw sinds de agenda-release): een dag instellen, synchroniseren.
     const puts = (path: string) => github.requests.filter((r) => r.method === 'PUT' && r.url.includes(path)).length
+    // Na de update controleert de app vanzelf (Controleer nu), met de schrijver per bestand uit de commits.
+    await expect.poll(() => github.requests.some((r) => r.method === 'GET' && r.url.includes('/commits?path=')), { timeout: 30_000 }).toBe(true)
+    // Een trip uit Toevoegen → Dag: een dag erbij, de datums volgen (trips.json.enc, nieuw veld datesFromDays).
+    await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
+    await page.getByLabel(L('field.date'), { exact: true }).fill('2026-10-13')
+    await page.getByRole('combobox', { name: L('field.week'), exact: true }).selectOption({ label: 'Nepdag upgrade' })
+    await page.getByLabel(L('field.to'), { exact: true }).fill('Nephaven')
+    const legPuts = puts('legs.json.enc')
+    await page.getByRole('button', { name: L('common.save') }).click()
+    await expect.poll(() => puts('legs.json.enc'), { timeout: 20_000 }).toBeGreaterThan(legPuts)
+    await expectSynced(page)
+    // Agenda (calendar.json.enc, nieuw sinds de agenda-release): een dag instellen, synchroniseren.
     const calendarPuts = puts('calendar.json.enc')
     await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
     await page.locator('.cal-day.today').click()
@@ -200,6 +211,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     const settings = await decryptRecords(key, 'settings.json.enc', Uint8Array.from(Buffer.from(github.files.get('settings.json.enc')!.content, 'base64')))
     expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'] })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
+    expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
     expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
   } finally {
     await server.close()
