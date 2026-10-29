@@ -68,4 +68,13 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-contact-1', kind: 'contact', firstName: 'Nepnoor', role: 'Nepschipper', metAt: 'Nephaven', updatedAt: T, deletedAt: null },
     { id: 'upg-project-1', kind: 'project', name: 'Nepproject', status: 'bezig', nextStep: 'Nepstap', updatedAt: T, deletedAt: null },
   ],
+  // Rekeningen en standen (ronde 2): een betaalrekening en een studieschuld, met een stand per maand.
+  'accounts.json.enc': [
+    { id: 'upg-acc-1', name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie', updatedAt: T, deletedAt: null },
+    { id: 'upg-acc-2', name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR', updatedAt: T, deletedAt: null },
+  ],
+  'balances.json.enc': [
+    { id: 'stand:upg-acc-1:2026-09', accountId: 'upg-acc-1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: T, deletedAt: null },
+    { id: 'stand:upg-acc-2:2026-09', accountId: 'upg-acc-2', date: '2026-09-15', amount: -9876.5, source: 'handmatig', updatedAt: T, deletedAt: null },
+  ],
 }

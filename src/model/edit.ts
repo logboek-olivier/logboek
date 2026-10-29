@@ -60,6 +60,10 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'career.json.enc':
       return store.put(item.path, item.record)
+    case 'accounts.json.enc':
+      return store.put(item.path, item.record)
+    case 'balances.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 

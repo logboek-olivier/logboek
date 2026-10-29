@@ -4323,3 +4323,14 @@ textarea.note {
   gap: var(--s-2);
   margin: 0;
 }
+
+/* Rekeningen: het tempo onder de netto waarde, en het eurobedrag onder een stand in een andere valuta. */
+.accounts-pace {
+  margin: 0;
+  font-weight: var(--fw-medium);
+}
+
+.accounts-eur {
+  display: block;
+  text-align: end;
+}
