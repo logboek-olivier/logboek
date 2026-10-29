@@ -3,7 +3,7 @@ import { tripForDate } from './derive'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CollectionPath, Collections, Leg, Reminder, TipFrom, Transaction, Trip } from './types'
+import type { CollectionPath, Collections, Leg, Reminder, TipFrom, Transaction, Trip, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -46,11 +46,17 @@ function putOne(store: Store, item: Removal): Promise<void> {
       return store.put(item.path, item.record)
     case 'calendar.json.enc':
       return store.put(item.path, item.record)
+    case 'weekreviews.json.enc':
+      return store.put(item.path, item.record)
   }
 }
 
 export function deleteReminder(store: Store, reminder: Reminder): Promise<Undo> {
   return removeWithUndo(store, [{ path: 'reminders.json.enc', record: reminder }])
+}
+
+export function deleteWeekClosing(store: Store, closing: WeekClosing): Promise<Undo> {
+  return removeWithUndo(store, [{ path: 'weekreviews.json.enc', record: closing }])
 }
 
 export function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {

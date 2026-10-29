@@ -17,6 +17,7 @@ import { parsePlanning, planImport, PlanningError, type PlanItem } from '../impo
 import { buildIndex, dayInfo, monthIncome, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
 import { tripOverlaps } from '../model/trip-ops'
+import { closingFor, sundayOf } from '../model/week-close'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import { todayIso, type Reminder, type Trip } from '../model/types'
@@ -63,6 +64,9 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   // Termijnen op hun dag: eigen termijnen (in de index) en de vervaldatum van de token.
   const due = useDueItems(store)
   const dueDates = useMemo(() => new Set(due.filter((i) => i.source !== 'trip').map((i) => i.date.slice(0, 10))), [due])
+  // Afgesloten weken: een merkje op de zondag (de afsluiting staat op de dagkaart van die zondag).
+  const closings = useCollection(store, 'weekreviews.json.enc')
+  const closedSundays = useMemo(() => new Set(closings.filter((c) => closingFor(closings, c.start)).map((c) => sundayOf(c.start))), [closings])
   const weekdays = useMemo(() => {
     const names = new Intl.DateTimeFormat(lang === 'nl' ? 'nl-NL' : 'en-GB', { weekday: 'narrow' })
     // 5 januari 2026 is een maandag.
@@ -167,7 +171,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           ))}
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} rangeStart={marking?.start ?? null} counters={counters} onDay={onDay} />
+          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} onDay={onDay} />
         ))}
       </div>
       <dl className={`agenda-summary${summary.onbeschikbaar > 0 ? ' six' : ''}`} aria-label={t('calendar.summaryTitle')}>
@@ -283,14 +287,15 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   )
 }
 
-function Week({ index, week, month, today, dueDates, rangeStart, counters, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; onDay: (date: string) => void }) {
+function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, counters, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; closedSundays: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; onDay: (date: string) => void }) {
   const bars = tripBars(index, week)
   return (
     <div className="cal-week">
       {week.map((date, column) => {
         const info = dayInfo(index, date, today)
         const hasDue = dueDates.has(date)
-        const label = [formatDate(date), t(`dayType.${info.type ?? 'leeg'}`), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', hasDue ? t('calendar.reminder') : ''].filter(Boolean).join(', ')
+        const closed = closedSundays.has(date)
+        const label = [formatDate(date), t(`dayType.${info.type ?? 'leeg'}`), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', hasDue ? t('calendar.reminder') : '', closed ? t('calendar.weekClosed') : ''].filter(Boolean).join(', ')
         const classes = ['cal-day', `col-${column + 1}`, `day-${info.type ?? 'leeg'}`, monthOf(date) !== month ? 'other-month' : '', date === today ? 'today' : '', info.source === 'eigen' ? 'own' : '', date === rangeStart ? 'range-start' : ''].filter(Boolean).join(' ')
         return (
           <button key={date} type="button" className={classes} aria-label={label} aria-current={date === today ? 'date' : undefined} aria-pressed={date === rangeStart ? true : undefined} onClick={() => onDay(date)}>
@@ -298,6 +303,7 @@ function Week({ index, week, month, today, dueDates, rangeStart, counters, onDay
               {Number(date.slice(8))}
             </span>
             {hasDue && <span className="cal-dot" aria-hidden="true" />}
+            {closed && <span className="cal-closed" aria-hidden="true" />}
             {info.nm > 0 && (
               <span className="cal-nm" aria-hidden="true">
                 {formatNumber(info.nm)}

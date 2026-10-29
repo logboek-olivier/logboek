@@ -44,4 +44,6 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'checklists.json.enc': [
     { id: 'upg-list-1', title: { nl: 'Neplijst', en: 'Fake list' }, items: [{ id: 'i1', text: { nl: 'Nepvink', en: 'Fake tick' } }], tripTypes: ['skipper-charter'], source: 'eigen', updatedAt: T, deletedAt: null },
   ],
+  // Weekafsluiting (ronde 2): cijfer en één zin per ISO-week; het id volgt uit de week.
+  'weekreviews.json.enc': [{ id: 'week:2026-W43', week: '2026-W43', start: '2026-10-19', rating: 8, lesson: 'Nepzin over de week', updatedAt: T, deletedAt: null }],
 }

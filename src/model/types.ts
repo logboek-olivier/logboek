@@ -409,6 +409,21 @@ export interface CalendarDay extends SyncRecord {
   reason?: string
 }
 
+/**
+ * Weekafsluiting (weekreviews.json.enc): cijfer en één zin over een week (maandag tot en met zondag). id =
+ * `week:<jjjj>-W<ww>` (ISO-week), zodat twee apparaten dezelfde week samenvoegen. De samenvatting wordt niet opgeslagen
+ * maar steeds uitgerekend uit de dagen, de agenda en de studenten (src/model/week-review.ts).
+ */
+export interface WeekClosing extends SyncRecord {
+  /** ISO-week, bijv. "2026-W44". */
+  week: string
+  /** Maandag van de week (jjjj-mm-dd). */
+  start: string
+  /** 1–10. */
+  rating?: number
+  lesson?: string
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -422,6 +437,7 @@ export interface Collections {
   'reminders.json.enc': Reminder
   'checklists.json.enc': Checklist
   'calendar.json.enc': CalendarDay
+  'weekreviews.json.enc': WeekClosing
 }
 
 export type CollectionPath = keyof Collections
@@ -438,6 +454,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'reminders.json.enc',
   'checklists.json.enc',
   'calendar.json.enc',
+  'weekreviews.json.enc',
 ]
 
 export function newId(): string {
