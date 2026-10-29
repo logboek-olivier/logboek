@@ -3,9 +3,11 @@ name: deploy
 on:
   push:
     branches: [main]
-  # Dagelijks opnieuw bouwen, zodat public/rates.json de nieuwste ECB-koersen heeft (de ECB publiceert rond 16:00 CET).
+  # Vier keer per dag opnieuw bouwen: om 16:23 UTC voor de nieuwste ECB-koersen in public/rates.json (de ECB publiceert
+  # rond 16:00 CET), en om 4:41, 10:41 en 22:41 UTC voor public/weather.json (Open-Meteo ververst een paar keer per dag).
   schedule:
     - cron: '23 16 * * *'
+    - cron: '41 4,10,22 * * *'
   workflow_dispatch:
 
 permissions:
@@ -30,6 +32,11 @@ jobs:
       - run: npm ci
       # Wisselkoersen: ECB-referentiekoersen als public/rates.json (zelfde origin, CSP ongewijzigd).
       - run: npm run rates
+      # Weer: de verwachting voor de vaste vaargebieden als public/weather.json (zelfde origin, CSP ongewijzigd). Lukt het
+      # ophalen niet, dan zonder weer verder: de app toont dan geen weer, de rest werkt gewoon.
+      - run: npm run weather
+        continue-on-error: true
+        timeout-minutes: 2
       - run: npm run build
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

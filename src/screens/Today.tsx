@@ -13,6 +13,7 @@ import type { AddInit } from './QuickAdd'
 import { Suspense, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { collectGaps, isSunday } from '../model/gaps'
 import { WeekClose } from '../components/WeekClose'
+import { WeatherCard } from '../components/WeatherCard'
 import type { Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
@@ -182,6 +183,7 @@ export function Today({
           {t('today.logDay')}
         </button>
       )}
+      {running && <WeatherCard store={store} trip={running} />}
       {forgotten.length > 0 && running && (
         <div className="notice">
           <p className="small">{t('trip.missingDays', { n: forgotten.length })}</p>

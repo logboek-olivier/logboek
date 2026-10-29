@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "fixtures": "node scripts/generate-fake-data.ts",
     "rates": "node scripts/build-rates.mjs",
+    "weather": "node scripts/build-weather.mjs",
     "upgrade:vorige": "node scripts/build-previous.mjs"
   },
   "dependencies": {
