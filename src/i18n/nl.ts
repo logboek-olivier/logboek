@@ -1369,6 +1369,23 @@ export const nl = {
   'weekClose.trips': (p: { n: number; names: string }) => `${p.n === 1 ? 'Trip' : 'Trips'}: ${p.names}`,
   'weekClose.places': (p: { n: number }) => `${p.n} ${p.n === 1 ? 'plaats' : 'plaatsen'} bezocht`,
   'weekClose.exams': (p: { passed: number; exams: number }) => `Examens: ${p.passed} van ${p.exams} geslaagd`,
+  'tax.title': 'Jaaroverzicht voor de belasting',
+  'tax.year': 'Jaar',
+  'tax.total': 'Totaal verdiend',
+  'tax.print': 'Afdrukken of als PDF',
+  'tax.printHint': 'De PDF heeft per organisatie alle inkomsten met het oorspronkelijke bedrag, de koers en de datum van de koers. Hij wordt op dit apparaat gemaakt; de app stuurt niets.',
+  'tax.printTitle': (p: { year: number }) => `Inkomsten ${p.year}`,
+  'tax.basis': 'Bedragen in euro. Omgerekend met het werkelijk ontvangen eurobedrag als dat is ingevuld, anders met de opgeslagen koers, anders met de ECB-referentiekoers van de transactiedatum (of de werkdag ervoor). Koers = vreemde valuta per 1 euro. Terugbetaalde onkosten tellen niet als inkomen.',
+  'tax.kind': 'Soort',
+  'tax.amount': 'Bedrag',
+  'tax.rateHead': 'Koers',
+  'tax.eur': 'Euro',
+  'tax.rate': (p: { rate: string; currency: string }) => `1 EUR = ${p.rate} ${p.currency}`,
+  'tax.received': 'ontvangen in euro',
+  'tax.noRate': 'geen koers',
+  'tax.provisionalHint': 'Sommige bedragen zijn voorlopig omgerekend met de laatst bekende koers. Maak de PDF opnieuw als de koers van die dag bekend is.',
+  'tax.reimbursedHint': 'Terugbetaalde onkosten: niet meegeteld als verdiend.',
+  'tax.madeOn': (p: { date: string }) => `Gemaakt op ${p.date} met Logboek.`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -4,6 +4,7 @@ import { BarChart } from '../components/BarChart'
 import type { Notify } from '../components/EditSheets'
 import { TransactionView } from '../components/Views'
 import { SalaryOutlook } from '../components/SalaryOutlook'
+import { TaxYearSection } from '../components/TaxYear'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
@@ -80,6 +81,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           </dl>
 
           <SalaryOutlook store={store} />
+
+          <TaxYearSection store={store} />
 
           <div className="section card card-body">
             <div className="section-head">
