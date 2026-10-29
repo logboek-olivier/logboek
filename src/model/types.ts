@@ -379,8 +379,9 @@ export interface Checklist extends SyncRecord {
 }
 
 /** Dagsoort in de agenda. optie = onder voorbehoud (gestreept). */
-export type DayType = 'werk' | 'rust' | 'reis' | 'thuis' | 'beschikbaar' | 'optie'
-export const DAY_TYPES: readonly DayType[] = ['werk', 'rust', 'reis', 'thuis', 'beschikbaar', 'optie']
+/** onbeschikbaar: bezet (geen werk), met een optionele reden die alleen Olivier ziet. */
+export type DayType = 'werk' | 'rust' | 'reis' | 'thuis' | 'onbeschikbaar' | 'beschikbaar' | 'optie'
+export const DAY_TYPES: readonly DayType[] = ['werk', 'rust', 'reis', 'thuis', 'onbeschikbaar', 'beschikbaar', 'optie']
 
 export interface DayTravel {
   from: string
@@ -402,6 +403,8 @@ export interface CalendarDay extends SyncRecord {
   /** Boot op deze dag, als die afwijkt van de boot van de trip. */
   boat?: string
   note?: string
+  /** Bij onbeschikbaar: de reden. Alleen voor Olivier; nooit in gedeelde overzichten of de PDF. */
+  reason?: string
 }
 
 /** Versleutelde bestanden in logboek-data en hun recordtype. */

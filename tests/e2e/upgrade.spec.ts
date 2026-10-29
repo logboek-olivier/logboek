@@ -233,6 +233,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     const key = await unlock(meta, { passphrase: PASSPHRASE })
     const calendar = await decryptRecords(key, 'calendar.json.enc', Uint8Array.from(Buffer.from(github.files.get('calendar.json.enc')!.content, 'base64')))
     expect(calendar).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'thuis', deletedAt: null })]))
+    // De dagsoort onbeschikbaar met reden komt ongeschonden over.
+    expect(calendar.find((d) => d.id === 'dag:2026-10-27')).toMatchObject({ type: 'onbeschikbaar', reason: 'Nepreden', deletedAt: null })
     // En de fooi per persoon: de voorbeelden (per persoon, hele groep) en de nieuwe fooi van één deelnemer.
     const transactions = await decryptRecords(key, 'transactions.json.enc', Uint8Array.from(Buffer.from(github.files.get('transactions.json.enc')!.content, 'base64')))
     expect(transactions).toEqual(

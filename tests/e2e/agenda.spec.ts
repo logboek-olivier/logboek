@@ -102,7 +102,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.locator('.cal-day.today').click()
       await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('button', { name: L('day.auto') }).click()
-      await expect(sheet.getByRole('radio', { name: L('dayType.beschikbaar') })).toHaveAttribute('aria-checked', 'true')
+      await expect(sheet.getByRole('radio', { name: L('dayType.beschikbaar'), exact: true })).toHaveAttribute('aria-checked', 'true')
       await sheet.getByRole('button', { name: L('common.close') }).click()
 
       // Het Logboek ook via de agenda, met terug naar de agenda.

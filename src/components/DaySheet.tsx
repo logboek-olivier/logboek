@@ -63,12 +63,14 @@ export function DaySheet({
   const [to, setTo] = useState(own?.travel?.to ?? '')
   const [flight, setFlight] = useState(own?.travel?.flight ?? '')
   const [note, setNote] = useState(own?.note ?? '')
+  const [reason, setReason] = useState(own?.reason ?? '')
   const type = info.type
   const trip = info.trips.at(-1) ?? null
   const planned = trip && !info.legs.length ? plannedFor(trip.trip, legs, date) : null
   const plannedDistance = planned ? plannedNm(legs, planned) : null
 
-  const details = () => ({ location, boat, note, travel: { from, to, flight } })
+  // De reden hoort alleen bij onbeschikbaar: een andere dagsoort neemt hem niet mee.
+  const details = (kind: DayType | null) => ({ location, boat, note, ...(kind === 'onbeschikbaar' ? { reason } : {}), travel: { from, to, flight } })
   const extend = type === 'werk' && info.trips.length === 0 ? extendOptions(index, date, date) : []
   const reminders = store.list('reminders.json.enc')
   const due = useDueItems(store).filter((item) => item.date.slice(0, 10) === date && item.source !== 'trip')
@@ -76,13 +78,13 @@ export function DaySheet({
   async function choose(next: DayType) {
     const shrink = shrinkFor(index, date, next)
     if (!shrink) {
-      await setDay(store, date, next, details())
+      await setDay(store, date, next, details(next))
       return
     }
     // De eerste of laatste dag van een trip is altijd werk: een andere dagsoort maakt de trip een dag korter.
     const before = own
     const undoResize = await resizeTrip(store, shrink)
-    await setDay(store, date, next, details())
+    await setDay(store, date, next, details(next))
     notify(resized(shrink), async () => {
       await undoResize()
       if (before) await store.put('calendar.json.enc', { ...before, updatedAt: new Date().toISOString() })
@@ -103,7 +105,7 @@ export function DaySheet({
   async function save(e: FormEvent) {
     e.preventDefault()
     if (!type) return
-    await setDay(store, date, type, details())
+    await setDay(store, date, type, details(type))
     notify(t('toast.daySaved'))
     onClose()
   }
@@ -197,6 +199,14 @@ export function DaySheet({
               <input type="text" autoComplete="off" maxLength={40} value={flight} onChange={(e) => setFlight(e.target.value)} />
             </label>
           </div>
+        )}
+
+        {type === 'onbeschikbaar' && (
+          <label>
+            {t('day.reason')}
+            <input type="text" autoComplete="off" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+            <span className="muted small">{t('day.reasonHint')}</span>
+          </label>
         )}
 
         {type !== null && type !== 'werk' && type !== 'reis' && (
@@ -381,6 +391,7 @@ export function DayView({
             [t('field.wind'), wind],
             [t('day.travel'), info.type === 'reis' && [own?.travel?.from, own?.travel?.to].filter(Boolean).join(' → ') + (own?.travel?.flight ? ` · ${own.travel.flight}` : '')],
             [t('day.location'), own?.location],
+            [t('day.reason'), info.type === 'onbeschikbaar' && own?.reason],
             [t('field.note'), notes.join(' · ')],
           ]}
         />

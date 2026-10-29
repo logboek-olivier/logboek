@@ -9,7 +9,7 @@ import { currentSettings } from '../model/settings'
 import { FileFormatError, readRowSources, type SheetCell } from './rows'
 
 // Planning importeren uit CSV (of Excel) met de kolommen start, eind, soort, naam, type, organisatie, boot, gebied,
-// notitie. Datums jjjj-mm-dd; soort = werk|rust|reis|thuis|optie; type = het triptype bij werk. Werk wordt een trip,
+// notitie. Datums jjjj-mm-dd; soort = werk|rust|reis|thuis|onbeschikbaar|optie; type = het triptype bij werk. Werk wordt een trip,
 // de andere soorten zelf ingestelde dagen. Eerst een voorbeeld met wat er gemaakt wordt en overlappingen met wat er
 // al staat; overlappende regels worden alleen meegenomen als Olivier dat per regel aanzet. Meldingen noemen rijnummer
 // en kolom, nooit de inhoud van een cel (regel 9).
@@ -44,7 +44,7 @@ const COLUMNS = {
 
 type Column = keyof typeof COLUMNS
 
-const KIND_ALIASES: Record<string, PlanKind> = { work: 'werk', rest: 'rust', travel: 'reis', home: 'thuis', option: 'optie' }
+const KIND_ALIASES: Record<string, PlanKind> = { work: 'werk', rest: 'rust', travel: 'reis', home: 'thuis', option: 'optie', unavailable: 'onbeschikbaar', 'niet beschikbaar': 'onbeschikbaar', bezet: 'onbeschikbaar', busy: 'onbeschikbaar' }
 
 function norm(value: string): string {
   return value
@@ -201,7 +201,9 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
       trips.push(withSalaryDefault({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null }, settings))
     } else {
       for (const date of datesBetween(row.start, row.end)) {
-        days.set(date, { id: `dag:${date}`, date, type: row.kind, ...(row.note ? { note: row.note } : {}), updatedAt: now, deletedAt: null })
+        // Bij onbeschikbaar is de notitie de reden (die alleen Olivier ziet, nooit in een gedeelde PDF).
+        const text = row.note ? (row.kind === 'onbeschikbaar' ? { reason: row.note.slice(0, 200) } : { note: row.note }) : {}
+        days.set(date, { id: `dag:${date}`, date, type: row.kind, ...text, updatedAt: now, deletedAt: null })
       }
     }
   }

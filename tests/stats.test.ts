@@ -137,11 +137,24 @@ describe('Werk', () => {
     const trips = [trip('a', 'A', '2026-03-02', '2026-03-06')]
     const index = buildIndex([day('2026-03-07', 'rust'), day('2026-03-08', 'reis'), day('2026-04-01', 'thuis')], trips, [])
     const w = workStats(index, { from: '2026-03-01', to: '2026-04-10' }, '2026-04-10')
-    expect(w).toMatchObject({ werk: 5, rust: 1, reis: 1, thuis: 1, days: 41 })
+    expect(w).toMatchObject({ werk: 5, rust: 1, reis: 1, thuis: 1, onbeschikbaar: 0, days: 41 })
     expect(w.share).toBeCloseTo(5 / 41)
     expect(w.months.map((m) => [m.month, m.werk, m.days])).toEqual([
       ['2026-03', 5, 31],
       ['2026-04', 0, 10],
+    ])
+  })
+})
+
+describe('Onbeschikbaar', () => {
+  it('telt apart, niet als werk; het aandeel werk blijft gelijk', () => {
+    const index = buildIndex([day('2026-03-10', 'onbeschikbaar'), day('2026-03-11', 'onbeschikbaar'), day('2026-04-02', 'onbeschikbaar')], [trip('a', 'A', '2026-03-02', '2026-03-06')], [])
+    const w = workStats(index, { from: '2026-03-01', to: '2026-04-10' }, '2026-04-10')
+    expect(w).toMatchObject({ werk: 5, onbeschikbaar: 3 })
+    expect(w.share).toBeCloseTo(5 / 41)
+    expect(w.months.map((m) => [m.month, m.onbeschikbaar])).toEqual([
+      ['2026-03', 2],
+      ['2026-04', 1],
     ])
   })
 })

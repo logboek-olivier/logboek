@@ -270,6 +270,8 @@ export interface WorkMonth {
   rust: number
   reis: number
   thuis: number
+  /** Bezet zonder werk (telt niet als werk, wel als bezet). */
+  onbeschikbaar: number
   /** Dagen van deze maand binnen de periode. */
   days: number
 }
@@ -280,6 +282,7 @@ export interface WorkStats {
   rust: number
   reis: number
   thuis: number
+  onbeschikbaar: number
   days: number
   /** Aandeel werkdagen van alle dagen in de periode (0–1), of null zonder dagen. */
   share: number | null
@@ -288,14 +291,14 @@ export interface WorkStats {
 /** Werk-, rust-, reis- en thuisdagen per maand uit de agenda (ook afgeleid uit trips en dagen). */
 export function workStats(index: CalendarIndex, period: Period, today: string): WorkStats {
   const months = new Map<string, WorkMonth>()
-  const sum = { werk: 0, rust: 0, reis: 0, thuis: 0, days: 0 }
+  const sum = { werk: 0, rust: 0, reis: 0, thuis: 0, onbeschikbaar: 0, days: 0 }
   for (let d = period.from; d <= period.to; d = addDays(d, 1)) {
     const month = monthOf(d)
-    const m = months.get(month) ?? { month, werk: 0, rust: 0, reis: 0, thuis: 0, days: 0 }
+    const m = months.get(month) ?? { month, werk: 0, rust: 0, reis: 0, thuis: 0, onbeschikbaar: 0, days: 0 }
     const type = dayInfo(index, d, today).type
     m.days++
     sum.days++
-    if (type === 'werk' || type === 'rust' || type === 'reis' || type === 'thuis') {
+    if (type === 'werk' || type === 'rust' || type === 'reis' || type === 'thuis' || type === 'onbeschikbaar') {
       m[type]++
       sum[type]++
     }
