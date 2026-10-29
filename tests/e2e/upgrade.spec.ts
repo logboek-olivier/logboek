@@ -96,6 +96,21 @@ async function deployAndReopen(page: Page, server: SwitchableServer): Promise<nu
       { timeout: 60_000 },
     )
     .toBe(true)
+  // De nieuwe service worker neemt over en herlaadt open vensters: pas verder als dat achter de rug is, anders valt
+  // dat herladen midden in een volgende stap.
+  await expect
+    .poll(
+      () =>
+        page
+          .evaluate(async () => {
+            const r = await navigator.serviceWorker.getRegistration()
+            return !!r?.active && r.active.state === 'activated' && !r.installing && !r.waiting && !!navigator.serviceWorker.controller
+          })
+          .catch(() => false),
+      { timeout: 60_000 },
+    )
+    .toBe(true)
+  await expect.poll(() => loadedScript(page), { timeout: 30_000 }).toBe(NEW_SCRIPT)
   return taps
 }
 
