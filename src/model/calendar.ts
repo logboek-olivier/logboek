@@ -468,7 +468,10 @@ export async function resizeTrip(store: Store, change: TripResize): Promise<() =
   const legs = store.list('legs.json.enc')
   const oldRange = tripRange(before, legs)
   const calendarBefore = store.list('calendar.json.enc')
-  const next: Trip = { ...before, startDate: change.start, endDate: change.end, updatedAt: new Date().toISOString() }
+  // Verlengen of inkorten in de agenda is zelf de datums kiezen: die volgen de dagen daarna niet meer.
+  const { datesFromDays: _follows, ...fixed } = before
+  void _follows
+  const next: Trip = { ...fixed, startDate: change.start, endDate: change.end, updatedAt: new Date().toISOString() }
   await store.put('trips.json.enc', next)
   await followTrip(store, before.id, oldRange, { start: change.start, end: change.end })
   void store.sync()

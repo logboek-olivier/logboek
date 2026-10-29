@@ -1,4 +1,5 @@
 import type { Store } from '../storage/store'
+import { followDays } from './trip-dates'
 import { active, compareLegs, totalNm } from './derive'
 import { placeKey, suggestDistance } from './places'
 import { saveSettings } from './settings'
@@ -132,6 +133,7 @@ export async function logPlanned(store: Store, trip: Trip, planned: PlannedLeg, 
     deletedAt: null,
   }
   await store.put('legs.json.enc', leg)
+  await followDays(store, [trip.id])
   await saveSettings(store, { lastTripId: trip.id, ...(leg.boat ? { lastBoat: leg.boat } : {}), lastRole: leg.role })
   void store.sync()
   return leg

@@ -385,6 +385,25 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
   }
 })
 
+describe('Foutmatrix: commits-API (wie schreef het laatst)', () => {
+  it('de commits-API geeft een fout: Controleer nu gaat door zonder schrijver, niets anders verandert', async () => {
+    const { name } = await phone()
+    const s = await openApp(name, false)
+    await store(s).sync()
+    github.failCommits = true
+    const check = await store(s).check(false, -1)
+    expect(check).not.toBeNull()
+    expect(check!.metaOk).toBe(true)
+    expect(check!.files.every((f) => f.writer === undefined)).toBe(true)
+    expect(check!.files.some((f) => f.state === 'verschil' || f.state === 'onleesbaar')).toBe(false)
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+    github.failCommits = false
+    await expectSamplesOnGithub()
+    const clean = await cleanDevice()
+    expect(store(clean).list('trips.json.enc').map((t) => t.id)).toContain(TRIP_ID)
+  }, 60_000)
+})
+
 describe('Foutmatrix: twee vensters en een nieuw bestand', () => {
   for (const path of COLLECTION_PATHS) {
     it(`${path} · twee vensters zonder verbinding slaan allebei op: na sluiten staat alles er en komt alles op GitHub`, async () => {

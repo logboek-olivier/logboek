@@ -1,4 +1,6 @@
+import { APP_VERSION, COMMIT } from '../build-info'
 import { fromBase64, toBase64, type Bytes } from '../crypto/encrypt'
+import { deviceId } from './device'
 
 // Enige netwerkbestemming van de app: api.github.com (beveiligingsregel 2).
 // Alles wat hier binnenkomt is al versleuteld; deze laag ziet alleen bytes.
@@ -66,6 +68,30 @@ export function parseExpirationHeader(value: string | null): string | null {
   if (!value) return null
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim())
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
+/** De versie van deze build in commitberichten: versie uit package.json plus de korte commit-hash. */
+export const BUILD = `${APP_VERSION}+${COMMIT}`
+
+/**
+ * Commitbericht in logboek-data: "sync <ISO-tijd> v<versie> d<apparaat-id>" (regel 9). Geen inhoud, geen namen: alleen
+ * wanneer, welke versie van de app en welk apparaat (een willekeurig id), zodat na een storing te zien is wie schreef.
+ */
+export function commitMessage(now: Date = new Date(), build: string = BUILD, device: string = deviceId()): string {
+  return `sync ${now.toISOString()} v${build} d${device}`
+}
+
+/** Wie een bestand het laatst schreef, uit het commitbericht. Oudere berichten ("sync <tijd>") hebben geen versie of apparaat. */
+export interface CommitInfo {
+  at: string | null
+  version: string | null
+  device: string | null
+}
+
+export function parseCommitMessage(message: string): CommitInfo {
+  const m = /^sync (\S+)(?: v(\S+))?(?: d([0-9a-f]{8}))?\s*$/.exec(message.trim())
+  if (!m) return { at: null, version: null, device: null }
+  return { at: m[1] ?? null, version: m[2] ?? null, device: m[3] ?? null }
 }
 
 export class GithubClient {
@@ -158,6 +184,24 @@ export class GithubClient {
   }
 
   /**
+   * De laatste commit die dit bestand raakte (voor Meer → Opslag: welke versie en welk apparaat schreef). Null als er
+   * geen is; een fout of een antwoord dat er anders uitziet, geeft ook null (de controle zelf gaat door).
+   */
+  async lastCommit(path: string): Promise<CommitInfo | null> {
+    const response = await this.request(`/repos/${this.repo}/commits?path=${encodeURIComponent(path)}&per_page=1`)
+    if (!response.ok) return null
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      return null
+    }
+    const first = Array.isArray(body) ? (body[0] as unknown) : null
+    const commit = isRecord(first) && isRecord(first.commit) ? first.commit : null
+    return commit && typeof commit.message === 'string' ? parseCommitMessage(commit.message) : null
+  }
+
+  /**
    * Schrijft een bestand. `sha` is de laatst bekende SHA (voorwaarde); null bij een nieuw bestand.
    * Bij een conflict (bestand ondertussen gewijzigd of ontstaan) volgt ConflictError.
    */
@@ -165,7 +209,7 @@ export class GithubClient {
     const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {
       method: 'PUT',
       body: JSON.stringify({
-        message: `sync ${new Date().toISOString()}`,
+        message: commitMessage(),
         content: toBase64(content),
         ...(sha ? { sha } : {}),
       }),

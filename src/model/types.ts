@@ -98,6 +98,11 @@ export interface Trip extends SyncRecord {
   route?: PlannedLeg[]
   /** Afgevinkte punten van de vaste checklists: per checklist-id de id's van de afgevinkte punten. */
   checks?: Record<string, string[]>
+  /**
+   * De datums volgen de dagen (aangemaakt via Toevoegen → Dag): begin en eind schuiven mee als er dagen bijkomen of
+   * weggaan. Stelt Olivier de datums zelf in, dan vervalt dit (src/model/trip-dates.ts).
+   */
+  datesFromDays?: boolean
 }
 
 export interface Leg extends SyncRecord {

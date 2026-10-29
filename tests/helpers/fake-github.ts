@@ -43,13 +43,18 @@ export class FakeGithub {
   readonly notFoundReads = new Map<string, number>()
   /** Wordt na elke geslaagde PUT aangeroepen (pad en nieuwe SHA). */
   afterPut: ((path: string, sha: string) => void) | null = null
+  /** De commits-API geeft een fout (de rest werkt gewoon). */
+  failCommits = false
+  /** Commitberichten per pad, nieuwste laatst (voor de commits-API). */
+  readonly commits = new Map<string, string[]>()
   private shaCounter = 0
 
-  /** Schrijft direct in de nagebootste repo, zoals een ander apparaat dat zou doen. */
-  write(path: string, base64: string): string {
+  /** Schrijft direct in de nagebootste repo, zoals een ander apparaat dat zou doen (standaard met een oud commitbericht). */
+  write(path: string, base64: string, message = 'sync 2026-01-01T00:00:00.000Z'): string {
     const sha = `sha-${++this.shaCounter}`
     this.files.set(path, { sha, content: base64 })
     this.blobs.set(sha, base64)
+    this.commits.set(path, [...(this.commits.get(path) ?? []), message])
     return sha
   }
 
@@ -78,6 +83,13 @@ export class FakeGithub {
     if (blob && method === 'GET') {
       const content = this.blobs.get(blob[1] ?? '')
       return content !== undefined ? json(200, { sha: blob[1], content, encoding: 'base64' }) : json(404, {})
+    }
+
+    const commits = /^\/commits\?path=([^&]+)/.exec(rest)
+    if (commits && method === 'GET') {
+      if (this.failCommits) return json(500, { message: 'nagebootste fout' })
+      const list = this.commits.get(decodeURIComponent(commits[1] ?? '')) ?? []
+      return json(200, list.length > 0 ? [{ sha: `c-${list.length}`, commit: { message: list.at(-1) } }] : [])
     }
 
     const contents = /^\/contents\/(.+)$/.exec(rest)
@@ -109,7 +121,7 @@ export class FakeGithub {
       if (current && req.sha !== current.sha) return json(409, { message: 'is at ... but expected ...' })
       if (!current && req.sha) return json(422, { message: 'sha wasn’t supplied' })
       if (current && this.staleReadsAfterPut > 0) this.stale.set(path, { file: current, remaining: this.staleReadsAfterPut })
-      const sha = this.write(path, req.content)
+      const sha = this.write(path, req.content, req.message)
       this.afterPut?.(path, sha)
       return json(current ? 200 : 201, { content: { sha, path }, commit: { message: req.message } })
     }

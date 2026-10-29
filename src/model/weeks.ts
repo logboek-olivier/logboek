@@ -1,4 +1,5 @@
 import { translate, type Lang } from '../i18n'
+import { endedFor } from './trip-dates'
 import type { Store } from '../storage/store'
 import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
 import { followTrip, tripRange } from './calendar'
@@ -130,7 +131,11 @@ export function activeWeek(trips: readonly Trip[], settings: Settings, today: st
   const open = trips.filter((t) => t.deletedAt === null && !t.closedAt)
   const chosen = settings.activeWeekId ? open.find((t) => t.id === settings.activeWeekId) : undefined
   if (chosen) return chosen
-  return open.find((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate) ?? null
+  const inside = open.find((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate)
+  if (inside) return inside
+  // Een trip uit Toevoegen → Dag (datums volgen de dagen) blijft drie dagen na de laatste gelogde dag lopend, zodat
+  // hij 's ochtends vóór het loggen nog in Deze trip staat. Een trip met eigen datums waarin vandaag valt, gaat voor.
+  return open.find((t) => t.datesFromDays && t.startDate && t.endDate && t.startDate <= today && today <= endedFor(t, t.endDate)) ?? null
 }
 
 /** Komende trips (start na vandaag), eerstvolgende eerst. */
@@ -151,7 +156,8 @@ export function missingDays(view: WeekView, today: string = todayIso()): string[
 
 /** Voorbij de einddatum en nog niet afgerond: Deze week vraagt om "Week afronden". */
 export function needsClosing(week: WeekView, today: string): boolean {
-  return !week.trip.closedAt && !!week.endDate && week.endDate < today
+  // Volgen de datums de dagen, dan is de trip pas voorbij als er drie dagen geen dag bijkwam.
+  return !week.trip.closedAt && !!week.endDate && endedFor(week.trip, week.endDate) < today
 }
 
 /** Eerdere boten, gebieden, bases en charterbedrijven, nieuwste eerst, voor suggesties. */
@@ -276,6 +282,8 @@ export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lan
   // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
   const keep = input.route === undefined && route ? { route } : {}
   const next: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
+  // Zelf andere datums gekozen: die staan voortaan vast en volgen de dagen niet meer.
+  if (next.datesFromDays && (next.startDate !== trip.startDate || next.endDate !== trip.endDate)) delete next.datesFromDays
   const legs = store.list('legs.json.enc')
   await store.put('trips.json.enc', next)
   // Verlengen of verplaatsen: de agenda volgt direct.

@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test'
 const REPO = 'logboek-olivier/logboek-data'
 
 export interface E2eGithub {
-  files: Map<string, { sha: string; content: string }>
+  files: Map<string, { sha: string; content: string; message?: string }>
   requests: { method: string; url: string; body: string | null }[]
   /** true = elk request mislukt alsof er geen verbinding is. */
   offline: boolean
@@ -50,6 +50,11 @@ export async function mockGithub(page: Page, initial?: E2eGithub): Promise<E2eGi
     if (!url.startsWith(prefix)) return json(404, {})
     const rest = url.slice(prefix.length)
     if (rest === '') return json(200, { full_name: REPO })
+    const commits = /^\/commits\?path=([^&]+)/.exec(rest)
+    if (commits && method === 'GET') {
+      const last = github.files.get(decodeURIComponent(commits[1] ?? ''))
+      return json(200, last ? [{ sha: `c-${last.sha}`, commit: { message: last.message ?? 'sync 2026-01-01T00:00:00.000Z' } }] : [])
+    }
     const m = /^\/contents\/(.+)$/.exec(rest)
     if (!m) return json(404, {})
     const path = decodeURIComponent(m[1] ?? '')
@@ -64,12 +69,12 @@ export async function mockGithub(page: Page, initial?: E2eGithub): Promise<E2eGi
       return file ? json(200, { sha: file.sha, content: file.content, encoding: 'base64' }) : json(404, {})
     }
     if (method === 'PUT') {
-      const req = JSON.parse(body ?? '{}') as { content?: string; sha?: string }
+      const req = JSON.parse(body ?? '{}') as { content?: string; sha?: string; message?: string }
       if (file && req.sha !== file.sha) return json(409, {})
       if (!file && req.sha) return json(422, {})
       const sha = `sha-${++counter}`
       if (file && github.staleReadsAfterPut > 0) stale.set(path, { file, remaining: github.staleReadsAfterPut })
-      github.files.set(path, { sha, content: req.content ?? '' })
+      github.files.set(path, { sha, content: req.content ?? '', ...(req.message ? { message: req.message } : {}) })
       return json(file ? 200 : 201, { content: { sha, path } })
     }
     return json(405, {})

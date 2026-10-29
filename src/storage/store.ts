@@ -4,7 +4,7 @@ import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, ty
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
+import { AuthError, BUILD, ConflictError, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { getLocal, getObject, putObject, putObjectAndLocal, setAsideIfVault, type Db, type StoredObject } from './idb'
 import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
@@ -608,14 +608,15 @@ export class Store {
   }
 
   /**
-   * Eén keer per week vanzelf, na een geslaagde sync; vond de vorige controle een probleem, dan bij elk openen opnieuw
-   * (zodat de melding verdwijnt zodra het opgelost is). Alleen bij een probleem verschijnt een melding.
+   * Eén keer per week vanzelf, na een geslaagde sync, en na elke update (een andere build dan bij de vorige controle);
+   * vond de vorige controle een probleem, dan bij elk openen opnieuw (zodat de melding verdwijnt zodra het opgelost is).
+   * Alleen bij een probleem verschijnt een melding.
    */
-  async weeklyCheck(now = Date.now(), retryMs = CHECK_RETRY_MS): Promise<void> {
+  async weeklyCheck(now = Date.now(), retryMs = CHECK_RETRY_MS, build = BUILD): Promise<void> {
     if (!this.syncedOnce || this.locked || this.outdated) return
     const last = readStorageLog(this.db.name).check
     const at = last ? Date.parse(last.at) : NaN
-    if (last && !checkHasProblem(last) && now - at < CHECK_EVERY_MS && at <= now) return
+    if (last && !checkHasProblem(last) && last.build === build && now - at < CHECK_EVERY_MS && at <= now) return
     await this.check(false, retryMs)
   }
 
@@ -645,7 +646,7 @@ export class Store {
         if (!file) return null
         files.push(file)
       }
-      return { at: new Date().toISOString(), metaOk, files }
+      return { at: new Date().toISOString(), metaOk, files, build: BUILD }
     })
     if (!result || this.locked) return null
     // Een probleem nog één keer bekijken: GitHub geeft vlak na het schrijven soms nog even de vorige versie.
@@ -665,6 +666,11 @@ export class Store {
       if (!again || this.locked) return null
       result.files = again
     }
+    // Wie elk bestand het laatst schreef (versie en apparaat uit het commitbericht): tegelijk en buiten het slot, zodat
+    // opslaan en syncen niet wachten. Lukt het niet, dan zonder; de controle zelf staat al vast.
+    const writers = await Promise.all(result.files.map((f) => (f.state === 'leeg' || f.state === 'ontbreekt' ? null : this.lastWriter(f.path))))
+    if (this.locked) return null
+    result.files = result.files.map((f, i) => ({ ...f, ...writers[i] }))
     const log = readStorageLog(this.db.name)
     writeStorageLog(this.db.name, { ...log, check: result })
     this.notify()
@@ -696,6 +702,17 @@ export class Store {
       if (wasReplaced(this.db.name, path, file.sha)) return { path, local: localActive, remote: null, state: 'wacht', differences: 0 }
       const reason = error instanceof DecryptError ? `${error.name}/${decryptFailureKind(file.content)}` : error.name
       return { path, local: localActive, remote: null, state: 'onleesbaar', differences: 0, reason }
+    }
+  }
+
+  /** Versie en apparaat uit het laatste commitbericht van dit bestand; null als GitHub dat niet geeft. */
+  private async lastWriter(path: CollectionPath): Promise<Pick<FileCheck, 'writer'> | null> {
+    try {
+      const info = await this.client.lastCommit(path)
+      return info ? { writer: { version: info.version, device: info.device } } : null
+    } catch (error) {
+      if (error instanceof NetworkError || error instanceof GithubError) return null
+      throw error
     }
   }
 
