@@ -84,7 +84,10 @@ test('Studenten in Deze week: deelnemers met cursus krijgen een checklist, afvin
   // Studentenarchief onder Meer: terugzetten en wissen.
   await openMore(page, 'Studentenarchief')
   await expect(page.getByRole('heading', { name: 'Studentenarchief' })).toBeVisible()
-  await expect(page.getByText('Geen studenten zonder trip.')).toBeVisible()
+  // Álle studenten per trip: de lopende trip bovenaan, met Nepanna (Nepbram is gearchiveerd).
+  await expect(page.locator('.student-group.current')).toContainText('Lopend')
+  await expect(page.locator('.student-group.current .student')).toHaveCount(1)
+  await expect(page.locator('.student-group.current')).toContainText('Nepanna')
   await page.getByRole('button', { name: 'Archief (1)' }).click()
   await page.getByRole('button', { name: 'Nepbram terugzetten' }).click()
   await expect(page.getByText('Het archief is leeg.')).toBeVisible()

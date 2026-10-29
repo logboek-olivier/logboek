@@ -1211,6 +1211,20 @@ export const nl = {
   'outlook.showTips': 'Verwachte fooi tonen (schatting)',
   'outlook.tipTotal': (p: { month: string; amount: string }) => `Geschatte fooi tot en met ${p.month}: ${p.amount}.`,
   'outlook.tipNote': 'Schatting uit je gemiddelde fooi per trip bij dezelfde organisatie; los van het salaris en niet in het totaal.',
+  'students.failed': 'Niet geslaagd',
+  'students.noneAtAll': 'Nog geen studenten. Een deelnemer met een cursus wordt vanzelf een student.',
+  'students.search': 'Zoek een student op naam',
+  'students.searchPlaceholder': 'Zoek op naam',
+  'students.allCourses': 'Alle',
+  'students.result': 'Resultaat',
+  'studentResult.alle': 'Alle',
+  'studentResult.geslaagd': 'Geslaagd',
+  'studentResult.gezakt': 'Niet geslaagd',
+  'studentResult.geen-examen': 'Nog geen examen',
+  'students.noMatch': 'Geen studenten gevonden met deze zoekopdracht of filters.',
+  'students.withoutTrip': 'Zonder trip',
+  'students.currentTrip': 'Lopend',
+  'unit.students': (p: { n: number }) => `${p.n} ${plural(p.n, 'student', 'studenten')}`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
