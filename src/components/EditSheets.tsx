@@ -23,6 +23,8 @@ import {
   type Leg,
   type Role,
   type TipVia,
+  type CostCategory,
+  COST_CATEGORIES,
   type Transaction,
   type TransactionKind,
   type TransactionSource,
@@ -70,6 +72,7 @@ export function TransactionSheet({
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
   const [tripId, setTripId] = useState(tx.tripId ?? '')
   const [tipVia, setTipVia] = useState<TipVia | null>(tx.tipVia ?? null)
+  const [category, setCategory] = useState<CostCategory>(tx.category ?? 'overig')
   const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
@@ -98,6 +101,7 @@ export function TransactionSheet({
         tripId: tripId || null,
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
         tipVia: kind === 'fooi' ? tipVia : null,
+        category: kind === 'kosten' ? category : null,
         // Gestort kan niet vóór de fooi zelf.
         depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? (depositedAt < date ? date : depositedAt) : null,
       })
@@ -204,6 +208,18 @@ export function TransactionSheet({
           />
         )}
         {kind === 'fooi' && <TipViaPicker value={tipVia} onChange={setTipVia} allowUnknown />}
+        {kind === 'kosten' && (
+          <label>
+            {t('costs.category')}
+            <select value={category} onChange={(e) => setCategory(e.target.value as CostCategory)}>
+              {COST_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {t(`costCategory.${c}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {kind === 'fooi' && tipVia === 'contant' && (
           <label>
             {t('tipVia.depositedAt')}

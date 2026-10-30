@@ -81,6 +81,25 @@ export type PayoutRule = { kind: 'per-trip' } | { kind: 'maandelijks'; day: numb
 /** Hoe een fooi binnenkwam: contant (staat in Contant tot hij gestort is) of op de bank. Ontbreekt = onbekend. */
 export type TipVia = 'contant' | 'bank'
 
+/** Soort losse uitgave (alleen bij kosten): vervoer, eten en drinken, overig. Ontbreekt = overig. */
+export type CostCategory = 'vervoer' | 'eten' | 'overig'
+export const COST_CATEGORIES: readonly CostCategory[] = ['vervoer', 'eten', 'overig']
+
+/** Dagsoort voor de kosten per dag (thuis, reis, werk, rust); de andere dagsoorten tellen als thuis. */
+export type CostDayType = 'thuis' | 'reis' | 'werk' | 'rust'
+export const COST_DAY_TYPES: readonly CostDayType[] = ['thuis', 'reis', 'werk', 'rust']
+
+/**
+ * Een vaste last (fixedcosts.json.enc): naam en valuta, met het bedrag per maand vanaf een maand. Een wijziging geldt
+ * "vanaf maand …", zodat oude maanden blijven kloppen; 0 = gestopt.
+ */
+export interface FixedCost extends SyncRecord {
+  name: string
+  currency: Currency
+  /** Oudste eerst; `from` is jjjj-mm. */
+  amounts: { from: string; amount: number }[]
+}
+
 export interface WeekReview {
   /** Reviewscore zoals de organisatie die geeft, bijvoorbeeld 9,4. */
   score?: number
@@ -199,6 +218,8 @@ export interface Transaction extends SyncRecord {
   tipVia?: TipVia
   /** Alleen bij een contante fooi: jjjj-mm-dd waarop hij gestort is (dan telt hij niet meer in Contant). */
   depositedAt?: string
+  /** Alleen bij kosten: vervoer, eten en drinken of overig (ontbreekt = overig). */
+  category?: CostCategory
   /**
    * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
    * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.
@@ -242,6 +263,10 @@ export interface Settings extends SyncRecord {
   lastTipVia?: TipVia
   /** Begin van de zeilcarrière (jjjj-mm-dd) voor "Sinds …" in Mijn positie; ontbreekt = 11 september 2026. */
   careerStart?: string
+  /** Standaard variabele kosten per dag in euro per dagsoort, zolang de app nog te weinig eigen gegevens heeft. */
+  costDefaults?: Partial<Record<CostDayType, number>>
+  /** Laatst gekozen soort losse uitgave. */
+  lastCostCategory?: CostCategory
 }
 
 /** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */
@@ -446,6 +471,8 @@ export interface WeekClosing extends SyncRecord {
   /** 1–10. */
   rating?: number
   lesson?: string
+  /** "Ongeveer los uitgegeven deze week?": telt als variabele kosten van die week. */
+  spent?: { amount: number; currency: Currency }
 }
 
 /** Een doel dat zichzelf vult uit de gegevens van de app. */
@@ -612,6 +639,7 @@ export interface Collections {
   'career.json.enc': CareerRecord
   'accounts.json.enc': Account
   'balances.json.enc': Balance
+  'fixedcosts.json.enc': FixedCost
 }
 
 export type CollectionPath = keyof Collections
@@ -636,6 +664,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'career.json.enc',
   'accounts.json.enc',
   'balances.json.enc',
+  'fixedcosts.json.enc',
 ]
 
 export function newId(): string {

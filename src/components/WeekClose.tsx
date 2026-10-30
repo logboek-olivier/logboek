@@ -5,7 +5,9 @@ import { t } from '../i18n'
 import type { CalendarIndex } from '../model/calendar'
 import { deleteWeekClosing } from '../model/edit'
 import { canClose, closingFor, LESSON_MAX, saveClosing, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
-import type { WeekClosing } from '../model/types'
+import { CURRENCIES, type Currency, type WeekClosing } from '../model/types'
+import { amountInput, parseAmount } from '../model/money'
+import { currentSettings } from '../model/settings'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -36,12 +38,19 @@ export function SummaryLines({ summary }: { summary: WeekSummary }) {
 }
 
 function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: string; initial: WeekClosing | null; onSaved: () => void }) {
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [rating, setRating] = useState<number | null>(initial?.rating ?? null)
   const [lesson, setLesson] = useState(initial?.lesson ?? '')
+  // Eén getal: ongeveer los uitgegeven deze week (telt als variabele kosten van die week). Leeg = niet ingevuld.
+  const [spent, setSpent] = useState(initial?.spent ? amountInput(initial.spent.amount) : '')
+  const [currency, setCurrency] = useState<Currency>(initial?.spent?.currency ?? settings.lastCurrency)
+  const spentValue = spent.trim() === '' ? null : parseAmount(spent)
+  const spentInvalid = spent.trim() !== '' && spentValue === null
 
   async function save(e: FormEvent) {
     e.preventDefault()
-    await saveClosing(store, date, { rating, lesson })
+    if (spentInvalid) return
+    await saveClosing(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null })
     onSaved()
   }
 
@@ -61,7 +70,23 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
         {t('weekClose.lesson')}
         <input type="text" autoComplete="off" autoCapitalize="sentences" maxLength={LESSON_MAX} placeholder={t('weekClose.lessonPlaceholder')} value={lesson} onChange={(e) => setLesson(e.target.value)} />
       </label>
-      <button type="submit" className="btn primary" disabled={rating === null && lesson.trim() === ''}>
+      <div className="row">
+        <label className="grow">
+          {t('weekClose.spent')}
+          <input type="text" inputMode="decimal" autoComplete="off" value={spent} onChange={(e) => setSpent(e.target.value)} />
+        </label>
+        <label>
+          {t('field.currency')}
+          <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button type="submit" className="btn primary" disabled={spentInvalid || (rating === null && lesson.trim() === '' && spentValue === null)}>
         <Icon icon={CalendarCheck} />
         {t('weekClose.save')}
       </button>

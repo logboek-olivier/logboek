@@ -7,6 +7,7 @@ import { isDebt, parseStand, setBalance } from '../model/accounts'
 import { buildIndex, planningEnd } from '../model/calendar'
 import { nameWithCounter } from '../model/counters'
 import { careerStart, difference, forecast, positionAt, type AccountRow, type PositionInput, type Sum } from '../model/position'
+import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings, saveSettings } from '../model/settings'
 import { todayIso, type Account, type Currency } from '../model/types'
@@ -181,10 +182,14 @@ export function ForecastSection({ store }: { store: Store }) {
   const input = usePositionInput(store)
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const calendar = useCollection(store, 'calendar.json.enc')
+  const fixed = useCollection(store, 'fixedcosts.json.enc')
+  const closings = useCollection(store, 'weekreviews.json.enc')
   const counters = useCounters(store)
   const today = todayIso()
   const index = useMemo(() => buildIndex(calendar, input.trips, input.legs), [calendar, input.trips, input.legs])
-  const f = forecast(input, settings, today, planningEnd(index))
+  // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten.
+  const averages = dayAverages(input.transactions, closings, index, today, settings, input.rates)
+  const f = forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index })
   if (f.items.length === 0 && f.months.every((m) => m.eur === null)) return null
   const until = formatMonth(f.until)
   // Maanden zonder gegevens aan het begin laten we weg (vóór de eerste stand is er niets te tekenen).
@@ -204,6 +209,8 @@ export function ForecastSection({ store }: { store: Store }) {
         <strong className="num">{signed(f.addsEur)}</strong>
       </p>
       {f.tipEstimateEur > 0 && <p className="muted small">{t('forecast.tipPart', { amount: formatMoney(f.tipEstimateEur, 'EUR') })}</p>}
+      {f.costsEur < 0 && <p className="muted small">{t('forecast.costsPart', { amount: formatMoney(-f.costsEur, 'EUR') })}</p>}
+      {f.costsUnknown && <p className="muted small">{t('forecast.costsUnknown')}</p>}
       <LineChart
         points={months.map((m) => ({ key: m.month, label: formatMonthShort(m.month), value: m.eur, future: m.future }))}
         label={`${t('forecast.chart')}: ${months.map((m) => `${formatMonth(m.month)} ${m.eur === null ? '–' : formatMoney(m.eur, 'EUR')}${m.future ? ` (${t('forecast.expected')})` : ''}`).join(', ')}`}
@@ -226,9 +233,13 @@ export function ForecastSection({ store }: { store: Store }) {
               <span className="grow">
                 {item.kind === 'salaris'
                   ? t('forecast.salary', { org: item.org ? organisationLabel(item.org) : t('forecast.noOrg'), n: item.trips.length })
-                  : t('forecast.tip', { trip: nameWithCounter(item.trips[0]!, counters.get(item.trips[0]!.id)) })}
+                  : item.kind === 'fooi'
+                    ? t('forecast.tip', { trip: nameWithCounter(item.trips[0]!, counters.get(item.trips[0]!.id)) })
+                    : item.kind === 'vaste-lasten'
+                      ? t('forecast.fixed', { month: formatMonth(item.date.slice(0, 7)) })
+                      : t('forecast.variable', { month: formatMonth(item.date.slice(0, 7)) })}
               </span>
-              <span className={`num${item.kind === 'fooi' ? ' muted' : ''}`}>{formatMoney(item.eur, 'EUR')}</span>
+              <span className={`num${item.kind === 'fooi' || item.kind === 'kosten' ? ' muted' : ''}${item.eur < 0 ? ' negative' : ''}`}>{item.eur < 0 ? `−${formatMoney(-item.eur, 'EUR')}` : formatMoney(item.eur, 'EUR')}</span>
             </li>
           ))}
         </ul>

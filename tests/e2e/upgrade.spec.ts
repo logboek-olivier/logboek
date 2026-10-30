@@ -304,6 +304,16 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect.poll(() => puts('balances.json.enc'), { timeout: 20_000 }).toBeGreaterThan(balancePuts)
     await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
     await expectSynced(page)
+    // Vaste lasten (fixedcosts.json.enc, nieuw in ronde 3): een vaste last toevoegen onder Geld → Kosten.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await openMore(page, L('nav.money'), L('nav.more'))
+    const fixedPuts = puts('fixedcosts.json.enc')
+    await page.getByRole('button', { name: L('costs.addFixed') }).click()
+    await page.getByRole('dialog').getByLabel(L('costs.name')).fill('Nephuur upgrade')
+    await page.getByRole('dialog').getByLabel(L('costs.amount')).fill('500')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect.poll(() => puts('fixedcosts.json.enc'), { timeout: 20_000 }).toBeGreaterThan(fixedPuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -340,6 +350,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } },
       lastTipVia: 'contant',
       careerStart: '2026-09-01',
+      costDefaults: { thuis: 25, reis: 40 },
+      lastCostCategory: 'eten',
     })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
@@ -373,6 +385,13 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(bank).toMatchObject({ provider: 'asn', kind: 'betaal', currency: 'EUR', deletedAt: null })
     const balances = await decryptRecords(key, 'balances.json.enc', Uint8Array.from(Buffer.from(github.files.get('balances.json.enc')!.content, 'base64')))
     expect(balances).toEqual(expect.arrayContaining([expect.objectContaining({ accountId: bank!.id, amount: 321, source: 'handmatig', deletedAt: null })]))
+    // De vaste last staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende); de soort
+    // van een uitgave, de schatting bij de weekafsluiting en de standaardbedragen komen ongeschonden over.
+    const fixed = await decryptRecords(key, 'fixedcosts.json.enc', Uint8Array.from(Buffer.from(github.files.get('fixedcosts.json.enc')!.content, 'base64')))
+    expect(fixed).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nephuur upgrade', amounts: [expect.objectContaining({ amount: 500 })], deletedAt: null })]))
+    expect(transactions.find((tx) => tx.id === 'upg-tx-kosten')).toMatchObject({ category: 'eten' })
+    const reviews = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
+    expect(reviews.find((r) => r.id === 'week:2026-W43')).toMatchObject({ spent: { amount: 85, currency: 'EUR' } })
   } finally {
     await server.close()
   }
