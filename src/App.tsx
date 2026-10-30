@@ -12,6 +12,7 @@ import { Unlock } from './screens/Unlock'
 import { Session, SessionContext } from './session'
 import { demoPhase, demoStore, startDemo, stopDemo, subscribeDemo } from './demo'
 import { DemoBar } from './components/DemoBar'
+import { installBack, useExitHint } from './back'
 
 export function App() {
   const session = useMemo(() => new Session(), [])
@@ -61,8 +62,11 @@ export function App() {
 
   useEffect(() => {
     installGlobalErrorHandlers()
+    // De terugknop van Android: altijd één stap terug in de app (src/back.ts).
+    installBack()
     void session.init()
   }, [session])
+  const exitHint = useExitHint()
 
   // Vergrendelen na 5 minuten zonder gebruik (beveiligingsregel 10). Verbergen vergrendelt niet meer: dan wordt
   // het laatste gebruik opgeslagen, en bij terugkomen telt of de 5 minuten om zijn.
@@ -126,6 +130,11 @@ export function App() {
       <UpdateBar />
       <UnhandledErrorBar />
       <ErrorBoundary>{screen}</ErrorBoundary>
+      {exitHint && (
+        <div className="toast back-hint" role="status">
+          <span>{t('back.again')}</span>
+        </div>
+      )}
     </SessionContext.Provider>
   )
 }

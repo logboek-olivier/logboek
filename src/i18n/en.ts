@@ -1659,4 +1659,5 @@ export const en: Messages = {
   'storage.verdict.otherPath': (p) => `decrypts as ${p.file} (saved under the wrong name)`,
   'storage.verdict.invalid': (p) => `decrypts, but invalid (${p.why})`,
   'storage.repairOverwritten': (p: { file: string; who: string }) => `${p.file}: the repair was overwritten straight away with an unreadable version. ${p.who}.`,
+  'back.again': 'Press back again to close',
 }

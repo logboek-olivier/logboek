@@ -6,6 +6,7 @@ import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
 import { backfillRates, getRates, loadRates, subscribeRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { setScreen } from '../errors'
+import { onBack } from '../back'
 import { onNavigate } from '../navigation'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
@@ -73,13 +74,15 @@ const SCREEN_NAMES: Record<Screen, string> = {
 function shortcutTab(): AddTab | null {
   const value = new URLSearchParams(window.location.search).get('toevoegen')
   if (value === null) return null
-  window.history.replaceState(null, '', window.location.pathname)
+  window.history.replaceState(window.history.state, '', window.location.pathname)
   return value === 'inkomsten' || value === 'uitgave' || value === 'dag' || value === 'trip' || value === 'skill' ? value : null
 }
 
 export function Home({ store }: { store: Store }) {
   const [shortcut] = useState(shortcutTab)
   const [screen, setScreenState] = useState<Screen>(shortcut ? 'toevoegen' : 'vandaag')
+  const screenNow = useRef(screen)
+  screenNow.current = screen
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [addInit, setAddInit] = useState<AddInit | undefined>(undefined)
   // Het Logboek staat onder Meer en is ook vanuit de Agenda te openen; terug gaat naar waar het vandaan kwam.
@@ -91,6 +94,7 @@ export function Home({ store }: { store: Store }) {
   useEffect(
     () =>
       onNavigate((target) => {
+        if (screenNow.current !== 'archief') remember(screenNow.current)
         setArchiveStudent(target.studentId)
         setScreenState('archief')
         window.scrollTo(0, 0)
@@ -141,13 +145,44 @@ export function Home({ store }: { store: Store }) {
     void backfillRates(store, rates)
   }, [store, rates, status])
 
-  function select(next: Screen) {
+  // De weg terug voor de terugknop van Android (src/back.ts): de schermen waar Olivier vandaan kwam, elk een stap terug.
+  // Vandaag is het begin; teruggaan naar het vorige scherm (ook met "‹ Meer") haalt het van de weg af.
+  const trail = useRef<{ screen: Screen; off: () => void }[]>([])
+
+  function show(next: Screen) {
     if (next !== 'toevoegen') setAddInit(undefined)
     setArchiveStudent(undefined)
-    if (next === 'logboek' && screen !== 'agenda') setLogbookFrom('meer')
     setScreenState(next)
     window.scrollTo(0, 0)
   }
+
+  function remember(from: Screen) {
+    const entry = { screen: from, off: () => {} }
+    entry.off = onBack(() => {
+      trail.current = trail.current.filter((e) => e !== entry)
+      show(entry.screen)
+    })
+    trail.current.push(entry)
+    while (trail.current.length > 20) trail.current.shift()!.off()
+  }
+
+  function select(next: Screen) {
+    if (next === 'logboek' && screen !== 'agenda') setLogbookFrom('meer')
+    if (next === 'vandaag') {
+      for (const entry of trail.current) entry.off()
+      trail.current = []
+    } else if (trail.current.at(-1)?.screen === next) trail.current.pop()!.off()
+    else if (next !== screen) remember(screen)
+    show(next)
+  }
+
+  // Geopend via een snelkoppeling (Toevoegen): terug gaat naar Vandaag.
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (seeded.current || !shortcut) return
+    seeded.current = true
+    remember('vandaag')
+  }, [shortcut])
 
   function done(message: string) {
     notify(message)

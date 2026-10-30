@@ -33,6 +33,7 @@ import {
 import type { Curriculum } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
+import { useBack } from '../back'
 // Cursussen (onder Meer): per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
 // te delen als JSON en te importeren.
 
@@ -46,6 +47,7 @@ export function Courses({ store, notify }: { store: Store; notify: Notify }) {
   const lang = useLang()
 
   const open = curricula.find((c) => c.id === openId)
+  useBack(open !== undefined, () => setOpenId(null))
   if (open) return <CourseView store={store} course={open} notify={notify} onBack={() => setOpenId(null)} />
 
   async function onImport(file: File | undefined) {

@@ -15,6 +15,7 @@ import { activeStudents, archivedStudents } from '../model/students'
 import { activeWeek, weekView } from '../model/weeks'
 import type { Store } from '../storage/store'
 import { ArchiveView, StudentDetail, StudentRow, useAutoArchive } from './Students'
+import { useBack } from '../back'
 
 // Studentenarchief (onder Meer): álle studenten, per trip, de lopende trip bovenaan, daarna de nieuwste trips;
 // studenten zonder trip apart onderaan. Zoeken op voornaam, filteren op cursus en resultaat. Gearchiveerde studenten
@@ -35,6 +36,7 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
   useAutoArchive(store, notify)
 
   const back = () => setView({ kind: 'list' })
+  useBack(view.kind !== 'list', back)
   if (view.kind === 'student') {
     const student = students.find((s) => s.id === view.id && s.deletedAt === null)
     if (student) {

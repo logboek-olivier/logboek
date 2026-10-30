@@ -1,6 +1,7 @@
 import { Pencil, X } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Icon } from './Icon'
+import { onBack } from '../back'
 import { t } from '../i18n'
 
 // Onderblad: schuift van onderen in, met een donkere laag erachter. Escape, de sluitknop of tikken op de laag sluit.
@@ -28,7 +29,10 @@ export function Sheet({ title, onClose, onEdit, children }: { title: string; onC
       if (e.key === 'Escape' && openSheets.at(-1) === me) close.current()
     }
     document.addEventListener('keydown', onKey)
+    // De terugknop van Android sluit het bovenste blad (src/back.ts).
+    const offBack = onBack(() => close.current())
     return () => {
+      offBack()
       document.removeEventListener('keydown', onKey)
       openSheets.splice(openSheets.indexOf(me), 1)
       if (openSheets.length === 0) document.body.classList.remove('sheet-open')
