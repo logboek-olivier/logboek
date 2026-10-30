@@ -423,6 +423,9 @@ export class Store {
         }),
       )
     } while (this.syncAgain && !this.locked && this.status.kind !== 'offline' && this.status.kind !== 'error')
+    // Eindigde de ronde op een fout (bijvoorbeeld een ander bestand dat onleesbaar is) terwijl er intussen iets werd
+    // opgeslagen: dat toch kort daarna versturen, in plaats van te wachten op de volgende handeling.
+    if (this.syncAgain && !this.locked && this.status.kind === 'error') this.scheduleSync()
   }
 
   /** Wist alle ontsleutelde data uit het geheugen. De Store is daarna onbruikbaar. */
@@ -883,7 +886,13 @@ export class Store {
   async repair(path: CollectionPath): Promise<void> {
     this.assertUnlocked()
     if (!(await this.repairable()).includes(path)) return
-    await exclusive(this.db.name, 'sync', () => this.replaceRemote(path, this.collections.get(path) ?? [], null))
+    // Ontsleutelt de versie op GitHub wel maar is hij ongeldig, dan gaan zijn goede records mee (zoals bij "Alles
+    // herstellen"): nooit weggooien wat een ander apparaat schreef.
+    await exclusive(this.db.name, 'sync', async () => {
+      const remote = await this.client.getFile(path)
+      const salvaged = remote ? await salvageRecords(this.masterKey, path, remote.content) : []
+      await this.replaceRemote(path, mergeRecords(this.collections.get(path) ?? [], salvaged), null)
+    })
     this.unreadable.delete(path)
     await this.sync()
     this.recheckIfProblem()
@@ -1116,7 +1125,11 @@ export class Store {
       })
       const fromSync = [...result.records.filter((s) => !during.some((d) => d.id === s.id)), ...during]
       const merged = await this.mergeWithDisk(path, fromSync)
-      const outbox = clearSynced(await this.diskOutbox(), path, snapshot)
+      // Alleen wat echt meeging (die versie of een nieuwere staat in wat GitHub nu heeft), gaat uit de outbox; een regel
+      // die een ander venster midden in de ronde toevoegde, blijft wachten.
+      const sent = new Map(result.records.map((r) => [r.id, r.updatedAt]))
+      const synced = Object.fromEntries(Object.entries(snapshot).filter(([id, at]) => (sent.get(id) ?? '') >= at))
+      const outbox = clearSynced(await this.diskOutbox(), path, synced)
       const blob = await encryptRecords(this.masterKey, path, merged)
       if (this.locked) return
       await this.putGuarded({ path, blob, sha: result.sha }, outbox)

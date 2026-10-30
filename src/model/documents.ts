@@ -2,7 +2,7 @@ import type { Bytes } from '../crypto/encrypt'
 import { MAX_DOCUMENT_BYTES } from '../storage/documents'
 import type { Store } from '../storage/store'
 import type { DueItem } from './reminders'
-import { newId, type DocumentCategory, type VaultDocument } from './types'
+import { keepUnknownFields, newId, type DocumentCategory, type VaultDocument } from './types'
 
 // Kluis (Meer → Kluis): documenten met een categorie, optioneel een uitgifte- en vervaldatum en een notitie. Een foto
 // (camera of galerij) wordt verkleind tot hoogstens 1600 px aan de lange kant, JPEG 0,8; een PDF blijft ongewijzigd;
@@ -117,9 +117,13 @@ export async function addDocument(store: Store, input: DocumentInput, file: { by
   return record
 }
 
+/** De velden van een document die deze versie kent (de rest blijft bij bewerken staan, zie keepUnknownFields). */
+const DOCUMENT_FIELDS = ['id', 'title', 'category', 'issuedAt', 'expiresAt', 'notes', 'mime', 'size', 'offline', 'fileId', 'updatedAt', 'deletedAt'] as const
+
 /** Titel, categorie, datums, notitie en offline wijzigen (het bestand blijft hetzelfde). */
 export async function updateDocument(store: Store, document: VaultDocument, input: DocumentInput): Promise<VaultDocument> {
-  const next: VaultDocument = { id: document.id, mime: document.mime, size: document.size, fileId: document.fileId, ...clean(input), updatedAt: new Date().toISOString(), deletedAt: null }
+  const rebuilt: VaultDocument = { id: document.id, mime: document.mime, size: document.size, fileId: document.fileId, ...clean(input), updatedAt: new Date().toISOString(), deletedAt: null }
+  const next = keepUnknownFields(document, rebuilt, DOCUMENT_FIELDS)
   await store.put('documents/index.json.enc', next)
   if (next.offline !== document.offline) await store.setDocumentOffline(document.fileId, next.offline).catch(() => undefined)
   return next

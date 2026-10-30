@@ -2,7 +2,7 @@ import type { Store } from '../storage/store'
 import { active, lastMonths, round1, totalNm } from './derive'
 import { addDays, round2, totals } from './money'
 import { weekView, type WeekView } from './weeks'
-import { todayIso, type CalendarDay, type DayTravel, type DayType, type Leg, type Reminder, type Transaction, type Trip } from './types'
+import { keepUnknownFields, todayIso, type CalendarDay, type DayTravel, type DayType, type Leg, type Reminder, type Transaction, type Trip } from './types'
 
 // Agenda: elke dag heeft één dagsoort. Opgeslagen (calendar.json.enc) worden alleen dagen die Olivier zelf instelt;
 // de rest volgt uit trips en dagen, met deze voorrang:
@@ -222,8 +222,12 @@ function cleanDetails(details: DayDetails): DayDetails {
 }
 
 /** Dagsoort en gegevens van een dag zelf instellen (overschrijft wat uit trips en dagen volgt). */
+/** De velden van een agendadag die deze versie kent (de rest blijft bij bewerken staan, zie keepUnknownFields). */
+const DAY_FIELDS = ['id', 'date', 'type', 'location', 'travel', 'boat', 'note', 'reason', 'updatedAt', 'deletedAt'] as const
+
 export async function setDay(store: Store, date: string, type: DayType, details: DayDetails = {}): Promise<CalendarDay> {
-  const record: CalendarDay = { id: calendarId(date), date, type, ...cleanDetails(details), updatedAt: new Date().toISOString(), deletedAt: null }
+  const previous = store.get('calendar.json.enc').find((d) => d.id === calendarId(date))
+  const record = keepUnknownFields<CalendarDay>(previous, { id: calendarId(date), date, type, ...cleanDetails(details), updatedAt: new Date().toISOString(), deletedAt: null }, DAY_FIELDS)
   await store.put('calendar.json.enc', record)
   void store.sync()
   return record

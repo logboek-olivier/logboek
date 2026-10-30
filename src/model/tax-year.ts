@@ -1,3 +1,4 @@
+import { tripOrganisation } from './counters'
 import { isEarned, isIncome } from './money'
 import { eurValue, type RatesFile } from './rates'
 import type { Organisation, Transaction, Trip } from './types'
@@ -51,6 +52,9 @@ const GROUP_ORDER: readonly TaxGroup[] = ['sailing-virgins', 'yacht-week', 'eige
 
 function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxGroup {
   const trip = tx.tripId ? trips.get(tx.tripId) : undefined
+  // De organisatie van de trip, ook uit de naam ("Yacht week 7"), zoals de teller en de statistieken.
+  const counted = trip ? tripOrganisation(trip) : null
+  if (counted) return counted
   if (trip?.organisation && trip.organisation !== 'overig') return trip.organisation
   if (tx.source === 'sailing-virgins' || tx.source === 'yacht-week' || tx.source === 'delivery') return tx.source
   return 'overig'
