@@ -48,6 +48,34 @@ jobs:
       - name: Build
         run: npm run build
 
+  # Upgradetest over meerdere versies (regel 16): naast de vorige release (job test) ook vanaf twee vaste, oudere
+  # releases: het einde van ronde 2 (6fc2e72, vóór de boekhouding) en 29 oktober 's ochtends (41071c6, vóór ronde 2).
+  # Zo blijft een telefoon die een paar updates oversloeg ook leesbaar. Parallel aan de job test.
+  upgrade-ouder:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        vanaf: [6fc2e72, 41071c6]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Playwright-browsers installeren
+        run: npx playwright install --with-deps chromium
+      - name: Oudere release bouwen
+        env:
+          UPGRADE_FROM: ${{ matrix.vanaf }}
+        run: npm run upgrade:vorige
+      - name: Upgradetest
+        run: npx playwright test tests/e2e/upgrade.spec.ts
+
   # Integratietest tegen de echte GitHub-API (tests/integratie): met de token van deze workflow, alleen in een tijdelijke
   # branch van deze repo (integratie/<run>-node en -browser) met nepdata en een testsleutel; nooit logboek-data
   # (regel 6, ook in de test zelf afgedwongen). Alleen deze job mag schrijven; de token staat alleen in de teststappen
