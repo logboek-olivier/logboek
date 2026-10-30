@@ -1855,4 +1855,5 @@ export const en: Messages = {
   'plan.ownThemePlaceholder': 'For example Picking up a mooring ball',
   'plan.addOwnTheme': 'Add',
   'plan.clearBlock': 'Clear block',
+  'weather.automaticPoint': (p) => `Automatic (${p.point})`,
 }
