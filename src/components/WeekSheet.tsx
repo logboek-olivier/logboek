@@ -32,6 +32,7 @@ import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
 import { DeleteTrip } from './TripSheets'
 import { SalaryFields, useSalaryDraft } from './SalaryFields'
+import { TripIncomeFields } from './TripMoney'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -290,6 +291,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
           </select>
         </label>
         <SalaryFields {...salary.props} />
+        {trip && <TripIncomeFields store={store} trip={trip} notify={notify} />}
         <fieldset className="participants">
           <legend>{t('week.participants')}</legend>
           <p className="muted small">{t('week.participantsHint')}</p>

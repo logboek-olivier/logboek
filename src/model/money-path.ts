@@ -3,8 +3,8 @@ import { active } from './derive'
 import type { Undo } from './edit'
 import { eurOf, round2 } from './money'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
-import { salaryEur, salaryIncomeId, salarySource, tripEnd } from './salary'
-import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
+import { countedSalary, salaryEur, salaryIncomeId, salarySource, tripEnd } from './salary'
+import { newId, todayIso, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
 import { endedFor } from './trip-dates'
 
 // Geldpad per trip: per soort geld een status. Salaris: verwacht (de trip is nog niet voorbij), te ontvangen (voorbij,
@@ -17,7 +17,7 @@ export type SalaryState = 'verwacht' | 'te-ontvangen' | 'ontvangen'
 
 /** Status van het salaris van een trip op een datum; null als de trip geen salaris heeft. */
 export function salaryState(trip: Trip, legs: readonly Leg[], today: string): SalaryState | null {
-  const s = trip.salary
+  const s = countedSalary(trip)
   if (!s) return null
   if (s.status === 'ontvangen') return 'ontvangen'
   const end = tripEnd(trip, legs)
@@ -42,7 +42,7 @@ export function openSalaryTrips(trips: readonly Trip[], legs: readonly Leg[], or
   return active(trips)
     .filter((x) => {
       const end = tripEnd(x, legs)
-      return x.organisation === org && x.salary?.status === 'verwacht' && !!end && end <= date
+      return x.organisation === org && countedSalary(x)?.status === 'verwacht' && !!end && end <= date
     })
     .sort(byEnd(legs))
 }
@@ -146,7 +146,7 @@ export async function recordPayout(store: Store, payout: Payout, chosen: readonl
   const booked = store.list('transactions.json.enc')
   const trips = chosen
     .map((x) => latest.find((t) => t.id === x.id) ?? x)
-    .filter((x) => x.deletedAt === null && x.salary && x.salary.status !== 'ontvangen' && !hasSalaryIncome(x, booked))
+    .filter((x) => x.deletedAt === null && countedSalary(x)?.status === 'verwacht' && !hasSalaryIncome(x, booked))
   if (chosen.length > 0 && trips.length === 0) return async () => {}
   // Elke trip krijgt minstens één cent: een kleiner bedrag is geen uitbetaling.
   if (round2(payout.amount) < minimumPayout(Math.max(1, trips.length))) throw new Error('Bedrag te klein voor deze trips')
@@ -266,6 +266,64 @@ export interface TripMoney {
 }
 
 const emptySum = (): MoneySum => ({ eur: 0, other: {} })
+
+function addTo(sum: MoneySum, amount: number, currency: Currency, eur: number | null, sign = 1): void {
+  if (eur === null) sum.other[currency] = round2((sum.other[currency] ?? 0) + sign * amount)
+  else sum.eur = round2(sum.eur + sign * eur)
+}
+
+function addSums(into: MoneySum, from: MoneySum, sign = 1): void {
+  into.eur = round2(into.eur + sign * from.eur)
+  for (const [c, v] of Object.entries(from.other) as [Currency, number][]) into.other[c] = round2((into.other[c] ?? 0) + sign * v)
+}
+
+export interface TripResult {
+  /** Ontvangen salaris (inkomen van soort loon), anders het verwachte salaris (`salaryExpected`). */
+  salary: MoneySum
+  salaryExpected: boolean
+  tips: MoneySum
+  /** Bonus, overige inkomsten en terugbetaalde onkosten. */
+  otherIncome: MoneySum
+  /** Uitgaven bij de trip, zonder de uitgave van een declaratie die nog niet terugbetaald is. */
+  costs: MoneySum
+  /** Declaraties van de trip die nog niet terugbetaald zijn: apart, niet in het resultaat (dat geld komt terug). */
+  openClaims: MoneySum
+  /** Salaris + fooi + overige inkomsten − uitgaven; kan negatief zijn. */
+  result: MoneySum
+}
+
+/**
+ * Resultaat van één trip: salaris (ontvangen, anders verwacht) plus fooi plus overige inkomsten min de uitgaven. De
+ * uitgave van een declaratie die nog niet terugbetaald is, staat apart (dat geld komt terug); is hij terugbetaald, dan
+ * tellen uitgave en terugbetaling allebei mee en heffen ze elkaar op. Alles in euro; zonder koers apart per valuta.
+ */
+export function tripResult(trip: Trip, legs: readonly Leg[], transactions: readonly Transaction[], rates: RatesFile | null): TripResult {
+  const out: TripResult = { salary: emptySum(), salaryExpected: false, tips: emptySum(), otherIncome: emptySum(), costs: emptySum(), openClaims: emptySum(), result: emptySum() }
+  const live = active(transactions)
+  const own = live.filter((tx) => tx.tripId === trip.id)
+  const repaid = new Set(live.filter((tx) => tx.kind === 'terugbetaling' && tx.claimId).map((tx) => tx.claimId!))
+  let paid = false
+  for (const tx of own) {
+    const eur = eurOf(tx)
+    if (tx.kind === 'loon') {
+      paid = true
+      addTo(out.salary, tx.amount, tx.currency, eur)
+    } else if (tx.kind === 'fooi') addTo(out.tips, tx.amount, tx.currency, eur)
+    else if (tx.kind === 'bonus' || tx.kind === 'overig-inkomen' || tx.kind === 'terugbetaling') addTo(out.otherIncome, tx.amount, tx.currency, eur)
+    else if (tx.claimId && !repaid.has(tx.claimId)) addTo(out.openClaims, tx.amount, tx.currency, eur)
+    else addTo(out.costs, tx.amount, tx.currency, eur)
+  }
+  const s = countedSalary(trip)
+  if (!paid && s && s.status === 'verwacht') {
+    out.salaryExpected = true
+    addTo(out.salary, s.amount, s.currency, salaryEur(s, tripEnd(trip, legs) || todayIso(), rates))
+  }
+  addSums(out.result, out.salary)
+  addSums(out.result, out.tips)
+  addSums(out.result, out.otherIncome)
+  addSums(out.result, out.costs, -1)
+  return out
+}
 
 /** Het geldpad van één trip: salaris met status, en de fooien naar contant, bank en onbekend. */
 export function tripMoney(trip: Trip, legs: readonly Leg[], transactions: readonly Transaction[], today: string): TripMoney {

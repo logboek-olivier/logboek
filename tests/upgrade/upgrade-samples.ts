@@ -11,6 +11,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-trip-dag', name: 'Nepdag upgrade', startDate: '2026-10-12', endDate: '2026-10-12', datesFromDays: true, updatedAt: T, deletedAt: null },
     // Salaris per trip (eigen bedrag, verwacht): na de einddatum vraagt Vandaag of het ontvangen is.
     { id: 'upg-trip-salaris', name: 'Nepsalaris upgrade', organisation: 'sailing-virgins', startDate: '2026-10-01', endDate: '2026-10-07', salary: { amount: 1200, currency: 'EUR', status: 'verwacht', source: 'eigen' }, updatedAt: T, deletedAt: null },
+    // "Geen salaris" (status geen, bedrag 0): telt nergens mee.
+    { id: 'upg-trip-geen-salaris', name: 'Nep geen salaris', organisation: 'yacht-week', startDate: '2026-08-01', endDate: '2026-08-07', salary: { amount: 0, currency: 'EUR', status: 'geen', source: 'eigen' }, updatedAt: T, deletedAt: null },
     { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [

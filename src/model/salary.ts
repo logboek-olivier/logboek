@@ -20,6 +20,23 @@ export function salaryDefault(settings: Settings, org: Organisation | undefined)
   return d && d.amount > 0 ? d : null
 }
 
+/**
+ * Het salaris dat meetelt (te ontvangen, verwacht, vooruitblik, vragen op Vandaag): niet bij "Geen salaris", niet bij
+ * een bedrag van 0, en niet bij een standaardbedrag op een trip zonder organisatie (het standaardbedrag hoort alleen bij
+ * trips van die organisatie). Het opgeslagen salaris blijft zoals het is.
+ */
+export function countedSalary(trip: Trip): TripSalary | null {
+  const s = trip.salary
+  if (!s || s.status === 'geen' || !(s.amount > 0)) return null
+  if (s.source === 'standaard' && s.status === 'verwacht' && !trip.organisation) return null
+  return s
+}
+
+/** "Geen salaris": zelf gekozen, nooit vanzelf overschreven (eigen). */
+export function noSalary(currency: Currency): TripSalary {
+  return { amount: 0, currency, status: 'geen', source: 'eigen' }
+}
+
 /** Einddatum van een trip (opgeslagen, anders uit de dagen); leeg als de trip geen datums heeft. */
 export function tripEnd(trip: Trip, legs: readonly Leg[]): string {
   return weekView(trip, legs).endDate
@@ -31,10 +48,10 @@ function notEnded(trip: Trip, legs: readonly Leg[], today: string): boolean {
   return !!end && end >= today
 }
 
-/** Salaris uit het bewerkscherm: positief bedrag op twee decimalen, alleen bekende velden. */
+/** Salaris uit het bewerkscherm: bedrag van 0 of meer op twee decimalen (bij "Geen salaris" 0), alleen bekende velden. */
 export function cleanSalary(s: TripSalary): TripSalary {
   return {
-    amount: round2(Math.max(0, s.amount)),
+    amount: s.status === 'geen' ? 0 : round2(Math.max(0, s.amount)),
     currency: s.currency,
     status: s.status,
     source: s.source,
@@ -147,7 +164,7 @@ export function salaryIncomeOf(tripId: string, transactions: readonly Transactio
 export function salaryQuestions(trips: readonly Trip[], legs: readonly Leg[], today: string, transactions: readonly Transaction[] = []): Trip[] {
   return active(trips)
     .filter((x) => {
-      const s = x.salary
+      const s = countedSalary(x)
       if (!s || s.status !== 'verwacht' || salaryIncomeOf(x.id, transactions)) return false
       const end = tripEnd(x, legs)
       // Een trip die de dagen volgt, is pas drie dagen na de laatste dag voorbij (hij kan nog doorlopen).
@@ -217,6 +234,28 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
     const current = store.list('trips.json.enc').find((x) => x.id === trip.id)
     if (current) {
       const restored: Trip = { ...current, updatedAt: later }
+      if (before) restored.salary = before
+      else delete restored.salary
+      await store.put('trips.json.enc', restored)
+    }
+    void store.sync()
+  }
+}
+
+/**
+ * "Geen salaris" voor deze trip (zelf gekozen): telt nergens meer als verwacht of te ontvangen, en Vandaag vraagt er niet
+ * meer naar. Niet bij een salaris dat al ontvangen is (dat inkomen staat bij Geld). Met ongedaan maken.
+ */
+export async function setNoSalary(store: Store, trip: Trip): Promise<Undo> {
+  const latest = store.list('trips.json.enc').find((x) => x.id === trip.id) ?? trip
+  if (latest.salary?.status === 'ontvangen' || latest.salary?.status === 'geen') return async () => {}
+  const before = latest.salary
+  await store.put('trips.json.enc', { ...latest, salary: noSalary(before?.currency ?? 'EUR'), updatedAt: new Date().toISOString() })
+  void store.sync()
+  return async () => {
+    const current = store.list('trips.json.enc').find((x) => x.id === trip.id)
+    if (current) {
+      const restored: Trip = { ...current, updatedAt: new Date().toISOString() }
       if (before) restored.salary = before
       else delete restored.salary
       await store.put('trips.json.enc', restored)
@@ -314,7 +353,7 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
   const other: Partial<Record<Currency, number>> = {}
   const expected = live
     .map((x) => ({ trip: x, end: tripEnd(x, legs) }))
-    .filter((e) => e.end && e.trip.salary?.status === 'verwacht')
+    .filter((e) => e.end && countedSalary(e.trip)?.status === 'verwacht')
   const upcoming = live.map((x) => ({ trip: x, end: tripEnd(x, legs) })).filter((e) => e.end && e.end >= today)
   let first = month(today)
   for (const e of expected) if (month(e.end) < first) first = month(e.end)

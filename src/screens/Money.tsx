@@ -78,7 +78,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
         <>
           <dl className="grid">
             <Stat
-              label={t('money.balance')}
+              label={t('money.result')}
               value={formatMoney(all.balanceEur, 'EUR')}
               tone={all.balanceEur >= 0 ? 'positive' : 'negative'}
               hero
@@ -88,6 +88,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
             <OtherStat other={all.other} />
           </dl>
+          <p className="muted small">{t('money.resultHint')}</p>
 
           <MoneyPathSection store={store} notify={notify} />
 
@@ -145,7 +146,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
                   <th>{t('money.month')}</th>
                   <th className="num">{t('money.in')}</th>
                   <th className="num">{t('money.out')}</th>
-                  <th className="num">{t('money.balance')}</th>
+                  <th className="num">{t('money.monthResult')}</th>
                 </tr>
               </thead>
               <tbody>

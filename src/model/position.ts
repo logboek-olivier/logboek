@@ -5,7 +5,7 @@ import { active } from './derive'
 import { eurOf, round2 } from './money'
 import { payoutRule } from './money-path'
 import { type RatesFile } from './rates'
-import { salaryEur, tipAverages, tripEnd } from './salary'
+import { countedSalary, salaryEur, tipAverages, tripEnd } from './salary'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
 
@@ -163,7 +163,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
   }
   // Te ontvangen: salaris van trips die op die dag voorbij waren en nog niet betaald.
   for (const trip of active(trips)) {
-    const s = trip.salary
+    const s = countedSalary(trip)
     const end = tripEnd(trip, legs)
     if (!s || !end || endedFor(trip, end) >= date || paidBy(trip, transactions, date)) continue
     out.receivable.push({ trip, amount: s.amount, currency: s.currency })
@@ -279,7 +279,7 @@ export function forecast(input: PositionInput, settings: Settings, today: string
     const end = tripEnd(trip, legs)
     if (!end || end < today) continue
     if (monthOf(end) > until) until = monthOf(end)
-    const s = trip.salary
+    const s = countedSalary(trip)
     if (s && s.status === 'verwacht') {
       const moment = payoutMoment(trip, legs, settings) ?? end
       if (monthOf(moment) > until) until = monthOf(moment)

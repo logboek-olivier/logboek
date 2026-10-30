@@ -73,7 +73,7 @@ export function hasOtherData(store: Store, trip: Trip): boolean {
     (trip.participants?.length ?? 0) > 0 ||
     !!trip.review ||
     !!trip.closedAt ||
-    (!!trip.salary && (trip.salary.source === 'eigen' || trip.salary.status === 'ontvangen')) ||
+    (!!trip.salary && (trip.salary.source === 'eigen' || trip.salary.status !== 'verwacht')) ||
     Object.keys(trip.checks ?? {}).length > 0 ||
     store.list('transactions.json.enc').some((t) => t.tripId === trip.id) ||
     store.list('students.json.enc').some((s) => s.weekId === trip.id) ||
