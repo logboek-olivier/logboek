@@ -702,6 +702,15 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
+/**
+ * Eén milliseconde na een tijd: voor wat de app vanzelf vastlegt bij een bestaand record (een koers, archiveren). Zo wint
+ * dat altijd van de vorige versie op dit apparaat, maar nooit van een echte wijziging die een ander apparaat intussen deed.
+ */
+export function justAfter(iso: string): string {
+  const ms = Date.parse(iso)
+  return Number.isFinite(ms) ? new Date(ms + 1).toISOString() : new Date().toISOString()
+}
+
 /** Datum van vandaag als jjjj-mm-dd in lokale tijd. */
 export function todayIso(): string {
   const d = new Date()

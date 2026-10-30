@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate } from '../../src/i18n'
 import { createNewLogbook, enterToken, openMore, PASSPHRASE } from '../e2e/helpers/logbook'
-import { createBranch, deleteBranch, reachesDataRepo, requestCount, rewrite, target, TOKEN } from './echte-github'
+import { createBranch, deleteBranch, limitWait, noteStatus, paceWrite, reachesDataRepo, requestCount, rewrite, target, TOKEN } from './echte-github'
 
 // Integratietest in de browser tegen de echte GitHub-API (alleen met LOGBOEK_IT_TOKEN, in CI): de echte app in Chromium,
 // met service worker en browsercache, praat met api.github.com; elk verzoek voor logboek-data gaat naar een tijdelijke
@@ -19,8 +19,27 @@ async function toBranch(page: Page): Promise<void> {
     const { url, body } = rewrite(request.url(), request.method(), request.postData(), t)
     // Nooit logboek-data (regel 6): wat na het omzetten nog daarheen zou gaan, gaat niet weg.
     if (reachesDataRepo(url)) return route.abort()
-    requestCount.value++
-    await route.continue({ url, headers: { ...request.headers(), authorization: `Bearer ${TOKEN}` }, ...(body !== null ? { postData: body } : {}) })
+    // Schrijfacties uit elkaar en bij een limiet van GitHub één keer wachten (zie echte-github.ts); binnen de 60 s die
+    // de app per verzoek wacht.
+    await paceWrite(request.method())
+    const options = { url, headers: { ...request.headers(), authorization: `Bearer ${TOKEN}` }, ...(body !== null ? { postData: body } : {}) }
+    try {
+      requestCount.value++
+      let response = await route.fetch(options)
+      const wait = await limitWait(response.status(), (n) => response.headers()[n] ?? null, () => response.text())
+      if (wait !== null) {
+        console.log(`GitHub-limiet (${response.status()}): ${Math.min(wait, 40)} s wachten`)
+        await new Promise((resolve) => setTimeout(resolve, Math.min(wait, 40) * 1000))
+        requestCount.value++
+        response = await route.fetch(options)
+      }
+      noteStatus(request.method(), response.status())
+      await route.fulfill({ response })
+    } catch (error) {
+      // Het venster ging dicht terwijl dit verzoek nog liep (de test sluit vensters): dan is er niemand meer om te antwoorden.
+      if (page.isClosed() || /disposed|closed/i.test(String(error))) return
+      throw error
+    }
   })
 }
 

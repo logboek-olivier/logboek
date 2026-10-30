@@ -3,7 +3,7 @@ import { clearDiagnostics, recordError, setDiagnostics } from '../errors'
 import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../crypto/keys'
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
-import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
+import { COLLECTION_PATHS, justAfter, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, BUILD, ConflictError, DOCUMENT_TIMEOUT_MS, GithubError, IntegrityError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { deleteObject, getLocal, getObject, listObjectPaths, putObject, putObjectAndLocal, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
 import { DOCUMENT_GRACE_MS, DOCUMENT_RETRY_MS, documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, isFileId, MAX_DOCUMENT_BYTES, rememberRemovedDocumentFile, removedDocumentFiles } from './documents'
@@ -346,12 +346,22 @@ export class Store {
     return this.putMany(path, [record])
   }
 
-  /** Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). */
-  async putMany<P extends CollectionPath>(path: P, records: readonly Collections[P][]): Promise<void> {
+  /**
+   * Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). Een wijziging is altijd nieuwer dan
+   * de versie die hier al staat: heeft die een tijd in de toekomst (een ander apparaat met een klok die voorloopt, of de
+   * eigen klok sprong terug), dan krijgt de wijziging een tijd net daarna. Zo gaat een bewerking of verwijdering nooit
+   * stil verloren.
+   */
+  async putMany<P extends CollectionPath>(path: P, given: readonly Collections[P][]): Promise<void> {
     this.assertUnlocked()
     // Een lokaal bestand van een nieuwere app: tot bijwerken alleen kijken, nergens wijzigen. Vóór elke wijziging
     // weigeren (ook in andere bestanden), zodat een handeling die meerdere bestanden raakt nooit half wordt opgeslagen.
     if (this.frozen.size > 0) throw new NewerSchemaError(0)
+    const here = new Map((this.collections.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
+    const records = given.map((r) => {
+      const before = here.get(r.id)
+      return before !== undefined && r.updatedAt <= before ? { ...r, updatedAt: justAfter(before) } : r
+    })
     const ids = new Set(records.map((r) => r.id))
     const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
     this.collections.set(path, [...kept, ...records])

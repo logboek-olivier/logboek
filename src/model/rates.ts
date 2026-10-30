@@ -1,5 +1,5 @@
 import type { Store } from '../storage/store'
-import type { Transaction } from './types'
+import { justAfter, type Transaction } from './types'
 
 // Wisselkoersen: ECB-referentiekoersen (vreemde valuta per 1 EUR), door deploy.yml gebouwd als public/rates.json op
 // dezelfde origin. De app haalt nooit zelf koersen van buiten (beveiligingsregel 2). Een transactie gebruikt de koers
@@ -120,12 +120,13 @@ export function finalRateFields(tx: Pick<Transaction, 'currency' | 'amount' | 'd
  */
 export async function backfillRates(store: Store, file: RatesFile | null = current): Promise<number> {
   if (!file) return 0
-  const now = new Date().toISOString()
   const changed: Transaction[] = []
   for (const tx of store.list('transactions.json.enc')) {
     if (tx.currency === 'EUR' || typeof tx.amountEur === 'number') continue
     const fields = finalRateFields(tx, file)
-    if (fields) changed.push({ ...tx, ...fields, updatedAt: now })
+    // Net na de vorige versie: een echte wijziging op een ander apparaat (dat nog niet synchroniseerde) wint altijd; de
+    // koers wordt daarna gewoon opnieuw vastgelegd.
+    if (fields) changed.push({ ...tx, ...fields, updatedAt: justAfter(tx.updatedAt) })
   }
   if (changed.length > 0) {
     await store.putMany('transactions.json.enc', changed)

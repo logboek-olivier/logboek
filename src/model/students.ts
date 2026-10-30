@@ -2,7 +2,7 @@ import type { Store } from '../storage/store'
 import { allTopics } from './curricula'
 import type { Undo } from './edit'
 import { addDays, mondayOf } from './money'
-import { newId, type Curriculum, type Student, type StudentExam, type StudentLevel, type Topic, type TopicStatus } from './types'
+import { justAfter, newId, type Curriculum, type Student, type StudentExam, type StudentLevel, type Topic, type TopicStatus } from './types'
 
 // Studenten en hun voortgang per onderwerp. Beveiligingsregel 14: alleen voornaam, cursus, niveau, voortgang en
 // examenuitslag; geen contact-, gezondheids- of identiteitsgegevens; nooit in logs of foutdetails. Na 12 maanden
@@ -157,6 +157,16 @@ export async function saveStudents(store: Store, students: readonly Student[]): 
 
 export async function setArchived(store: Store, students: readonly Student[], archivedAt: string | null): Promise<void> {
   await saveStudents(store, students.map((s) => ({ ...s, archivedAt })))
+}
+
+/**
+ * Vanzelf archiveren (12 maanden zonder activiteit), net na de vorige versie van elke student: voortgang die een ander
+ * apparaat intussen zonder verbinding vastlegde, wint altijd (dan was er activiteit en hoort hij niet in het archief).
+ */
+export async function autoArchive(store: Store, students: readonly Student[], today: string): Promise<void> {
+  if (students.length === 0) return
+  await store.putMany('students.json.enc', students.map((s) => ({ ...s, archivedAt: today, updatedAt: justAfter(s.updatedAt) })))
+  void store.sync()
 }
 
 /** Tombstone zonder persoonsgegevens: alleen id en tijden blijven in het huidige bestand staan. */
