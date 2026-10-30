@@ -49,7 +49,7 @@ export function SummaryLines({ summary }: { summary: WeekSummary }) {
  * De geldstap (wekelijks 2 minuten), ingeklapt: pas na een tik bedragen in beeld (de kaart staat op Vandaag). De stand
  * per rekening, ontvangen uitbetalingen en gestorte contanten afvinken; alles overslaan mag.
  */
-function useMoneyStep(store: Store) {
+function useMoneyStep(store: Store, enabled: boolean) {
   const demo = useIsDemo()
   const accounts = liveAccounts(useCollection(store, 'accounts.json.enc')).filter((a) => !a.closedAt)
   const balances = useCollection(store, 'balances.json.enc')
@@ -72,7 +72,7 @@ function useMoneyStep(store: Store) {
     received: openTrips.filter((x) => received.has(x.id)),
     deposited: cash.map(([c]) => c).filter((c) => deposited.has(c)),
   }
-  const available = !demo && (accounts.length > 0 || openTrips.length > 0 || cash.length > 0)
+  const available = enabled && !demo && (accounts.length > 0 || openTrips.length > 0 || cash.length > 0)
   const view = !available ? null : (
     <div className="money-step stack-sm">
       <button type="button" className="btn quiet disclosure" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -149,7 +149,9 @@ function useMoneyStep(store: Store) {
 
 function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: string; initial: WeekClosing | null; onSaved: (undo?: () => Promise<void>, message?: string) => void }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
-  const money = useMoneyStep(store)
+  // De geldstap hoort bij het afsluiten, niet bij het later bewerken van een afsluiting.
+  const money = useMoneyStep(store, initial === null)
+  const [busy, setBusy] = useState(false)
   const [rating, setRating] = useState<number | null>(initial?.rating ?? null)
   const [lesson, setLesson] = useState(initial?.lesson ?? '')
   // Eén getal: ongeveer los uitgegeven deze week (telt als variabele kosten van die week). Leeg = niet ingevuld.
@@ -160,16 +162,19 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
 
   async function save(e: FormEvent) {
     e.preventDefault()
-    if (spentInvalid || money.invalid) return
-    if (rating !== null || lesson.trim() !== '' || spentValue !== null || initial) await saveClosing(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null })
-    // De geldstap: alleen wat is ingevuld of aangevinkt; één ongedaan maken voor alles daarvan.
-    if (!isEmptyStep(money.step)) {
-      const { undo, skipped } = await applyMoneyStep(store, money.step, todayIso(), getRates())
+    if (spentInvalid || money.invalid || busy) return
+    setBusy(true)
+    try {
+      // De geldstap eerst (alleen wat is ingevuld of aangevinkt; één ongedaan maken voor alles daarvan), dan de afsluiting:
+      // zodra die er staat, is de kaart weg.
+      const result = isEmptyStep(money.step) ? null : await applyMoneyStep(store, money.step, todayIso(), getRates())
+      await saveClosing(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null })
       // Zonder koers is een uitbetaling in gemengde valuta niet op te tellen: dan zeggen we dat, zonder te boeken.
-      onSaved(undo, skipped.length > 0 ? t('weekMoney.skipped', { orgs: skipped.map((o) => organisationLabel(o)).join(', ') }) : undefined)
-      return
+      if (result) onSaved(result.undo, result.skipped.length > 0 ? t('weekMoney.skipped', { orgs: result.skipped.map((o) => organisationLabel(o)).join(', ') }) : undefined)
+      else onSaved()
+    } finally {
+      setBusy(false)
     }
-    onSaved()
   }
 
   return (
@@ -205,7 +210,7 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
         </label>
       </div>
       {money.view}
-      <button type="submit" className="btn primary" disabled={spentInvalid || money.invalid || (rating === null && lesson.trim() === '' && spentValue === null && isEmptyStep(money.step))}>
+      <button type="submit" className="btn primary" disabled={busy || spentInvalid || money.invalid || (rating === null && lesson.trim() === '' && spentValue === null && isEmptyStep(money.step))}>
         <Icon icon={CalendarCheck} />
         {t('weekClose.save')}
       </button>

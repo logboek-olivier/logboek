@@ -71,6 +71,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await shots(page, 'geldstap', lang)
       await card.getByRole('button', { name: L('weekClose.save') }).click()
       await expect(toast).toContainText(L('weekClose.saved'))
+      // Alleen de geldstap is genoeg: de week is afgesloten en de kaart is weg.
+      await expect(card).toHaveCount(0)
       await expect(toast).toHaveCount(0, { timeout: 15_000 })
 
       // Geld: de stand staat erin, het salaris is ontvangen, niets meer contant.
