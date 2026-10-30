@@ -47,3 +47,68 @@ jobs:
           retention-days: 14
       - name: Build
         run: npm run build
+
+  # Integratietest tegen de echte GitHub-API (tests/integratie): met de token van deze workflow, alleen in een tijdelijke
+  # branch van deze repo (integratie/<run>-node en -browser) met nepdata en een testsleutel; nooit logboek-data
+  # (regel 6, ook in de test zelf afgedwongen). Alleen deze job mag schrijven; de token staat alleen in de teststappen
+  # (niet bij npm ci, niet in de git-configuratie) en de branches gaan na afloop weg. Alleen bij een PR uit deze repo.
+  # De token mag ongeveer 1000 verzoeken per uur per repo doen en één run gebruikt er ongeveer 750: daarom draait er
+  # repo-breed één tegelijk, en wacht de job tot het nieuwe uur als er te weinig over is (nooit rood door de limiet).
+  integratie:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    concurrency:
+      group: integratie
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      LOGBOEK_IT_REPO: ${{ github.repository }}
+      LOGBOEK_IT_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Achtergebleven tijdelijke branches opruimen en de limiet afwachten
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          api() { curl -sS -H "Authorization: Bearer $LOGBOEK_IT_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+          # Er draait repo-breed één integratietest tegelijk: elke integratie/*-branch is van een afgebroken run.
+          refs=$(api "https://api.github.com/repos/$LOGBOEK_IT_REPO/git/matching-refs/heads/integratie/" | python3 -c "import json,sys; print(' '.join(r['ref'] for r in json.load(sys.stdin)))" || true)
+          for ref in $refs; do
+            api -o /dev/null -X DELETE "https://api.github.com/repos/$LOGBOEK_IT_REPO/git/$ref" || true
+          done
+          # /rate_limit telt zelf niet mee.
+          limit=$(api https://api.github.com/rate_limit | python3 -c "import json,sys; c=json.load(sys.stdin)['resources']['core']; print(c['remaining'], c['reset'])" || echo "1000 0")
+          read -r remaining reset <<< "$limit"
+          echo "Nog $remaining verzoeken dit uur"
+          if [ "$remaining" -lt 850 ]; then
+            wait=$(( reset - $(date +%s) + 15 ))
+            if [ "$wait" -gt 0 ] && [ "$wait" -le 3700 ]; then echo "Wachten tot het nieuwe uur: $wait s"; sleep "$wait"; fi
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Playwright-browsers installeren
+        run: npx playwright install --with-deps chromium
+      - name: Integratietest in Node (echte API)
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx vitest run tests/integratie
+      - name: Integratietest in de browser (echte API)
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx playwright test -c playwright.integratie.config.ts
+      - name: Tijdelijke branches opruimen
+        if: always()
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for name in node browser; do
+            curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $LOGBOEK_IT_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$LOGBOEK_IT_REPO/git/refs/heads/integratie/$LOGBOEK_IT_RUN-$name" || true
+          done

@@ -1,6 +1,9 @@
 import { APP_VERSION, COMMIT } from '../build-info'
 import { fromBase64, toBase64, type Bytes } from '../crypto/encrypt'
 import { deviceId } from './device'
+import { gitBlobSha, isGitSha, matchesSha, recordIntegrity } from './integrity'
+import { newerBuildStarted } from './versions'
+import { NewerSchemaError } from '../model/schema'
 
 // Enige netwerkbestemming van de app: api.github.com (beveiligingsregel 2).
 // Alles wat hier binnenkomt is al versleuteld; deze laag ziet alleen bytes.
@@ -14,7 +17,7 @@ const REQUEST_TIMEOUT_MS = 60_000
 export const DOCUMENT_TIMEOUT_MS = 5 * 60_000
 
 /** Soort GitHub-fout; de app toont hiervoor een vertaalde melding (zie describeError). */
-export type GithubErrorCode = 'auth' | 'conflict' | 'rateLimit' | 'repoNotFound' | 'read' | 'write' | 'unexpected'
+export type GithubErrorCode = 'auth' | 'conflict' | 'rateLimit' | 'repoNotFound' | 'read' | 'write' | 'integrity' | 'unexpected'
 
 export class GithubError extends Error {
   constructor(
@@ -41,6 +44,25 @@ export class ConflictError extends GithubError {
     super('Bestand is ondertussen gewijzigd', status, 'conflict')
     this.name = 'ConflictError'
   }
+}
+
+/**
+ * GitHub (of iets daartussen) gaf bytes die niet bij de sha horen, ook na opnieuw ophalen via de blob-API; of GitHub
+ * bewaarde bij schrijven iets anders dan de app stuurde. Niets aan dit antwoord is te vertrouwen; de sync stopt.
+ */
+export class IntegrityError extends GithubError {
+  constructor(phase: 'lezen' | 'schrijven') {
+    super(phase === 'lezen' ? 'Inhoud klopt niet met de sha' : 'GitHub bewaarde iets anders dan verstuurd', 0, 'integrity')
+    this.name = 'IntegrityError'
+  }
+}
+
+/** Een commit die een bestand raakte (voor het bewijs per bestand in Meer → Opslag). */
+export interface FileCommit {
+  sha: string
+  /** ISO-tijd van de commit. */
+  at: string | null
+  message: string
 }
 
 /** Geen verbinding (fetch zelf faalde). */
@@ -152,10 +174,11 @@ export class GithubClient {
     const expiration = parseExpirationHeader(response.headers.get(EXPIRATION_HEADER))
     if (expiration) this.tokenExpiresAt = expiration
     if (response.status === 401) throw new AuthError(401)
-    if (response.status === 403) {
-      // Een 403 met uitgeputte rate limit is geen tokenfout.
-      if (response.headers.get('x-ratelimit-remaining') === '0') {
-        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', 403, 'rateLimit')
+    if (response.status === 403 || response.status === 429) {
+      // Een uitgeputte of "secundaire" limiet (te veel verzoeken kort na elkaar) is geen tokenfout: anders vraagt
+      // herstellen om een nieuwe token die niets oplost.
+      if (response.status === 429 || response.headers.get('x-ratelimit-remaining') === '0' || response.headers.get('retry-after') !== null || (await mentionsRateLimit(response))) {
+        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', response.status, 'rateLimit')
       }
       throw new AuthError(403)
     }
@@ -188,17 +211,40 @@ export class GithubClient {
     return { expiresAt: this.tokenExpiresAt }
   }
 
-  /** Haalt een bestand op; null als het niet bestaat. Een repo zonder commits geeft 404 of 409: ook "bestaat niet". */
+  /**
+   * Haalt een bestand op; null als het niet bestaat. Een repo zonder commits geeft 404 of 409: ook "bestaat niet".
+   * De inhoud wordt gecontroleerd tegen de sha (git-blob-sha); klopt die niet, dan opnieuw via de blob-API, die per sha
+   * onveranderlijk is. Klopt het dan nog niet, dan IntegrityError: nooit een antwoord gebruiken dat niet bij zijn sha hoort.
+   */
   async getFile(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<RemoteFile | null> {
-    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {}, timeoutMs)
+    return this.readContents(path, null, timeoutMs)
+  }
+
+  /** Het bestand zoals het was bij een commit (voor het bewijs in Meer → Opslag); null als het daar niet bestond. */
+  async getFileAt(path: string, ref: string): Promise<RemoteFile | null> {
+    return this.readContents(path, ref, REQUEST_TIMEOUT_MS)
+  }
+
+  private async readContents(path: string, ref: string | null, timeoutMs: number): Promise<RemoteFile | null> {
+    const query = ref ? `?ref=${encodeURIComponent(ref)}` : ''
+    const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}${query}`, {}, timeoutMs)
     if (response.status === 404 || response.status === 409) return null
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
     const body = await this.json(response)
     if (typeof body.sha !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
     const base64 = typeof body.content === 'string' ? body.content.replace(/\s/g, '') : ''
-    if (base64.length > 0) return { sha: body.sha, content: this.decode(base64, response.status) }
+    if (base64.length > 0) {
+      const content = this.decode(base64, response.status)
+      if (await matchesSha(content, body.sha)) return { sha: body.sha, content }
+      // De contents-API gaf iets anders dan bij de sha hoort: opnieuw via de blob-API.
+      const blob = await this.getBlob(body.sha, timeoutMs, false)
+      const repaired = await matchesSha(blob, body.sha)
+      recordIntegrity({ at: new Date().toISOString(), path, phase: 'lezen', repaired })
+      if (!repaired) throw new IntegrityError('lezen')
+      return { sha: body.sha, content: blob }
+    }
     // Boven 1 MB geeft de contents-API geen inhoud; dan via de blob-API.
-    return { sha: body.sha, content: await this.getBlob(body.sha, timeoutMs) }
+    return { sha: body.sha, content: await this.getBlob(body.sha, timeoutMs, true, path) }
   }
 
   /** Alleen de SHA van een bestand (zonder de inhoud van een groot bestand op te halen); null als het niet bestaat. */
@@ -211,12 +257,46 @@ export class GithubClient {
     return body.sha
   }
 
-  private async getBlob(sha: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Bytes> {
+  /** De inhoud bij een sha (onveranderlijk); met `verify` gecontroleerd tegen die sha. */
+  private async getBlob(sha: string, timeoutMs = REQUEST_TIMEOUT_MS, verify = true, path = ''): Promise<Bytes> {
     const response = await this.request(`/repos/${this.repo}/git/blobs/${sha}`, {}, timeoutMs)
     if (!response.ok) throw new GithubError('Lezen mislukt', response.status, 'read')
     const body = await this.json(response)
     if (typeof body.content !== 'string') throw new GithubError('Onverwacht antwoord', response.status)
-    return this.decode(body.content.replace(/\s/g, ''), response.status)
+    const content = this.decode(body.content.replace(/\s/g, ''), response.status)
+    if (verify && !(await matchesSha(content, sha))) {
+      recordIntegrity({ at: new Date().toISOString(), path, phase: 'lezen', repaired: false })
+      throw new IntegrityError('lezen')
+    }
+    return content
+  }
+
+  /** De inhoud bij een blob-sha (onveranderlijk), gecontroleerd tegen die sha: teruglezen wat net geschreven is. */
+  async getBlobAt(sha: string): Promise<Bytes> {
+    return this.getBlob(sha, REQUEST_TIMEOUT_MS, true)
+  }
+
+  /**
+   * De laatste commits die dit bestand raakten (nieuwste eerst), met tijd en commitbericht; voor het bewijs per bestand.
+   * Een fout geeft een lege lijst: het bewijs is een hulpmiddel en houdt niets tegen.
+   */
+  async fileCommits(path: string, count = 5): Promise<FileCommit[]> {
+    const response = await this.request(`/repos/${this.repo}/commits?path=${encodeURIComponent(path)}&per_page=${count}`)
+    if (!response.ok) return []
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      return []
+    }
+    if (!Array.isArray(body)) return []
+    const out: FileCommit[] = []
+    for (const item of body as unknown[]) {
+      if (!isRecord(item) || typeof item.sha !== 'string' || !isRecord(item.commit) || typeof item.commit.message !== 'string') continue
+      const who = isRecord(item.commit.committer) ? item.commit.committer : isRecord(item.commit.author) ? item.commit.author : null
+      out.push({ sha: item.sha, at: who && typeof who.date === 'string' ? who.date : null, message: item.commit.message })
+    }
+    return out.slice(0, count)
   }
 
   /**
@@ -242,6 +322,8 @@ export class GithubClient {
    * Bij een conflict (bestand ondertussen gewijzigd of ontstaan) volgt ConflictError.
    */
   async putFile(path: string, content: Bytes, sha: string | null, timeoutMs = REQUEST_TIMEOUT_MS): Promise<string> {
+    assertCurrentBuild()
+    const expected = await gitBlobSha(content)
     const response = await this.request(
       `/repos/${this.repo}/contents/${encodePath(path)}`,
       {
@@ -260,6 +342,12 @@ export class GithubClient {
     if (!isRecord(body.content) || typeof body.content.sha !== 'string') {
       throw new GithubError('Onverwacht antwoord', response.status)
     }
+    // GitHub noemt de nieuwe versie naar de git-blob-sha van wat hij bewaarde: die moet gelijk zijn aan wat de app
+    // stuurde (en vlak daarvoor weer ontsleutelde). Anders bewaarde GitHub iets anders.
+    if (isGitSha(body.content.sha) && body.content.sha !== expected) {
+      recordIntegrity({ at: new Date().toISOString(), path, phase: 'schrijven', repaired: false })
+      throw new IntegrityError('schrijven')
+    }
     return body.content.sha
   }
 
@@ -269,6 +357,7 @@ export class GithubClient {
    * houdt de versleutelde oude versie.
    */
   async deleteFile(path: string, sha: string): Promise<void> {
+    assertCurrentBuild()
     const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {
       method: 'DELETE',
       body: JSON.stringify({ message: commitMessage(), sha }),
@@ -277,6 +366,23 @@ export class GithubClient {
     if (response.status === 409 || response.status === 422) throw new ConflictError(response.status)
     if (!response.ok) throw new GithubError('Schrijven mislukt', response.status, 'write')
   }
+}
+
+/** Noemt het antwoord een limiet ("secondary rate limit", "rate limit exceeded")? Zonder inhoud te loggen. */
+async function mentionsRateLimit(response: Response): Promise<boolean> {
+  try {
+    return /rate limit/i.test(await response.clone().text())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Een venster waarna een nieuwere versie van de app startte, schrijft niets meer naar GitHub (src/storage/versions.ts):
+ * vlak voor elke schrijfactie gecontroleerd, ook midden in een ronde (een venster dat bevroor en hervat).
+ */
+function assertCurrentBuild(): void {
+  if (newerBuildStarted()) throw new NewerSchemaError(0)
 }
 
 function encodePath(path: string): string {

@@ -1,4 +1,6 @@
 import { COLLECTION_PATHS, type CollectionPath } from '../model/types'
+import type { FileEvidence, VersionEvidence } from './evidence'
+import type { IntegrityEvent } from './integrity'
 
 // Logboek van de opslag op dit apparaat, voor Meer → Opslag: per bestand de laatste geslaagde sync en de uitkomst van
 // de laatste controle. Alleen paden, aantallen, tijden en de soort uitkomst; nooit inhoud (regel 9). In localStorage,
@@ -38,6 +40,10 @@ export interface StorageLog {
   /** Per bestand de laatste geslaagde sync (ISO-tijd). */
   synced: Partial<Record<CollectionPath, string>>
   check: StorageCheck | null
+  /** Bewijs per onleesbaar bestand (src/storage/evidence.ts): sha's, tijden, versies, apparaat-id's, groottes, geen inhoud. */
+  evidence?: FileEvidence[]
+  /** Antwoorden van GitHub die niet bij hun sha hoorden (src/storage/integrity.ts), de laatste twintig. */
+  integrity?: IntegrityEvent[]
 }
 
 export function checkHasProblem(check: StorageCheck): boolean {
@@ -62,10 +68,55 @@ export function readStorageLog(dbName: string): StorageLog {
         if (typeof at === 'string') synced[path] = at
       }
     }
-    return { synced, check: parseCheck(r.check) }
+    // Bewijs blijft een week; ouder valt bij het lezen weg (ook als er sindsdien niets nieuws bijkwam).
+    const weekAgo = Date.now() - EVIDENCE_KEEP_MS
+    const evidence = Array.isArray(r.evidence)
+      ? r.evidence.map(parseEvidence).filter((e): e is FileEvidence => e !== null && !(Date.parse(e.at) < weekAgo))
+      : []
+    const integrity = Array.isArray(r.integrity) ? r.integrity.map(parseIntegrity).filter((e): e is IntegrityEvent => e !== null) : []
+    return { synced, check: parseCheck(r.check), ...(evidence.length > 0 ? { evidence } : {}), ...(integrity.length > 0 ? { integrity } : {}) }
   } catch {
     return { synced: {}, check: null }
   }
+}
+
+const short = (v: unknown, max: number) => (typeof v === 'string' && v.length <= max ? v : null)
+const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null)
+
+function parseVersion(value: unknown): VersionEvidence | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as Record<string, unknown>
+  const verdict = short(v.verdict, 60)
+  if (verdict === null) return null
+  return {
+    commit: short(v.commit, 12) ?? '',
+    at: short(v.at, 40),
+    version: short(v.version, 80),
+    device: short(v.device, 16),
+    blob: short(v.blob, 40),
+    size: count(v.size),
+    firstByte: count(v.firstByte),
+    verdict: verdict as VersionEvidence['verdict'],
+  }
+}
+
+/** Zo lang blijft het bewijs per onleesbaar bestand bewaard. */
+export const EVIDENCE_KEEP_MS = 7 * 24 * 3_600_000
+
+function parseEvidence(value: unknown): FileEvidence | null {
+  if (typeof value !== 'object' || value === null) return null
+  const e = value as Record<string, unknown>
+  const path = COLLECTION_PATHS.find((p) => p === e.path)
+  if (!path || typeof e.at !== 'string') return null
+  const commits = Array.isArray(e.commits) ? e.commits.map(parseVersion).filter((c): c is VersionEvidence => c !== null).slice(0, 5) : []
+  return { path, at: e.at, current: parseVersion(e.current), commits }
+}
+
+function parseIntegrity(value: unknown): IntegrityEvent | null {
+  if (typeof value !== 'object' || value === null) return null
+  const e = value as Record<string, unknown>
+  if (typeof e.at !== 'string' || typeof e.path !== 'string' || (e.phase !== 'lezen' && e.phase !== 'schrijven')) return null
+  return { at: e.at, path: e.path.slice(0, 80), phase: e.phase, repaired: e.repaired === true }
 }
 
 function parseCheck(value: unknown): StorageCheck | null {

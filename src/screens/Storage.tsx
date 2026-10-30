@@ -1,6 +1,7 @@
-import { CircleCheck, CloudOff, Download, FileWarning, ShieldCheck, TriangleAlert, Upload } from 'lucide-react'
+import { CircleCheck, CloudOff, Download, FileSearch, FileWarning, ShieldCheck, TriangleAlert, Upload, Wrench } from 'lucide-react'
 import { useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import type { Notify } from '../components/EditSheets'
+import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
@@ -13,9 +14,10 @@ import { describeError } from '../session'
 import { shareOrDownload } from '../share'
 import { ExportSection } from '../components/ExportSection'
 import { applyRestore, backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
+import type { FileEvidence, Verdict, VersionEvidence } from '../storage/evidence'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
 import { deviceId } from '../storage/device'
-import { describeStatus, type Store } from '../storage/store'
+import { describeStatus, type RepairResult, type Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 
 // Meer → Opslag: per bestand de laatste sync, het aantal records hier en op GitHub en of het leesbaar is; "Controleer
@@ -68,7 +70,9 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const check = log.check
-  const unreadableNow = status.kind === 'error' && status.code === 'unreadable' ? (status.paths ?? []) : []
+  // Wat de laatste sync op GitHub onleesbaar vond, ook als de ronde om een andere reden stopte (dan blijft "Alles
+  // herstellen" staan).
+  const unreadableNow = status.kind === 'demo' ? [] : store.unreadableFiles().map((f) => f.path)
 
   async function runCheck() {
     setBusy(true)
@@ -84,6 +88,34 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
     }
   }
 
+  const [repairing, setRepairing] = useState(false)
+  const [repairResult, setRepairResult] = useState<RepairResult[] | null>(null)
+
+  async function repairAll() {
+    setRepairing(true)
+    setRepairResult(null)
+    try {
+      setRepairResult(await store.repairAll())
+    } catch (error) {
+      recordError(error)
+      setFailed(true)
+    } finally {
+      setRepairing(false)
+    }
+  }
+
+  async function fetchEvidence() {
+    setBusy(true)
+    try {
+      await store.gatherEvidence()
+    } catch (error) {
+      recordError(error)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const evidence = new Map<CollectionPath, FileEvidence>((log.evidence ?? []).map((e) => [e.path, e]))
   const byPath = new Map<CollectionPath, FileCheck>((check?.files ?? []).map((f) => [f.path, f]))
   return (
     <section className="stack-lg">
@@ -129,6 +161,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
                     {synced ? t('storage.syncedAt', { when: formatMoment(synced) }) : t('storage.notSynced')}
                   </span>
                   {file?.writer && <span className="muted small storage-writer">{writerLine(file.writer)}</span>}
+                  {state === 'onleesbaar' && evidence.has(path) && <EvidenceList evidence={evidence.get(path)!} />}
                 </span>
                 {state && (
                   <span className={`storage-state${good ? ' good' : ' bad'}`}>
@@ -140,7 +173,38 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
             )
           })}
         </ul>
-        <button type="button" className="btn primary" disabled={busy} onClick={() => void runCheck()}>
+        {unreadableNow.length > 0 && (
+          <div className="stack storage-repair">
+            <p className="muted small">{t('storage.repairAllHint')}</p>
+            <button type="button" className="btn primary" disabled={repairing || busy} onClick={() => void repairAll()}>
+              <Icon icon={Wrench} />
+              {repairing ? t('storage.repairing') : t('storage.repairAll')}
+            </button>
+            <button type="button" className="btn link" disabled={busy || repairing} onClick={() => void fetchEvidence()}>
+              <Icon icon={FileSearch} />
+              {t('storage.evidenceFetch')}
+            </button>
+            <CopyErrorDetails />
+          </div>
+        )}
+        {repairResult && (
+          <p className={`notice storage-repaired${repairResult.every((r) => r.ok) ? '' : ' storage-problem'}`} role="status">
+            <Icon icon={repairResult.every((r) => r.ok) ? CircleCheck : TriangleAlert} />
+            {repairResult.length === 0
+              ? t('storage.repairNothing')
+              : repairResult.every((r) => r.ok)
+                ? t('storage.repairAllDone', { n: repairResult.length })
+                : t('storage.repairAllPartial', { paths: repairResult.filter((r) => !r.ok).map((r) => t(FILE_NAME[r.path])).join(', ') })}
+          </p>
+        )}
+        {repairResult
+          ?.filter((r) => r.overwrittenBy)
+          .map((r) => (
+            <p key={r.path} className="muted small storage-overwritten">
+              {t('storage.repairOverwritten', { file: t(FILE_NAME[r.path]), who: writerLine(r.overwrittenBy!) })}
+            </p>
+          ))}
+        <button type="button" className={`btn${unreadableNow.length > 0 ? '' : ' primary'}`} disabled={busy || repairing} onClick={() => void runCheck()}>
           <Icon icon={ShieldCheck} />
           {busy ? t('storage.checking') : t('storage.checkNow')}
         </button>
@@ -159,6 +223,57 @@ function writerLine(writer: NonNullable<FileCheck['writer']>): string {
   if (!writer.version && !writer.device) return t('storage.writerOld')
   const who = writer.device === null ? t('storage.writerUnknownDevice') : writer.device === deviceId() ? t('storage.writerThisDevice') : t('storage.writerOtherDevice', { id: writer.device })
   return t('storage.writer', { who, version: writer.version ?? '?' })
+}
+
+const VERDICT_LABEL: Record<string, MessageKey> = {
+  leesbaar: 'storage.verdict.readable',
+  leeg: 'storage.verdict.empty',
+  formaat: 'storage.verdict.format',
+  sleutel: 'storage.verdict.key',
+  nieuwer: 'storage.verdict.newer',
+  weg: 'storage.verdict.gone',
+  integriteit: 'storage.verdict.integrity',
+}
+
+function verdictLabel(verdict: Verdict): string {
+  if (verdict.startsWith('ander-pad:')) {
+    const other = COLLECTION_PATHS.find((p) => p === verdict.slice('ander-pad:'.length))
+    return t('storage.verdict.otherPath', { file: other ? t(FILE_NAME[other]) : verdict.slice('ander-pad:'.length) })
+  }
+  if (verdict.startsWith('ongeldig:')) return t('storage.verdict.invalid', { why: verdict.slice('ongeldig:'.length) })
+  return t(VERDICT_LABEL[verdict] ?? 'storage.verdict.unknown')
+}
+
+/**
+ * Het bewijs van één onleesbaar bestand: de versie op GitHub en de laatste commits, met tijd, versie, apparaat,
+ * blob-sha, grootte, eerste byte en wat de app ermee kan. Geen inhoud.
+ */
+function EvidenceList({ evidence }: { evidence: FileEvidence }) {
+  const line = (v: VersionEvidence) => {
+    const who = v.device === null ? null : v.device === deviceId() ? t('storage.writerThisDevice') : t('storage.writerOtherDevice', { id: v.device })
+    return [
+      v.commit ? (v.at ? formatMoment(v.at) : v.commit) : t('storage.evidenceNow'),
+      v.version ? `v${v.version}` : null,
+      who,
+      v.blob ? `blob ${v.blob}` : null,
+      v.size !== null ? `${formatNumber(v.size)} B` : null,
+      v.firstByte !== null ? t('storage.evidenceByte', { n: v.firstByte }) : null,
+      verdictLabel(v.verdict),
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  }
+  return (
+    <span className="storage-evidence small">
+      <span className="muted small">{t('storage.evidence', { when: formatMoment(evidence.at) })}</span>
+      <ul>
+        {evidence.current && <li>{line(evidence.current)}</li>}
+        {evidence.commits.map((c, i) => (
+          <li key={`${c.commit}-${i}`}>{line(c)}</li>
+        ))}
+      </ul>
+    </span>
+  )
 }
 
 function Backup({ store, notify }: { store: Store; notify: Notify }) {

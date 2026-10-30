@@ -34,9 +34,10 @@ test('overlappende trips samenvoegen, tikfout in de naam herstellen, trip met da
   await createNewLogbook(page)
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
-  // Twee trips op dezelfde dagen, zoals "Weel 44" en een tweede trip in oktober.
-  await newTrip(page, 'Weel 44', iso(0), 7, '', 'Nepanna')
-  await newTrip(page, 'Nepweek BVI', iso(3), 7)
+  // Twee trips op dezelfde dagen, zoals "Weel 44" en een tweede trip in oktober. De overlap valt op vandaag, zodat hij
+  // ook aan het eind van de maand in het zichtbare raster van de agenda staat.
+  await newTrip(page, 'Weel 44', iso(-1), 7, '', 'Nepanna')
+  await newTrip(page, 'Nepweek BVI', iso(0), 7)
   await page.getByRole('navigation').getByRole('button', { name: 'Agenda', exact: true }).click()
   const notice = page.locator('.overlap-notice')
   await expect(notice).toContainText('Weel 44 en Nepweek BVI liggen op dezelfde dagen')
