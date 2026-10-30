@@ -407,7 +407,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     const newClaim = claims.find((c) => (c as { note?: string }).note === 'Nepdeclaratie upgrade')!
     expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'kosten', amount: 12, claimId: newClaim.id })]))
     const reviews = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
-    expect(reviews.find((r) => r.id === 'week:2026-W43')).toMatchObject({ spent: { amount: 85, currency: 'EUR' } })
+    // Het voorbeeld van de vorige release komt ongeschonden over (alleen als die release het bestand al kende).
+    if (data.paths.includes('weekreviews.json.enc')) expect(reviews.find((r) => r.id === 'week:2026-W43')).toMatchObject({ spent: { amount: 85, currency: 'EUR' } })
   } finally {
     await server.close()
   }
