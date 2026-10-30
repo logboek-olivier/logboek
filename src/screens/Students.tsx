@@ -31,6 +31,7 @@ import {
 import { STUDENT_LEVELS, todayIso, type Curriculum, type Student, type StudentLevel, type Topic, type TopicStatus, type Trip } from '../model/types'
 import { addParticipant, studentWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
+import { useBack } from '../back'
 
 // Studenten en voortgang. Eén tik op een vinkvak = volgende status. Examenkritische onderwerpen die nog op
 // "nieuw" staan, staan bovenaan. Snel afvinken voor een hele groep. Na 12 maanden automatisch archiveren.
@@ -75,6 +76,7 @@ export function StudentsView({
   }, [view.kind, onDetail])
 
   useAutoArchive(store, notify)
+  useBack(view.kind !== 'list', () => setView({ kind: 'list' }))
 
   if (view.kind === 'student') {
     const student = all.find((s) => s.id === view.id && s.deletedAt === null)

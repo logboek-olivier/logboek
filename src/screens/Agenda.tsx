@@ -27,6 +27,7 @@ import { useDueItems } from './Deadlines'
 import type { AddInit } from './QuickAdd'
 import { Season } from './Season'
 import { ErrorLine } from './Setup'
+import { useBack } from '../back'
 
 // Agenda: het overzicht van het seizoen. Maandraster met een kleur per dagsoort (optie gestreept), een balk met de
 // tripnaam over de dagen van elke trip, nm klein in het vakje en een stip voor termijnen. Vegen of de pijlen voor de
@@ -73,6 +74,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
     return Array.from({ length: 7 }, (_, i) => names.format(new Date(2026, 0, 5 + i)))
   }, [lang])
 
+  useBack(view !== 'maand', () => setView('maand'))
   if (view === 'seizoen') return <Season store={store} onBack={() => setView('maand')} />
   if (view === 'delen') return <AgendaShare store={store} onBack={() => setView('maand')} />
 

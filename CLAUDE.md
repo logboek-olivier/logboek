@@ -413,6 +413,8 @@ Onderste balk: **Vandaag · Deze trip · + · Agenda · Meer**, vijf gelijke vak
 9. **Opslag** (onder Meer): overzicht per bestand, "Controleer nu", "Back-up downloaden", "Back-up terugzetten" en "Exporteren" (zie Opslag en synchronisatie).
 10. **Instellingen** (onder Meer): vergrendelen, wachtzin wijzigen, herstelcode tonen (na wachtzin), vingerafdruk aan/uit, token vervangen, jaardoel, teller per organisatie (beginnummers), salaris per organisatie, herinnering (tijd kiezen, standaard 20:00, "Zet in agenda" maakt lokaal een `.ics` met "Logboek: log je dag" en een link naar Toevoegen → Dag, elke dag of alleen op de werkdagen uit de agenda tot het einde van de planning; zwevende tijd, dus overal plaatselijke tijd; vaste UID's, opnieuw toevoegen werkt bij; `src/model/daily.ts`), taal (Nederlands/Engels), demomodus (zie Demomodus), Over (versie uit `package.json`, bouwdatum = commitdatum, korte commit-hash, kaartbronnen met de OpenStreetMap-naamsvermelding, de weerbron Open-Meteo).
 
+**Terugknop** (`src/back.ts`): de terugknop of het terugveeggebaar van Android gaat altijd één stap terug in de app: eerst het bovenste onderblad, dan een scherm in een scherm (een cursus, een planning, "Toon aan studenten", een student, het seizoen, de stappen van de eerste keer), dan het vorige scherm of tabblad. Alleen op Vandaag zonder open blad (en op het ontgrendelscherm) staat eerst "Nog een keer terug om te sluiten"; pas nog een keer terug verlaat de app, en een tik zet de bescherming terug. Elke open stap heeft één eigen item in de geschiedenis, alleen toegevoegd bij het openen en nooit als antwoord op terug (Chrome slaat bij de terugknop items over die zonder tik ertussen zijn toegevoegd); sluiten in de app zelf (Opslaan, het kruisje, een tabblad) haalt het item weer weg, zodat terug nooit niets doet. Getest met de geschiedenis-API op 360 px (`tests/e2e/terugknop.spec.ts`).
+
 Bij elke fout staat een knop **Kopieer foutdetails** (`src/errors.ts`): app-versie, scherm, foutcode en geschoonde stacktrace, zonder inhoud (regel 9). Olivier plakt die in een cloud-sessie. Niet bij een verkeerd getypte wachtzin of herstelcode.
 
 Geen onboarding, geen tutorial, geen bevestigingsdialogen behalve bij exporteren. **Eerst bekijken, dan bewerken** voor alles (trips, dagen, agendadagen, boten, plaatsen, inkomsten, uitgaven, termijnen, deelnemers; `src/components/Views.tsx`): tikken opent een leesweergave; bewerken gaat via het potlood rechtsboven (`Sheet` met `onEdit`). Het bewerkscherm heeft alle velden en onderaan "Verwijderen", zonder bevestigingsvraag, daarna 10 seconden "Verwijderd · Ongedaan maken" (de melding staat bovenaan zolang er een blad open is, zodat hij geen knoppen bedekt). Zo verandert er nooit iets per ongeluk. Ongedaan maken zet de vorige versie terug met een nieuwe `updatedAt`, zodat die bij de sync wint. Een trip is volledig te bewerken (ook de naam); een dag kan naar een andere trip. Een trip verwijderen vraagt wat er met zijn gegevens gebeurt (zie Trip verwijderen). Boten (Meer → Boten): verwijderen (de naam gaat van de trips en dagen af) of samenvoegen met een andere boot (trips en dagen gaan mee naar de gekozen boot). Plaatsen: zie Pinregels. Deelnemers: tik op een deelnemer in Deze trip of het tripoverzicht (met een cursus "Checklist openen"). Alles werkt op 360 px breed, bedienbaar met één duim.
@@ -451,6 +453,7 @@ logboek/
     demo/            data.ts (voorbeelddata voor de demomodus)
     demo.ts          demomodus: aparte demo-database, nooit netwerk naar GitHub (zie Demomodus)
     lazy.ts          schermen, kaarten en bladen pas laden bij openen
+    back.ts          terugknop van Android: één stap terug in de app, nooit onverwacht sluiten
     navigation.ts    naar een ander scherm springen (de checklist van een student vanuit het tripoverzicht)
     splash.css       opstartscherm (anker) in index.html
     session.ts       ontgrendelen, vergrendelen, sessiesleutel (regel 10), meta terugzetten op GitHub
@@ -466,7 +469,7 @@ logboek/
                      boten, plaatsen, sjablonen, afsluiten, bewerken, aanvullen, diagnose, bekijken, salaris, studentenarchief, vandaag (ook: opent binnen 2 seconden), demo, delen,
                      opslag, verwijderen, pins, snelle trip, teller, statistieken,
                      agenda, agenda-planning, agenda-links, onbeschikbaar, fooi per persoon, kaart per vaargebied, kaartgebaren, meten, kaarten offline, herinnering, exporteren, weekafsluiting, jaaroverzicht, notities, weer, doelen, kluis, carrière, rekeningen, bewijs,
-                     taal, navigatie, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
+                     taal, navigatie, terugknop, toevoegen, weken, cursussen, studenten, planning, koersen, onleesbaar bestand,
                      schermafbeeldingen 360/412 px licht/donker, Nederlands en Engels)
     integratie/      integratietest tegen de echte GitHub-API in een tijdelijke branch (alleen in CI, job integratie)
     fixtures/        alleen gegenereerde nepdata (npm run fixtures)

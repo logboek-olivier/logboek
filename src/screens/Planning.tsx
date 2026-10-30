@@ -46,6 +46,7 @@ import { activeStudents, saveStudents } from '../model/students'
 import { dayCountOf, planWeek, weekView } from '../model/weeks'
 import { DAY_SLOTS, STUDENT_LEVELS, todayIso, type Curriculum, type DaySlot, type PlanBlock, type PlanGroup, type Student, type Trip, type WeekPlan } from '../model/types'
 import type { Store } from '../storage/store'
+import { useBack } from '../back'
 
 // Weekplanning: wizard van drie schermen (dagen → groepen → concept), bewerken met tikken, tonen aan studenten
 // (alleen de planning, volledig scherm), delen als tekst of als PDF via de printfunctie. Exporttaal los van de app-taal.
@@ -77,6 +78,7 @@ export function PlansView({
   useEffect(() => {
     onDetail?.(view.kind !== 'list')
   }, [view.kind, onDetail])
+  useBack(view.kind !== 'list', () => setView({ kind: 'list' }))
 
   if (view.kind === 'wizard') {
     return (
@@ -381,6 +383,7 @@ function PlanView({
     if (printRequest > 0) window.print()
   }, [printRequest])
 
+  useBack(presenting !== null, () => setPresenting(null))
   if (presenting) return <Presentation plan={plan} curricula={curricula} lang={presenting} onClose={() => setPresenting(null)} />
 
   const block = editingBlock ? findBlock(plan, editingBlock) : null

@@ -6,6 +6,7 @@ import { isUserMistake, lastError } from '../errors'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } from '../session'
 import { t } from '../i18n'
+import { useBack } from '../back'
 
 // Eerste keer op een apparaat: nieuw logboek of bestaand logboek koppelen.
 
@@ -158,6 +159,8 @@ export function Screen({
   onBack?: () => void
   children: React.ReactNode
 }) {
+  // De terugknop van Android gaat een stap terug, zoals de knop "Terug" bovenaan.
+  useBack(onBack !== undefined, () => onBack?.())
   return (
     <main className="app">
       {onBack ? (

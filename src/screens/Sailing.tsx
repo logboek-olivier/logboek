@@ -28,6 +28,7 @@ import { SailingExport } from './SailingExport'
 import { boatList, uncheckedBoats } from '../model/boats'
 import { currentSettings } from '../model/settings'
 import { t } from '../i18n'
+import { useBack } from '../back'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
@@ -87,6 +88,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
     }
   }
 
+  useBack(exporting, () => setExporting(false))
   if (exporting) return <SailingExport store={store} onBack={() => setExporting(false)} />
 
   if (checking && unchecked.length > 0) {
