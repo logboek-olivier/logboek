@@ -165,6 +165,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
   out.receivable.sort((a, b) => tripEnd(a.trip, legs).localeCompare(tripEnd(b.trip, legs)))
   // Declaraties: met een bedrag, op die dag al gedaan en nog niet terugbetaald.
   for (const c of active(input.claims ?? [])) {
+    if (c.status === 'terugbetaald' && !c.repaid) continue
     if (c.amount === undefined || c.currency === undefined || c.amount <= 0 || c.date > date) continue
     if (c.repaid && c.repaid.date <= date) continue
     out.claims.push(c)

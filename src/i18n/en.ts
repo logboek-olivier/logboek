@@ -1808,4 +1808,8 @@ export const en: Messages = {
   'position.claimOf': (p) => `Claim ${p.date}`,
   'key.file.claims': 'Claims',
   'storage.file.claims': 'Claims',
+  'claims.receiptTitle': (p) => `Receipt ${p.date}`,
+  'claims.pdfReceipt': 'Receipt as PDF',
+  'claims.receiptGone': 'The receipt is no longer in the vault.',
+  'trip.part.claims': (p) => `${p.n} ${p.n === 1 ? 'claim' : 'claims'}`,
 }

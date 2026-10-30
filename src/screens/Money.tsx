@@ -7,6 +7,7 @@ import { SalaryOutlook } from '../components/SalaryOutlook'
 import { MoneyPathSection } from '../components/MoneyPath'
 import { ForecastSection, PositionSection } from '../components/Position'
 import { CostsSection } from '../components/Costs'
+import { ClaimsSection } from '../components/Claims'
 import { TaxYearSection } from '../components/TaxYear'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
@@ -70,6 +71,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
       <PositionSection store={store} notify={notify} />
       <ForecastSection store={store} />
       <CostsSection store={store} notify={notify} />
+      <ClaimsSection store={store} notify={notify} />
       {live.length === 0 && <MoneyPathSection store={store} notify={notify} />}
       {live.length === 0 && <SalaryOutlook store={store} />}
       {live.length > 0 && (

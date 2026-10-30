@@ -6,9 +6,10 @@ import { scrubbedDocument } from '../model/documents'
 import type { Undo } from '../model/edit'
 import { NewerSchemaError } from '../model/schema'
 import { scrubbed } from '../model/students'
-import { COLLECTION_PATHS, type Account, type Balance, type CareerRecord, type CollectionPath, type Collections, type Student, type SyncRecord, type VaultDocument } from '../model/types'
+import { COLLECTION_PATHS, type Account, type Balance, type CareerRecord, type Claim, type CollectionPath, type Collections, type FixedCost, type Student, type SyncRecord, type VaultDocument } from '../model/types'
 import type { Store } from './store'
 import { decodeRecords, encodeRecords } from './sync'
+import { scrubbedClaim } from '../model/claims'
 
 // Back-up zonder laptop: één bestand met het hele logboek, dat Olivier zelf deelt (bijvoorbeeld naar Google Drive).
 // Alles is versleuteld onder de hoofdsleutel; de meta (zoals meta.json.enc op GitHub: salts en de verpakte sleutel,
@@ -163,6 +164,8 @@ export async function applyRestore(store: Store, plan: readonly RestoreItem[]): 
         if (item.path === 'career.json.enc') return scrubbedCareer(r as CareerRecord, later)
         if (item.path === 'accounts.json.enc') return scrubbedAccount(r as Account, later)
         if (item.path === 'balances.json.enc') return scrubbedBalance(r as Balance, later)
+        if (item.path === 'claims.json.enc') return scrubbedClaim(r as Claim, later)
+        if (item.path === 'fixedcosts.json.enc') return { id: r.id, name: '', currency: (r as FixedCost).currency, amounts: [], updatedAt: later, deletedAt: later }
         return { ...r, updatedAt: later, deletedAt: later }
       })
       await putRecords(store, item.path, gone)

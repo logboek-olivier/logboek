@@ -243,6 +243,8 @@ export interface Transaction extends SyncRecord {
   depositedAt?: string
   /** Alleen bij kosten: vervoer, eten en drinken of overig (ontbreekt = overig). */
   category?: CostCategory
+  /** De declaratie waar deze uitgave of terugbetaling bij hoort (claims.json.enc). */
+  claimId?: string
   /**
    * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
    * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.

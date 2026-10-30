@@ -4,7 +4,9 @@ import type { Undo } from './edit'
 import { saveSettings, currentSettings } from './settings'
 import { scrubbed } from './students'
 import { active } from './derive'
-import type { CollectionPath, Collections, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
+import type { Claim, CollectionPath, Collections, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
+import { scrubbedClaim } from './claims'
+import { scrubbedDocument } from './documents'
 import { syncParticipants } from './weeks'
 import { datesFollowDays, followDays } from './trip-dates'
 
@@ -19,6 +21,7 @@ export interface TripDependents {
   participants: Participant[]
   students: Student[]
   plans: WeekPlan[]
+  claims: Claim[]
 }
 
 export function tripDependents(store: Store, trip: Trip): TripDependents {
@@ -28,11 +31,12 @@ export function tripDependents(store: Store, trip: Trip): TripDependents {
     participants: trip.participants ?? [],
     students: store.list('students.json.enc').filter((s) => s.weekId === trip.id),
     plans: store.list('plans.json.enc').filter((p) => p.tripId === trip.id),
+    claims: store.list('claims.json.enc').filter((c) => c.tripId === trip.id),
   }
 }
 
 export function hasDependents(d: TripDependents): boolean {
-  return d.legs.length + d.transactions.length + d.participants.length + d.students.length + d.plans.length > 0
+  return d.legs.length + d.transactions.length + d.participants.length + d.students.length + d.plans.length + d.claims.length > 0
 }
 
 type Change = { [P in CollectionPath]: { path: P; before: Collections[P] | null; after: Collections[P] } }[CollectionPath]
@@ -114,6 +118,7 @@ function moveChanges(store: Store, from: Trip, to: Trip, now: string): Change[] 
     ...d.transactions.map((t): Change => ({ path: 'transactions.json.enc', before: t, after: moved(t, { tripId: to.id }, now) })),
     ...d.students.map((s): Change => ({ path: 'students.json.enc', before: s, after: moved(s, { weekId: to.id }, now) })),
     ...d.plans.map((p): Change => ({ path: 'plans.json.enc', before: p, after: moved(p, { tripId: to.id }, now) })),
+    ...d.claims.map((c): Change => ({ path: 'claims.json.enc', before: c, after: moved(c, { tripId: to.id }, now) })),
   ]
 }
 
@@ -144,6 +149,12 @@ export async function deleteTripWith(store: Store, trip: Trip, moveTo: Trip | nu
       ...d.transactions.map((t): Change => ({ path: 'transactions.json.enc', before: t, after: gone(t, now) })),
       ...d.students.map((s): Change => ({ path: 'students.json.enc', before: s, after: scrubbed(s, now) })),
       ...d.plans.map((p): Change => ({ path: 'plans.json.enc', before: p, after: gone(p, now) })),
+      // Declaraties gaan mee weg zonder notitie of bedrag, met hun bonnetje uit de kluis.
+      ...d.claims.map((c): Change => ({ path: 'claims.json.enc', before: c, after: scrubbedClaim(c, now) })),
+      ...d.claims.flatMap((c): Change[] => {
+        const doc = c.documentId ? store.list('documents/index.json.enc').find((x) => x.id === c.documentId) : undefined
+        return doc ? [{ path: 'documents/index.json.enc', before: doc, after: scrubbedDocument(doc, now) }] : []
+      }),
     )
   }
   const undo = await apply(store, changes)

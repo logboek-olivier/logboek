@@ -1,19 +1,22 @@
-import { Camera, Check, FileUp, Images, Share2, Trash2, Wallet } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { Bytes } from '../crypto/encrypt'
+import { Camera, Check, FileText, FileUp, Images, Share2, Trash2, Wallet } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { DecryptError, type Bytes } from '../crypto/encrypt'
+import { recordError } from '../errors'
 import { formatDate, formatMoney } from '../format'
 import { t } from '../i18n'
-import { addClaim, deleteClaim, markRepaid, markSubmitted, receiptFileName, tripClaims, updateClaim, type ClaimInput } from '../model/claims'
+import { addClaim, claimsToShow, deleteClaim, markRepaid, markSubmitted, receiptFileName, tripClaims, updateClaim, type ClaimInput } from '../model/claims'
 import { nameWithCounter } from '../model/counters'
 import { active, tripForDate } from '../model/derive'
 import { isImage, prepareFile } from '../model/documents'
 import { amountInput, parseAmount } from '../model/money'
-import { currentSettings } from '../model/settings'
+import { currentSettings, saveSettings } from '../model/settings'
 import { CURRENCIES, todayIso, type Claim, type Currency, type Trip } from '../model/types'
+import { activeWeek } from '../model/weeks'
 import { shareOrDownload } from '../share'
 import type { Store } from '../storage/store'
 import { fileError } from './DocumentSheets'
 import type { Notify } from './EditSheets'
+import { CopyErrorDetails } from './ErrorDetails'
 import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
@@ -21,7 +24,8 @@ import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
 
 // Declaraties (src/model/claims.ts): + → Declaratie met een foto van het bonnetje, per trip een lijst met de status,
-// en per declaratie "Delen" (het bonnetje naar de app van de organisatie), "Ingediend?" en "Terugbetaald".
+// Geld → Declaraties (wat openstaat en wat geen trip heeft), en per declaratie "Bonnetje delen" (naar de app van de
+// organisatie), "Ingediend?" en "Terugbetaling invoeren".
 
 function CurrencySelect({ value, onChange }: { value: Currency; onChange: (c: Currency) => void }) {
   return (
@@ -40,9 +44,11 @@ function CurrencySelect({ value, onChange }: { value: Currency; onChange: (c: Cu
 
 function TripSelect({ store, value, onChange }: { store: Store; value: string; onChange: (id: string) => void }) {
   const counters = useCounters(store)
-  const trips = active(useCollection(store, 'trips.json.enc'))
-    .sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
-    .slice(0, 30)
+  const all = active(useCollection(store, 'trips.json.enc'))
+  const recent = [...all].sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1)).slice(0, 30)
+  // De gekozen trip staat er altijd bij, ook als hij ouder is of geen startdatum heeft.
+  const chosen = all.find((x) => x.id === value)
+  const trips = chosen && !recent.some((x) => x.id === value) ? [chosen, ...recent] : recent
   return (
     <label>
       {t('field.trip')}
@@ -68,10 +74,22 @@ function useClaimFields(store: Store, claim: Claim | null) {
   const [amount, setAmount] = useState(claim?.amount !== undefined ? amountInput(claim.amount) : '')
   const [currency, setCurrency] = useState<Currency>(claim?.currency ?? settings.lastCurrency)
   const [chosenTrip, setChosenTrip] = useState<string | null>(claim ? (claim.tripId ?? '') : null)
-  const tripId = chosenTrip ?? tripForDate(trips, legs, date)?.id ?? ''
+  // Zoals bij inkomsten: de trip van de datum, anders de lopende trip, anders de dichtstbijzijnde (de laatste die vóór de
+  // datum begon, anders de eerstvolgende). Een declaratie zonder trip is alleen een eigen keuze.
+  const fallback = useMemo(() => {
+    const day = date || todayIso()
+    const byDate = tripForDate(trips, legs, day)
+    if (byDate) return byDate.id
+    const running = activeWeek(trips, settings, day)
+    if (running) return running.id
+    const dated = active(trips).filter((x) => x.startDate)
+    const before = dated.filter((x) => x.startDate! <= day).sort((a, b) => (a.startDate! < b.startDate! ? 1 : -1))[0]
+    return (before ?? dated.sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))[0])?.id ?? ''
+  }, [trips, legs, date, settings])
+  const tripId = chosenTrip ?? fallback
   const parsed = amount.trim() === '' ? null : parseAmount(amount)
   const invalid = amount.trim() !== '' && parsed === null
-  const input = (): ClaimInput => ({ date, tripId: tripId || null, note, amount: parsed, currency })
+  const input = (): ClaimInput => ({ date: date || todayIso(), tripId: tripId || null, note, amount: parsed, currency })
   return { date, setDate, note, setNote, amount, setAmount, currency, setCurrency, tripId, setTripId: setChosenTrip, invalid, input }
 }
 
@@ -111,25 +129,41 @@ export function ClaimForm({ store, onDone }: { store: Store; onDone: (message: s
     if (preview) URL.revokeObjectURL(preview)
   }, [preview])
 
-  async function choose(chosen: File | undefined) {
+  async function choose(input: HTMLInputElement) {
+    const chosen = input.files?.[0]
+    // Hetzelfde bestand nog eens kiezen moet weer werken.
+    input.value = ''
     if (!chosen) return
     setError(null)
+    // Tijdens het verkleinen kan er niet opgeslagen worden (anders gaat de declaratie zonder bonnetje).
+    setBusy(true)
     try {
       const ready = await prepareFile(chosen)
       setFile(ready)
       setPreview(isImage(ready.mime) ? URL.createObjectURL(new Blob([ready.bytes], { type: ready.mime })) : null)
     } catch (e) {
       setFile(null)
+      setPreview(null)
       setError(fileError(e))
+    } finally {
+      setBusy(false)
     }
   }
 
+  const empty = !file && f.note.trim() === '' && f.amount.trim() === ''
+
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (f.invalid || busy || (!file && f.note.trim() === '' && f.amount.trim() === '')) return
+    if (f.invalid || busy || empty) return
     setBusy(true)
     try {
       await addClaim(store, f.input(), file)
+      if (f.amount.trim() !== '') await saveSettings(store, { lastCurrency: f.currency })
+      try {
+        navigator.vibrate?.(20)
+      } catch {
+        // Geen trilling: niets.
+      }
       onDone(t('claims.saved'))
     } finally {
       setBusy(false)
@@ -139,17 +173,17 @@ export function ClaimForm({ store, onDone }: { store: Store; onDone: (message: s
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
       <div className="row wrap">
-        <button type="button" className="btn" onClick={() => camera.current?.click()}>
+        <button type="button" className="btn" disabled={busy} onClick={() => camera.current?.click()}>
           <Icon icon={Camera} />
           {t('vault.takePhoto')}
         </button>
-        <button type="button" className="btn" onClick={() => picker.current?.click()}>
+        <button type="button" className="btn" disabled={busy} onClick={() => picker.current?.click()}>
           <Icon icon={Images} />
           {t('claims.fromGallery')}
         </button>
-        <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-label={t('vault.takePhoto')} onChange={(e) => void choose(e.target.files?.[0])} />
+        <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-label={t('vault.takePhoto')} onChange={(e) => void choose(e.target)} />
         {/* Geen accept-filter: Android en Google Drive grijzen anders bestanden uit. */}
-        <input ref={picker} type="file" hidden aria-label={t('claims.fromGallery')} onChange={(e) => void choose(e.target.files?.[0])} />
+        <input ref={picker} type="file" hidden aria-label={t('claims.fromGallery')} onChange={(e) => void choose(e.target)} />
       </div>
       {preview && <img className="claim-preview" src={preview} alt={t('claims.receipt')} />}
       {file && !preview && (
@@ -160,7 +194,7 @@ export function ClaimForm({ store, onDone }: { store: Store; onDone: (message: s
       {error && <p className="error small">{error}</p>}
       <ClaimFieldsView store={store} f={f} />
       <p className="muted small">{t('claims.vaultHint')}</p>
-      <button className="btn primary" type="submit" disabled={busy || f.invalid || (!file && f.note.trim() === '' && f.amount.trim() === '')}>
+      <button className="btn primary" type="submit" disabled={busy || f.invalid || empty}>
         {t('common.save')}
       </button>
     </form>
@@ -172,13 +206,14 @@ function statusLabel(claim: Claim): string {
 }
 
 /** Per trip de declaraties met hun status (bedragen pas in de declaratie zelf). */
-export function TripClaims({ store, trip, notify }: { store: Store; trip: Trip; notify: Notify }) {
+export function TripClaims({ store, trip, notify, heading = 'h2' }: { store: Store; trip: Trip; notify: Notify; heading?: 'h2' | 'h3' }) {
   const claims = tripClaims(useCollection(store, 'claims.json.enc'), trip.id)
   const [open, setOpen] = useState<Claim | null>(null)
   if (claims.length === 0) return null
+  const Heading = heading
   return (
     <div className="section stack-sm trip-claims">
-      <h2>{t('claims.title')}</h2>
+      <Heading>{t('claims.title')}</Heading>
       <ul className="plain-list">
         {claims.map((c) => (
           <li key={c.id}>
@@ -195,67 +230,119 @@ export function TripClaims({ store, trip, notify }: { store: Store; trip: Trip; 
   )
 }
 
-/** Eén declaratie: het bonnetje, notitie, bedrag en status; "Delen", "Ingediend?" en "Terugbetaald". */
+/** Geld → Declaraties: wat nog openstaat of ingediend is, en declaraties zonder trip (die staan niet bij een trip). */
+export function ClaimsSection({ store, notify }: { store: Store; notify: Notify }) {
+  const claims = claimsToShow(useCollection(store, 'claims.json.enc'))
+  const trips = useCollection(store, 'trips.json.enc')
+  const counters = useCounters(store)
+  const [open, setOpen] = useState<Claim | null>(null)
+  if (claims.length === 0) return null
+  return (
+    <div className="section card card-body stack-sm claims-section">
+      <h2>{t('claims.title')}</h2>
+      <ul className="plain-list">
+        {claims.map((c) => {
+          const trip = trips.find((x) => x.id === c.tripId && x.deletedAt === null)
+          return (
+            <li key={c.id}>
+              <button type="button" className="row claim-row" onClick={() => setOpen(c)}>
+                <span className={`claim-status ${c.status}`}>{statusLabel(c)}</span>
+                <span className="grow">
+                  {c.note || t('claims.noNote')}
+                  <span className="muted small"> · {trip ? nameWithCounter(trip, counters.get(trip.id)) : t('quick.noTrip')}</span>
+                </span>
+                {c.amount !== undefined && c.currency && <span className="num small">{formatMoney(c.amount, c.currency)}</span>}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      {open && <ClaimView store={store} claim={open} notify={notify} onClose={() => setOpen(null)} />}
+    </div>
+  )
+}
+
+/** Eén declaratie: het bonnetje, notitie, bedrag en status; "Bonnetje delen", "Ingediend?" en "Terugbetaling invoeren". */
 export function ClaimView({ store, claim, notify, onClose }: { store: Store; claim: Claim; notify: Notify; onClose: () => void }) {
   const [editing, setEditing] = useState(false)
   const [repaying, setRepaying] = useState(false)
   const [askSubmitted, setAskSubmitted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ text: string; details: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const current = useCollection(store, 'claims.json.enc').find((c) => c.id === claim.id) ?? claim
   const document = useCollection(store, 'documents/index.json.enc').find((d) => d.id === current.documentId && d.deletedAt === null)
   const trip = useCollection(store, 'trips.json.enc').find((x) => x.id === current.tripId && x.deletedAt === null)
   const counters = useCounters(store)
+  const [bytes, setBytes] = useState<Bytes | null>(null)
   const [url, setUrl] = useState<string | null>(null)
+  const fileId = document?.fileId
+  const mime = document?.mime
+  const offline = document?.offline ?? false
 
+  // Het bonnetje vooraf ophalen en ontsleutelen (ook een PDF): delen gebeurt dan meteen uit het geheugen, binnen de tik.
   useEffect(() => {
-    if (!document || !isImage(document.mime)) return
+    setBytes(null)
+    setUrl(null)
+    if (!fileId || !mime) return
     let cancelled = false
     let objectUrl: string | null = null
     store
-      .documentFile(document.fileId, document.offline)
+      .documentFile(fileId, offline)
       .then((plain) => {
         if (cancelled) return
-        objectUrl = URL.createObjectURL(new Blob([plain], { type: document.mime }))
-        setUrl(objectUrl)
+        setBytes(plain)
+        if (isImage(mime)) {
+          objectUrl = URL.createObjectURL(new Blob([plain], { type: mime }))
+          setUrl(objectUrl)
+        }
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(fileError(e))
+        if (cancelled) return
+        if (e instanceof DecryptError) recordError(e)
+        setError({ text: fileError(e), details: e instanceof DecryptError })
       })
     return () => {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [store, document])
+  }, [store, fileId, mime, offline])
 
   if (editing) return <ClaimSheet store={store} claim={current} notify={notify} onClose={onClose} />
 
   async function share() {
-    if (!document || busy) return
+    if (!bytes || !mime || busy) return
     setBusy(true)
-    setError(null)
     try {
-      const plain = await store.documentFile(document.fileId, document.offline)
       // Een neutrale bestandsnaam en geen titel: de andere app krijgt alleen het bonnetje.
-      const result = await shareOrDownload(new File([plain], receiptFileName(document.mime), { type: document.mime }))
+      const result = await shareOrDownload(new File([bytes], receiptFileName(mime), { type: mime }))
       if (result !== 'afgebroken' && current.status === 'open') setAskSubmitted(true)
-    } catch (e) {
-      setError(fileError(e))
     } finally {
       setBusy(false)
     }
   }
 
   async function submitted() {
-    const undo = await markSubmitted(store, current, todayIso())
-    setAskSubmitted(false)
-    notify(t('claims.submittedToast'), undo)
+    if (busy) return
+    setBusy(true)
+    try {
+      const undo = await markSubmitted(store, current, todayIso())
+      setAskSubmitted(false)
+      notify(t('claims.submittedToast'), undo)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <Sheet title={t('claims.one', { date: formatDate(current.date) })} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack view">
         {url && <img className="claim-receipt" src={url} alt={t('claims.receipt')} />}
+        {document && mime === 'application/pdf' && (
+          <p className="muted small">
+            <Icon icon={FileText} /> {t('claims.pdfReceipt')}
+          </p>
+        )}
+        {current.documentId && !document && <p className="muted small">{t('claims.receiptGone')}</p>}
         {current.amount !== undefined && current.currency && <p className="view-amount">{formatMoney(current.amount, current.currency)}</p>}
         <p className="row">
           <span className={`claim-status ${current.status}`}>{statusLabel(current)}</span>
@@ -264,9 +351,14 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
         {current.repaid && <p className="muted small">{t('claims.repaidLine', { date: formatDate(current.repaid.date), amount: formatMoney(current.repaid.amount, current.repaid.currency) })}</p>}
         {current.note && <p className="note-text">{current.note}</p>}
         {trip && <p className="muted small">{nameWithCounter(trip, counters.get(trip.id))}</p>}
-        {error && <p className="error small">{error}</p>}
+        {error && (
+          <div className="stack-sm">
+            <p className="error small">{error.text}</p>
+            {error.details && <CopyErrorDetails />}
+          </div>
+        )}
         {document && (
-          <button type="button" className="btn" disabled={busy} onClick={() => void share()}>
+          <button type="button" className="btn" disabled={busy || !bytes} onClick={() => void share()}>
             <Icon icon={Share2} />
             {t('claims.share')}
           </button>
@@ -276,7 +368,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
           <div className="card card-body stack-sm claim-question">
             <p>{t('claims.askSubmitted')}</p>
             <div className="row wrap">
-              <button type="button" className="btn small primary" onClick={() => void submitted()}>
+              <button type="button" className="btn small primary" disabled={busy} onClick={() => void submitted()}>
                 <Icon icon={Check} />
                 {t('claims.yesSubmitted')}
               </button>
@@ -287,7 +379,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
           </div>
         )}
         {current.status === 'open' && !askSubmitted && (
-          <button type="button" className="btn" onClick={() => void submitted()}>
+          <button type="button" className="btn" disabled={busy} onClick={() => void submitted()}>
             <Icon icon={Check} />
             {t('claims.markSubmitted')}
           </button>
@@ -369,9 +461,15 @@ function ClaimSheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
   }
 
   async function remove() {
-    const undo = await deleteClaim(store, claim)
-    onClose()
-    notify(t('toast.deleted'), undo)
+    if (busy) return
+    setBusy(true)
+    try {
+      const undo = await deleteClaim(store, claim)
+      onClose()
+      notify(t('toast.deleted'), undo)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -382,7 +480,7 @@ function ClaimSheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
           <button className="btn primary" type="submit" disabled={f.invalid || busy}>
             {t('common.save')}
           </button>
-          <button className="btn danger" type="button" onClick={() => void remove()}>
+          <button className="btn danger" type="button" disabled={busy} onClick={() => void remove()}>
             <Icon icon={Trash2} />
             {t('common.delete')}
           </button>

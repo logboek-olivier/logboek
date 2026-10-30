@@ -1,6 +1,10 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { addClaim, claimCounts, deleteClaim, markRepaid, markSubmitted, openClaims, receiptFileName, tripClaims, updateClaim } from '../src/model/claims'
+import { addClaim, claimCounts, claimsToShow, deleteClaim, markRepaid, markSubmitted, openClaims, receiptFileName, tripClaims, updateClaim } from '../src/model/claims'
+import { dayAverages } from '../src/model/costs'
+import { buildIndex } from '../src/model/calendar'
+import { DEFAULT_SETTINGS } from '../src/model/settings'
+import { deleteTripWith, mergeTrips } from '../src/model/trip-ops'
 import { totals } from '../src/model/money'
 import { positionAt } from '../src/model/position'
 import type { Trip } from '../src/model/types'
@@ -57,12 +61,15 @@ describe('declaraties', () => {
     const undo = await markRepaid(s, claim, { date: '2026-10-20', amount: 42.5, currency: 'EUR' })
     await markRepaid(s, claim, { date: '2026-10-20', amount: 42.5, currency: 'EUR' })
     const txs = s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)
-    expect(txs).toHaveLength(1)
-    expect(txs[0]).toMatchObject({ kind: 'terugbetaling', tripId: 'trip-1', source: 'sailing-virgins', amount: 42.5 })
+    // De uitgave (bij het aanmaken) en de terugbetaling: samen nul in het saldo, niet verdiend.
+    expect(txs.map((tx) => tx.kind).sort()).toEqual(['kosten', 'terugbetaling'])
+    const repaidTx = txs.find((tx) => tx.kind === 'terugbetaling')!
+    expect(repaidTx).toMatchObject({ tripId: 'trip-1', source: 'sailing-virgins', amount: 42.5, claimId: claim.id })
     const sum = totals(txs)
     expect(sum.reimbursedEur).toBe(42.5)
-    expect(sum.balanceEur).toBe(42.5)
-    expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'terugbetaald', repaid: { date: '2026-10-20', amount: 42.5, transactionId: txs[0]!.id } })
+    expect(sum.costsEur).toBe(42.5)
+    expect(sum.balanceEur).toBe(0)
+    expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'terugbetaald', repaid: { date: '2026-10-20', amount: 42.5, transactionId: repaidTx.id } })
     expect(openClaims(s.list('claims.json.enc'))).toHaveLength(0)
     expect(claimCounts(s.list('claims.json.enc'))).toEqual({ open: 0, ingediend: 0, terugbetaald: 1 })
     // Na de terugbetaling niet meer te ontvangen, ook niet in de positie van die dag.
@@ -70,7 +77,7 @@ describe('declaraties', () => {
     expect(positionAt(after, '2026-10-20').totals.receivable.eur).toBe(0)
     expect(positionAt(after, '2026-10-19').totals.receivable.eur).toBe(42.5)
     await undo()
-    expect(s.list('transactions.json.enc').every((tx) => tx.deletedAt !== null)).toBe(true)
+    expect(s.list('transactions.json.enc').map((tx) => tx.kind)).toEqual(['kosten'])
     expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'ingediend' })
   })
 
@@ -80,7 +87,13 @@ describe('declaraties', () => {
     await markSubmitted(s, claim, '2026-10-04')
     await updateClaim(s, claim, { date: '2026-10-02', tripId: null, note: 'Neptaxi naar haven', amount: 25, currency: 'USD' })
     expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'ingediend', documentId: claim.documentId, amount: 25, date: '2026-10-02' })
+    // De uitgave volgt het bedrag; het bonnetje in de kluis de datum.
+    expect(s.list('transactions.json.enc')).toEqual([expect.objectContaining({ kind: 'kosten', amount: 25, currency: 'USD', claimId: claim.id })])
+    expect(s.list('documents/index.json.enc')[0]).toMatchObject({ issuedAt: '2026-10-02' })
     const undo = await deleteClaim(s, s.list('claims.json.enc')[0]!)
+    // Een tweede tik op verwijderen doet niets (en raakt het bonnetje niet kwijt bij ongedaan maken).
+    await deleteClaim(s, claim)
+    expect(s.list('transactions.json.enc')).toEqual([])
     const gone = s.get('claims.json.enc')[0]!
     expect(gone.deletedAt).not.toBeNull()
     expect(gone.note).toBeUndefined()
@@ -90,5 +103,31 @@ describe('declaraties', () => {
     await undo()
     expect(s.list('claims.json.enc')[0]).toMatchObject({ deletedAt: null, note: 'Neptaxi naar haven' })
     expect(s.list('documents/index.json.enc')[0]!.deletedAt).toBeNull()
+    expect(s.list('transactions.json.enc')).toHaveLength(1)
+    // Zonder trip: te zien onder Geld → Declaraties.
+    expect(claimsToShow(s.list('claims.json.enc')).map((c) => c.id)).toEqual([claim.id])
+  })
+
+  it('declaraties gaan mee bij samenvoegen en verwijderen met meenemen; bij ook verwijderen gaan ze mee weg met het bonnetje', async () => {
+    const s = await store()
+    const other: Trip = { ...trip, id: 'trip-2', name: 'Nepweek twee', startDate: '2026-10-05', endDate: '2026-10-11' }
+    await s.putMany('trips.json.enc', [trip, other])
+    const claim = await addClaim(s, { date: '2026-10-03', tripId: 'trip-1', note: 'Nephaven', amount: 10, currency: 'EUR' }, jpeg)
+    await mergeTrips(s, other, trip)
+    expect(s.list('claims.json.enc')[0]!.tripId).toBe('trip-2')
+    const undo = await deleteTripWith(s, s.list('trips.json.enc').find((x) => x.id === 'trip-2')!, null)
+    expect(s.list('claims.json.enc')).toEqual([])
+    expect(s.get('claims.json.enc')[0]!.note).toBeUndefined()
+    expect(s.list('documents/index.json.enc')).toEqual([])
+    await undo()
+    expect(s.list('claims.json.enc').map((c) => c.id)).toEqual([claim.id])
+    expect(s.list('documents/index.json.enc')).toHaveLength(1)
+  })
+
+  it('een gedeclareerde uitgave telt niet mee in het gemiddelde van de losse uitgaven', async () => {
+    const s = await store()
+    await addClaim(s, { date: '2026-10-03', tripId: null, note: '', amount: 500, currency: 'EUR' }, null)
+    const a = dayAverages(s.list('transactions.json.enc'), [], buildIndex([], [], []), '2026-10-30', DEFAULT_SETTINGS, null)
+    expect(a.thuis.source).toBe('onbekend')
   })
 })

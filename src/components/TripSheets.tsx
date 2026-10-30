@@ -81,6 +81,7 @@ export function DeleteTrip({ store, trip, notify, onDone }: { store: Store; trip
     deps.participants.length > 0 && t('trip.part.participants', { n: deps.participants.length }),
     deps.students.length > 0 && t('trip.part.students', { n: deps.students.length }),
     deps.plans.length > 0 && t('trip.part.plans', { n: deps.plans.length }),
+    deps.claims.length > 0 && t('trip.part.claims', { n: deps.claims.length }),
   ].filter((x): x is string => !!x)
   return (
     <div ref={choice} className="stack-sm delete-choice" role="group" aria-label={t('trip.delete')}>

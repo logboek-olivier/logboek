@@ -186,7 +186,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
           <h3>{t('week.sailedDays')}</h3>
           <TripDays store={store} legs={view.legs} notify={notify} />
         </div>
-        <TripClaims store={store} trip={current} notify={notify} />
+        <TripClaims store={store} trip={current} notify={notify} heading="h3" />
         {people.length > 0 && (
           <div className="section">
             <h3>{t('week.participants')}</h3>

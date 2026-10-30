@@ -1845,6 +1845,10 @@ export const nl = {
   'position.claimOf': (p: { date: string }) => `Declaratie ${p.date}`,
   'key.file.claims': 'Declaraties',
   'storage.file.claims': 'Declaraties',
+  'claims.receiptTitle': (p: { date: string }) => `Bonnetje ${p.date}`,
+  'claims.pdfReceipt': 'Bonnetje als PDF',
+  'claims.receiptGone': 'Het bonnetje staat niet meer in de kluis.',
+  'trip.part.claims': (p: { n: number }) => `${p.n} ${p.n === 1 ? 'declaratie' : 'declaraties'}`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

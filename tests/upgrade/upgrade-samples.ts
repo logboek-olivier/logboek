@@ -27,6 +27,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-payout', date: '2026-10-25', kind: 'loon', amount: 900, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', payoutId: 'upg-payout-1', updatedAt: T, deletedAt: null },
     // Kosten (ronde 3): een losse uitgave met een soort.
     { id: 'upg-tx-kosten', date: '2026-10-19', kind: 'kosten', amount: 12.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
+    // Declaraties (ronde 3): de uitgave bij een declaratie, met claimId.
+    { id: 'upg-tx-claim', date: '2026-10-20', kind: 'kosten', amount: 18.4, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', category: 'overig', claimId: 'upg-claim-1', updatedAt: T, deletedAt: null },
   ],
   'settings.json.enc': [
     { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', careerStart: '2026-09-01', costDefaults: { thuis: 25, reis: 40 }, lastCostCategory: 'eten', updatedAt: T, deletedAt: null },
