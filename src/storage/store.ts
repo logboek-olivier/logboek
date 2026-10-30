@@ -4,12 +4,12 @@ import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, ty
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
-import { AuthError, BUILD, ConflictError, DOCUMENT_TIMEOUT_MS, GithubError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
+import { AuthError, BUILD, ConflictError, DOCUMENT_TIMEOUT_MS, GithubError, IntegrityError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { deleteObject, getLocal, getObject, listObjectPaths, putObject, putObjectAndLocal, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
 import { DOCUMENT_GRACE_MS, DOCUMENT_RETRY_MS, documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, isFileId, MAX_DOCUMENT_BYTES, rememberRemovedDocumentFile, removedDocumentFiles } from './documents'
 import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
-import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, sameRecords, sealForUpload, syncCollection } from './sync'
+import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, salvageRecords, sameRecords, sealForUpload, syncCollection } from './sync'
 import { encodeBackup } from './backup'
 import { exclusive } from './writer'
 import { evidenceLines, gatherEvidence, type FileEvidence } from './evidence'
@@ -142,6 +142,17 @@ const AUTO_SYNC_MS = 800
 export const CHECK_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 /** Zo lang wacht de controle voor hij een gevonden probleem nog één keer bekijkt. */
 const CHECK_RETRY_MS = 3_000
+/** Zo lang wacht teruglezen na "Alles herstellen" als GitHub vlak na het schrijven nog de vervangen versie geeft. */
+const READ_BACK_PAUSE_MS = 1_000
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** Uitkomst van "Alles herstellen" per bestand; is het herstel meteen weer overschreven, dan wie dat deed. */
+export interface RepairResult {
+  path: CollectionPath
+  ok: boolean
+  overwrittenBy?: { device: string | null; version: string | null }
+}
 
 function isProblem(file: FileCheck): boolean {
   return file.state === 'verschil' || file.state === 'onleesbaar' || file.state === 'ontbreekt'
@@ -579,8 +590,8 @@ export class Store {
         if (reason !== 'DecryptError' || !SEED_PATHS.has(path)) continue
         if (repairAttempts(this.db.name, path) >= MAX_REPAIRS) continue
         try {
-          await this.replaceRemote(path, this.collections.get(path) ?? [], remoteSha.get(path) ?? null)
-          unreadable.delete(path)
+          // Niets geschreven (een nieuwere versie startte, of er staat niets meer): het blijft gemeld.
+          if ((await this.replaceRemote(path, this.collections.get(path) ?? [], remoteSha.get(path) ?? null)) !== null) unreadable.delete(path)
         } catch (error) {
           if (this.locked || error instanceof KeyMismatchError) return
           if (error instanceof NetworkError || error instanceof AuthError) {
@@ -631,11 +642,12 @@ export class Store {
       }
     }
     if (this.locked) return
+    // Het bewijs uit de echte omgeving (wie schreef wat, met welke versie): op de achtergrond, alleen lezen; ook als de
+    // ronde om een andere reden stopte (dan staat "Alles herstellen" er ook, zie unreadableFiles).
+    if (unreadable.size > 0 && !offline) void this.autoEvidence([...unreadable.keys()]).catch(recordError)
     if (failure === null && unreadable.size > 0) {
       const reasons = [...unreadable].map(([path, name]) => (kinds.has(path) ? `${name}/${kinds.get(path)}` : name))
       failure = new UnreadableFileError([...unreadable.keys()], [...new Set(reasons)].join(', '))
-      // Het bewijs uit de echte omgeving (wie schreef wat, met welke versie): op de achtergrond, alleen lezen.
-      void this.autoEvidence([...unreadable.keys()]).catch(recordError)
     }
     if (failure === null) {
       await this.cleanupDocumentFiles().catch(recordError)
@@ -931,11 +943,14 @@ export class Store {
   /**
    * "Alles herstellen" (Meer → Opslag), na een tik: eerst een sync, zodat de lijst actueel is, dan het bewijs van elk
    * onleesbaar bestand (vóór het overschrijven), dan per bestand de leesbare kopie van dit apparaat terugzetten, of een
-   * lege versie als dit apparaat er niets van heeft. Elk bestand wordt daarna teruggelezen via de blob-sha van wat net
-   * geschreven is (onveranderlijk) en ontsleuteld: pas dan telt het als hersteld. De oude versie blijft in de
-   * geschiedenis van logboek-data. Alleen met meta.json.enc op GitHub bij deze sleutel en de nieuwste versie van de app.
+   * lege versie als dit apparaat er niets van heeft. Ontsleutelt de versie op GitHub wel maar is hij ongeldig, dan gaan
+   * zijn goede records mee (nooit weggooien wat een ander apparaat schreef). Elk bestand wordt daarna teruggelezen via
+   * de blob-sha van wat net geschreven is (onveranderlijk) en via het pad (staat het er nog?): pas dan telt het als
+   * hersteld. Schreef er net iets onleesbaars overheen, dan noemt het resultaat dat apparaat en die versie. De oude versie
+   * blijft in de geschiedenis van logboek-data. Alleen met meta.json.enc op GitHub bij deze sleutel en de nieuwste
+   * versie van de app.
    */
-  async repairAll(): Promise<{ path: CollectionPath; ok: boolean }[]> {
+  async repairAll(): Promise<RepairResult[]> {
     this.assertUnlocked()
     if (this.demo) return []
     await this.sync()
@@ -943,15 +958,20 @@ export class Store {
     const targets = [...this.unreadable].filter(([, reason]) => REPLACEABLE.has(reason)).map(([path]) => path)
     if (targets.length === 0) return []
     await this.gatherEvidence(targets).catch(recordError)
-    const results: { path: CollectionPath; ok: boolean }[] = []
+    const results: RepairResult[] = []
     await exclusive(this.db.name, 'sync', async () => {
       for (const path of targets) {
         if (this.locked) return
         try {
-          const written = await this.replaceRemote(path, this.collections.get(path) ?? [], null)
-          const ok = written === 'leesbaar' || (typeof written === 'string' && (await this.readsBack(path, written)))
-          if (ok) setRepairAttempts(this.db.name, path, 0)
-          results.push({ path, ok })
+          const remote = await this.client.getFile(path)
+          const salvaged = remote ? await salvageRecords(this.masterKey, path, remote.content) : []
+          const records = mergeRecords(this.collections.get(path) ?? [], salvaged)
+          // Zonder bekende sha: vlak voor het schrijven nog eens kijken, zodat een intussen leesbare versie blijft staan.
+          const written = await this.replaceRemote(path, records, null)
+          const result: RepairResult =
+            written === 'leesbaar' ? { path, ok: true } : typeof written === 'string' ? { path, ...(await this.readsBack(path, written)) } : { path, ok: false }
+          if (result.ok) setRepairAttempts(this.db.name, path, 0)
+          results.push(result)
         } catch (error) {
           if (this.locked || error instanceof KeyMismatchError || error instanceof NetworkError || error instanceof AuthError) throw error
           recordError(error)
@@ -962,19 +982,48 @@ export class Store {
     for (const r of results) if (r.ok) this.unreadable.delete(r.path)
     await this.sync()
     this.recheckIfProblem()
-    return results
+    // Wat de laatste sync weer onleesbaar vond, is niet hersteld.
+    return results.map((r) => (r.ok && this.unreadable.has(r.path) ? { ...r, ok: false } : r))
   }
 
-  /** Wat net geschreven is, teruglezen via zijn blob-sha (onveranderlijk, gecontroleerd tegen die sha) en ontsleutelen. */
-  private async readsBack(path: CollectionPath, sha: string): Promise<boolean> {
-    try {
-      await decryptRecords(this.masterKey, path, await this.client.getBlobAt(sha))
-      return true
-    } catch (error) {
-      if (error instanceof NetworkError || error instanceof AuthError) throw error
-      recordError(error)
-      return false
+  /**
+   * Wat net geschreven is, teruglezen: via zijn blob-sha (onveranderlijk, gecontroleerd tegen die sha) ontsleutelen, en
+   * via het pad kijken of het er nog staat. GitHub geeft vlak na schrijven soms nog de vervangen versie: dan even
+   * wachten. Staat er intussen een andere, onleesbare versie, dan schreef er net een ander apparaat of venster overheen.
+   */
+  private async readsBack(path: CollectionPath, sha: string): Promise<Omit<RepairResult, 'path'>> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await decryptRecords(this.masterKey, path, await this.client.getBlobAt(sha))
+        break
+      } catch (error) {
+        if (error instanceof NetworkError || error instanceof AuthError) throw error
+        // Een blob die vlak na het schrijven nog niet te vinden is: één keer opnieuw.
+        if (attempt === 0 && error instanceof GithubError && !(error instanceof IntegrityError)) {
+          await pause(READ_BACK_PAUSE_MS)
+          continue
+        }
+        recordError(error)
+        return { ok: false }
+      }
     }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const now = await this.client.getFile(path)
+      if (!now || now.sha === sha) return { ok: true }
+      if (!wasReplaced(this.db.name, path, now.sha)) {
+        try {
+          await decryptRecords(this.masterKey, path, now.content)
+          // Een ander venster of apparaat schreef intussen een leesbare versie: ook goed.
+          return { ok: true }
+        } catch (error) {
+          if (!(error instanceof DecryptError) && !(error instanceof InvalidDataError)) throw error
+          return { ok: false, overwrittenBy: (await this.lastWriter(path))?.writer ?? { device: null, version: null } }
+        }
+      }
+      await pause(READ_BACK_PAUSE_MS * (attempt + 1))
+    }
+    // GitHub toont nog de vervangen versie; de nieuwe staat er (de blob is gelezen en ontsleuteld).
+    return { ok: true }
   }
 
   /**

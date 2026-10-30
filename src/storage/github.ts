@@ -2,6 +2,8 @@ import { APP_VERSION, COMMIT } from '../build-info'
 import { fromBase64, toBase64, type Bytes } from '../crypto/encrypt'
 import { deviceId } from './device'
 import { gitBlobSha, isGitSha, matchesSha, recordIntegrity } from './integrity'
+import { newerBuildStarted } from './versions'
+import { NewerSchemaError } from '../model/schema'
 
 // Enige netwerkbestemming van de app: api.github.com (beveiligingsregel 2).
 // Alles wat hier binnenkomt is al versleuteld; deze laag ziet alleen bytes.
@@ -172,10 +174,11 @@ export class GithubClient {
     const expiration = parseExpirationHeader(response.headers.get(EXPIRATION_HEADER))
     if (expiration) this.tokenExpiresAt = expiration
     if (response.status === 401) throw new AuthError(401)
-    if (response.status === 403) {
-      // Een 403 met uitgeputte rate limit is geen tokenfout.
-      if (response.headers.get('x-ratelimit-remaining') === '0') {
-        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', 403, 'rateLimit')
+    if (response.status === 403 || response.status === 429) {
+      // Een uitgeputte of "secundaire" limiet (te veel verzoeken kort na elkaar) is geen tokenfout: anders vraagt
+      // herstellen om een nieuwe token die niets oplost.
+      if (response.status === 429 || response.headers.get('x-ratelimit-remaining') === '0' || response.headers.get('retry-after') !== null || (await mentionsRateLimit(response))) {
+        throw new GithubError('GitHub-limiet bereikt; probeer later opnieuw', response.status, 'rateLimit')
       }
       throw new AuthError(403)
     }
@@ -319,6 +322,7 @@ export class GithubClient {
    * Bij een conflict (bestand ondertussen gewijzigd of ontstaan) volgt ConflictError.
    */
   async putFile(path: string, content: Bytes, sha: string | null, timeoutMs = REQUEST_TIMEOUT_MS): Promise<string> {
+    assertCurrentBuild()
     const expected = await gitBlobSha(content)
     const response = await this.request(
       `/repos/${this.repo}/contents/${encodePath(path)}`,
@@ -353,6 +357,7 @@ export class GithubClient {
    * houdt de versleutelde oude versie.
    */
   async deleteFile(path: string, sha: string): Promise<void> {
+    assertCurrentBuild()
     const response = await this.request(`/repos/${this.repo}/contents/${encodePath(path)}`, {
       method: 'DELETE',
       body: JSON.stringify({ message: commitMessage(), sha }),
@@ -361,6 +366,23 @@ export class GithubClient {
     if (response.status === 409 || response.status === 422) throw new ConflictError(response.status)
     if (!response.ok) throw new GithubError('Schrijven mislukt', response.status, 'write')
   }
+}
+
+/** Noemt het antwoord een limiet ("secondary rate limit", "rate limit exceeded")? Zonder inhoud te loggen. */
+async function mentionsRateLimit(response: Response): Promise<boolean> {
+  try {
+    return /rate limit/i.test(await response.clone().text())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Een venster waarna een nieuwere versie van de app startte, schrijft niets meer naar GitHub (src/storage/versions.ts):
+ * vlak voor elke schrijfactie gecontroleerd, ook midden in een ronde (een venster dat bevroor en hervat).
+ */
+function assertCurrentBuild(): void {
+  if (newerBuildStarted()) throw new NewerSchemaError(0)
 }
 
 function encodePath(path: string): string {

@@ -1695,6 +1695,7 @@ export const nl = {
   'storage.verdict.unknown': 'onbekend',
   'storage.verdict.otherPath': (p: { file: string }) => `ontsleutelt als ${p.file} (onder de verkeerde naam gezet)`,
   'storage.verdict.invalid': (p: { why: string }) => `ontsleutelt, maar ongeldig (${p.why})`,
+  'storage.repairOverwritten': (p: { file: string; who: string }) => `${p.file}: het herstel is meteen weer overschreven met een onleesbare versie. ${p.who}.`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

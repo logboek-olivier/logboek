@@ -17,7 +17,7 @@ import { applyRestore, backupFileName, openBackup, readBackupMeta, restorePlan, 
 import type { FileEvidence, Verdict, VersionEvidence } from '../storage/evidence'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
 import { deviceId } from '../storage/device'
-import { describeStatus, type Store } from '../storage/store'
+import { describeStatus, type RepairResult, type Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 
 // Meer → Opslag: per bestand de laatste sync, het aantal records hier en op GitHub en of het leesbaar is; "Controleer
@@ -70,7 +70,9 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const check = log.check
-  const unreadableNow = status.kind === 'error' && status.code === 'unreadable' ? (status.paths ?? []) : []
+  // Wat de laatste sync op GitHub onleesbaar vond, ook als de ronde om een andere reden stopte (dan blijft "Alles
+  // herstellen" staan).
+  const unreadableNow = status.kind === 'demo' ? [] : store.unreadableFiles().map((f) => f.path)
 
   async function runCheck() {
     setBusy(true)
@@ -87,7 +89,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
   }
 
   const [repairing, setRepairing] = useState(false)
-  const [repairResult, setRepairResult] = useState<{ path: CollectionPath; ok: boolean }[] | null>(null)
+  const [repairResult, setRepairResult] = useState<RepairResult[] | null>(null)
 
   async function repairAll() {
     setRepairing(true)
@@ -195,6 +197,13 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
                 : t('storage.repairAllPartial', { paths: repairResult.filter((r) => !r.ok).map((r) => t(FILE_NAME[r.path])).join(', ') })}
           </p>
         )}
+        {repairResult
+          ?.filter((r) => r.overwrittenBy)
+          .map((r) => (
+            <p key={r.path} className="muted small storage-overwritten">
+              {t('storage.repairOverwritten', { file: t(FILE_NAME[r.path]), who: writerLine(r.overwrittenBy!) })}
+            </p>
+          ))}
         <button type="button" className={`btn${unreadableNow.length > 0 ? '' : ' primary'}`} disabled={busy || repairing} onClick={() => void runCheck()}>
           <Icon icon={ShieldCheck} />
           {busy ? t('storage.checking') : t('storage.checkNow')}

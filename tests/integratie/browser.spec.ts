@@ -1,12 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate } from '../../src/i18n'
 import { createNewLogbook, enterToken, openMore, PASSPHRASE } from '../e2e/helpers/logbook'
-import { createBranch, deleteBranch, rewrite, target, TOKEN } from './echte-github'
+import { createBranch, deleteBranch, reachesDataRepo, requestCount, rewrite, target, TOKEN } from './echte-github'
 
 // Integratietest in de browser tegen de echte GitHub-API (alleen met LOGBOEK_IT_TOKEN, in CI): de echte app in Chromium,
 // met service worker en browsercache, praat met api.github.com; elk verzoek voor logboek-data gaat naar een tijdelijke
 // branch van deze repo, met de token van de workflow. Nieuw logboek, opslaan, herladen, twee vensters tegelijk, een
-// schoon apparaat koppelen, en elke keer "Controleer nu": alles leesbaar. Alleen nepdata; de branch gaat daarna weg.
+// schoon apparaat koppelen, en twee keer "Controleer nu" (zuinig: de token mag ongeveer 1000 verzoeken per uur doen):
+// alles leesbaar. Alleen nepdata; de branch gaat daarna weg.
 
 const t = target('browser')
 const L = (key: Parameters<typeof translate>[1], ...args: unknown[]) => (translate as (l: 'nl', k: typeof key, ...a: unknown[]) => string)('nl', key, ...args)
@@ -16,6 +17,9 @@ async function toBranch(page: Page): Promise<void> {
   await page.route('https://api.github.com/**', async (route) => {
     const request = route.request()
     const { url, body } = rewrite(request.url(), request.method(), request.postData(), t)
+    // Nooit logboek-data (regel 6): wat na het omzetten nog daarheen zou gaan, gaat niet weg.
+    if (reachesDataRepo(url)) return route.abort()
+    requestCount.value++
     await route.continue({ url, headers: { ...request.headers(), authorization: `Bearer ${TOKEN}` }, ...(body !== null ? { postData: body } : {}) })
   })
 }
@@ -49,6 +53,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await deleteBranch(t)
+  // Alleen een aantal, geen inhoud.
+  console.log(`Verzoeken naar GitHub (browser): ${requestCount.value}`)
 })
 
 test('echte GitHub in de browser: nieuw logboek, opslaan, herladen, twee vensters, schoon apparaat', async ({ browser }) => {
@@ -60,7 +66,6 @@ test('echte GitHub in de browser: nieuw logboek, opslaan, herladen, twee venster
   await expectSynced(page)
   await addReminder(page, 'Neptermijn 1')
   await expectSynced(page)
-  await checkAllReadable(page)
 
   // Herladen (de sessie hervat binnen 5 minuten) en meteen weer synchroniseren.
   await page.reload()

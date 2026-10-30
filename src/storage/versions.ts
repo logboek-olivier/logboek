@@ -1,16 +1,17 @@
-import { BUILD_DATE } from '../build-info'
-import { BUILD } from './github'
+import { APP_VERSION, BUILD_DATE, COMMIT } from '../build-info'
 
 // Eén schrijver over versies heen. Elke pagina die start (laden of herladen), noteert zijn build in localStorage, die
 // alle vensters van deze origin delen (het Chrome-tabblad en de geïnstalleerde app). Een venster dat ouder is dan de
 // laatst gestarte build (het bleef op de achtergrond bevroren staan, of werd na een update nog niet herladen), schrijft
-// niets meer naar GitHub en vraagt "Werk de app bij". Een pagina die start, noteert zichzelf altijd: wordt er ooit een
+// niets meer naar GitHub en vraagt "Werk de app bij": de sync slaat dan over, en elke schrijfactie naar GitHub (ook vanuit
+// herstellen, wachtzin wijzigen of de eerste keer) wordt vlak voor het versturen geweigerd. Een pagina die start, noteert
+// zichzelf altijd: wordt er ooit een
 // oudere versie uitgerold, dan start die gewoon als de geldende en sluit niemand zich buiten.
 
 const KEY = 'logboek-gestarte-build'
 
-/** De build van deze pagina (in tests in te stellen met ownBuildForTests). */
-let own = { build: BUILD, date: BUILD_DATE }
+/** De build van deze pagina, zoals in de commitberichten (in tests in te stellen met ownBuildForTests). */
+let own = { build: `${APP_VERSION}+${COMMIT}`, date: BUILD_DATE }
 
 /** Alleen voor tests: alsof deze pagina deze build is (zonder bouwdatum is er geen bewaking). */
 export function ownBuildForTests(build: string, date: string): void {

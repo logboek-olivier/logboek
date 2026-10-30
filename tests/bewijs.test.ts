@@ -5,12 +5,13 @@ import { META_PATH, serializeMeta } from '../src/crypto/keys'
 import { errorReport } from '../src/errors'
 import type { Trip } from '../src/model/types'
 import { classify, evidenceLines } from '../src/storage/evidence'
-import { GithubClient, IntegrityError } from '../src/storage/github'
+import { AuthError, GithubClient, GithubError, IntegrityError } from '../src/storage/github'
 import { openLogboekDb, putObject } from '../src/storage/idb'
 import { gitBlobSha, integrityEvents } from '../src/storage/integrity'
 import { Store } from '../src/storage/store'
-import { encryptRecords } from '../src/storage/sync'
-import { newerBuildStarted, noteStartedBuild } from '../src/storage/versions'
+import { NewerSchemaError } from '../src/model/schema'
+import { encryptRecords, LocalInvalidError, sealForUpload } from '../src/storage/sync'
+import { newerBuildStarted, noteStartedBuild, ownBuildForTests } from '../src/storage/versions'
 import { FakeGithub, gitSha } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 
@@ -94,6 +95,52 @@ describe('elk antwoord tegen zijn git-sha', () => {
     expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts)
   })
 
+  it('klopt het antwoord voor één databestand niet: dat bestand wordt niet geschreven, de andere wel', async () => {
+    const phone = await device()
+    await phone.put('trips.json.enc', trip('t1'))
+    await phone.sync()
+    await phone.put('trips.json.enc', trip('t2'))
+    await phone.put('places.json.enc', { id: 'p1', name: 'Nephaven', lat: 18.4, lon: -64.6, updatedAt: T, deletedAt: null })
+    github.corruptOnly = 'trips.json.enc'
+    github.corruptReads = 50
+    github.corruptBlobs = true
+    const tripsSha = github.files.get('trips.json.enc')!.sha
+    const placesSha = github.files.get('places.json.enc')!.sha
+    await phone.sync()
+    expect(phone.getStatus()).toMatchObject({ kind: 'error', code: 'github', github: 'integrity' })
+    expect(github.files.get('trips.json.enc')!.sha).toBe(tripsSha)
+    expect(github.files.get('places.json.enc')!.sha).not.toBe(placesSha)
+    // Daarna klopt GitHub weer: de volgende sync stuurt de wachtende trip.
+    github.corruptReads = 0
+    github.corruptBlobs = false
+    await phone.sync()
+    expect(phone.getStatus()).toEqual({ kind: 'synced' })
+    expect(github.files.get('trips.json.enc')!.sha).not.toBe(tripsSha)
+  })
+
+  it('een (secundaire) limiet van GitHub is geen tokenfout', async () => {
+    const answers = [
+      new Response(JSON.stringify({ message: 'You have exceeded a secondary rate limit.' }), { status: 403 }),
+      new Response('{}', { status: 403, headers: { 'retry-after': '60' } }),
+      new Response('{}', { status: 429 }),
+      new Response('{}', { status: 403, headers: { 'x-ratelimit-remaining': '0' } }),
+    ]
+    for (const answer of answers) {
+      const client = new GithubClient(TOKEN, () => Promise.resolve(answer))
+      const error: unknown = await client.getFile('trips.json.enc').catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(GithubError)
+      expect(error).not.toBeInstanceOf(AuthError)
+      expect((error as GithubError).code).toBe('rateLimit')
+    }
+    // Een gewone 403 blijft een tokenfout.
+    const plain = new GithubClient(TOKEN, () => Promise.resolve(new Response(JSON.stringify({ message: 'Resource not accessible by personal access token' }), { status: 403 })))
+    await expect(plain.getFile('trips.json.enc')).rejects.toBeInstanceOf(AuthError)
+  })
+
+  it('een ongeldig record op dit apparaat is een fout hier, geen onleesbaar bestand op GitHub', async () => {
+    await expect(sealForUpload(k1.masterKey, 'trips.json.enc', [{ name: 'zonder id' } as unknown as Trip])).rejects.toBeInstanceOf(LocalInvalidError)
+  })
+
   it('GitHub bewaarde iets anders dan verstuurd: gemeld als integriteit, nooit als gelukt', async () => {
     const client = new GithubClient(TOKEN, github.fetch)
     github.storeDifferently = true
@@ -149,6 +196,44 @@ describe('bewijs per onleesbaar bestand', () => {
 })
 
 describe('Alles herstellen', () => {
+  it('een bestand dat wel ontsleutelt maar één kapot record heeft: de goede records van een ander apparaat blijven', async () => {
+    const phone = await device()
+    await phone.put('trips.json.enc', trip('t1'))
+    await phone.sync()
+    // Een ander apparaat schreef twee goede trips; één record mist zijn id (wel deze sleutel, dus wel te ontsleutelen).
+    const file = { format: 'logboek-collection', schemaVersion: 1, records: [trip('elders-1'), trip('elders-2'), { name: 'kapot', updatedAt: T }] }
+    github.write('trips.json.enc', toBase64(await encryptObject(k1.masterKey, 'trips.json.enc', utf8(JSON.stringify(file)))))
+    await phone.sync()
+    expect(phone.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable', paths: ['trips.json.enc'] })
+    expect(await phone.repairAll()).toEqual([{ path: 'trips.json.enc', ok: true }])
+    expect(phone.getStatus()).toEqual({ kind: 'synced' })
+    expect(phone.list('trips.json.enc').map((r) => r.id)).toEqual(['elders-1', 'elders-2', 't1'])
+    const clean = await device()
+    await clean.sync()
+    expect(clean.list('trips.json.enc').map((r) => r.id)).toEqual(['elders-1', 'elders-2', 't1'])
+  })
+
+  it('meteen na het herstel schrijft een ander apparaat er weer iets onleesbaars overheen: niet hersteld, met dat apparaat', async () => {
+    const phone = await device()
+    await phone.put('trips.json.enc', trip('t1'))
+    await phone.sync()
+    const foreign = toBase64(await encryptRecords(k2.masterKey, 'trips.json.enc', []))
+    const message = 'sync 2026-10-30T01:00:00.000Z v1.0.0+0ld0000 dabcdef12'
+    github.write('trips.json.enc', foreign, message)
+    await phone.sync()
+    // Een nieuwe versie van dezelfde schrijver (nieuwe iv, dus een andere sha dan de vervangen versie).
+    const foreignAgain = toBase64(await encryptRecords(k2.masterKey, 'trips.json.enc', []))
+    let again = true
+    github.afterPut = (path) => {
+      if (path !== 'trips.json.enc' || !again) return
+      again = false
+      github.write(path, foreignAgain, message.replace('01:00', '01:01'))
+    }
+    const results = await phone.repairAll()
+    github.afterPut = null
+    expect(results).toEqual([{ path: 'trips.json.enc', ok: false, overwrittenBy: { device: 'abcdef12', version: '1.0.0+0ld0000' } }])
+    expect(phone.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable', paths: ['trips.json.enc'] })
+  })
   it('de leesbare kopie terug, een leeg bestand waar dit apparaat niets heeft; teruggelezen via de blob-sha', async () => {
     const phone = await device()
     await phone.put('trips.json.enc', trip('t1'))
@@ -186,6 +271,24 @@ describe('Alles herstellen', () => {
 })
 
 describe('één schrijver over versies heen', () => {
+  it('een venster dat midden in een ronde hervat nadat een nieuwere versie startte: geen enkele schrijfactie meer', async () => {
+    ownBuildForTests('1.0.0+oud0000', '2026-10-29T18:00:00-04:00')
+    try {
+      const phone = await device()
+      await phone.put('trips.json.enc', trip('t1'))
+      // Na de eerste schrijfactie start in een ander venster een nieuwere versie.
+      github.afterPut = () => noteStartedBuild('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
+      await phone.sync()
+      github.afterPut = null
+      expect(github.requests.filter((r) => r.method === 'PUT')).toHaveLength(1)
+      expect(phone.getStatus()).toMatchObject({ kind: 'error', code: 'update' })
+      // Ook buiten de sync (herstel, wachtzin wijzigen, de eerste keer) gaat er niets meer weg.
+      await expect(new GithubClient(TOKEN, github.fetch).putFile('trips.json.enc', new Uint8Array([1]), null)).rejects.toBeInstanceOf(NewerSchemaError)
+    } finally {
+      ownBuildForTests('', '')
+    }
+  })
+
   it('na een nieuwere gestarte build schrijft een ouder venster niet; dezelfde of een oudere build telt niet', () => {
     noteStartedBuild('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
     expect(newerBuildStarted('1.0.0+oud0000', '2026-10-29T18:00:00-04:00')).toBe(true)

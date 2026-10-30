@@ -73,6 +73,8 @@ export class FakeGithub {
   corruptBlobs = false
   /** GitHub bewaart bij de volgende PUT iets anders dan verstuurd (en noemt de versie daarnaar). */
   storeDifferently = false
+  /** Alleen dit pad krijgt de beschadigde antwoorden (corruptReads, corruptBlobs); null = elk pad. */
+  corruptOnly: string | null = null
   private shaCounter = 0
   private commitCounter = 0
 
@@ -111,7 +113,7 @@ export class FakeGithub {
     const blob = /^\/git\/blobs\/(.+)$/.exec(rest)
     if (blob && method === 'GET') {
       const content = this.blobs.get(blob[1] ?? '')
-      return content !== undefined ? json(200, { sha: blob[1], content: this.corruptBlobs ? corrupt(content) : content, encoding: 'base64' }) : json(404, {})
+      return content !== undefined ? json(200, { sha: blob[1], content: this.corruptBlobs && (this.corruptOnly === null || this.files.get(this.corruptOnly)?.sha === blob[1]) ? corrupt(content) : content, encoding: 'base64' }) : json(404, {})
     }
 
     const commits = /^\/commits\?path=([^&]+)(?:&per_page=(\d+))?/.exec(rest)
@@ -154,7 +156,7 @@ export class FakeGithub {
         return json(200, { sha: old.file.sha, content: `${old.file.content}\n`, encoding: 'base64', size: 1 })
       }
       if (!file) return json(404, { message: 'Not Found' })
-      if (this.corruptReads > 0) {
+      if (this.corruptReads > 0 && (this.corruptOnly === null || this.corruptOnly === path)) {
         this.corruptReads--
         return json(200, { sha: file.sha, content: `${corrupt(file.content)}\n`, encoding: 'base64', size: 1 })
       }

@@ -68,7 +68,11 @@ export function readStorageLog(dbName: string): StorageLog {
         if (typeof at === 'string') synced[path] = at
       }
     }
-    const evidence = Array.isArray(r.evidence) ? r.evidence.map(parseEvidence).filter((e): e is FileEvidence => e !== null) : []
+    // Bewijs blijft een week; ouder valt bij het lezen weg (ook als er sindsdien niets nieuws bijkwam).
+    const weekAgo = Date.now() - EVIDENCE_KEEP_MS
+    const evidence = Array.isArray(r.evidence)
+      ? r.evidence.map(parseEvidence).filter((e): e is FileEvidence => e !== null && !(Date.parse(e.at) < weekAgo))
+      : []
     const integrity = Array.isArray(r.integrity) ? r.integrity.map(parseIntegrity).filter((e): e is IntegrityEvent => e !== null) : []
     return { synced, check: parseCheck(r.check), ...(evidence.length > 0 ? { evidence } : {}), ...(integrity.length > 0 ? { integrity } : {}) }
   } catch {
@@ -95,6 +99,9 @@ function parseVersion(value: unknown): VersionEvidence | null {
     verdict: verdict as VersionEvidence['verdict'],
   }
 }
+
+/** Zo lang blijft het bewijs per onleesbaar bestand bewaard. */
+export const EVIDENCE_KEEP_MS = 7 * 24 * 3_600_000
 
 function parseEvidence(value: unknown): FileEvidence | null {
   if (typeof value !== 'object' || value === null) return null

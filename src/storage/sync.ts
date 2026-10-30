@@ -23,6 +23,17 @@ export class InvalidDataError extends Error {
   }
 }
 
+/**
+ * Wat dit apparaat zelf wil uploaden, is niet terug te lezen (een ongeldig record in het geheugen). Een fout op het
+ * apparaat, niet op GitHub: het bestand op GitHub blijft staan en telt niet als onleesbaar.
+ */
+export class LocalInvalidError extends Error {
+  constructor(path: string) {
+    super(`Wat dit apparaat voor ${path} wil schrijven, is ongeldig`)
+    this.name = 'LocalInvalidError'
+  }
+}
+
 interface CollectionFile {
   format: 'logboek-collection'
   schemaVersion: number
@@ -87,9 +98,33 @@ export async function encryptRecords(masterKey: CryptoKey, path: string, records
  */
 export async function sealForUpload(masterKey: CryptoKey, path: string, records: readonly SyncRecord[]): Promise<Bytes> {
   const blob = await encryptRecords(masterKey, path, records)
-  const back = await decryptRecords(masterKey, path, blob)
-  if (back.length !== records.length) throw new InvalidDataError(path)
+  let back: SyncRecord[]
+  try {
+    back = await decryptRecords(masterKey, path, blob)
+  } catch (error) {
+    if (error instanceof NewerSchemaError) throw error
+    throw new LocalInvalidError(path)
+  }
+  if (back.length !== records.length) throw new LocalInvalidError(path)
   return blob
+}
+
+/**
+ * Uit een bestand dat wel ontsleutelt maar ongeldige records heeft: de records die wel samen te voegen zijn (met id en
+ * updatedAt). Zo gooit "Alles herstellen" geen goede records van een ander apparaat weg. Niet te ontsleutelen, geen
+ * logboekbestand of een onbekende versie: niets.
+ */
+export async function salvageRecords(masterKey: CryptoKey, path: string, blob: Bytes): Promise<SyncRecord[]> {
+  let raw: unknown
+  try {
+    raw = JSON.parse(decoder.decode(await decryptObject(masterKey, path, blob)))
+  } catch {
+    return []
+  }
+  if (!isRecord(raw) || raw.format !== 'logboek-collection' || !Array.isArray(raw.records)) return []
+  const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
+  if (!Number.isInteger(found) || found < 1 || found > SCHEMA_VERSION) return []
+  return raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r)).filter(isSyncRecord)
 }
 
 /**

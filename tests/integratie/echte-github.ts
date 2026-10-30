@@ -9,6 +9,11 @@ import { API_BASE, DATA_REPO, type FetchLike } from '../../src/storage/github'
 export const TOKEN = process.env.LOGBOEK_IT_TOKEN ?? ''
 export const REPO = process.env.LOGBOEK_IT_REPO ?? 'logboek-olivier/logboek'
 const RUN = process.env.LOGBOEK_IT_RUN ?? `lokaal-${Date.now()}`
+// Nooit logboek-data (regel 6): weigeren vóór er één verzoek is.
+if (REPO === DATA_REPO || REPO.endsWith('/logboek-data')) throw new Error('De integratietest draait nooit tegen logboek-data')
+
+/** Zoveel verzoeken deed deze test naar GitHub (de token mag er ongeveer 1000 per uur per repo doen). */
+export const requestCount = { value: 0 }
 
 export interface Target {
   repo: string
@@ -43,16 +48,24 @@ export function rewrite(url: string, method: string, body: string | null, t: Tar
   return { url: `${base}${rest}`, body }
 }
 
+/** Een verzoek dat na het omzetten nog naar logboek-data zou gaan: nooit versturen. */
+export function reachesDataRepo(url: string): boolean {
+  return url.includes(`/repos/${DATA_REPO}`)
+}
+
 /** Een fetch voor GithubClient in Node die naar de tijdelijke branch gaat. */
 export function branchFetch(t: Target): FetchLike {
   return (input, init) => {
     const method = init.method ?? 'GET'
     const { url, body } = rewrite(input, method, typeof init.body === 'string' ? init.body : null, t)
+    if (reachesDataRepo(url)) return Promise.reject(new Error('Verzoek naar logboek-data geweigerd'))
+    requestCount.value++
     return globalThis.fetch(url, { ...init, ...(body !== null ? { body } : {}) })
   }
 }
 
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  requestCount.value++
   return globalThis.fetch(`${API_BASE}/repos/${REPO}${path}`, {
     ...init,
     cache: 'no-store',
@@ -67,6 +80,15 @@ export async function createBranch(t: Target): Promise<void> {
   const sha = ((await head.json()) as { object: { sha: string } }).object.sha
   const made = await api('/git/refs', { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${t.branch}`, sha }) })
   if (!made.ok && made.status !== 422) throw new Error(`branch niet te maken: ${made.status}`)
+}
+
+/** Wacht tot `check` true geeft (GitHub toont net geschreven versies soms pas na een paar seconden). */
+export async function eventually(check: () => Promise<boolean>, tries = 6): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** Math.min(i, 3)))
+  }
+  throw new Error('GitHub liet de verwachte toestand niet zien')
 }
 
 /** Verwijdert de tijdelijke branch (ook als de test faalde). */

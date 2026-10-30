@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { encryptObject, toBase64, utf8, type Bytes } from '../src/crypto/encrypt'
 import { META_PATH, parseMeta, serializeMeta, unlock, type Meta } from '../src/crypto/keys'
-import { COLLECTION_PATHS, type CollectionPath, type SyncRecord, type Trip } from '../src/model/types'
+import { COLLECTION_PATHS, type CollectionPath, type Place, type SyncRecord, type Trip } from '../src/model/types'
 import { Session } from '../src/session'
 import { openBackup } from '../src/storage/backup'
 import { getObject, openLogboekDb, putLocal, putObject, type Db } from '../src/storage/idb'
@@ -384,6 +384,23 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
       expect(store(s).getStatus()).toEqual({ kind: 'synced' })
     }, 60_000)
   }
+
+  it('GitHub antwoordt 403 met een (secundaire) limiet: geen tokenfout, geen nieuwe token nodig, daarna gewoon verder', async () => {
+    const { name } = await phone()
+    github.forceStatus = 403
+    github.forceHeaders = { 'retry-after': '60' }
+    const s = await openApp(name, false)
+    await store(s).sync()
+    expect(s.getState().phase).toBe('unlocked')
+    expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'github', github: 'rateLimit' })
+    github.forceStatus = null
+    github.forceHeaders = {}
+    await store(s).sync()
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+    await expectSamplesOnGithub()
+    const clean = await cleanDevice()
+    expect(store(clean).getStatus()).toEqual({ kind: 'synced' })
+  }, 60_000)
 })
 
 describe('Foutmatrix: documentbestanden in de kluis', () => {
@@ -509,6 +526,45 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     await expectSamplesOnGithub()
     const clean = await cleanDevice()
     expect(store(clean).list('trips.json.enc').map((t) => t.id)).toContain('nep-trip-oud-venster')
+  }, 60_000)
+
+  it('een venster dat midden in een ronde hervat nadat een nieuwere versie startte: na die start geen schrijfactie meer', async () => {
+    const { name } = await phone()
+    ownBuildForTests('1.0.0+oud0000', '2026-10-29T18:00:00-04:00')
+    const s = await openApp(name, false)
+    await store(s).put('trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-bevroren', updatedAt: new Date().toISOString() })
+    await store(s).put('places.json.enc', { ...(samples('places.json.enc')[0] as Place), updatedAt: new Date().toISOString() })
+    const puts = github.requests.filter((r) => r.method === 'PUT').length
+    github.afterPut = () => noteStartedBuild('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
+    await store(s).sync()
+    github.afterPut = null
+    expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(puts + 1)
+    expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
+    s.lock()
+    ownBuildForTests('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
+    const reloaded = await openApp(name, false)
+    await store(reloaded).sync()
+    expect(store(reloaded).getStatus()).toEqual({ kind: 'synced' })
+    await expectSamplesOnGithub()
+    const clean = await cleanDevice()
+    expect(store(clean).list('trips.json.enc').map((t) => t.id)).toContain('nep-trip-bevroren')
+  }, 60_000)
+
+  it('Alles herstellen bij een bestand dat ontsleutelt met één kapot record: de goede records gaan mee', async () => {
+    const { name } = await phone()
+    const s = await openApp(name, false)
+    await store(s).sync()
+    const path: CollectionPath = 'places.json.enc'
+    const good = { ...samples(path)[0]!, id: 'nep-plaats-elders', updatedAt: new Date().toISOString() }
+    const file = { format: 'logboek-collection', schemaVersion: 1, records: [good, { name: 'kapot' }] }
+    github.write(path, toBase64(await encryptObject(k1.masterKey, path, utf8(JSON.stringify(file)))))
+    await store(s).sync()
+    expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'unreadable', paths: [path] })
+    expect(await store(s).repairAll()).toEqual([{ path, ok: true }])
+    expect(store(s).getStatus()).toEqual({ kind: 'synced' })
+    await expectSamplesOnGithub()
+    const clean = await cleanDevice()
+    expect(store(clean).list(path).map((p) => p.id)).toContain('nep-plaats-elders')
   }, 60_000)
 
   it('Alles herstellen: elk onleesbaar bestand terug, ook met 0 records hier; een schoon apparaat leest alles', async () => {
