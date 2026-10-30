@@ -175,6 +175,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
                   </div>
                 )
               })}
+              {mode === 'sheet' && tripStudents.length > 0 && <h4>{t('students.title')}</h4>}
               {mode === 'sheet' && tripStudents.length > 0 && (
                 <ul className="rows">
                   {tripStudents.map((st) => (
@@ -220,7 +221,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
           <TripChecklists store={store} notify={notify} trip={trip} type={view.type} heading={Heading} />
 
           {/* 5. Geld */}
-          <div className="section stack-sm">
+          <div className="stack-sm period-money">
             <TripMoneySection store={store} trip={trip} heading={Heading} />
             <TripClaims store={store} trip={trip} notify={notify} heading={mode === 'page' ? 'h2' : 'h3'} />
             <MoneyButtons onAdd={setAdding} claims={view.kind === 'werk' && !demo} />
@@ -261,7 +262,7 @@ function LandPeriod({ store, notify, period, stay: given }: PeriodPageProps & { 
         {travel && <p className="muted small">{travel}</p>}
       </div>
       {/* 5. Geld */}
-      <div className="section stack-sm">
+      <div className="section stack-sm period-money">
         <PeriodTransactions store={store} periodId={stay.id} notify={notify} />
         <MoneyButtons onAdd={setAdding} claims={false} income={false} />
       </div>

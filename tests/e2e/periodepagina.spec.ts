@@ -62,8 +62,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(headings.first()).toHaveText(L('period.routeAndDays'))
       const order = await page.locator('.period-page h2').allTextContents()
       const at = (text: string) => order.indexOf(text)
+      expect(at(L('period.routeAndDays'))).toBeGreaterThanOrEqual(0)
       expect(at(L('period.routeAndDays'))).toBeLessThan(at(L('checklist.section')))
-      expect(at(L('checklist.section'))).toBeLessThan(at(L('week.money')))
       await expect(page.locator('.trip-head')).toContainText(`${L('periodKind.werk')} · ${L('weekType.skipper-charter')}`)
       await expect(page.locator('.leg-row')).toHaveCount(1)
       await shots(page, 'deze-trip', lang, true)
@@ -75,6 +75,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await sheet.getByRole('button', { name: L('common.save') }).click()
       await expect(sheet).toHaveCount(0)
       await expect(page.locator('.period-page')).toContainText(L('week.amountsHidden', { n: 1 }))
+      // Geld komt na de checklists, in de vaste volgorde.
+      const after = await page.locator('.period-page h2').allTextContents()
+      expect(after.indexOf(L('checklist.section'))).toBeLessThan(after.indexOf(L('week.money')))
 
       // Bewerken (potlood): de gelogde dagen staan erbij, direct te bewerken en te verwijderen.
       await page.locator('.trip-head').getByRole('button', { name: new RegExp(L('week.edit')) }).click()

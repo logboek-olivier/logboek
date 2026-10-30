@@ -1924,7 +1924,7 @@ export const en: Messages = {
   'travelMode.bus': 'Bus',
   'travelMode.auto': 'Car',
   'travelMode.overig': 'Other',
-  'trip.editDay': (p) => `Edit day of ${p.date}`,
+  'trip.editDay': (p) => `Change day of ${p.date}`,
   'day.willExtend': (p) => `Saving extends ${p.name} to ${p.date}.`,
   'day.goesTo': (p) => `This date falls outside ${p.name}: the day goes to ${p.target}.`,
   'day.goesToNew': (p) => `This date falls outside ${p.name}: the day goes into a new trip.`,

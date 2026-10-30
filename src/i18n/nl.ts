@@ -1961,7 +1961,7 @@ export const nl = {
   'travelMode.bus': 'Bus',
   'travelMode.auto': 'Auto',
   'travelMode.overig': 'Overig',
-  'trip.editDay': (p: { date: string }) => `Dag van ${p.date} bewerken`,
+  'trip.editDay': (p: { date: string }) => `Dag van ${p.date} wijzigen`,
   'day.willExtend': (p: { name: string; date: string }) => `Opslaan verlengt ${p.name} tot ${p.date}.`,
   'day.goesTo': (p: { name: string; target: string }) => `Deze datum valt buiten ${p.name}: de dag komt bij ${p.target}.`,
   'day.goesToNew': (p: { name: string }) => `Deze datum valt buiten ${p.name}: de dag komt in een nieuwe trip.`,
