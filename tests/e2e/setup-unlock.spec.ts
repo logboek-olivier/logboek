@@ -4,6 +4,18 @@ import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalO
 
 test.use({ viewport: { width: 360, height: 740 } })
 
+/** Een verzoek zoals het over de lijn gaat, met de base64-inhoud als bytes. */
+function readableBody(body: string | null | undefined): string {
+  if (!body) return ''
+  try {
+    const json = JSON.parse(body) as Record<string, unknown>
+    if (typeof json.content === 'string') json.content = Buffer.from(json.content, 'base64').toString('latin1')
+    return JSON.stringify(json)
+  } catch {
+    return body
+  }
+}
+
 test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrendelen, ontgrendelen', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
@@ -14,8 +26,9 @@ test('nieuw logboek: token, wachtzin, herstelcode bevestigen, gesynct, vergrende
   expect(github.files.has('meta.json.enc')).toBe(true)
   expect(github.files.has('trips.json.enc')).toBe(true)
 
-  // Niets leesbaar over de lijn: de token alleen in de header, de wachtzin nergens.
-  const wire = github.requests.map((r) => `${r.url}\n${r.body ?? ''}`).join('\n')
+  // Niets leesbaar over de lijn: de token alleen in de header, de wachtzin nergens. De inhoud ontsleuteld bekeken als
+  // bytes (in base64 komt "nep" soms toevallig voor; in de versleutelde bytes vrijwel nooit).
+  const wire = github.requests.map((r) => `${r.url}\n${readableBody(r.body)}`).join('\n')
   expect(wire).not.toContain(TOKEN)
   expect(wire).not.toContain(PASSPHRASE)
   expect(wire).not.toContain('nep')
