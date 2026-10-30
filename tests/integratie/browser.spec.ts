@@ -23,17 +23,23 @@ async function toBranch(page: Page): Promise<void> {
     // de app per verzoek wacht.
     await paceWrite(request.method())
     const options = { url, headers: { ...request.headers(), authorization: `Bearer ${TOKEN}` }, ...(body !== null ? { postData: body } : {}) }
-    requestCount.value++
-    let response = await route.fetch(options)
-    const wait = await limitWait(response.status(), (n) => response.headers()[n] ?? null, () => response.text())
-    if (wait !== null) {
-      console.log(`GitHub-limiet (${response.status()}): ${Math.min(wait, 40)} s wachten`)
-      await new Promise((resolve) => setTimeout(resolve, Math.min(wait, 40) * 1000))
+    try {
       requestCount.value++
-      response = await route.fetch(options)
+      let response = await route.fetch(options)
+      const wait = await limitWait(response.status(), (n) => response.headers()[n] ?? null, () => response.text())
+      if (wait !== null) {
+        console.log(`GitHub-limiet (${response.status()}): ${Math.min(wait, 40)} s wachten`)
+        await new Promise((resolve) => setTimeout(resolve, Math.min(wait, 40) * 1000))
+        requestCount.value++
+        response = await route.fetch(options)
+      }
+      noteStatus(request.method(), response.status())
+      await route.fulfill({ response })
+    } catch (error) {
+      // Het venster ging dicht terwijl dit verzoek nog liep (de test sluit vensters): dan is er niemand meer om te antwoorden.
+      if (page.isClosed() || /disposed|closed/i.test(String(error))) return
+      throw error
     }
-    noteStatus(request.method(), response.status())
-    await route.fulfill({ response })
   })
 }
 
