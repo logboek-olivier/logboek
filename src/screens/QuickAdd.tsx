@@ -323,7 +323,8 @@ export function CostForm({ store, onDone, tripId: preset }: { store: Store; onDo
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   // Soort (reizen, eten en drinken, verblijf, opleiding, uitrusting, overig), laatst gekozen; leert de kosten per dagsoort.
-  const [category, setCategory] = useState<CostCategory>(settings.lastCostCategory ?? 'overig')
+  // Vanaf een training (zelf leren): standaard opleiding (cursusgeld).
+  const [category, setCategory] = useState<CostCategory>(() => (preset && periods.find((p) => p.id === preset)?.kind === 'training' ? 'opleiding' : (settings.lastCostCategory ?? 'overig')))
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [date, setDate] = useState(() => {
     const period = preset ? periods.find((p) => p.id === preset) : undefined

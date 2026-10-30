@@ -660,12 +660,12 @@ export const nl = {
   'boat.title': 'Boot',
   'boat.name': 'Bootnaam',
   'boat.model': 'Model',
-  'boat.modelPlaceholder': 'Lagoon 42',
+  'boat.modelPlaceholder': 'bijv. Lagoon 42',
   'boat.length': 'Lengte (ft)',
   'boat.metres': (p: { m: string }) => `${p.m} m`,
   'boat.feet': (p: { ft: string; m: string }) => `${p.ft} ft (${p.m} m)`,
   'boat.base': 'Basis',
-  'boat.basePlaceholder': 'Nanny Cay',
+  'boat.basePlaceholder': 'bijv. Nanny Cay',
   'boat.kind': 'Soort boot',
   'boat.charter': 'Charterbedrijf of eigenaar',
   'boat.fromEarlier': 'Gegevens van de vorige trip met deze boot ingevuld.',
@@ -1999,6 +1999,11 @@ export const nl = {
   'periods.undated': 'Zonder datums',
   'periods.empty': 'Nog geen periodes.',
   'periods.noMatch': 'Niets gevonden.',
+  'day.noPeriod': 'Zonder periode',
+  'boats.confirmOne': 'Bevestigen',
+  'boats.savedOne': (p: { name: string }) => `${p.name} bevestigd`,
+  'boats.skippedOne': (p: { name: string }) => `${p.name} overgeslagen`,
+  'boats.skipOne': 'Niet nu',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

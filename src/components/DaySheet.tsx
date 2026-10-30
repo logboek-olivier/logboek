@@ -15,7 +15,7 @@ import { setStayDays, stayName } from '../model/periods'
 import { bothUndo, type Undo } from '../model/changes'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { kindLabel } from '../i18n/labels'
-import { isEarned } from '../model/money'
+import { isEarned, isIncome } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { currentSettings } from '../model/settings'
@@ -320,7 +320,8 @@ function DayIncome({ store, date }: { store: Store; date: string }) {
   const income = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && isEarned(tx.kind) && tx.date === date)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
-  if (income.length === 0) return <p className="muted small">{t('day.noIncome')}</p>
+  // Alleen als er iets is (geen "geen inkomsten"-regel).
+  if (income.length === 0) return null
   return (
     <div className="day-tips">
       <div className="section-head">
@@ -468,7 +469,7 @@ export function DayView({
             </ul>
           </div>
         )}
-        <DayTips store={store} date={date} />
+        <DayMoney store={store} date={date} />
         {isSundayDate(date) && <WeekClosingSection store={store} index={index} date={date} today={today} notify={notify} />}
         {info.type === 'werk' && (planned && trip ? (
           <button type="button" className="btn primary" onClick={() => void logAsPlanned()}>
@@ -523,30 +524,52 @@ export function DayView({
   )
 }
 
-/** Was er fooi op deze dag? Ja of nee; de bedragen pas na "Toon bedragen". */
-function DayTips({ store, date }: { store: Store; date: string }) {
-  const tips = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.kind === 'fooi' && tx.date === date)
+/**
+ * Geld van deze dag, alleen als er iets is: per periode (trip of periode aan land) het aantal inkomsten en uitgaven, de
+ * bedragen pas na "Toon bedragen" (studenten kunnen meekijken).
+ */
+function DayMoney({ store, date }: { store: Store; date: string }) {
+  const list = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.date === date)
+  const trips = useCollection(store, 'trips.json.enc')
+  const stays = useCollection(store, 'periods.json.enc')
+  const counters = useCounters(store)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
+  if (list.length === 0) return null
+  const nameOf = (id: string | undefined) => {
+    const trip = id ? trips.find((x) => x.id === id && x.deletedAt === null) : undefined
+    if (trip) return nameWithCounter(trip, counters.get(trip.id))
+    const stay = id ? stays.find((x) => x.id === id && x.deletedAt === null) : undefined
+    return stay ? stayName(stay) : t('day.noPeriod')
+  }
+  const groups = new Map<string, typeof list>()
+  for (const tx of list) groups.set(tx.tripId ?? '', [...(groups.get(tx.tripId ?? '') ?? []), tx])
   return (
     <div className="day-tips">
       <div className="section-head">
-        <p className="small">{tips.length > 0 ? t('day.tipYes', { n: tips.length }) : t('day.tipNo')}</p>
-        {tips.length > 0 && (
-          <button type="button" className="btn link small" onClick={() => setShown(!shown)} aria-pressed={shown}>
-            <Icon icon={shown ? EyeOff : Eye} />
-            {t(shown ? 'week.hideAmounts' : 'week.showAmounts')}
-          </button>
-        )}
+        <h3>{t('week.money')}</h3>
+        <button type="button" className="btn link small" onClick={() => setShown(!shown)} aria-pressed={shown}>
+          <Icon icon={shown ? EyeOff : Eye} />
+          {t(shown ? 'week.hideAmounts' : 'week.showAmounts')}
+        </button>
       </div>
-      {shown && (
-        <ul className="day-tip-list">
-          {tips.map((tx) => {
-            const eur = eurValue(tx)
-            return <li key={tx.id}>{eur ? formatMoney(eur.eur, 'EUR') : formatMoney(tx.amount, tx.currency)}</li>
-          })}
-        </ul>
-      )}
+      <ul className="day-tip-list">
+        {[...groups.entries()].map(([id, txs]) => (
+          <li key={id}>
+            <strong>{nameOf(id || undefined)}</strong>
+            {': '}
+            {shown
+              ? txs
+                  .map((tx) => {
+                    const eur = eurValue(tx)
+                    const amount = eur ? formatMoney(eur.eur, 'EUR') : formatMoney(tx.amount, tx.currency)
+                    return `${kindLabel(tx.kind)} ${isIncome(tx.kind) ? '+' : '−'}${amount}`
+                  })
+                  .join(' · ')
+              : t('day.amountsHidden', { n: txs.length })}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
