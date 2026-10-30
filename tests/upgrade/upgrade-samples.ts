@@ -32,6 +32,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   ],
   'settings.json.enc': [
     { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', careerStart: '2026-09-01', costDefaults: { thuis: 25, reis: 40 }, lastCostCategory: 'eten', updatedAt: T, deletedAt: null },
+    // Fundering: "laatst gebruikt" van een ander apparaat in een eigen record (oudere versies lezen alleen 'settings').
+    { id: 'laatst:0a1b2c3d', lastBoat: 'Nepboot ander apparaat', lastRole: 'instructeur', lastCurrency: 'USD', lastSource: 'overig', lastWater: 'getij', updatedAt: T, deletedAt: null },
   ],
   'curricula.json.enc': [
     { id: 'upg-course-1', body: 'eigen', courseCode: 'NEP 1', name: { nl: 'Nepcursus', en: 'Fake course' }, groups: [{ id: 'g1', title: { nl: 'Nepdeel', en: 'Fake part' }, topics: [{ id: 't1', title: { nl: 'Nepknoop', en: 'Fake knot' }, kind: 'praktijk', examCritical: true }] }], source: 'eigen', updatedAt: T, deletedAt: null },
