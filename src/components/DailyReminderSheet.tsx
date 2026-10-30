@@ -18,7 +18,7 @@ import { Sheet } from './Sheet'
 
 /** De werkdagen uit de agenda van vandaag tot het einde van de planning. */
 export function workDates(store: Store, today: string): string[] {
-  const index = buildIndex(store.list('calendar.json.enc'), store.list('trips.json.enc'), store.list('legs.json.enc'))
+  const index = buildIndex(store.list('calendar.json.enc'), store.list('trips.json.enc'), store.list('legs.json.enc'), [], store.list('periods.json.enc'))
   const end = planningEnd(index)
   const out: string[] = []
   if (!end) return out

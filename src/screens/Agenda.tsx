@@ -44,7 +44,8 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const reminders = useCollection(store, 'reminders.json.enc')
-  const index = useMemo(() => buildIndex(calendar, trips, legs, reminders), [calendar, trips, legs, reminders])
+  const stays = useCollection(store, 'periods.json.enc')
+  const index = useMemo(() => buildIndex(calendar, trips, legs, reminders, stays), [calendar, trips, legs, reminders, stays])
   const [month, setMonth] = useState(monthOf(today))
   const [open, setOpen] = useState<string | null>(null)
   const [view, setView] = useState<'maand' | 'seizoen' | 'delen'>('maand')
@@ -263,6 +264,10 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           onOpenTrip={(trip) => {
             setOpen(null)
             setViewTrip(trip)
+          }}
+          onNewTrip={(date) => {
+            setOpen(null)
+            setNewTrip({ startDate: date, dayCount: 1 })
           }}
         />
       )}

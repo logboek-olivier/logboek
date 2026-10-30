@@ -1,7 +1,7 @@
 import { addDays } from '../model/money'
 import { draftPlan, newGroup } from '../model/plans'
 import { SEED_CURRICULA } from '../model/seed-curricula'
-import type { CalendarDay, CollectionPath, Collections, Leg, Participant, Place, Reminder, Settings, Student, Trip, WeekPlan } from '../model/types'
+import type { CalendarDay, CollectionPath, Collections, Leg, Participant, Place, Reminder, Settings, StayPeriod, Student, Trip, WeekPlan } from '../model/types'
 import { DEFAULT_SETTINGS } from '../model/settings'
 
 // Demomodus: verzonnen voorbeelddata om de app te laten zien. Routes langs openbare plaatsen in de BVI en Kroatië
@@ -198,17 +198,19 @@ export function demoData(today: string): DemoData {
     ...base,
   }
 
-  const calendar: CalendarDay[] = [
-    { id: `dag:${addDays(nextStart, -2)}`, date: addDays(nextStart, -2), type: 'reis', travel: { from: 'Amsterdam', to: 'Tortola' }, ...base },
-    { id: `dag:${addDays(today, 8)}`, date: addDays(today, 8), type: 'rust', ...base },
+  // Periodemodel: reis, thuis en vrij zijn periodes aan land (docs/PERIODEMODEL.md).
+  const stays: StayPeriod[] = [
+    { id: 'demo-stay-reis', kind: 'reis', startDate: addDays(nextStart, -2), endDate: addDays(nextStart, -2), travel: { from: 'Amsterdam', to: 'Tortola', by: 'vliegtuig' }, ...base },
+    { id: 'demo-stay-vrij', kind: 'vrij', startDate: addDays(today, 8), endDate: addDays(today, 8), ...base },
   ]
+  const calendar: CalendarDay[] = []
 
   const reminders: Reminder[] = [
     { id: 'demo-rem-1', title: 'Renew first aid certificate', date: addDays(today, 40), kind: 'vervalt', doneAt: null, ...base },
     { id: 'demo-rem-2', title: 'Book flight to Tortola', date: addDays(today, 6), kind: 'deadline', doneAt: null, ...base },
   ]
 
-  const settings: Settings = { ...DEFAULT_SETTINGS, lastBoat: 'Blue Heron', lastRole: 'instructeur', activeWeekId: 'demo-trip-bvi', ...base }
+  const settings: Settings = { ...DEFAULT_SETTINGS, lastBoat: 'Blue Heron', lastRole: 'instructeur', activeWeekId: 'demo-trip-bvi', periodsMigratedAt: T, ...base }
 
   return {
     'trips.json.enc': trips,
@@ -217,6 +219,7 @@ export function demoData(today: string): DemoData {
     'students.json.enc': students,
     'plans.json.enc': [plan],
     'calendar.json.enc': calendar,
+    'periods.json.enc': stays,
     'reminders.json.enc': reminders,
     'settings.json.enc': [settings],
   }

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyPlan, hasOverlap, parsePlanning, planImport, PlanningError } from '../src/import/planning'
-import { availabilityRuns, buildIndex, planningRuns, seasonWeeks, setDays } from '../src/model/calendar'
+import { availabilityRuns, buildIndex, dayInfo, planningRuns, seasonWeeks, setDays } from '../src/model/calendar'
 import type { CalendarDay, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -86,11 +86,14 @@ describe('voorbeeld en importeren', () => {
     expect(cursus).toMatchObject({ startDate: '2027-03-15', endDate: '2027-03-21', type: 'training-geven', organisation: 'sailing-virgins', boat: 'Nepboot Zes', area: 'Nepgebied Zuid' })
     const own = new Map(s.list('calendar.json.enc').map((d) => [d.date, d.type]))
     expect(own.get('2027-03-14')).toBeUndefined()
-    expect(own.get('2027-03-25')).toBe('thuis')
+    // Thuis wordt een periode (periodemodel); de eigen reisdag zonder gegevens gaat erin op.
+    expect(own.get('2027-03-25')).toBeUndefined()
+    const after = buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc'))
+    expect(dayInfo(after, '2027-03-25', '2027-01-01')).toMatchObject({ type: 'thuis', source: 'periode' })
     expect(own.get('2027-04-03')).toBe('optie')
 
     // Opnieuw importeren: alles staat er al of overlapt; zonder aanzetten verandert er niets.
-    const again = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc')))
+    const again = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc')))
     expect(again.find((i) => i.row.row === 4)!.duplicate).toBe(true)
     expect(again.every(hasOverlap)).toBe(true)
     expect(await applyPlan(s, again, new Set(), 'nl')).toEqual({ trips: 0, days: 0 })

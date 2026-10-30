@@ -1,3 +1,4 @@
+import { ReviewNotice, useReviewItems } from '../components/ReviewNotice'
 import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane, Plus } from 'lucide-react'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { activeWeek, dayCountOf, missingDays, weekView } from '../model/weeks'
@@ -58,12 +59,15 @@ export function Today({
   onSettings,
   onAdd,
   onReminders,
+  onReview,
 }: {
   store: Store
   notify: Notify
   onSettings: () => void
   onAdd: (init?: AddInit) => void
   onReminders: () => void
+  /** Meer → Nakijken (alleen het aantal staat op Vandaag). */
+  onReview?: () => void
 }) {
   const session = useSession()
   const legs = useCollection(store, 'legs.json.enc')
@@ -92,8 +96,10 @@ export function Today({
   // Dagsoort van vandaag: eigen instelling, anders uit trips en dagen.
   const calendar = useCollection(store, 'calendar.json.enc')
   const reminders = useCollection(store, 'reminders.json.enc')
-  const index = useMemo(() => buildIndex(calendar, trips, legs, reminders), [calendar, trips, legs, reminders])
+  const stays = useCollection(store, 'periods.json.enc')
+  const index = useMemo(() => buildIndex(calendar, trips, legs, reminders, stays), [calendar, trips, legs, reminders, stays])
   const day = dayInfo(index, today, today)
+  const reviewCount = useReviewItems(store).length
   const nothingToLog = day.type === 'reis' || day.type === 'rust' || day.type === 'thuis' || day.type === 'onbeschikbaar'
   const [dayOpen, setDayOpen] = useState(false)
   const [reminderFromDay, setReminderFromDay] = useState<{ reminder: Reminder | null } | null>(null)
@@ -203,6 +209,7 @@ export function Today({
           </button>
         </div>
       )}
+      {onReview && !demo && <ReviewNotice count={reviewCount} onOpen={onReview} />}
       <WeekClose store={store} index={index} today={today} notify={notify} />
       <button
         className="stat hero goal"

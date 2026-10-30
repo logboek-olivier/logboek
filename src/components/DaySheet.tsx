@@ -10,7 +10,10 @@ import { RouteMap } from './LazyMap'
 import { boatLine } from './boat-line'
 import { useCounters } from './useCounters'
 import { ViewRows } from './Views'
-import { clearDay, dayInfo, extendOptions, resizeTrip, setDay, shrinkFor, type CalendarIndex, type TripResize } from '../model/calendar'
+import { clearDay, dayInfo, extendOptions, resizeTrip, setDay, shrinkFor, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
+import { setStayDays, stayName } from '../model/periods'
+import { bothUndo, type Undo } from '../model/changes'
+import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { kindLabel } from '../i18n/labels'
 import { isEarned } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
@@ -42,6 +45,7 @@ export function DaySheet({
   onAdd,
   onReminder,
   onEditTrip,
+  onNewTrip,
   notify,
 }: {
   store: Store
@@ -53,10 +57,14 @@ export function DaySheet({
   onReminder: (reminder: Reminder | null) => void
   /** Trip bewerken (alle velden, ook verwijderen); het dagblad sluit dan. */
   onEditTrip?: (trip: Trip) => void
+  /** Nieuwe trip op deze dag (op het water op een dag zonder trip); het dagblad sluit dan. */
+  onNewTrip?: (date: string) => void
   notify: Notify
 }) {
   const today = todayIso()
   const info = dayInfo(index, date, today)
+  // Op het water gekozen op een dag zonder trip: verlengen of een nieuwe trip (er komt geen losse werkdag meer).
+  const [water, setWater] = useState(false)
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const legs = useCollection(store, 'legs.json.enc')
   const own = info.own
@@ -74,25 +82,40 @@ export function DaySheet({
 
   // De reden hoort alleen bij onbeschikbaar: een andere dagsoort neemt hem niet mee.
   const details = (kind: DayType | null) => ({ location, boat, note, ...(kind === 'onbeschikbaar' ? { reason } : {}), travel: { from, to, flight } })
-  const extend = type === 'werk' && info.trips.length === 0 ? extendOptions(index, date, date) : []
+  const extend = (type === 'werk' || water) && info.trips.length === 0 ? extendOptions(index, date, date) : []
   const reminders = store.list('reminders.json.enc')
   const due = useDueItems(store).filter((item) => item.date.slice(0, 10) === date && item.source !== 'trip')
 
   async function choose(next: DayType) {
-    const shrink = shrinkFor(index, date, next)
-    if (!shrink) {
-      await setDay(store, date, next, details(next))
+    if (next === 'werk') {
+      if (info.trips.length === 0) setWater(true)
       return
     }
+    setWater(false)
+    const shrink = shrinkFor(index, date, next)
+    // Midden in een trip hoort de dag bij de trip (één periode per dag): alleen de eerste of laatste dag kan eraf.
+    if (info.trips.length > 0 && !shrink) {
+      notify(t('day.inTrip', { name: info.trips.at(-1)!.trip.name }))
+      return
+    }
+    const undos: Undo[] = []
     // De eerste of laatste dag van een trip is altijd werk: een andere dagsoort maakt de trip een dag korter.
-    const before = own
-    const undoResize = await resizeTrip(store, shrink)
-    await setDay(store, date, next, details(next))
-    notify(resized(shrink), async () => {
-      await undoResize()
-      if (before) await store.put('calendar.json.enc', { ...before, updatedAt: new Date().toISOString() })
-      else await clearDay(store, date)
-    })
+    if (shrink) undos.push(await resizeTrip(store, shrink))
+    const land = STAY_FROM_DAY[next]
+    if (land) {
+      // Reis, thuis of vrij: de dag komt in een periode van die soort (een aangrenzende wordt langer).
+      undos.push(await setStayDays(store, [date], land, next === 'reis' ? { travel: { from, to } } : {}))
+    } else {
+      // Een dagtoestand (beschikbaar, optie, onbeschikbaar) hoort bij een dag zonder periode.
+      if (info.stay) undos.push(await setStayDays(store, [date], null))
+      const before = own
+      await setDay(store, date, next, details(next))
+      undos.push(async () => {
+        if (before) await store.put('calendar.json.enc', { ...before, updatedAt: new Date().toISOString() })
+        else await clearDay(store, date)
+      })
+    }
+    notify(shrink ? resized(shrink) : t('day.kindSaved', { kind: t(`dayType.${next}`) }), bothUndo(...undos))
   }
 
   async function extendTrip(option: TripResize) {
@@ -108,7 +131,12 @@ export function DaySheet({
   async function save(e: FormEvent) {
     e.preventDefault()
     if (!type) return
-    await setDay(store, date, type, details(type))
+    // Reis, thuis of vrij zonder periode (vrij tussen twee trips): eerst de periode, dan de gegevens van de dag.
+    const land = STAY_FROM_DAY[type]
+    if (land && !info.stay && info.trips.length === 0) await setStayDays(store, [date], land)
+    const d = details(type)
+    const hasDetails = !!(d.location?.trim() || d.boat?.trim() || d.note?.trim() || d.reason?.trim() || d.travel.from.trim() || d.travel.to.trim() || d.travel.flight.trim())
+    if (!land || hasDetails || own) await setDay(store, date, type, d)
     notify(t('toast.daySaved'))
     onClose()
   }
@@ -144,7 +172,14 @@ export function DaySheet({
           </p>
         </div>
 
-        {type === 'werk' && (
+        {info.stay && (
+          <p className="day-trip">
+            <strong>{stayName(info.stay)}</strong>
+            <span className="muted small"> · {formatDateRange(info.stay.startDate, info.stay.endDate)}</span>
+          </p>
+        )}
+
+        {(type === 'werk' || water) && (
           <div className="stack-sm">
             {info.trips.map((v) => (
               <p key={v.trip.id} className="day-trip">
@@ -170,6 +205,12 @@ export function DaySheet({
                 {option.end === date ? t('day.extend', { name: option.view.trip.name, date: formatDateShort(date) }) : t('day.extendEarlier', { name: option.view.trip.name, date: formatDateShort(date) })}
               </button>
             ))}
+            {info.trips.length === 0 && onNewTrip && (
+              <button type="button" className={`btn${extend.length ? '' : ' primary'}`} onClick={() => onNewTrip(date)}>
+                <Icon icon={Plus} />
+                {t('week.new')}
+              </button>
+            )}
             {info.nm > 0 && <p className="day-nm">{formatNm(info.nm)}</p>}
             {planned && trip ? (
               <button type="button" className="btn primary" onClick={() => void logAsPlanned()}>
@@ -320,6 +361,7 @@ export function DayView({
   onReminder,
   onEditTrip,
   onOpenTrip,
+  onNewTrip,
   notify,
   discreet = false,
 }: {
@@ -334,6 +376,8 @@ export function DayView({
   onEditTrip?: (trip: Trip) => void
   /** Tripoverzicht openen (de dagkaart sluit dan). */
   onOpenTrip?: (trip: Trip) => void
+  /** Nieuwe trip op deze dag (de dagkaart sluit dan). */
+  onNewTrip?: (date: string) => void
   notify: Notify
 }) {
   const lang = useLang()
@@ -347,7 +391,7 @@ export function DayView({
   const counters = useCounters(store)
   const reminders = store.list('reminders.json.enc')
   const due = useDueItems(store).filter((item) => item.date.slice(0, 10) === date && item.source !== 'trip')
-  if (editing) return <DaySheet store={store} index={index} date={date} onClose={onClose} onAdd={onAdd} onReminder={onReminder} onEditTrip={onEditTrip} notify={notify} />
+  if (editing) return <DaySheet store={store} index={index} date={date} onClose={onClose} onAdd={onAdd} onReminder={onReminder} onEditTrip={onEditTrip} onNewTrip={onNewTrip} notify={notify} />
   const info = dayInfo(index, date, today)
   const own = info.own
   const trip = info.trips.at(-1) ?? null
@@ -383,6 +427,14 @@ export function DayView({
             </span>
           </button>
         ))}
+        {info.stay && (
+          <p className="day-view-trip row-item">
+            <span className="row-main">
+              <span className="row-title">{stayName(info.stay)}</span>
+              <span className="muted small">{formatDateRange(info.stay.startDate, info.stay.endDate)}</span>
+            </span>
+          </p>
+        )}
         <RouteMap route={route} small />
         {route.unpinned.length > 0 && route.stops.length > 0 && <p className="muted small">{t('day.unpinned', { names: route.unpinned.join(', ') })}</p>}
         <ViewRows
@@ -392,7 +444,7 @@ export function DayView({
             [t('week.nm'), info.nm > 0 && formatNm(info.nm)],
             [t('field.nightHours'), night > 0 && formatHours(night)],
             [t('field.wind'), wind],
-            [t('day.travel'), info.type === 'reis' && [own?.travel?.from, own?.travel?.to].filter(Boolean).join(' → ') + (own?.travel?.flight ? ` · ${own.travel.flight}` : '')],
+            [t('day.travel'), info.type === 'reis' && [stayTravel(info)?.from, stayTravel(info)?.to].filter(Boolean).join(' → ') + (own?.travel?.flight ? ` · ${own.travel.flight}` : '')],
             [t('day.location'), own?.location],
             [t('day.reason'), info.type === 'onbeschikbaar' && own?.reason],
             [t('field.note'), notes.join(' · ')],

@@ -181,6 +181,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'balances.json.enc': 'key.file.balances',
   'fixedcosts.json.enc': 'key.file.fixedcosts',
   'claims.json.enc': 'key.file.claims',
+  'periods.json.enc': 'key.file.periods',
 }
 
 /** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */

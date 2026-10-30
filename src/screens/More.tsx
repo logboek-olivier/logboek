@@ -1,12 +1,14 @@
-import { Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Target, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { ClipboardCheck, Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Target, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { t, type MessageKey } from '../i18n'
+import { useReviewItems } from '../components/ReviewNotice'
+import type { Store } from '../storage/store'
 
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
 // hier ook.
 
-export type MoreScreen = 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen'
+export type MoreScreen = 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen' | 'nakijken'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
   { id: 'logboek', label: 'nav.logbook', hint: 'more.logbookHint', icon: NotebookPen },
@@ -26,11 +28,13 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
   { id: 'instellingen', label: 'nav.settings', hint: 'more.settingsHint', icon: SettingsIcon },
 ]
 
-export function More({ onOpen }: { onOpen: (screen: MoreScreen) => void }) {
+export function More({ store, onOpen }: { store: Store; onOpen: (screen: MoreScreen) => void }) {
   // In de demo geen Opslag (controleren en back-ups gaan over de eigen gegevens op GitHub), geen Kluis en geen
-  // Rekeningen (de demo heeft geen bedragen).
+  // Rekeningen (de demo heeft geen bedragen). Nakijken alleen als er iets na te kijken is, bovenaan.
   const demo = useIsDemo()
-  const items = demo ? ITEMS.filter((item) => item.id !== 'opslag' && item.id !== 'kluis' && item.id !== 'rekeningen') : ITEMS
+  const review = useReviewItems(store).length
+  const base = demo ? ITEMS.filter((item) => item.id !== 'opslag' && item.id !== 'kluis' && item.id !== 'rekeningen') : ITEMS
+  const items = review > 0 ? [{ id: 'nakijken' as const, label: 'review.title' as const, hint: 'more.reviewHint' as const, icon: ClipboardCheck }, ...base] : base
   return (
     <section className="stack-lg">
       <header className="page-header">
@@ -43,7 +47,7 @@ export function More({ onOpen }: { onOpen: (screen: MoreScreen) => void }) {
               <Icon icon={item.icon} />
               <span className="row-main">
                 <span>{t(item.label)}</span>
-                <span className="muted small">{t(item.hint)}</span>
+                <span className="muted small">{item.id === 'nakijken' ? t('review.notice', { n: review }) : t(item.hint)}</span>
               </span>
               <Icon icon={ChevronRight} className="chevron" />
             </button>

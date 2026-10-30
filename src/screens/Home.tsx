@@ -5,7 +5,7 @@ import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
 import { backfillRates, getRates, loadRates, subscribeRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
-import { setScreen } from '../errors'
+import { recordError, setScreen } from '../errors'
 import { onBack } from '../back'
 import { onNavigate } from '../navigation'
 import { t } from '../i18n'
@@ -37,6 +37,7 @@ const Accounts = lazyComponent(() => import('./Accounts').then((m) => m.Accounts
 const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
+const Review = lazyComponent(() => import('./Review').then((m) => m.Review))
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -64,6 +65,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   archief: 'Studentenarchief',
   instellingen: 'Instellingen',
   opslag: 'Opslag',
+  nakijken: 'Nakijken',
 }
 
 
@@ -144,6 +146,19 @@ export function Home({ store }: { store: Store }) {
     backfilled.current = true
     void backfillRates(store, rates)
   }, [store, rates, status])
+  // Periodemodel: de agenda en het geld één keer omzetten, na de eerste geslaagde sync (src/model/migrate-periods.ts).
+  const migrating = useRef(false)
+  useEffect(() => {
+    if (migrating.current || demo || !store.hasSynced()) return
+    migrating.current = true
+    void import('../model/migrate-periods')
+      .then((m) => m.migratePeriods(store))
+      .catch((error: unknown) => {
+        // Lukt het nu niet (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
+        migrating.current = false
+        recordError(error)
+      })
+  }, [store, status, demo])
 
   // De weg terug voor de terugknop van Android (src/back.ts): de schermen waar Olivier vandaan kwam, elk een stap terug.
   // Vandaag is het begin; teruggaan naar het vorige scherm (ook met "‹ Meer") haalt het van de weg af.
@@ -192,7 +207,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken'
         ? 'meer'
         : screen
 
@@ -204,7 +219,7 @@ export function Home({ store }: { store: Store }) {
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {
             select('toevoegen')
             setAddInit(init)
-          }} onReminders={() => select('termijnen')} />
+          }} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
       )}
       {screen === 'week' && (
         <ThisWeek
@@ -237,7 +252,7 @@ export function Home({ store }: { store: Store }) {
         </>
       )}
       {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}-${addInit.from ?? ''}-${addInit.to ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} tab={addInit ? 'dag' : (shortcut ?? 'dag')} />}
-      {screen === 'meer' && <More onOpen={select} />}
+      {screen === 'meer' && <More store={store} onOpen={select} />}
       {screen === 'geld' && (
         <>
           <BackToMore onBack={() => select('meer')} />
@@ -320,6 +335,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Storage store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'nakijken' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Review store={store} notify={notify} />
         </>
       )}
       </Suspense>

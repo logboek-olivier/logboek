@@ -1,7 +1,9 @@
 import { t } from '../i18n'
 import { datesBetween, followTrip, type CalendarIndex } from '../model/calendar'
 import { suggestType, weekFields, MAX_WEEK_DAYS, type WeekInput } from '../model/weeks'
-import { DAY_TYPES, newId, ORGANISATIONS, todayIso, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type Trip, type WeekType } from '../model/types'
+import { DAY_TYPES, newId, ORGANISATIONS, todayIso, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type StayKind, type Trip, type WeekType } from '../model/types'
+import { setStayDays } from '../model/periods'
+import { STAY_FROM_DAY } from '../model/migrate-periods'
 import type { Lang } from '../i18n'
 import type { Store } from '../storage/store'
 import { withSalaryDefault } from '../model/salary'
@@ -151,7 +153,8 @@ export function planImport(rows: readonly PlanningRow[], index: CalendarIndex): 
   return rows.map((row) => {
     const dates = datesBetween(row.start, row.end)
     const overlapping = index.views.filter((v) => v.startDate <= row.end && row.start <= v.endDate)
-    const ownDays = dates.filter((d) => index.own.has(d)).length
+    // Zelf ingestelde dagen en dagen in een periode aan land (reis, thuis, vrij).
+    const ownDays = dates.filter((d) => index.own.has(d) || index.stays.some((st) => st.startDate <= d && d <= st.endDate)).length
     const tripDays = dates.filter((d) => overlapping.some((v) => v.startDate <= d && d <= v.endDate)).length
     const duplicate = row.kind === 'werk' && overlapping.some((v) => v.startDate === row.start && v.trip.name.trim().toLowerCase() === (row.name || '').trim().toLowerCase())
     return {
@@ -178,6 +181,7 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
   const now = new Date().toISOString()
   const trips: Trip[] = []
   const days = new Map<string, CalendarDay>()
+  const stays: { dates: string[]; kind: StayKind; note: string; name: string }[] = []
   for (const item of items) {
     if (hasOverlap(item) && !include.has(item.row.row)) continue
     const { row } = item
@@ -199,6 +203,8 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
       }
       // Een werkregel met organisatie krijgt het standaardsalaris van die organisatie.
       trips.push(withSalaryDefault({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null }, settings, undefined, [], todayIso()))
+    } else if (STAY_FROM_DAY[row.kind]) {
+      stays.push({ dates: datesBetween(row.start, row.end), kind: STAY_FROM_DAY[row.kind]!, note: row.note, name: row.name })
     } else {
       for (const date of datesBetween(row.start, row.end)) {
         // Bij onbeschikbaar is de notitie de reden (die alleen Olivier ziet, nooit in een gedeelde PDF).
@@ -207,12 +213,18 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
       }
     }
   }
-  if (days.size > 0) await store.putMany('calendar.json.enc', [...days.values()])
+  // Reis, thuis en rust worden periodes (rust = vrij), zoals in de agenda; dagen in een trip blijven bij de trip.
+  for (const stay of stays) await setStayDays(store, stay.dates, stay.kind, { note: stay.note, name: stay.name }, false)
+  if (days.size > 0) {
+    // Een dagtoestand hoort bij een dag zonder periode aan land.
+    await setStayDays(store, [...days.keys()], null, {}, false)
+    await store.putMany('calendar.json.enc', [...days.values()])
+  }
   if (trips.length > 0) {
     await store.putMany('trips.json.enc', trips)
     // Een aangezette werkregel over zelf ingestelde dagen: de agenda volgt de nieuwe trip.
     for (const trip of trips) await followTrip(store, trip.id, null, { start: trip.startDate!, end: trip.endDate! })
   }
   void store.sync()
-  return { trips: trips.length, days: days.size }
+  return { trips: trips.length, days: days.size + stays.reduce((n, st) => n + st.dates.length, 0) }
 }
