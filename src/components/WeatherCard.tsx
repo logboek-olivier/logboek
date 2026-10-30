@@ -1,20 +1,76 @@
 import { CloudSun } from 'lucide-react'
-import { Component, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { formatMoment, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import type { Trip } from '../model/types'
-import { beaufort, dayParts, fetchedAtOf, getWeather, isStale, loadWeather, localDates, localHour, needsRefresh, pointNear, subscribeWeather, tripPoints, upcoming, type PartSummary } from '../model/weather'
+import { choosePoint, dayParts, downwindDeg, fetchedAtOf, getWeather, isStale, loadWeather, localDates, localHour, needsRefresh, subscribeWeather, tripPoints, upcoming, type Compass, type PartSummary } from '../model/weather'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { useCollection } from './useCollection'
 
-// Wind en weer op Vandaag: voor vandaag en morgen per dagdeel de wind (richting, knopen, Beaufort, stoten), de golven
-// en de neerslag bij de lopende trip, met de tijd van ophalen. Alleen uit public/weather.json (zelfde origin, gebouwd
-// door deploy.yml); zonder bestand, zonder pins of buiten de vaste gebieden staat er niets.
+// Wind en weer op Vandaag: voor vandaag en morgen per dagdeel de wind (een pijltje dat met de wind meewijst, "uit O",
+// knopen; geen windkracht), stoten, golven en neerslag bij de lopende trip, met de tijd van ophalen. Het weerpunt volgt
+// de laatste plaats met pin, anders de eigen locatie (als GPS al is toegestaan), anders het gebied van de trip; Olivier
+// kan zelf een ander punt kiezen (per apparaat onthouden). Alleen uit public/weather.json (zelfde origin, gebouwd door
+// deploy.yml); zonder bestand of zonder punt in de buurt staat er niets.
+
+const POINT_KEY = 'logboek-weerpunt'
+
+function readChosen(): string | null {
+  try {
+    return localStorage.getItem(POINT_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeChosen(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(POINT_KEY, id)
+    else localStorage.removeItem(POINT_KEY)
+  } catch {
+    // Niet te bewaren (privévenster): geldt tot herladen.
+  }
+}
+
+/** De eigen locatie, alleen als GPS al is toegestaan (Vandaag vraagt nooit om toestemming). */
+function useGrantedPosition(wanted: boolean): { lat: number; lon: number } | null {
+  const [pos, setPos] = useState<{ lat: number; lon: number } | null>(null)
+  useEffect(() => {
+    if (!wanted || !('geolocation' in navigator) || !navigator.permissions) return
+    let live = true
+    navigator.permissions
+      .query({ name: 'geolocation' as PermissionName })
+      .then((status) => {
+        if (!live || status.state !== 'granted') return
+        navigator.geolocation.getCurrentPosition(
+          (p) => live && setPos({ lat: p.coords.latitude, lon: p.coords.longitude }),
+          () => undefined,
+          { maximumAge: 30 * 60_000, timeout: 10_000 },
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [wanted])
+  return pos
+}
+
+/** Pijltje dat met de wind meewijst (naar waar de wind heen gaat). */
+function WindArrow({ dir }: { dir: Compass }) {
+  return (
+    <svg className="wind-arrow" viewBox="0 0 24 24" aria-hidden="true">
+      <g transform={`rotate(${downwindDeg(dir)} 12 12)`}>
+        <path d="M12 3v18M12 3l-5 6M12 3l5 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+    </svg>
+  )
+}
 
 function windLine(p: PartSummary): string {
   const range = p.windMin === p.windMax ? formatNumber(p.windMax!) : `${formatNumber(p.windMin!)}–${formatNumber(p.windMax!)}`
-  return t('weather.wind', { dir: p.dir ? t(`weather.dir.${p.dir}`) : '', range, bft: beaufort(p.windMax!) }).trim()
+  return p.dir ? t('weather.windFrom', { dir: t(`weather.dir.${p.dir}`), range }) : t('weather.windKn', { range })
 }
 
 function detailLine(p: PartSummary): string {
@@ -64,8 +120,12 @@ function WeatherCardInner({ store, trip }: { store: Store; trip: Trip }) {
     return () => document.removeEventListener('visibilitychange', refresh)
   }, [])
 
-  const point = useMemo(() => pointNear(file, tripPoints(trip, legs, places)), [file, trip, legs, places])
-  if (!file || !point) return null
+  const [chosen, setChosen] = useState<string | null>(readChosen)
+  const pins = useMemo(() => tripPoints(trip, legs, places), [trip, legs, places])
+  const gps = useGrantedPosition(pins.length === 0 && !chosen)
+  const found = useMemo(() => choosePoint(file, { chosen, pins, gps, area: [trip.area, trip.base] }), [file, chosen, pins, gps, trip.area, trip.base])
+  if (!file || !found) return null
+  const { point, source } = found
   const [today, tomorrow] = localDates(point)
   const days = [
     // Van vandaag alleen de dagdelen die nog komen.
@@ -83,6 +143,26 @@ function WeatherCardInner({ store, trip }: { store: Store; trip: Trip }) {
         <Icon icon={CloudSun} />
         {t('weather.title', { area: point.name[lang] })}
       </h2>
+      <div className="row weather-point">
+        <span className="muted small grow">{t(`weather.source.${source}`)}</span>
+        <select
+            className="weather-point-choice"
+            aria-label={t('weather.choosePoint')}
+            value={chosen ?? ''}
+            onChange={(e) => {
+              const id = e.target.value || null
+              writeChosen(id)
+              setChosen(id)
+            }}
+          >
+            <option value="">{t('weather.automatic')}</option>
+            {file.points.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name[lang]}
+              </option>
+            ))}
+          </select>
+      </div>
       {days.map((day) => (
         <div key={day.key} className="weather-day">
           <h3>{day.label}</h3>
@@ -91,7 +171,10 @@ function WeatherCardInner({ store, trip }: { store: Store; trip: Trip }) {
               <li key={p.part}>
                 <span className="muted small">{t(`weather.part.${p.part}`)}</span>
                 <span className="weather-main">
-                  <strong>{windLine(p)}</strong>
+                  <strong className="weather-wind">
+                    {p.dir && <WindArrow dir={p.dir} />}
+                    {windLine(p)}
+                  </strong>
                   <span className="muted small">{detailLine(p)}</span>
                 </span>
               </li>

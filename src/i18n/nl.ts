@@ -1872,6 +1872,14 @@ export const nl = {
   'position.between': (p: { from: string; to: string }) => `Van ${p.from} tot ${p.to}`,
   'position.sinceHint': 'De verandering van de netto waarde in de periode (tot vandaag). Te ontvangen salaris telt al mee vanaf het einde van de trip.',
   'forecast.endOn': (p: { date: string; amount: string }) => `Netto waarde op ${p.date}: ≈ ${p.amount}`,
+  'weather.windFrom': (p: { dir: string; range: string }) => `uit ${p.dir} · ${p.range} kn`,
+  'weather.windKn': (p: { range: string }) => `${p.range} kn`,
+  'weather.source.zelf': 'Zelf gekozen weerpunt',
+  'weather.source.pin': 'Dichtst bij de laatste plaats van de trip',
+  'weather.source.gps': 'Dichtst bij je locatie',
+  'weather.source.gebied': 'Bij het gebied van de trip',
+  'weather.choosePoint': 'Weerpunt',
+  'weather.automatic': 'Automatisch',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -1835,4 +1835,12 @@ export const en: Messages = {
   'position.between': (p) => `From ${p.from} to ${p.to}`,
   'position.sinceHint': 'The change in net worth over the period (up to today). Salary to be paid counts from the end of the trip.',
   'forecast.endOn': (p) => `Net worth on ${p.date}: ≈ ${p.amount}`,
+  'weather.windFrom': (p) => `from ${p.dir} · ${p.range} kn`,
+  'weather.windKn': (p) => `${p.range} kn`,
+  'weather.source.zelf': 'Weather point you chose',
+  'weather.source.pin': 'Nearest to the last place of the trip',
+  'weather.source.gps': 'Nearest to your location',
+  'weather.source.gebied': 'For the area of the trip',
+  'weather.choosePoint': 'Weather point',
+  'weather.automatic': 'Automatic',
 }

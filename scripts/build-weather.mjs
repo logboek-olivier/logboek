@@ -26,6 +26,9 @@ export const KEEP_HOURS = 18
 export const POINTS = [
   { id: 'bvi', name: { nl: 'BVI', en: 'BVI' }, lat: 18.4, lon: -64.6 },
   { id: 'sint-maarten', name: { nl: 'Sint Maarten', en: 'Sint Maarten' }, lat: 18.0, lon: -63.1 },
+  { id: 'saint-barthelemy', name: { nl: 'Saint-Barthélemy', en: 'Saint Barthélemy' }, lat: 17.92, lon: -62.87 },
+  { id: 'sint-eustatius', name: { nl: 'Sint Eustatius', en: 'Sint Eustatius' }, lat: 17.47, lon: -62.99 },
+  { id: 'antigua', name: { nl: 'Antigua', en: 'Antigua' }, lat: 17.0, lon: -61.85 },
   { id: 'split', name: { nl: 'Split en Brač', en: 'Split and Brač' }, lat: 43.42, lon: 16.45 },
   { id: 'saronisch', name: { nl: 'Saronische Golf', en: 'Saronic Gulf' }, lat: 37.65, lon: 23.45 },
   { id: 'cycladen', name: { nl: 'Cycladen', en: 'Cyclades' }, lat: 37.3, lon: 25.0 },
