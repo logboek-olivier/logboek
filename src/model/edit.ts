@@ -2,7 +2,7 @@ import type { Store } from '../storage/store'
 import { scrubbedCareer } from './career'
 import { tripForDate } from './derive'
 import { scrubbedDocument } from './documents'
-import { followDays } from './trip-dates'
+import { datesFollowDays, followDays, hasOtherData } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
 import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, TipVia, CostCategory, Transaction, Trip, VaultDocument, WeekClosing } from './types'
@@ -146,14 +146,15 @@ export async function deleteTransaction(store: Store, tx: Transaction): Promise<
 }
 
 /**
- * Een dag verwijderen; raakt de tocht daardoor leeg, dan gaat die mee (en komt terug bij ongedaan maken). Volgen de
- * datums van de trip de dagen, dan schuiven ze mee (ook bij ongedaan maken).
+ * Een dag verwijderen; raakt de tocht daardoor leeg, dan gaat die mee (en komt terug bij ongedaan maken), maar alleen als
+ * de datums de dagen volgen en er verder niets aan hangt (inkomsten, deelnemers, salaris, review, ...): een trip met eigen
+ * datums of met gegevens blijft. Volgen de datums van de trip de dagen, dan schuiven ze mee (ook bij ongedaan maken).
  */
 export async function deleteLeg(store: Store, leg: Leg): Promise<Undo> {
   const items: Removal[] = [{ path: 'legs.json.enc', record: leg }]
   const others = store.list('legs.json.enc').filter((l) => l.tripId === leg.tripId && l.id !== leg.id)
   const trip = store.list('trips.json.enc').find((t) => t.id === leg.tripId)
-  if (others.length === 0 && trip) items.push({ path: 'trips.json.enc', record: trip })
+  if (others.length === 0 && trip && datesFollowDays(trip) && !hasOtherData(store, trip)) items.push({ path: 'trips.json.enc', record: trip })
   const undo = await removeWithUndo(store, items)
   await followDays(store, [leg.tripId])
   return async () => {
