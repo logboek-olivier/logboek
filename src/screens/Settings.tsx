@@ -1,9 +1,11 @@
-import { BellRing, ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Wallet, X, type LucideIcon } from 'lucide-react'
+import { Anchor, BellRing, ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Wallet, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { FirstNumbersSheet, firstNumbersLine } from '../components/CounterSheets'
 import { DailyReminderSheet, reminderLine } from '../components/DailyReminderSheet'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { SalaryDefaultsSheet, salaryDefaultsLine } from '../components/SalarySheets'
+import { CareerStartSheet } from '../components/Position'
+import { careerStart } from '../model/position'
 import { useIsDemo } from '../components/DemoBar'
 import { startDemo, stopDemo } from '../demo'
 import { Icon } from '../components/Icon'
@@ -28,6 +30,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const [countersOpen, setCountersOpen] = useState(false)
   const [salaryOpen, setSalaryOpen] = useState(false)
   const [reminderOpen, setReminderOpen] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
   const session = useSession()
   const demo = useIsDemo()
   const [panel, setPanel] = useState<Panel>('none')
@@ -94,6 +97,14 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
             </button>
           </li>
           <li>
+            <button className="settings-row" onClick={() => setStartOpen(true)}>
+              <Icon icon={Anchor} />
+              <span className="row-main">{t('position.careerStart')}</span>
+              <span className="muted">{formatDate(careerStart(settings))}</span>
+              <Icon icon={ChevronRight} className="chevron" />
+            </button>
+          </li>
+          <li>
             <button className="settings-row" onClick={() => setReminderOpen(true)}>
               <Icon icon={BellRing} />
               <span className="row-main">{t('reminderDaily.screen')}</span>
@@ -107,6 +118,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
       {countersOpen && <FirstNumbersSheet store={store} onClose={() => setCountersOpen(false)} notify={notify} />}
       {salaryOpen && <SalaryDefaultsSheet store={store} onClose={() => setSalaryOpen(false)} notify={notify} />}
       {reminderOpen && <DailyReminderSheet store={store} onClose={() => setReminderOpen(false)} notify={notify} />}
+      {startOpen && <CareerStartSheet store={store} onClose={() => setStartOpen(false)} notify={notify} />}
       {goalOpen && <GoalSheet store={store} current={yearGoal(settings)} onClose={() => setGoalOpen(false)} notify={notify} />}
 
       <DemoSection />

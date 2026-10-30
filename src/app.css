@@ -4437,3 +4437,92 @@ textarea.note {
 .payout-trip .grow {
   min-width: 0;
 }
+
+/* ---------- Mijn positie en de vooruitblik ---------- */
+
+.position-groups {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+}
+
+.position-group {
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.position-group dt {
+  font-weight: var(--fw-medium);
+}
+
+.position-group dd {
+  margin: 0;
+}
+
+.position-account {
+  width: 100%;
+  min-height: 44px;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.position-totals {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.position-totals p {
+  margin: 0;
+}
+
+.forecast-end {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+}
+
+.forecast p.row {
+  margin: 0;
+}
+
+.line-chart .line-past,
+.line-chart .line-future {
+  fill: none;
+  stroke: var(--chart-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.line-chart .line-future {
+  stroke-dasharray: 4 4;
+}
+
+.line-chart .dot-past {
+  fill: var(--chart-1);
+}
+
+.line-chart .dot-future {
+  fill: var(--surface);
+  stroke: var(--chart-1);
+  stroke-width: 1.5;
+}
+
+.swatch.line {
+  height: 3px;
+  border-radius: 2px;
+}
+
+.swatch.line.dashed {
+  background: repeating-linear-gradient(90deg, var(--chart-1) 0 3px, transparent 3px 5px);
+}
+
+.forecast-items .row {
+  gap: var(--s-2);
+}

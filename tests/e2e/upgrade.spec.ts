@@ -339,6 +339,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       dailyReminder: { time: '19:30', workdaysOnly: true },
       payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } },
       lastTipVia: 'contant',
+      careerStart: '2026-09-01',
     })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })

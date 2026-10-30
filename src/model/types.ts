@@ -240,6 +240,8 @@ export interface Settings extends SyncRecord {
   payouts?: Partial<Record<Organisation, PayoutRule>>
   /** Laatst gekozen: fooi contant of op de bank. */
   lastTipVia?: TipVia
+  /** Begin van de zeilcarrière (jjjj-mm-dd) voor "Sinds …" in Mijn positie; ontbreekt = 11 september 2026. */
+  careerStart?: string
 }
 
 /** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */

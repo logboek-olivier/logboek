@@ -5,6 +5,7 @@ import type { Notify } from '../components/EditSheets'
 import { TransactionView } from '../components/Views'
 import { SalaryOutlook } from '../components/SalaryOutlook'
 import { MoneyPathSection } from '../components/MoneyPath'
+import { ForecastSection, PositionSection } from '../components/Position'
 import { TaxYearSection } from '../components/TaxYear'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
@@ -65,6 +66,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           {t('money.empty')}
         </Empty>
       )}
+      <PositionSection store={store} notify={notify} />
+      <ForecastSection store={store} />
       {live.length === 0 && <MoneyPathSection store={store} notify={notify} />}
       {live.length === 0 && <SalaryOutlook store={store} />}
       {live.length > 0 && (
