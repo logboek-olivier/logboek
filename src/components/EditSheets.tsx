@@ -1,7 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatNumber, formatRate } from '../format'
-import { active, summarizeTrips } from '../model/derive'
+import { active } from '../model/derive'
 import {
   deleteLeg,
   deleteTransaction,
@@ -247,7 +247,8 @@ export function TransactionSheet({
 const NEW_TRIP = '__nieuw__'
 
 export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: Leg; onClose: () => void; notify: Notify }) {
-  const trips = summarizeTrips(store.get('trips.json.enc'), store.get('legs.json.enc'))
+  // Alle trips, ook een geplande trip die nog geen dagen heeft (nieuwste eerst; de trip van deze dag altijd erbij).
+  const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : (a.startDate ?? '') > (b.startDate ?? '') ? -1 : 0))
   const [date, setDate] = useState(leg.date)
   const [fromPlace, setFromPlace] = useState(leg.fromPlace)
   const [fromCountry, setFromCountry] = useState(leg.fromCountry)
@@ -393,9 +394,9 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
         <label>
           {t('field.trip')}
           <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
-            {trips.map((t) => (
-              <option key={t.trip.id} value={t.trip.id}>
-                {t.trip.name}
+            {trips.map((trip) => (
+              <option key={trip.id} value={trip.id}>
+                {trip.name}
               </option>
             ))}
             <option value={NEW_TRIP}>{t('edit.newTrip')}</option>

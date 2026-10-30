@@ -5,7 +5,7 @@ import { scrubbedDocument } from './documents'
 import { datesFollowDays, followDays, hasOtherData } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, TipVia, CostCategory, Transaction, Trip, VaultDocument, WeekClosing } from './types'
+import type { CareerRecord, Claim, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, TipVia, CostCategory, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -124,9 +124,21 @@ export function deleteSession(store: Store, session: Session): Promise<Undo> {
  */
 export async function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {
   const paid = store.list('trips.json.enc').filter((x) => x.deletedAt === null && x.salary?.status === 'ontvangen' && x.salary.transactionId === tx.id)
+  // De uitgave of terugbetaling van een declaratie: de declaratie volgt, zodat saldo en "te ontvangen" blijven kloppen.
+  const claim = tx.claimId ? store.list('claims.json.enc').find((c) => c.id === tx.claimId) : undefined
+  const claimNext = claim ? claimWithout(claim, tx) : null
   const undoTx = await removeWithUndo(store, [{ path: 'transactions.json.enc', record: tx }])
-  if (paid.length === 0) return undoTx
   const now = new Date().toISOString()
+  if (claim && claimNext) await store.put('claims.json.enc', { ...claimNext, updatedAt: now })
+  if (paid.length === 0) {
+    if (!claim || !claimNext) return undoTx
+    void store.sync()
+    return async () => {
+      await undoTx()
+      await store.put('claims.json.enc', { ...claim, updatedAt: new Date().toISOString() })
+      void store.sync()
+    }
+  }
   await store.putMany(
     'trips.json.enc',
     paid.map((x) => {
@@ -143,6 +155,24 @@ export async function deleteTransaction(store: Store, tx: Transaction): Promise<
     await store.putMany('trips.json.enc', restored)
     void store.sync()
   }
+}
+
+/**
+ * De declaratie zonder deze transactie: zonder terugbetaling weer ingediend (of open), zonder uitgave zonder bedrag
+ * (dan is er ook niets meer te ontvangen). Null als de declaratie niet verandert.
+ */
+function claimWithout(claim: Claim, tx: Transaction): Claim | null {
+  if (tx.kind === 'terugbetaling' && claim.status === 'terugbetaald') {
+    const { repaid: _r, ...rest } = claim
+    void _r
+    return { ...rest, status: claim.submittedAt ? 'ingediend' : 'open' }
+  }
+  if (tx.kind === 'kosten' && claim.amount !== undefined) {
+    const { amount: _a, currency: _c, ...rest } = claim
+    void [_a, _c]
+    return rest
+  }
+  return null
 }
 
 /**
