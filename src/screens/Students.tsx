@@ -13,6 +13,7 @@ import {
   activeStudents,
   addStudent,
   archivedStudents,
+  autoArchive,
   criticalOpen,
   deleteStudents,
   dueForArchive,
@@ -192,7 +193,7 @@ export function useAutoArchive(store: Store, notify: Notify): void {
     const today = todayIso()
     const due = dueForArchive(store.get('students.json.enc'), today)
     if (due.length > 0) {
-      void setArchived(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
+      void autoArchive(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
     }
   }, [store, notify, status])
 }
