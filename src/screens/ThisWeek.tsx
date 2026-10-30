@@ -11,6 +11,8 @@ import { formatDate, formatDateRange, formatMoney, formatNm } from '../format'
 import { t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
 import { totals } from '../model/money'
+import { tripMoney } from '../model/money-path'
+import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
@@ -19,7 +21,7 @@ import { tripIncomplete } from '../model/gaps'
 import { answerReturning, guestLabel, participantName, returningGuests } from '../model/guests'
 import { IncompleteBadge } from '../components/Incomplete'
 import { activeWeek, missingDays, needsClosing, upcomingTrips, weekView } from '../model/weeks'
-import type { Leg, Participant, Trip, TripSalary, WeekType } from '../model/types'
+import type { Leg, Participant, Trip, WeekType } from '../model/types'
 import { tripOverlaps } from '../model/trip-ops'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
@@ -193,7 +195,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
         <>
           <TripChecklists store={store} notify={notify} trip={week} type={view.type} />
           <SailedDays store={store} notify={notify} legs={view.legs} nm={view.nm} onAdd={() => onAddDay({ date: nextDay, tripId: week.id })} />
-          <WeekMoney store={store} weekId={week.id} salary={week.salary} />
+          <WeekMoney store={store} trip={week} />
           {upcomingSection}
         </>
       )}
@@ -287,12 +289,24 @@ function UpcomingTrips({ trips, counters, onOpen }: { trips: Trip[]; counters: R
   )
 }
 
-/** Fooien en kosten van de week in euro, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee). */
-function WeekMoney({ store, weekId, salary }: { store: Store; weekId: string; salary?: TripSalary }) {
-  const transactions = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.tripId === weekId)
+/**
+ * Fooien en kosten van de week in euro, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee), met het
+ * geldpad: het salaris als verwacht, te ontvangen of ontvangen, en de fooi contant, op de bank of onbekend.
+ */
+function WeekMoney({ store, trip }: { store: Store; trip: Trip }) {
+  const all = useCollection(store, 'transactions.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const transactions = all.filter((tx) => tx.deletedAt === null && tx.tripId === trip.id)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
+  const salary = trip.salary
   if (transactions.length === 0 && !salary) return null
+  const path = tripMoney(trip, legs, all, todayIso())
+  const state = path.salary?.state ?? null
+  const tipParts = (['contant', 'bank', 'onbekend'] as const)
+    .map((via) => ({ via, sum: path.tips[via] }))
+    .filter((p) => p.sum.eur > 0 || Object.keys(p.sum.other).length > 0)
+    .map((p) => `${t(`tipVia.${p.via}`)} ${[p.sum.eur > 0 ? formatMoney(p.sum.eur, 'EUR') : '', ...Object.entries(p.sum.other).map(([c, v]) => formatMoney(v, c))].filter(Boolean).join(' + ')}`)
   const sum = totals(transactions)
   const provisional = transactions.some((tx) => eurValue(tx)?.provisional)
   return (
@@ -322,12 +336,18 @@ function WeekMoney({ store, weekId, salary }: { store: Store; weekId: string; sa
             </p>
           ))}
           {provisional && <p className="muted small">{t('money.provisionalHint')}</p>}
-          {salary && <p className="salary-line">{t('salary.line', { amount: formatMoney(salary.amount, salary.currency), status: t(`salaryStatus.${salary.status}`), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}</p>}
+          {salary && (
+            <p className="salary-line row">
+              <SalaryDot state={state} />
+              <span>{t('salary.line', { amount: salaryAmountText(trip, all), status: salaryStateLabel(state), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}</span>
+            </p>
+          )}
+          {tipParts.length > 0 && <p className="muted small">{t('tipVia.line', { parts: tipParts.join(' · ') })}</p>}
         </>
       ) : (
         <p className="muted small">
           <Icon icon={ChevronRight} />
-          {[transactions.length > 0 ? t('week.amountsHidden', { n: transactions.length }) : '', salary ? t('salary.hiddenLine', { status: t(`salaryStatus.${salary.status}`) }) : ''].filter(Boolean).join(' · ')}
+          {[transactions.length > 0 ? t('week.amountsHidden', { n: transactions.length }) : '', salary ? t('salary.hiddenLine', { status: salaryStateLabel(state) }) : ''].filter(Boolean).join(' · ')}
         </p>
       )}
     </div>

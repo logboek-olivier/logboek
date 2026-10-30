@@ -4,6 +4,7 @@ import { BarChart } from '../components/BarChart'
 import type { Notify } from '../components/EditSheets'
 import { TransactionView } from '../components/Views'
 import { SalaryOutlook } from '../components/SalaryOutlook'
+import { MoneyPathSection } from '../components/MoneyPath'
 import { TaxYearSection } from '../components/TaxYear'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
@@ -64,6 +65,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           {t('money.empty')}
         </Empty>
       )}
+      {live.length === 0 && <MoneyPathSection store={store} notify={notify} />}
       {live.length === 0 && <SalaryOutlook store={store} />}
       {live.length > 0 && (
         <>
@@ -79,6 +81,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
             <OtherStat other={all.other} />
           </dl>
+
+          <MoneyPathSection store={store} notify={notify} />
 
           <SalaryOutlook store={store} />
 

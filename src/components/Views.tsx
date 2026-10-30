@@ -91,7 +91,8 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
   const [editing, setEditing] = useState(false)
   const trips = useCollection(store, 'trips.json.enc')
   const counters = useCounters(store)
-  const current = useCollection(store, 'transactions.json.enc').find((x) => x.id === tx.id) ?? tx
+  const all = useCollection(store, 'transactions.json.enc')
+  const current = all.find((x) => x.id === tx.id) ?? tx
   if (editing) return <TransactionSheet store={store} tx={current} notify={notify} onClose={onClose} />
   const trip = trips.find((x) => x.id === current.tripId && x.deletedAt === null)
   const value = eurValue(current)
@@ -107,7 +108,9 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
             [t('field.week'), trip && nameWithCounter(trip, counters.get(trip.id))],
             [t('field.source'), sourceLabel(current.source)],
             [t('tip.from'), current.kind === 'fooi' && tipFromText(current, trip)],
+            [t('tipVia.label'), current.kind === 'fooi' && current.tipVia && `${t(`tipVia.${current.tipVia}`)}${current.depositedAt ? ` · ${t('tipVia.deposited', { date: formatDate(current.depositedAt) })}` : ''}`],
             [t('view.received'), typeof current.receivedEur === 'number' && formatMoney(current.receivedEur, 'EUR')],
+            [t('payout.partLabel'), current.payoutId && t('payout.part', { n: all.filter((x) => x.payoutId === current.payoutId && x.deletedAt === null).length })],
             [t('field.note'), current.note],
           ]}
         />

@@ -20,9 +20,14 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'transactions.json.enc': [
     { id: 'upg-tx-1', date: '2026-10-20', kind: 'fooi', amount: 50, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipFrom: { kind: 'personen', participantIds: ['upg-p-1', 'upg-p-2'], amounts: { 'upg-p-1': 30, 'upg-p-2': 20 } }, updatedAt: T, deletedAt: null },
     { id: 'upg-tx-2', date: '2026-10-21', kind: 'fooi', amount: 40, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipFrom: { kind: 'groep' }, updatedAt: T, deletedAt: null },
+    // Geldpad (ronde 3): fooi contant (nog in Contant), contant en al gestort, op de bank, en een deel van een uitbetaling.
+    { id: 'upg-tx-3', date: '2026-10-22', kind: 'fooi', amount: 30, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'contant', updatedAt: T, deletedAt: null },
+    { id: 'upg-tx-4', date: '2026-10-22', kind: 'fooi', amount: 20, currency: 'USD', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'contant', depositedAt: '2026-10-23', updatedAt: T, deletedAt: null },
+    { id: 'upg-tx-5', date: '2026-10-24', kind: 'fooi', amount: 15, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'bank', updatedAt: T, deletedAt: null },
+    { id: 'upg-tx-payout', date: '2026-10-25', kind: 'loon', amount: 900, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', payoutId: 'upg-payout-1', updatedAt: T, deletedAt: null },
   ],
   'settings.json.enc': [
-    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, updatedAt: T, deletedAt: null },
+    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', updatedAt: T, deletedAt: null },
   ],
   'curricula.json.enc': [
     { id: 'upg-course-1', body: 'eigen', courseCode: 'NEP 1', name: { nl: 'Nepcursus', en: 'Fake course' }, groups: [{ id: 'g1', title: { nl: 'Nepdeel', en: 'Fake part' }, topics: [{ id: 't1', title: { nl: 'Nepknoop', en: 'Fake knot' }, kind: 'praktijk', examCritical: true }] }], source: 'eigen', updatedAt: T, deletedAt: null },

@@ -1,6 +1,7 @@
-import { ChevronLeft, ChevronUp } from 'lucide-react'
+import { ChevronLeft, ChevronUp, Eye, EyeOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
+import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
 import { useCollection } from '../components/useCollection'
 import { useCounters } from '../components/useCounters'
 import { weekTypeLabel } from '../components/WeekSheet'
@@ -9,6 +10,7 @@ import { t } from '../i18n'
 import { buildIndex, planningEnd, seasonWeeks, weekStart, type SeasonItem } from '../model/calendar'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { addDays } from '../model/money'
+import { salaryState } from '../model/money-path'
 import { todayIso } from '../model/types'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
@@ -32,6 +34,7 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
   const calendar = useCollection(store, 'calendar.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
   const counters = useCounters(store)
   const [start, setStart] = useState(weekStart(today))
@@ -39,6 +42,8 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
   const end = lastPlanned && lastPlanned > addDays(weekStart(today), 6) ? lastPlanned : addDays(weekStart(today), 6)
   const weeks = seasonWeeks(index, start, end, today)
   const current = weekStart(today)
+  // Bedragen pas na een tik (het seizoensoverzicht staat soms open als anderen meekijken).
+  const [showAmounts, setShowAmounts] = useState(false)
 
   return (
     <section className="stack">
@@ -49,10 +54,16 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
       <header className="page-header">
         <h1>{t('season.title')}</h1>
       </header>
-      <button className="btn small" onClick={() => setStart(addDays(start, -7 * EARLIER_WEEKS))}>
-        <Icon icon={ChevronUp} />
-        {t('season.earlier')}
-      </button>
+      <div className="row wrap">
+        <button className="btn small" onClick={() => setStart(addDays(start, -7 * EARLIER_WEEKS))}>
+          <Icon icon={ChevronUp} />
+          {t('season.earlier')}
+        </button>
+        <button className="btn link small" aria-pressed={showAmounts} onClick={() => setShowAmounts(!showAmounts)}>
+          <Icon icon={showAmounts ? EyeOff : Eye} />
+          {t(showAmounts ? 'week.hideAmounts' : 'week.showAmounts')}
+        </button>
+      </div>
       <ol className="season">
         {weeks.map((w) => (
           <li key={w.start} className={`season-week${w.start === current ? ' current' : ''}${w.end < today ? ' past' : ''}`}>
@@ -68,8 +79,16 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
                   <li key={i} className={`season-item day-${item.kind === 'trip' ? 'werk' : item.type}`}>
                     {item.kind === 'trip' ? (
                       <>
+                        {item.view.trip.salary && <SalaryDot state={salaryState(item.view.trip, legs, today)} />}
                         <span>{itemLabel(item, counters)}</span>
                         <span className="muted small"> · {formatDateRange(item.view.startDate, item.view.endDate)}</span>
+                        {item.view.trip.salary && (
+                          <span className="muted small">
+                            {' · '}
+                            {salaryStateLabel(salaryState(item.view.trip, legs, today))}
+                            {showAmounts && ` ${salaryAmountText(item.view.trip, transactions)}`}
+                          </span>
+                        )}
                       </>
                     ) : (
                       <span>{itemLabel(item, counters)}</span>

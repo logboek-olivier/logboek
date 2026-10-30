@@ -5,7 +5,7 @@ import { scrubbedDocument } from './documents'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, Transaction, Trip, VaultDocument, WeekClosing } from './types'
+import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, TipVia, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -114,8 +114,31 @@ export function deleteSession(store: Store, session: Session): Promise<Undo> {
   return removeWithUndo(store, [{ path: 'sessions.json.enc', record: session }])
 }
 
-export function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {
-  return removeWithUndo(store, [{ path: 'transactions.json.enc', record: tx }])
+/**
+ * Een transactie verwijderen. Was het het inkomen van een ontvangen salaris (ook een deel van een uitbetaling), dan
+ * staat dat salaris weer op te ontvangen; ongedaan maken zet beide terug.
+ */
+export async function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {
+  const paid = store.list('trips.json.enc').filter((x) => x.deletedAt === null && x.salary?.status === 'ontvangen' && x.salary.transactionId === tx.id)
+  const undoTx = await removeWithUndo(store, [{ path: 'transactions.json.enc', record: tx }])
+  if (paid.length === 0) return undoTx
+  const now = new Date().toISOString()
+  await store.putMany(
+    'trips.json.enc',
+    paid.map((x) => {
+      const { transactionId: _t, ...salary } = x.salary!
+      void _t
+      return { ...x, salary: { ...salary, status: 'verwacht' as const }, updatedAt: now }
+    }),
+  )
+  void store.sync()
+  return async () => {
+    await undoTx()
+    const later = new Date().toISOString()
+    const restored = paid.map((before) => ({ ...(store.list('trips.json.enc').find((x) => x.id === before.id) ?? before), salary: before.salary!, updatedAt: later }))
+    await store.putMany('trips.json.enc', restored)
+    void store.sync()
+  }
 }
 
 /**
@@ -158,13 +181,24 @@ export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'c
   tripId?: string | null
   /** Van wie een fooi komt; null = onbekend; ontbreekt het, dan blijft het zoals het was. */
   tipFrom?: TipFrom | null
+  /** Fooi contant of op de bank; null = onbekend; ontbreekt het, dan blijft het zoals het was. */
+  tipVia?: TipVia | null
+  /** Contante fooi gestort op (jjjj-mm-dd); null = nog niet gestort; ontbreekt het, dan blijft het zoals het was. */
+  depositedAt?: string | null
 }
 
 /** Werkt een transactie bij; amountEur volgt uit valuta en datum, de trip uit de keuze of anders de datum. */
 export async function updateTransaction(store: Store, tx: Transaction, patch: TransactionPatch): Promise<void> {
-  const { tripId: chosenTrip, tipFrom, ...fields } = patch
+  const { tripId: chosenTrip, tipFrom, tipVia, depositedAt, ...fields } = patch
   const next: Transaction = { ...tx, ...fields, amount: round2(patch.amount), updatedAt: new Date().toISOString() }
   if (tipFrom) next.tipFrom = tipFrom
+  if (tipVia) next.tipVia = tipVia
+  if (tipVia === null) delete next.tipVia
+  if (depositedAt) next.depositedAt = depositedAt
+  if (depositedAt === null) delete next.depositedAt
+  // Contant of bank en gestort horen alleen bij een fooi; gestort alleen bij contant.
+  if (next.kind !== 'fooi') delete next.tipVia
+  if (next.tipVia !== 'contant') delete next.depositedAt
   // Geen fooi meer, van onbekend, of een andere trip zonder nieuwe keuze: geen personen bewaren.
   if (tipFrom === null || next.kind !== 'fooi') delete next.tipFrom
   const trip = chosenTrip !== undefined ? (chosenTrip ? { id: chosenTrip } : null) : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)

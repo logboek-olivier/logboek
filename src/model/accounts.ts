@@ -1,6 +1,8 @@
 import type { Store } from '../storage/store'
 import type { Undo } from './edit'
-import { round2 } from './money'
+import { parseStand, round2 } from './money'
+
+export { parseStand }
 import { rateFor, type RatesFile } from './rates'
 import { newId, todayIso, type Account, type AccountKind, type AccountProvider, type Balance, type Currency } from './types'
 
@@ -20,34 +22,6 @@ export const DEFAULT_KIND: Record<AccountProvider, AccountKind> = {
 }
 
 export const isDebt = (account: Pick<Account, 'kind'>): boolean => account.kind === 'schuld'
-
-/**
- * Een ingetypte stand: ook nul en negatief (rood staan, ook "€ -80" en "(80)"). "1.234,56" en "1,234.56": het laatste
- * teken is het decimaalteken; één punt met drie cijfers erachter is een duizendtal ("1.234"), één komma een
- * decimaalteken (in het Engels met drie cijfers erachter een duizendtal). Iets anders dan een bedrag ("2-3", "1e5",
- * "1O0") is null, nooit een geraden getal.
- */
-export function parseStand(text: string, lang: 'nl' | 'en' = 'nl'): number | null {
-  let t = text.replace(/[\s\u00a0]/g, '').replace(/\u2212/g, '-').replace(/^(€|EUR|\$|USD|£|GBP)/i, '').replace(/(€|EUR|\$|USD|£|GBP)$/i, '')
-  let negative = false
-  if (/^\(.*\)$/.test(t)) {
-    negative = true
-    t = t.slice(1, -1)
-  }
-  const sign = /^([-+]?)(?:€|EUR|\$|USD|£|GBP)?(\d[\d.,]*)(-?)$/i.exec(t)
-  if (!sign) return null
-  if (sign[1] === '-' || sign[3] === '-') negative = !negative
-  let s = sign[2]!
-  const comma = s.lastIndexOf(',')
-  const dot = s.lastIndexOf('.')
-  const count = (c: string) => s.split(c).length - 1
-  if (comma >= 0 && dot >= 0) s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
-  else if (comma >= 0) s = count(',') > 1 || (lang === 'en' && /,\d{3}$/.test(s)) ? s.replace(/,/g, '') : s.replace(',', '.')
-  else if (dot >= 0 && (count('.') > 1 || /\.\d{3}$/.test(s))) s = s.replace(/\./g, '')
-  if (!/^\d+(\.\d+)?$/.test(s)) return null
-  const n = round2(Number(s))
-  return negative && n !== 0 ? -n : n
-}
 
 /** Eén stand per rekening per maand: twee apparaten en een nieuwe import voegen dezelfde maand samen. */
 export function balanceId(accountId: string, date: string): string {

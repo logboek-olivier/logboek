@@ -145,11 +145,16 @@ export function salarySource(trip: Trip): TransactionSource {
 
 /**
  * Salaris ontvangen: één inkomen (loon) bij de trip, met het werkelijke bedrag als dat anders is, en de status op
- * ontvangen. Ongedaan maken haalt het inkomen weg en zet de trip terug.
+ * ontvangen. De trip zoals hij nu op het apparaat staat (een tweede tik of een ander apparaat dat het al ontving: dan
+ * niets); `trip.salary` mag een nieuw salaris zijn (salaris zetten en meteen ontvangen). Ongedaan maken haalt het inkomen
+ * weg en zet alleen het salaris terug.
  */
 export async function receiveSalary(store: Store, trip: Trip, today: string, actual?: { amount: number; currency: Currency }): Promise<Undo> {
   const s = trip.salary
   if (!s) throw new Error('salaris ontbreekt')
+  const latest = store.list('trips.json.enc').find((x) => x.id === trip.id) ?? trip
+  if (latest.salary?.status === 'ontvangen') return async () => {}
+  const before = latest.salary
   const amount = round2(actual?.amount ?? s.amount)
   const currency = actual?.currency ?? s.currency
   const now = new Date().toISOString()
@@ -158,7 +163,7 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
     id: newId(),
     ...base,
     kind: 'loon',
-    source: salarySource(trip),
+    source: salarySource(latest),
     tripId: trip.id,
     ...(finalRateFields(base) ?? {}),
     updatedAt: now,
@@ -167,12 +172,18 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
   const { askAfter: _a, ...rest } = s
   void _a
   await store.put('transactions.json.enc', tx)
-  await store.put('trips.json.enc', { ...trip, salary: { ...rest, status: 'ontvangen', transactionId: tx.id }, updatedAt: now })
+  await store.put('trips.json.enc', { ...latest, salary: { ...rest, status: 'ontvangen', transactionId: tx.id }, updatedAt: now })
   void store.sync()
   return async () => {
     const later = new Date().toISOString()
     await store.put('transactions.json.enc', { ...tx, deletedAt: later, updatedAt: later })
-    await store.put('trips.json.enc', { ...trip, updatedAt: later })
+    const current = store.list('trips.json.enc').find((x) => x.id === trip.id)
+    if (current) {
+      const restored: Trip = { ...current, updatedAt: later }
+      if (before) restored.salary = before
+      else delete restored.salary
+      await store.put('trips.json.enc', restored)
+    }
     void store.sync()
   }
 }
