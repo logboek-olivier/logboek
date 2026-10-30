@@ -1849,6 +1849,15 @@ export const nl = {
   'claims.pdfReceipt': 'Bonnetje als PDF',
   'claims.receiptGone': 'Het bonnetje staat niet meer in de kluis.',
   'trip.part.claims': (p: { n: number }) => `${p.n} ${p.n === 1 ? 'declaratie' : 'declaraties'}`,
+  'weekMoney.title': 'Geld van deze week (2 minuten)',
+  'weekMoney.hint': 'Alles overslaan mag: alleen wat je invult of aanvinkt, wordt opgeslagen.',
+  'weekMoney.balances': 'Stand per rekening (vandaag)',
+  'weekMoney.lastStand': (p: { amount: string; date: string }) => `laatst ${p.amount} op ${p.date}`,
+  'weekMoney.received': 'Salaris ontvangen',
+  'weekMoney.receivedHint': 'Afvinken boekt het verwachte bedrag; een ander bedrag via Geld → Uitbetaling invoeren.',
+  'weekMoney.cash': 'Contant gestort',
+  'weekMoney.deposited': (p: { amount: string }) => `${p.amount} contant gestort`,
+  'weekMoney.skipped': (p: { orgs: string }) => `Week afgesloten; salaris van ${p.orgs} niet geboekt (geen koers): voer de uitbetaling in onder Geld.`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

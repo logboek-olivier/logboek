@@ -91,10 +91,13 @@ export function weekSummary(index: CalendarIndex, students: readonly Student[], 
   return sum
 }
 
-/** De afsluiting van de week waarin een datum valt (alleen met een cijfer of een zin), of null. */
+/**
+ * De afsluiting van de week waarin een datum valt, of null. Elke opgeslagen afsluiting telt (ook met alleen "los
+ * uitgegeven" of na alleen de geldstap): opslaan kan alleen met iets ingevuld, en daarna is de kaart weg.
+ */
 export function closingFor(closings: readonly WeekClosing[], date: string): WeekClosing | null {
   const id = weekClosingId(date)
-  return closings.find((r) => r.id === id && !r.deletedAt && (typeof r.rating === 'number' || (r.lesson ?? '').trim() !== '')) ?? null
+  return closings.find((r) => r.id === id && !r.deletedAt) ?? null
 }
 
 /** Op zondag de week van vandaag; op maandag de week van gisteren als die nog niet is afgesloten. Anders niets. */
