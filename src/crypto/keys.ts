@@ -117,6 +117,20 @@ async function sealCheck(masterKey: CryptoKey, meta: Meta): Promise<string> {
   return toBase64(await encryptObject(masterKey, AAD_CHECK, checkPayload(meta)))
 }
 
+/**
+ * Mag dit apparaat een andere meta (van GitHub) overnemen? Het check-veld dekt de verpakte sleutels, niet de salts en
+ * rondes. Een echte wachtzinwijziging verpakt de sleutel opnieuw (nieuwe wrappedKey); iemand met alleen schrijfrechten
+ * op de data-repo kan dat niet, maar wel de salts of rondes veranderen, en zo de wachtzin of herstelcode onbruikbaar
+ * maken. Daarom: per verpakking moeten salt, rondes en kdf gelijk zijn, tenzij de verpakte sleutel zelf veranderde.
+ */
+export function safeToAdopt(local: Meta, remote: Meta): boolean {
+  const p = local.passphrase
+  const q = remote.passphrase
+  const passphraseOk = q.wrappedKey !== p.wrappedKey || (q.salt === p.salt && q.iterations === p.iterations && q.kdf === p.kdf)
+  const recoveryOk = remote.recovery.wrappedKey !== local.recovery.wrappedKey || (remote.recovery.salt === local.recovery.salt && remote.recovery.kdf === local.recovery.kdf)
+  return passphraseOk && recoveryOk
+}
+
 /** Klopt de binding van deze meta aan de hoofdsleutel? Zonder `check`-veld: nee. */
 export async function verifyMetaCheck(meta: Meta, masterKey: CryptoKey): Promise<boolean> {
   if (!meta.check) return false

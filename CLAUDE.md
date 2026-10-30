@@ -59,7 +59,7 @@ Deze regels zijn niet onderhandelbaar. Twijfel? Niet doen en vragen.
 - **Hoofdsleutel (MK):** 256-bit willekeurig, `crypto.getRandomValues`. Versleutelt alle data.
 - **Sleutelversleutelsleutel (KEK):** afgeleid van de wachtzin met PBKDF2-SHA256, 600.000 rondes, 16-byte willekeurige salt. KEK versleutelt alleen MK (AES-KW of AES-GCM).
 - **Herstelcode:** 24 willekeurige woorden uit de BIP39-woordenlijst (meegebundeld in `public/`). Leidt een tweede KEK af, die ook MK versleutelt. Olivier schrijft de herstelcode op papier. Zonder wachtzin én zonder herstelcode is alles weg; dat is bedoeld.
-- **Wachtzin wijzigen** = MK opnieuw versleutelen, geen data-herversleuteling.
+- **Wachtzin wijzigen** = MK opnieuw versleutelen, geen data-herversleuteling. Een ander apparaat neemt de nieuwe meta alleen over als het check-veld klopt én de verpakte sleutel echt veranderde of de salts en rondes gelijk bleven (`safeToAdopt` in `src/crypto/keys.ts`): wie alleen schrijfrechten op de data-repo heeft (een gelekte token), kan zo de wachtzin of herstelcode niet op afstand onbruikbaar maken door salts of rondes te vervangen.
 - **Per object:** AES-GCM-256, 12-byte willekeurige IV, nooit hergebruikt. Formaat: `versie(1) | iv(12) | ciphertext | tag(16)`.
 - **Associated data (AAD):** het objectpad, zodat een bestand niet onder een andere naam kan worden teruggezet.
 - **Vingerafdruk:** WebAuthn met `prf`-extensie als beschikbaar; de PRF-uitkomst leidt een derde KEK af voor MK. Niet beschikbaar? Knop verborgen, alleen wachtzin. Nooit een zwakkere fallback.
