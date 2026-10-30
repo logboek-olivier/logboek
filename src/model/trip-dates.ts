@@ -64,11 +64,16 @@ export async function followDays(store: Store, tripIds: readonly (string | null 
   if (changed) void store.sync()
 }
 
-/** Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, declaraties, review of afgevinkte lijsten)? */
-function hasOtherData(store: Store, trip: Trip): boolean {
+/**
+ * Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, declaraties, review, afgerond, afgevinkte
+ * lijsten, of een salaris dat Olivier zelf invulde of ontving)? Dan verdwijnt de trip nooit vanzelf.
+ */
+export function hasOtherData(store: Store, trip: Trip): boolean {
   return (
     (trip.participants?.length ?? 0) > 0 ||
     !!trip.review ||
+    !!trip.closedAt ||
+    (!!trip.salary && (trip.salary.source === 'eigen' || trip.salary.status === 'ontvangen')) ||
     Object.keys(trip.checks ?? {}).length > 0 ||
     store.list('transactions.json.enc').some((t) => t.tripId === trip.id) ||
     store.list('students.json.enc').some((s) => s.weekId === trip.id) ||

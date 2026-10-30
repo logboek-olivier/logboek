@@ -1,4 +1,5 @@
 import { summarizeTrips } from '../model/derive'
+import { hasOtherData } from '../model/trip-dates'
 import type { Leg, Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { ImportResult } from './mileage-csv'
@@ -22,9 +23,11 @@ export async function applyImport(store: Store, input: ImportResult): Promise<vo
     ...legs.filter((l) => l.deletedAt === null && !removedIds.has(l.id)).map((l) => l.tripId),
     ...result.legs.map((l) => l.tripId),
   ])
-  // Alleen gewone (geïmporteerde) tochten opruimen; een vastgelegde week blijft, ook zonder dagen.
+  // Alleen gewone (geïmporteerde) tochten opruimen; een vastgelegde week blijft, ook zonder dagen, net als een tocht
+  // waar iets aan hangt (inkomsten, deelnemers, review, salaris, organisatie, ...): nooit iets weggooien dat Olivier
+  // zelf toevoegde.
   const removedTrips: Trip[] = trips
-    .filter((t) => t.deletedAt === null && !stillUsed.has(t.id) && !t.type && !t.startDate)
+    .filter((t) => t.deletedAt === null && !stillUsed.has(t.id) && !t.type && !t.startDate && !t.organisation && !hasOtherData(store, t))
     .map((t) => ({ ...t, updatedAt: now, deletedAt: now }))
 
   await store.putMany('trips.json.enc', [...removedTrips, ...result.trips])
