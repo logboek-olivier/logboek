@@ -95,6 +95,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await card.getByRole('combobox', { name: L('weather.choosePoint') }).selectOption('split')
       await expect(card.getByRole('heading', { name: L('weather.title', { area: lang === 'nl' ? 'Split en Brač' : 'Split and Brač' }) })).toBeVisible()
       await expect(card).toContainText(L('weather.source.zelf'))
+      // "Automatisch" noemt het punt dat het zou kiezen.
+      await expect(card.getByRole('combobox', { name: L('weather.choosePoint') }).locator('option[value=""]')).toHaveText(L('weather.automaticPoint', { point: 'BVI' }))
       await card.getByRole('combobox', { name: L('weather.choosePoint') }).selectOption('')
       await expect(card.getByRole('heading', { name: L('weather.title', { area: 'BVI' }) })).toBeVisible()
       await expect(tomorrowMiddag).toContainText(L('weather.gust', { kn: '23' }))

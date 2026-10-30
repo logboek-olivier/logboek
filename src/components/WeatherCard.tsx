@@ -124,6 +124,8 @@ function WeatherCardInner({ store, trip }: { store: Store; trip: Trip }) {
   const pins = useMemo(() => tripPoints(trip, legs, places), [trip, legs, places])
   const gps = useGrantedPosition(pins.length === 0 && !chosen)
   const found = useMemo(() => choosePoint(file, { chosen, pins, gps, area: [trip.area, trip.base] }), [file, chosen, pins, gps, trip.area, trip.base])
+  // Welk punt "Automatisch" zou kiezen (staat bij de keuze, ook als er zelf een ander punt gekozen is).
+  const auto = useMemo(() => (chosen ? choosePoint(file, { pins, gps, area: [trip.area, trip.base] }) : found), [chosen, file, pins, gps, trip.area, trip.base, found])
   if (!file || !found) return null
   const { point, source } = found
   const [today, tomorrow] = localDates(point)
@@ -155,7 +157,7 @@ function WeatherCardInner({ store, trip }: { store: Store; trip: Trip }) {
               setChosen(id)
             }}
           >
-            <option value="">{t('weather.automatic')}</option>
+            <option value="">{auto ? t('weather.automaticPoint', { point: auto.point.name[lang] }) : t('weather.automatic')}</option>
             {file.points.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name[lang]}

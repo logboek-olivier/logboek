@@ -4199,14 +4199,15 @@ textarea.note {
 }
 
 /* Het weerpunt (automatisch of zelf gekozen) en een pijltje dat met de wind meewijst. */
+/* Bron en keuze onder elkaar: een punt met een lange naam ("Automatisch (Saint-Barthélemy)") past dan ook op 360 px. */
 .weather-point {
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--s-2);
-  align-items: center;
 }
 
 .weather-point-choice {
-  width: auto;
-  max-width: 55%;
+  width: 100%;
 }
 
 .weather-wind {

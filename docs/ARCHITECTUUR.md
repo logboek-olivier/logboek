@@ -43,13 +43,13 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 | Bestand | Recordtype (`types.ts`) | Schrijvers (model) | Belangrijkste lezers | Bijzonderheden |
 |---|---|---|---|---|
 | `meta.json.enc` | `Meta` (geen collectie) | `Session.finishNewVault`, `doChangePassphrase`, `doRestoreRemoteMeta` | sessie (ontgrendelen), `Store.checkMeta` | Niet onder de hoofdsleutel: JSON met salts, verpakte MK (wachtzin, herstelcode) en `check` (binding aan MK). Lokaal als platte JSON in `objects` |
-| `trips.json.enc` | `Trip` | `weeks`, `trip-ops`, `trip-dates`, `edit`, `salary`, `money-path`, `boats`, `gaps`, `guests`, `counters`, `checklists`, `calendar`, `import/apply`, `import/planning`, QuickAdd, MoneyPath | bijna alle schermen | Alle velden optioneel; type, datums en boot afgeleid |
+| `trips.json.enc` | `Trip` | `weeks`, `trip-ops`, `trip-dates`, `edit`, `salary`, `money-path`, `boats`, `gaps`, `guests`, `counters`, `checklists`, `calendar`, `import/apply`, `import/planning`, QuickAdd, MoneyPath | bijna alle schermen | Alle velden optioneel; type, datums en boot afgeleid. Salaris met status verwacht, ontvangen of `geen`; wat meetelt bepaalt `countedSalary` (geen 0, geen "Geen salaris", een standaardbedrag alleen bij een trip van die organisatie) |
 | `legs.json.enc` | `Leg` | `edit`, `trip-ops`, `places`, `routes`, `boats`, `gaps`, `import/apply`, QuickAdd | Vandaag, Deze trip, Logboek, Agenda, Statistieken, Plaatsen | Import vervangt alle `source: import`-legs |
 | `transactions.json.enc` | `Transaction` | `edit`, `salary`, `money-path`, `claims`, `trip-ops`, `rates` (koers vastleggen), QuickAdd | Geld, Deze trip, Agenda, positie, kosten | Richting volgt uit `kind`; `payoutId`, `claimId` koppelen. Vaste id's voor wat de app zelf boekt: `salaris:<trip>` (salaris ontvangen of uitbetaling), `uitgave:<declaratie>` en `terugbetaling:<declaratie>`, zodat een tweede tik of een tweede apparaat nooit dubbel boekt |
 | `settings.json.enc` | `Settings` | `settings`, `trip-dates` | overal | Hoofdrecord `settings` plus per apparaat `laatst:<apparaat-id>` (laatst gebruikte boot, rol, valuta enzovoort), zodat loggen op het ene apparaat nooit een instelling van het andere overschrijft; `currentSettings` legt ze over elkaar en vult standaardwaarden |
 | `curricula.json.enc` | `Curriculum` | `curricula` | Cursussen, studenten, planning | Alleen eigen en bewerkte; seeds in de code. Onleesbaar → vanzelf hersteld |
 | `students.json.enc` | `Student` | `students`, `weeks`, `trip-ops` | Deze trip, Studentenarchief | Regel 14; archiveren na 12 maanden |
-| `plans.json.enc` | `WeekPlan` | `plans`, `trip-ops` | Planning, Vandaag | |
+| `plans.json.enc` | `WeekPlan` | `plans`, `trip-ops` | Planning, Vandaag | Blok standaard voor alle groepen samen; `ownThemes` (eigen thema's als tekst); concept en opgeslagen planning bewerkt via `applyBlockEdit` |
 | `places.json.enc` | `Place` | `places` | kaarten, Plaatsen, afstandsvoorstel | Pinregels in `pinQuestion` |
 | `reminders.json.enc` | `Reminder` | `reminders`, `edit` | Termijnen, Vandaag, Agenda | |
 | `checklists.json.enc` | `Checklist` | `checklists` | Deze trip | Alleen eigen en bewerkte; seeds in de code. Onleesbaar → vanzelf hersteld |
@@ -169,13 +169,13 @@ dezelfde weg voor het bonnetje.
 | Agenda | `calendar.ts` (`buildIndex`, dagsoort met voorrang) | calendar, trips, legs |
 | Trips | `weeks.ts`, `trip-dates.ts`, `trip-route.ts`, `routes.ts`, `counters.ts`, `trip-name.ts`, `gaps.ts`, `boats.ts` | trips, legs, settings |
 | Geld in euro | `money.ts` (bedragen lezen en tonen), `rates.ts` (koers van de dag, `public/rates.json`) | transactions |
-| Salaris en geldpad | `salary.ts`, `money-path.ts` | trips, transactions, settings |
-| Positie en vooruitblik | `position.ts`, `costs.ts` | accounts, balances, transactions, trips, claims, fixedcosts, weekreviews, calendar |
+| Salaris en geldpad | `salary.ts`, `money-path.ts` (ook `tripResult`: resultaat per trip) | trips, transactions, settings |
+| Positie en vooruitblik | `position.ts` (`resolvePeriod`: periode zelf kiezen), `costs.ts` | accounts, balances, transactions, trips, claims, fixedcosts, weekreviews, calendar |
 | Belasting | `tax-year.ts` | transactions, trips |
 | Weekafsluiting | `week-close.ts`, `week-money.ts` | legs, calendar, trips, students |
 | Doelen | `goals.ts` | goals, sessions, legs, trips, transactions |
 | Kaart | `osm.ts`, `waterroute.ts`, `estimate.ts`, `places.ts`, `pin-suggest.ts`, `measure.ts`, `offline-maps.ts` | places, legs, `public/osm/`, `public/coast/` |
-| Weer | `weather.ts` | `public/weather.json`, places |
+| Weer | `weather.ts` (`choosePoint`: zelf gekozen, laatste pin, GPS als toegestaan, gebied van de trip) | `public/weather.json`, places |
 
 ## 10. Wat in de browser staat buiten de versleutelde opslag
 
@@ -184,6 +184,6 @@ dezelfde weg voor het bonnetje.
 | IndexedDB `logboek` | `objects` | versleutelde databestanden (met sha), lokale meta (platte JSON), documentbestanden, apart gezette bestanden (`apart/<pad>/<tijd>`) |
 | | `local` | outbox, token (met vervaldatum en data-repo), vingerafdruk-verpakking (versleuteld onder MK) |
 | | `session` | niet-exporteerbare MK met `lastUsed` (hoogstens 5 minuten) |
-| `localStorage` | `logboek-taal`, `logboek-apparaat`, `logboek-gestarte-build`, `logboek-vergrendeld:<db>`, `logboek-opslag:<db>` (opslaglogboek: paden, aantallen, tijden, bewijs zonder inhoud), `logboek-herstel:<db>` (herstelverslag: paden), `logboek-herstelpogingen:<db>`, `logboek-vervangen:<db>` (sha's), `logboek-kluis-weg:<db>` (bestands-id's) | geen inhoud, geen sleutels |
+| `localStorage` | `logboek-taal`, `logboek-apparaat`, `logboek-gestarte-build`, `logboek-vergrendeld:<db>`, `logboek-opslag:<db>` (opslaglogboek: paden, aantallen, tijden, bewijs zonder inhoud), `logboek-herstel:<db>` (herstelverslag: paden), `logboek-herstelpogingen:<db>`, `logboek-vervangen:<db>` (sha's), `logboek-kluis-weg:<db>` (bestands-id's), `logboek-geld-periode` (periode in Geld: keuze en twee datums), `logboek-weerpunt` (zelf gekozen weerpunt) | geen inhoud, geen sleutels |
 | `sessionStorage` | `logboek-demo-actief`, `logboek-herladen-na-update` | vlaggen |
 | Cache Storage | precache, `koersen`, `weer`, `kaart-osm`, `logboek-sw-vensters` | openbare bestanden; nooit een API-antwoord |

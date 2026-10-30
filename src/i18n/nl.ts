@@ -1892,6 +1892,7 @@ export const nl = {
   'plan.ownThemePlaceholder': 'Bijvoorbeeld Mooring ball oppikken',
   'plan.addOwnTheme': 'Toevoegen',
   'plan.clearBlock': 'Blok leegmaken',
+  'weather.automaticPoint': (p: { point: string }) => `Automatisch (${p.point})`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
