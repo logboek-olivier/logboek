@@ -1,7 +1,7 @@
 import type { Store } from '../storage/store'
 import { followDays } from './trip-dates'
 import { active, compareLegs, totalNm } from './derive'
-import { placeKey, suggestDistance } from './places'
+import { placeCountry, placeKey, suggestDistance } from './places'
 import { saveSettings } from './settings'
 import { newId, nowIso, type Leg, type PlannedLeg, type Settings, type Trip } from './types'
 import { roleForType, weekView } from './weeks'
@@ -107,20 +107,31 @@ export function plannedNm(legs: readonly Leg[], planned: PlannedLeg): number | n
   return suggestDistance(legs, planned.from, planned.to)?.nm ?? planned.nm ?? null
 }
 
-/** "Zoals gepland": de etappe van vandaag loggen met boot en rol uit de trip. */
+/**
+ * "Zoals gepland": de etappe van vandaag loggen met boot en rol uit de trip. Staat er al een dag van deze trip op die
+ * datum (een tweede tik, of al gelogd), dan niets nog eens. Het land komt van de plaats, anders van de vorige dag in
+ * dezelfde trip; nooit van een andere trip.
+ */
 export async function logPlanned(store: Store, trip: Trip, planned: PlannedLeg, date: string, settings: Settings): Promise<Leg> {
   const legs = store.get('legs.json.enc')
+  const existing = active(legs).find((l) => l.tripId === trip.id && l.date === date)
+  if (existing) return existing
   const nm = plannedNm(legs, planned) ?? 0
   const water = settings.lastWater ?? 'zee'
-  const last = [...active(legs)].sort(compareLegs).at(-1)
+  const before = active(legs)
+    .filter((l) => l.tripId === trip.id && l.date <= date)
+    .sort(compareLegs)
+    .at(-1)
+  const places = store.list('places.json.enc')
+  const fromCountry = placeCountry(legs, places, planned.from) || before?.toCountry || ''
   const leg: Leg = {
     id: newId(),
     tripId: trip.id,
     date,
     fromPlace: planned.from,
-    fromCountry: last?.toCountry ?? '',
+    fromCountry,
     toPlace: planned.to,
-    toCountry: last?.toCountry ?? '',
+    toCountry: placeCountry(legs, places, planned.to) || fromCountry,
     role: (trip.type ? roleForType(trip.type) : null) ?? settings.lastRole,
     boat: trip.boat || settings.lastBoat,
     nmInland: water === 'binnen' ? nm : 0,

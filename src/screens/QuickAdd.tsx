@@ -143,11 +143,11 @@ async function saveTransaction(
   store: Store,
   tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>,
   remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind' | 'lastTipVia' | 'lastCostCategory'>>,
-  tripId?: string,
+  /** De gekozen trip; leeg = geen trip (ook als Olivier zelf "Geen trip" koos). */
+  tripId: string,
 ) {
-  const trip = tripId ? { id: tripId } : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), tx.date)
   const record: Transaction = { ...tx, id: newId(), updatedAt: nowIso(), deletedAt: null }
-  if (trip) record.tripId = trip.id
+  if (tripId) record.tripId = tripId
   if (tx.currency === 'EUR') record.amountEur = tx.amount
   else Object.assign(record, finalRateFields(tx) ?? {})
   await store.put('transactions.json.enc', record)
@@ -159,9 +159,9 @@ async function saveTransaction(
 /**
  * Trips om uit te kiezen: de lopende trip en de trip van de datum eerst, dan komende en recente trips. Standaard de
  * trip waarin de datum valt (of de lopende trip); verandert de datum en heeft Olivier zelf niets gekozen, dan volgt
- * de trip mee.
+ * de trip mee. Bij een uitgave alleen de trip van de datum: thuis boodschappen doen hoort bij geen trip.
  */
-function useTripChoice(store: Store, date: string) {
+function useTripChoice(store: Store, date: string, expense = false) {
   const { settings, trips, legs } = useDefaults(store)
   const running = activeWeek(trips, settings, date)
   const byDate = tripForDate(trips, legs, date)
@@ -171,7 +171,7 @@ function useTripChoice(store: Store, date: string) {
     const before = dated.filter((trip) => trip.startDate! <= date).sort((a, b) => (a.startDate! < b.startDate! ? 1 : -1))[0]
     return before ?? dated.sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))[0] ?? active(trips)[0]
   }, [trips, date])
-  const fallback = byDate?.id ?? running?.id ?? nearest?.id ?? ''
+  const fallback = expense ? (byDate?.id ?? '') : (byDate?.id ?? running?.id ?? nearest?.id ?? '')
   const [chosen, setChosen] = useState<string | null>(null)
   const options = useMemo(() => {
     const list = active(trips)
@@ -233,7 +233,7 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
         store,
         { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}), ...tip },
         { lastIncomeKind: kind, ...(kind === 'fooi' ? { lastTipVia: tipVia } : {}) },
-        tripId || undefined,
+        tripId,
       )
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
@@ -325,7 +325,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   const [date, setDate] = useState(todayIso())
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
-  const { tripId, setTripId, options } = useTripChoice(store, date)
+  const { tripId, setTripId, options } = useTripChoice(store, date, true)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -336,7 +336,7 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
         store,
         { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}), ...(kind === 'kosten' ? { category } : {}) },
         { lastCostKind: kind === 'investering' ? 'investering' : 'kosten', ...(kind === 'kosten' ? { lastCostCategory: category } : {}) },
-        tripId || undefined,
+        tripId,
       )
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
