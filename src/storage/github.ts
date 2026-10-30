@@ -9,7 +9,16 @@ import { NewerSchemaError } from '../model/schema'
 // Alles wat hier binnenkomt is al versleuteld; deze laag ziet alleen bytes.
 
 export const API_BASE = 'https://api.github.com'
+/**
+ * De standaard data-repo (Olivier). Een andere gebruiker kiest bij de eerste keer zijn eigen private repo ("eigenaar/naam");
+ * die staat versleuteld bij de token (src/storage/token.ts). Elke gebruiker heeft zo zijn eigen repo, token en sleutel.
+ */
 export const DATA_REPO = 'logboek-olivier/logboek-data'
+
+/** Een GitHub-repo als "eigenaar/naam" (alleen de tekens die GitHub toestaat). */
+export function isRepoName(text: string): boolean {
+  return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(text.trim()) && !/\/\.{1,2}$/.test(text.trim())
+}
 const API_VERSION = '2022-11-28'
 /** Een verzoek dat zo lang niets oplevert, telt als geen verbinding (anders blijft een sync op zee eeuwig hangen). */
 const REQUEST_TIMEOUT_MS = 60_000
@@ -148,7 +157,8 @@ export class GithubClient {
   constructor(
     private readonly token: string,
     private readonly fetchImpl: FetchLike = (input, init) => globalThis.fetch(input, init),
-    private readonly repo: string = DATA_REPO,
+    /** De data-repo ("eigenaar/naam"). */
+    readonly repo: string = DATA_REPO,
   ) {}
 
   private async request(path: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
@@ -207,7 +217,7 @@ export class GithubClient {
   /** Controleert dat de token de repo kan lezen. Geeft de vervaldatum van de token als die leesbaar is. */
   async checkAccess(): Promise<{ expiresAt: string | null }> {
     const response = await this.request(`/repos/${this.repo}`)
-    if (!response.ok) throw new GithubError('Repo logboek-data niet gevonden', response.status, 'repoNotFound')
+    if (!response.ok) throw new GithubError('Data-repo niet gevonden', response.status, 'repoNotFound')
     return { expiresAt: this.tokenExpiresAt }
   }
 

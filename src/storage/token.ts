@@ -1,4 +1,5 @@
 import { decryptObject, encryptObject, utf8 } from '../crypto/encrypt'
+import { DATA_REPO, isRepoName } from './github'
 import { deleteLocal, getLocal, putLocal, type Db } from './idb'
 
 // De GitHub-token staat na ontgrendelen versleuteld onder de hoofdsleutel in IndexedDB (beveiligingsregel 5),
@@ -11,10 +12,12 @@ const decoder = new TextDecoder()
 export interface StoredToken {
   token: string
   expiresAt: string | null
+  /** De data-repo ("eigenaar/naam"); ontbreekt = de standaard (DATA_REPO), zoals bij elke oudere opslag. */
+  repo?: string
 }
 
-export async function storeToken(db: Db, masterKey: CryptoKey, token: string, expiresAt: string | null): Promise<void> {
-  const payload: StoredToken = { token, expiresAt }
+export async function storeToken(db: Db, masterKey: CryptoKey, token: string, expiresAt: string | null, repo?: string): Promise<void> {
+  const payload: StoredToken = { token, expiresAt, ...(repo && repo !== DATA_REPO ? { repo } : {}) }
   await putLocal(db, TOKEN_NAME, await encryptObject(masterKey, TOKEN_AAD, utf8(JSON.stringify(payload))))
 }
 
@@ -33,7 +36,13 @@ export async function loadToken(db: Db, masterKey: CryptoKey): Promise<StoredTok
   }
   if (typeof raw !== 'object' || raw === null || typeof (raw as StoredToken).token !== 'string') return null
   const expiresAt = (raw as StoredToken).expiresAt
-  return { token: (raw as StoredToken).token, expiresAt: typeof expiresAt === 'string' ? expiresAt : null }
+  const repo = (raw as StoredToken).repo
+  return { token: (raw as StoredToken).token, expiresAt: typeof expiresAt === 'string' ? expiresAt : null, ...(typeof repo === 'string' && isRepoName(repo) ? { repo } : {}) }
+}
+
+/** De data-repo bij een opgeslagen token; zonder (oudere opslag) de standaard. */
+export function repoOf(token: Pick<StoredToken, 'repo'> | null | undefined): string {
+  return token?.repo && isRepoName(token.repo) ? token.repo : DATA_REPO
 }
 
 export async function forgetToken(db: Db): Promise<void> {

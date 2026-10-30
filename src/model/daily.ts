@@ -8,7 +8,8 @@ import { escapeIcs, foldIcs, icsStamp } from './ics'
 
 export const DEFAULT_REMINDER_TIME = '20:00'
 /** De app op Toevoegen → Dag (snelkoppeling uit het manifest). */
-export const LOG_DAY_URL = 'https://logboek-olivier.github.io/logboek/?toevoegen=dag'
+/** De link naar Toevoegen → Dag van deze app (de site waarop hij draait); buiten de browser die van Olivier. */
+export const LOG_DAY_URL = typeof location !== 'undefined' && location.origin.startsWith('http') ? `${location.origin}${import.meta.env.BASE_URL}?toevoegen=dag` : 'https://logboek-olivier.github.io/logboek/?toevoegen=dag'
 
 export interface DailyIcsInput {
   title: string

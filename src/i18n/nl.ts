@@ -1858,6 +1858,9 @@ export const nl = {
   'weekMoney.cash': 'Contant gestort',
   'weekMoney.deposited': (p: { amount: string }) => `${p.amount} contant gestort`,
   'weekMoney.skipped': (p: { orgs: string }) => `Week afgesloten; salaris van ${p.orgs} niet geboekt (geen koers): voer de uitbetaling in onder Geld.`,
+  'token.repo': 'Data-repository (eigenaar/naam)',
+  'token.repoHint': 'De private repository waarin dit logboek versleuteld staat. Elke gebruiker heeft een eigen repository en token.',
+  'error.repoName': 'Vul de repository in als eigenaar/naam.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

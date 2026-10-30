@@ -34,7 +34,8 @@ test('herinnering: elke dag om een gekozen tijd, of alleen op werkdagen; met lin
   expect(ics).toContain('SUMMARY:Logboek: log je dag')
   expect(ics).toContain('DTSTART:20261029T073000')
   expect(ics).toContain('RRULE:FREQ=DAILY')
-  expect(ics).toContain('URL:https://logboek-olivier.github.io/logboek/?toevoegen=dag')
+  // De link gaat naar de site waarop de app draait (bij Olivier logboek-olivier.github.io, bij een vriend zijn eigen site).
+  expect(ics).toContain(`URL:${new URL(page.url()).origin}/logboek/?toevoegen=dag`)
   await expect(page.getByText('Herinnering gemaakt')).toBeVisible()
   await expect(page.getByRole('button', { name: /^Herinnering/ })).toContainText('07:30 · Elke dag')
 
