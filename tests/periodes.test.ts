@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex, dayInfo, setDay } from '../src/model/calendar'
 import { migratePeriods, migrationChanges, stayId } from '../src/model/migrate-periods'
 import { allPeriods, periodAt, planStayDays, setStayDays } from '../src/model/periods'
-import { fixLegOutside, fixMoneyWithoutPeriod, reviewInput, reviewItems, setTripKind } from '../src/model/review'
+import { fixLegOutside, fixLegStart, fixMoneyWithoutPeriod, legOutsideCanExtend, reviewInput, reviewItems, setTripKind } from '../src/model/review'
 import { tripKind } from '../src/model/trip-kind'
 import { startWeek, type WeekInput } from '../src/model/weeks'
 import type { CalendarDay, Leg, StayPeriod, Transaction, Trip } from '../src/model/types'
@@ -151,6 +151,7 @@ describe('migratie naar het periodemodel', () => {
       tx('in-trip', '2026-10-12'),
       tx('thuis', '2026-10-05'),
       tx('vrij', '2026-10-20'),
+      tx('loon-thuis', '2026-10-05', { kind: 'loon' }),
       tx('niets', '2026-10-30'),
       tx('al-gekoppeld', '2026-10-05', { tripId: 'w' }),
       tx('declaratie', '2026-10-05', { claimId: 'c1' }),
@@ -172,7 +173,8 @@ describe('migratie naar het periodemodel', () => {
     expect(days.map((d) => d.date).sort()).toEqual(['2026-10-05', '2026-10-07', '2026-10-20'])
     expect(days.every((d) => d.deletedAt !== null && d.type)).toBe(true)
     const linked = new Map(changes.filter((c) => c.path === 'transactions.json.enc').map((c) => [c.after.id, (c.after as Transaction).tripId]))
-    expect(Object.fromEntries(linked)).toEqual({ 'in-trip': 'w', thuis: stayId('thuis', '2026-10-05'), vrij: stayId('vrij', '2026-10-20') })
+    // Alleen uitgaven op een dag aan land; op een tripdatum en bij inkomsten niets vanzelf (dat staat in Nakijken).
+    expect(Object.fromEntries(linked)).toEqual({ thuis: stayId('thuis', '2026-10-05'), vrij: stayId('vrij', '2026-10-20') })
   })
 
   it('twee apparaten maken hetzelfde; een tweede keer verandert niets', () => {
@@ -232,7 +234,12 @@ describe('Nakijken', () => {
     expect(items.find((i) => i.kind === 'soort')).toMatchObject({ trip: { id: 'oud' } })
     expect(items.find((i) => i.kind === 'organisatie')).toMatchObject({ trip: { id: 'werk' }, suggestion: 'yacht-week' })
     expect(items.find((i) => i.kind === 'geld-zonder-periode')).toMatchObject({ tx: { id: 'los' }, target: null })
-    expect(items.find((i) => i.kind === 'plaatsen' && i.reason === 'aansluiting')).toMatchObject({ from: { name: 'Nep Eiland' }, into: { name: 'Nepstadje' } })
+    const join = items.find((i) => i.kind === 'aansluiting')
+    expect(join).toMatchObject({ leg: { id: 'b' }, from: { name: 'Nep Eiland' }, into: { name: 'Nepstadje' } })
+    // De eerste fix verandert alleen de van van die ene dag.
+    if (join?.kind !== 'aansluiting') throw new Error('verwacht')
+    await fixLegStart(s, join.leg, join.previous)
+    expect(s.list('legs.json.enc').find((l) => l.id === 'b')?.fromPlace).toBe('Nepstadje')
     const soort = items.find((i) => i.kind === 'soort')!
     if (soort.kind !== 'soort') throw new Error('verwacht')
     await setTripKind(s, soort.trip, 'zelf-cruisen')
@@ -262,4 +269,58 @@ describe('Nakijken', () => {
     expect(dayInfo(index, '2027-02-03', '2027-01-01').type).toBe('werk')
     expect(reviewItems(reviewInput(s)).find((i) => i.kind === 'agendadag-in-trip')).toMatchObject({ day: { date: '2027-02-03' } })
   })
+
+  it('een dag ver buiten zijn trip verlengt de trip niet met één tik (de datum is dan vast fout)', () => {
+    const w = trip('w', { startDate: '2026-10-18', endDate: '2026-10-24' })
+    expect(legOutsideCanExtend(leg('a', 'w', '2026-10-26'), w)).toBe(true)
+    expect(legOutsideCanExtend(leg('a', 'w', '2026-11-26'), w)).toBe(false)
+  })
+
+  it('een dagtoestand binnen een periode aan land staat in Nakijken', async () => {
+    const s = await store()
+    await setStayDays(s, ['2027-05-01', '2027-05-02', '2027-05-03'], 'thuis')
+    await s.put('calendar.json.enc', day('2027-05-02', 'onbeschikbaar', { reason: 'Nepreden' }))
+    expect(reviewItems(reviewInput(s)).find((i) => i.kind === 'agendadag-in-periode')).toMatchObject({ day: { date: '2027-05-02' } })
+  })
 })
+
+describe('reviewpunten periodes', () => {
+  it('verlengen ongedaan maken zet ook de periode aan land en het geld terug', async () => {
+    const { resizeTrip, tripRange } = await import('../src/model/calendar')
+    const { weekView } = await import('../src/model/weeks')
+    const s = await store()
+    await s.put('trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-06-01', endDate: '2027-06-05' }))
+    await setStayDays(s, ['2027-06-06', '2027-06-07', '2027-06-08', '2027-06-09', '2027-06-10'], 'thuis')
+    const home = s.list('periods.json.enc')[0]!
+    await s.put('transactions.json.enc', tx('t', '2027-06-06', { tripId: home.id }))
+    const view = weekView(s.list('trips.json.enc')[0]!, [])
+    const undo = await resizeTrip(s, { view, start: '2027-06-01', end: '2027-06-06' })
+    expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-07' })
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe('w')
+    await undo()
+    expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-06', endDate: '2027-06-10' })
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe(home.id)
+    expect(tripRange(s.list('trips.json.enc')[0]!, [])).toEqual({ start: '2027-06-01', end: '2027-06-05' })
+  })
+
+  it('een inkomen gaat niet vanzelf naar een trip als die over de thuisperiode komt', async () => {
+    const s = await store()
+    await setStayDays(s, ['2027-07-01', '2027-07-02'], 'thuis')
+    const home = s.list('periods.json.enc')[0]!
+    await s.put('transactions.json.enc', tx('loon', '2027-07-02', { kind: 'loon', tripId: home.id }))
+    await s.put('trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-07-02', endDate: '2027-07-04' }))
+    await setStayDays(s, ['2027-07-02'], null)
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBeUndefined()
+  })
+
+  it('overlappende periodes aan land: geld van de opgegane periode gaat mee', () => {
+    const plan = planStayDays([stay('a', 'thuis', '2026-11-01', '2026-11-10'), stay('b', 'vrij', '2026-11-05', '2026-11-07')], ['2026-11-06'], 'reis', () => false, T, () => 'nieuw')
+    expect(plan.previous.get('2026-11-06')).toEqual(new Set(['a', 'b']))
+    expect(plan.changes.find((c) => c.after.id === 'b')?.after.deletedAt).not.toBeNull()
+  })
+
+  it('een opgeslagen soort die het type tegenspreekt (een oudere versie wijzigde het type): het type geldt', () => {
+    expect(tripKind(trip('a', { kind: 'werk', type: 'zelf-cruisen' }), [])).toMatchObject({ kind: 'plezier', sure: true })
+  })
+})
+

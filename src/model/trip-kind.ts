@@ -37,7 +37,8 @@ function subFromName(name: string): WeekType {
 
 export function tripKind(trip: Trip, legs: readonly Leg[]): KindGuess {
   const type = trip.type
-  if (trip.kind) return { kind: trip.kind, type: type && kindForType(type) === trip.kind ? type : typeForKind(trip.kind), sure: true }
+  // Opgeslagen soort; spreekt het type hem tegen (een oudere versie wijzigde alleen het type), dan geldt het type.
+  if (trip.kind && (!type || kindForType(type) === trip.kind)) return { kind: trip.kind, type: type ?? typeForKind(trip.kind), sure: true }
   if (type && type !== 'overig') return { kind: kindForType(type), type, sure: true }
   const roles = new Set(legs.filter((l) => l.tripId === trip.id && l.deletedAt === null).map((l) => l.role))
   const name = trip.name ?? ''

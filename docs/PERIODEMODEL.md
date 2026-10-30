@@ -28,7 +28,9 @@ met de reden.
 - **Dagen zonder periode** houden een dagtoestand in `calendar.json.enc`: beschikbaar, optie of onbeschikbaar. Een
   dag in het verleden zonder periode is leeg; hoogstens twee dagen tussen twee trips tonen vanzelf als vrij (zoals nu).
 - **Hoogstens één periode per dag.** Water gaat voor land: een trip maken of verlengen over een thuisperiode maakt die
-  korter (of splitst hem), net zoals een trip nu zelf ingestelde agendadagen laat plaatsmaken. Een gelogde dag ligt
+  korter (of splitst hem), net zoals een trip nu zelf ingestelde agendadagen laat plaatsmaken; uitgaven op die dagen
+  gaan mee naar de trip, inkomsten niet (Nakijken). Twee aangrenzende periodes van dezelfde soort gaan samen: de
+  langste blijft, met de notitie, naam en reis van de andere erbij. Een gelogde dag ligt
   altijd binnen de datums van zijn trip (zie PR 1). Wat toch botst, staat in Nakijken.
 - **Agenda:** de dagsoort volgt uit de periode: op het water (werk, training, plezier, één kleur), reis, thuis, vrij;
   anders de dagtoestand. "Rust" heet voortaan "Vrij".
@@ -56,9 +58,10 @@ van `logboek-data`.
    de reis (met een vluchtnummer: vervoer vliegtuig). Dagen zonder eigen gegevens worden een tombstone; dagen met een
    notitie, plaats, reden of reisgegevens blijven staan als gegevens van die dag (de dagsoort volgt voortaan uit de
    periode). Zulke dagen binnen een trip, en werkdagen zonder trip, blijven staan en komen in Nakijken.
-3. **Inkomsten en uitgaven** zonder trip: gekoppeld aan de periode van hun datum (water gaat voor land). Wat al aan een
-   trip hing, blijft daar. Declaraties en hun uitgave volgen hun declaratie, uitbetalingen hun trip. Geen periode op
-   die datum → Nakijken.
+3. **Uitgaven** zonder trip op een dag aan land: gekoppeld aan die periode. Wat al aan een trip hing, blijft daar.
+   Op een tripdatum, en bij inkomsten, koppelt de app niets vanzelf: een inkomen of uitgave aan een trip hangen
+   verandert het resultaat van die trip (en bij loon: salaris ontvangen). Die staan in Nakijken, met de periode van hun
+   datum als voorstel. Declaraties en hun uitgave volgen hun declaratie, uitbetalingen hun trip.
 4. **Source**: blijft staan. Hangt een inkomen met source Sailing Virgins of Yacht Week aan een trip zonder organisatie,
    dan stelt Nakijken die organisatie voor.
 
@@ -72,14 +75,16 @@ knop die het oplost (met ongedaan maken) en "Klopt zo" (onthouden in `settings.r
 
 | Punt | Fix van één tik |
 |---|---|
-| Trip zonder zekere soort | Soort kiezen (les geven, skipper charter, delivery, werk overig, training, plezier) |
+| Trip zonder zekere soort | Soort kiezen (les geven, skipper charter, delivery, werk overig, training, plezier); bij meer dan één ook "Alle voorstellen overnemen" |
 | Werk zonder organisatie | Organisatie kiezen; voorstel uit de source van zijn inkomsten |
 | Twee periodes op dezelfde dag | Samenvoegen, of de andere korter maken (bestaande keuze voor trips) |
-| Gelogde dag buiten de datums van zijn trip | Naar de periode van die datum, of de trip verlengen |
-| Agendadag (thuis, reis, rust) binnen een trip | Dag hoort bij de trip |
+| Gelogde dag buiten de datums van zijn trip | Naar de trip van die datum, of (hoogstens 3 dagen ernaast) de trip verlengen; verder weg "Dag bewerken" |
+| Agendadag (thuis, reis, rust, dagtoestand) binnen een trip | Dag hoort bij de trip |
+| Dagtoestand (onbeschikbaar, optie, beschikbaar) of andere soort binnen een periode aan land | De dag uit de periode halen |
 | Werkdag in de agenda zonder trip | Trip maken over die dagen |
-| Inkomen of uitgave zonder periode | Thuisperiode maken (of de aangrenzende verlengen) |
-| Plaatsen die dubbel lijken ("Sint Barths" en "Gustavia": de van van een dag past niet bij de naar van de dag ervoor, of een spelvariant) | Samenvoegen onder de naam met een pin |
+| Inkomen of uitgave zonder periode | Koppelen aan de periode van de datum; zonder periode een thuisperiode maken (of de aangrenzende verlengen) |
+| Plaatsen die dubbel lijken: een spelvariant | Overal samenvoegen (met het aantal dagen) |
+| Een dag begint ergens anders dan waar de dag ervoor eindigde, één van beide zonder pin ("Sint Barths" na "Gustavia") | Alleen deze dag laten beginnen waar de vorige eindigde; of overal samenvoegen (met het aantal dagen); "Niet dezelfde" |
 
 ## 4. Gevolgen per scherm
 

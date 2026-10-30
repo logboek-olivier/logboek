@@ -97,8 +97,8 @@ export interface StayPlan {
   changes: { before: StayPeriod | null; after: StayPeriod }[]
   /** Na de wijziging: per datum in het bekeken stuk de periode aan land (id), of null. */
   owner: Map<string, string | null>
-  /** Datums die vóór de wijziging bij een periode aan land hoorden: datum → oude id. */
-  previous: Map<string, string>
+  /** Datums die vóór de wijziging bij een periode aan land hoorden: datum → oude id's (meer dan één bij overlap). */
+  previous: Map<string, Set<string>>
 }
 
 /**
@@ -130,12 +130,11 @@ export function planStayDays(
   // Per dag in het stuk: soort en eigenaar (bij overlap de eerst begonnen periode).
   const ordered = [...affected].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.updatedAt < b.updatedAt ? -1 : 1))
   const day = new Map<string, { kind: StayKind; id: string | null }>()
-  const previous = new Map<string, string>()
+  const previous = new Map<string, Set<string>>()
   for (const s of ordered) {
     for (let d = s.startDate; d <= s.endDate; d = addDays(d, 1)) {
-      if (day.has(d)) continue
-      day.set(d, { kind: s.kind, id: s.id })
-      previous.set(d, s.id)
+      previous.set(d, (previous.get(d) ?? new Set()).add(s.id))
+      if (!day.has(d)) day.set(d, { kind: s.kind, id: s.id })
     }
   }
   for (const d of targets) {
@@ -167,10 +166,12 @@ export function planStayDays(
     if (survivorId) {
       used.add(survivorId)
       const before = byId.get(survivorId)!
-      // Samengevoegd met een buurperiode: diens notitie gaat mee.
-      const absorbedNotes = [...run.ids.keys()].filter((id) => id !== survivorId && !used.has(id)).map((id) => byId.get(id)?.note).filter((n): n is string => !!n && n !== before.note)
-      const note = [before.note, ...absorbedNotes].filter(Boolean).join('\n')
-      record = { ...before, startDate: run.start, endDate: run.end, ...(note ? { note } : {}) }
+      // Samengevoegd met een buurperiode (of een periode die er helemaal in lag): diens notitie, naam en reis gaan mee.
+      const others = affected.filter((st) => st.id !== survivorId && !used.has(st.id) && st.kind === run.kind && (run.ids.has(st.id) || (st.startDate >= run.start && st.endDate <= run.end)))
+      const note = [before.note, ...others.map((st) => st.note)].filter((n, i, all): n is string => !!n && all.indexOf(n) === i).join('\n')
+      const name = before.name ?? others.find((st) => st.name)?.name
+      const travel = before.travel ?? others.find((st) => st.travel)?.travel
+      record = { ...before, startDate: run.start, endDate: run.end, ...(note ? { note } : {}), ...(name ? { name } : {}), ...(travel ? { travel } : {}) }
       if (own) record = withDetails(record, details)
       if (JSON.stringify(record) !== JSON.stringify(before)) changes.push({ before, after: { ...record, updatedAt: now } })
     } else {
@@ -227,12 +228,14 @@ export function stayDayChanges(store: Store, dates: readonly string[], kind: Sta
   const plan = planStayDays(store.list('periods.json.enc'), dates, kind, (d) => inWater(d) !== null, now, () => crypto.randomUUID(), details)
   const changes: Change[] = plan.changes.map((c) => ({ path: 'periods.json.enc', before: c.before, after: c.after }))
   if (changes.length === 0 && kind === null) return changes
-  // Geld op datum mee.
+  // Geld op datum mee. Naar een trip alleen uitgaven: een inkomen (loon, fooi) aan een trip koppelen betekent iets
+  // (salaris ontvangen), dat beslist Olivier zelf in Nakijken.
   const touched = new Set(plan.changes.map((c) => c.after.id))
   for (const tx of active(store.list('transactions.json.enc'))) {
     if (!tx.tripId || !touched.has(tx.tripId) || tx.claimId) continue
-    if (plan.previous.get(tx.date) !== tx.tripId) continue
-    const next = plan.owner.get(tx.date) ?? inWater(tx.date)
+    if (!plan.previous.get(tx.date)?.has(tx.tripId)) continue
+    const water = tx.kind === 'kosten' || tx.kind === 'investering' ? inWater(tx.date) : null
+    const next = plan.owner.get(tx.date) ?? water
     if (next === tx.tripId) continue
     const { tripId: _old, ...rest } = tx
     void _old

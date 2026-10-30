@@ -3,6 +3,7 @@ import { active, lastMonths, round1, totalNm } from './derive'
 import { addDays, round2, totals } from './money'
 import { weekView, type WeekView } from './weeks'
 import { setStayDays } from './periods'
+import { later, undoableIn } from './changes'
 import { keepUnknownFields, todayIso, type CalendarDay, type DayTravel, type DayType, type Leg, type PeriodKind, type Reminder, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
 
 // Agenda: elke dag heeft één dagsoort, die volgt uit de periode van die dag (docs/PERIODEMODEL.md), met deze voorrang:
@@ -285,7 +286,7 @@ export function weekStart(date: string): string {
 
 /** Laatste geplande dag: einde van de laatste trip of de laatste zelf ingestelde dag. */
 export function planningEnd(index: CalendarIndex): string | null {
-  const ends = [...index.views.map((v) => v.endDate), ...index.own.keys()]
+  const ends = [...index.views.map((v) => v.endDate), ...index.own.keys(), ...index.stays.map((st) => st.endDate)]
   return ends.length > 0 ? ends.reduce((a, b) => (a > b ? a : b)) : null
 }
 
@@ -462,7 +463,7 @@ export async function followTrip(store: Store, tripId: string, before: DateRange
     const dropped = within(before, day.date) && !within(after, day.date)
     if (added) {
       if (day.type !== 'werk' && hasDetails(day)) changed.push({ ...day, type: 'werk', updatedAt: now })
-      else if (day.type !== 'werk' || !day.boat) changed.push({ ...day, updatedAt: now, deletedAt: now })
+      else if (!hasDetails(day) && (day.type !== 'werk' || !day.boat)) changed.push({ ...day, updatedAt: now, deletedAt: now })
     } else if (dropped && day.type === 'werk' && !hasDetails(day) && !others.some((r) => within(r, day.date))) {
       changed.push({ ...day, updatedAt: now, deletedAt: now })
     }
@@ -516,24 +517,17 @@ export async function resizeTrip(store: Store, change: TripResize): Promise<() =
   const before = store.list('trips.json.enc').find((t) => t.id === change.view.trip.id) ?? change.view.trip
   const legs = store.list('legs.json.enc')
   const oldRange = tripRange(before, legs)
-  const calendarBefore = store.list('calendar.json.enc')
   // Verlengen of inkorten in de agenda is zelf de datums kiezen: die volgen de dagen daarna niet meer.
   const { datesFromDays: _follows, ...fixed } = before
   void _follows
   const next: Trip = { ...fixed, startDate: change.start, endDate: change.end, updatedAt: new Date().toISOString() }
   await store.put('trips.json.enc', next)
-  await followTrip(store, before.id, oldRange, { start: change.start, end: change.end })
+  // De agenda volgt: zelf ingestelde dagen, periodes aan land en het geld dat daarbij meeging komen bij ongedaan maken terug.
+  const undoFollow = await undoableIn(store, ['calendar.json.enc', 'periods.json.enc', 'transactions.json.enc'], () => followTrip(store, before.id, oldRange, { start: change.start, end: change.end }))
   void store.sync()
   return async () => {
-    const now = new Date().toISOString()
-    await store.put('trips.json.enc', { ...before, updatedAt: now })
-    // Dagen die het verlengen of inkorten wegnam, komen terug.
-    const current = new Map(store.get('calendar.json.enc').map((d) => [d.id, d]))
-    const restore = calendarBefore.filter((d) => {
-      const c = current.get(d.id)
-      return !c || c.deletedAt !== null || c.type !== d.type
-    })
-    if (restore.length > 0) await store.putMany('calendar.json.enc', restore.map((d) => ({ ...d, updatedAt: now })))
+    await store.put('trips.json.enc', { ...before, updatedAt: later(next.updatedAt) })
+    await undoFollow()
     void store.sync()
   }
 }

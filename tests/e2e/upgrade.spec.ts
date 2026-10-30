@@ -357,11 +357,13 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
-    // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
+    // Het schone apparaat leest ook de agenda: de nieuwe thuisdag staat als periode in periods.json.enc (periodemodel),
+    // naast de voorbeelden als de vorige release de agenda al kende.
     const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
     const key = await unlock(meta, { passphrase: PASSPHRASE })
     const calendar = await decryptRecords(key, 'calendar.json.enc', Uint8Array.from(Buffer.from(github.files.get('calendar.json.enc')!.content, 'base64')))
-    expect(calendar).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'thuis', deletedAt: null })]))
+    const stays = await decryptRecords(key, 'periods.json.enc', Uint8Array.from(Buffer.from(github.files.get('periods.json.enc')!.content, 'base64')))
+    expect(stays).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'thuis', deletedAt: null })]))
     // De dagsoort onbeschikbaar met reden komt ongeschonden over.
     expect(calendar.find((d) => d.id === 'dag:2026-10-27')).toMatchObject({ type: 'onbeschikbaar', reason: 'Nepreden', deletedAt: null })
     // En de fooi per persoon: de voorbeelden (per persoon, hele groep) en de nieuwe fooi van één deelnemer.

@@ -74,11 +74,15 @@ export function migrationChanges(input: MigrationInput, now: string): Change[] {
     for (const day of run.days) if (!dayHasDetails(day)) changes.push({ path: 'calendar.json.enc', before: day, after: { ...day, updatedAt: justAfter(day.updatedAt), deletedAt: justAfter(day.updatedAt) } })
   }
 
-  // 2. Inkomsten en uitgaven zonder periode → de periode van hun datum (water gaat voor land).
+  // 2. Uitgaven zonder periode op een dag aan land → die periode. Op een tripdatum, en bij inkomsten, niets vanzelf:
+  // een inkomen of uitgave aan een trip koppelen verandert zijn resultaat (en bij loon: salaris ontvangen). Dat staat in
+  // Nakijken, met de trip als voorstel.
   const stays = [...liveStays, ...created]
   for (const tx of active(input.transactions)) {
     if (tx.tripId || tx.claimId || tx.payoutId) continue
-    const id = inWater(tx.date) ?? inStay(tx.date, stays)
+    if (tx.kind !== 'kosten' && tx.kind !== 'investering') continue
+    if (inWater(tx.date)) continue
+    const id = inStay(tx.date, stays)
     if (!id) continue
     changes.push({ path: 'transactions.json.enc', before: tx, after: { ...tx, tripId: id, updatedAt: justAfter(tx.updatedAt) } })
   }

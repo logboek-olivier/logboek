@@ -8,7 +8,7 @@ import { saveSettings, currentSettings } from './settings'
 import { tripOverlaps, type Overlap } from './trip-ops'
 import { kindForType, typeForKind } from './trip-kind'
 import { STAY_FROM_DAY, dayHasDetails } from './migrate-periods'
-import { followTrip, tripRange } from './calendar'
+import { daysBetween, followTrip, tripRange } from './calendar'
 import { followDays } from './trip-dates'
 import { defaultWeekName, weekView } from './weeks'
 import type { Lang } from '../i18n'
@@ -30,6 +30,8 @@ export type ReviewItem =
   | { key: string; kind: 'dag-buiten'; leg: Leg; trip: Trip; target: Trip | null }
   /** Een zelf ingestelde agendadag (rust, thuis, reis, ...) binnen een trip. */
   | { key: string; kind: 'agendadag-in-trip'; day: CalendarDay; trip: Trip }
+  /** Een zelf ingestelde dagtoestand (of een andere soort) binnen een periode aan land: de periode verbergt hem. */
+  | { key: string; kind: 'agendadag-in-periode'; day: CalendarDay; stay: StayPeriod }
   /** Werkdagen in de agenda zonder trip. */
   | { key: string; kind: 'werkdag-zonder-trip'; from: string; to: string }
   /** Agendadagen thuis, reis of rust zonder periode (bijvoorbeeld van een oudere versie op een ander apparaat). */
@@ -37,7 +39,12 @@ export type ReviewItem =
   /** Inkomen of uitgave zonder periode. */
   | { key: string; kind: 'geld-zonder-periode'; tx: Transaction; target: Period | null }
   /** Twee plaatsnamen die dezelfde plaats lijken: `from` gaat op in `into`. */
-  | { key: string; kind: 'plaatsen'; from: PlaceUse; into: PlaceUse; reason: 'spelling' | 'aansluiting' }
+  | { key: string; kind: 'plaatsen'; from: PlaceUse; into: PlaceUse; reason: 'spelling' }
+  /**
+   * Een dag die begint in een andere plaats dan waar de dag ervoor eindigde, met één van de twee zonder pin: misschien
+   * dezelfde plaats onder een andere naam ("Sint Barths" en "Gustavia"). Eerste fix: alleen de van van deze dag.
+   */
+  | { key: string; kind: 'aansluiting'; leg: Leg; previous: Leg; from: PlaceUse; into: PlaceUse }
 
 export interface ReviewInput {
   trips: readonly Trip[]
@@ -109,6 +116,12 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     if (trip?.view) items.push({ key: `agendadag:${day.id}`, kind: 'agendadag-in-trip', day, trip: trip.view.trip })
   }
   const inStay = (d: string) => stays.some((p) => p.start <= d && d <= p.end)
+  for (const day of own) {
+    if (inWater(day.date)) continue
+    const stay = stays.find((p) => p.start <= day.date && day.date <= p.end)?.stay
+    // Een dag met gegevens van dezelfde soort is gewoon een dag van die periode.
+    if (stay && STAY_FROM_DAY[day.type] !== stay.kind) items.push({ key: `agendadag:${day.id}`, kind: 'agendadag-in-periode', day, stay })
+  }
   for (const run of runsOf(own.filter((d) => d.type === 'werk' && !inWater(d.date)), () => 'werk')) items.push({ key: `werkdag:${run.from}`, kind: 'werkdag-zonder-trip', from: run.from, to: run.to })
   for (const run of runsOf(own.filter((d) => STAY_FROM_DAY[d.type] && !inWater(d.date) && !inStay(d.date)), (d) => STAY_FROM_DAY[d.type]!)) {
     items.push({ key: `landdag:${run.from}`, kind: 'dag-zonder-periode', stayKind: run.value as StayKind, from: run.from, to: run.to })
@@ -125,7 +138,7 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
   const uses = placeUses(legs, input.places)
   const useOf = new Map(uses.map((u) => [u.key, u]))
   const seen = new Set<string>()
-  const pair = (a: PlaceUse, b: PlaceUse, reason: 'spelling' | 'aansluiting') => {
+  const pair = (a: PlaceUse, b: PlaceUse, reason: 'spelling') => {
     const id = [a.key, b.key].sort().join('+')
     if (seen.has(id)) return
     seen.add(id)
@@ -133,6 +146,7 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     const [into, from] = (b.place && !a.place) || (!!b.place === !!a.place && b.days > a.days) ? [b, a] : [a, b]
     items.push({ key: `plaatsen:${id}`, kind: 'plaatsen', from, into, reason })
   }
+  void pair
   for (const c of mergeCandidates(uses)) for (const o of c.others) pair(c.into, o, 'spelling')
   const byTrip = new Map<string, Leg[]>()
   for (const leg of legs) byTrip.set(leg.tripId, [...(byTrip.get(leg.tripId) ?? []), leg])
@@ -144,10 +158,16 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
       const a = useOf.get(placeKey(prev.toPlace))
       const b = useOf.get(placeKey(next.fromPlace))
       if (!a || !b || a.key === b.key) continue
-      // Alleen als een van de twee geen pin heeft: twee plaatsen met een pin zijn echt verschillend (bijvoorbeeld een
-      // dag die op een andere plek begon).
+      // Alleen opeenvolgende dagen, en alleen als een van de twee geen pin heeft: twee plaatsen met een pin zijn echt
+      // verschillend (een dag die op een andere plek begon), en tussen twee dagen met een gat kan de boot verhuisd zijn.
       if (a.place && b.place) continue
-      pair(a, b, 'aansluiting')
+      if (next.date !== prev.date && next.date !== addDays(prev.date, 1)) continue
+      const id = [a.key, b.key].sort().join('+')
+      if (seen.has(id)) continue
+      seen.add(id)
+      // De naam met een pin blijft; zonder pins de naam van de dag ervoor.
+      const [into, from] = b.place && !a.place ? [b, a] : [a, b]
+      items.push({ key: `aansluiting:${next.id}`, kind: 'aansluiting', leg: next, previous: prev, from, into })
     }
   }
   return items.filter((item) => !dismissed.has(item.key))
@@ -264,4 +284,34 @@ export async function fixMoneyWithoutPeriod(store: Store, tx: Transaction, targe
  */
 export function fixLandOverlap(store: Store, from: string, to: string, other: Period): Promise<Undo> {
   return setStayDays(store, rangeDates(from, to), other.stay ? other.stay.kind : null)
+}
+
+/** Alleen de van van deze dag wordt de naar van de dag ervoor (met het land). */
+export function fixLegStart(store: Store, leg: Leg, previous: Leg): Promise<Undo> {
+  return applyChanges(store, [{ path: 'legs.json.enc', before: leg, after: changed(leg, { fromPlace: previous.toPlace, fromCountry: previous.toCountry || leg.fromCountry }) }])
+}
+
+/** Een dagtoestand binnen een periode aan land laten gelden: de dag gaat uit de periode (korter of gesplitst). */
+export function fixDayInStay(store: Store, day: CalendarDay): Promise<Undo> {
+  return setStayDays(store, [day.date], null)
+}
+
+/** Zoveel dagen mag Nakijken een trip met één tik verlengen voor een dag die erbuiten valt; verder weg is de datum vast fout. */
+export const EXTEND_FIX_DAYS = 3
+
+export function legOutsideCanExtend(leg: Leg, trip: Trip): boolean {
+  if (!trip.startDate || !trip.endDate) return false
+  const gap = leg.date < trip.startDate ? daysBetween(leg.date, trip.startDate) : daysBetween(trip.endDate, leg.date)
+  return gap <= EXTEND_FIX_DAYS
+}
+
+/** Alle voorstellen voor de soort in één keer overnemen (met één ongedaan maken). */
+export async function acceptAllKinds(store: Store, items: readonly ReviewItem[]): Promise<Undo> {
+  const undos: Undo[] = []
+  for (const item of items) {
+    if (item.kind !== 'soort') continue
+    const current = store.list('trips.json.enc').find((x) => x.id === item.trip.id)
+    if (current) undos.push(await setTripKind(store, current, item.suggestion))
+  }
+  return bothUndo(...undos)
 }

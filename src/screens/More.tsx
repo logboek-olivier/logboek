@@ -34,7 +34,7 @@ export function More({ store, onOpen }: { store: Store; onOpen: (screen: MoreScr
   const demo = useIsDemo()
   const review = useReviewItems(store).length
   const base = demo ? ITEMS.filter((item) => item.id !== 'opslag' && item.id !== 'kluis' && item.id !== 'rekeningen') : ITEMS
-  const items = review > 0 ? [{ id: 'nakijken' as const, label: 'review.title' as const, hint: 'more.reviewHint' as const, icon: ClipboardCheck }, ...base] : base
+  const items = review > 0 && !demo ? [{ id: 'nakijken' as const, label: 'review.title' as const, hint: 'more.reviewHint' as const, icon: ClipboardCheck }, ...base] : base
   return (
     <section className="stack-lg">
       <header className="page-header">

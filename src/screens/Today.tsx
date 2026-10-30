@@ -22,7 +22,7 @@ import { useIsDemo } from '../components/DemoBar'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
-import { buildIndex, dayInfo, dayLabelKey } from '../model/calendar'
+import { buildIndex, dayInfo, dayLabelKey, stayTravel } from '../model/calendar'
 import { nmInYear } from '../model/derive'
 import { DueList, useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
@@ -359,7 +359,7 @@ function DayKind({ day, onOpen }: { day: ReturnType<typeof dayInfo>; onOpen: () 
 
 /** Reisgegevens, notitie en "niets te loggen" bij de dagsoort van vandaag. */
 function DayDetails({ day }: { day: ReturnType<typeof dayInfo> }) {
-  const travel = day.type === 'reis' ? day.own?.travel : undefined
+  const travel = day.type === 'reis' ? (day.own?.travel?.from || day.own?.travel?.to || day.own?.travel?.flight ? day.own.travel : stayTravel(day)) : undefined
   return (
     <>
       {travel && (travel.from || travel.to || travel.flight) && (

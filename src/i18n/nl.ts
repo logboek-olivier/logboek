@@ -1932,8 +1932,14 @@ export const nl = {
   'review.linkTo': (p: { name: string }) => `Koppelen aan ${p.name}`,
   'review.makeHome': 'Thuisperiode maken',
   'review.placesSpelling': (p: { a: string; b: string }) => `“${p.a}” en “${p.b}” lijken dezelfde plaats.`,
-  'review.placesJoin': (p: { a: string; b: string }) => `Een dag begint in “${p.a}”, terwijl de dag ervoor eindigde in “${p.b}”. Dezelfde plaats?`,
-  'review.mergeInto': (p: { name: string }) => `Samenvoegen onder ${p.name}`,
+  'review.placesJoin': (p: { date: string; a: string; b: string }) => `${p.date} begint in “${p.a}”, terwijl de dag ervoor eindigde in “${p.b}”. Dezelfde plaats?`,
+  'review.mergeInto': (p: { name: string; n: number }) => `Overal ${p.name} (${p.n === 1 ? '1 dag' : `${p.n} dagen`})`,
+  'review.startAt': (p: { name: string }) => `Begint in ${p.name}`,
+  'review.notSame': 'Niet dezelfde',
+  'review.editDay': 'Dag bewerken',
+  'review.dayInStay': (p: { date: string; type: string; name: string }) => `${p.date} staat in de agenda als ${p.type.toLowerCase()}, maar valt in ${p.name}.`,
+  'review.dayWins': (p: { type: string }) => `${p.type} laten gelden`,
+  'review.acceptAllKinds': (p: { n: number }) => `Alle ${p.n} voorstellen voor de soort overnemen`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
