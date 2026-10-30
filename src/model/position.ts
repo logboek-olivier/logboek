@@ -82,10 +82,16 @@ const GROUP: Record<AccountKind, 'bank' | 'cash' | 'investments' | 'debts'> = {
   schuld: 'debts',
 }
 
-/** Is het salaris van deze trip op `date` al betaald (het inkomen van "ontvangen" staat op of vóór die dag)? */
+/**
+ * Is het salaris van deze trip op `date` al betaald (het inkomen van "ontvangen" staat op of vóór die dag)? Een
+ * salarisinkomen bij de trip telt ook als de status nog op verwacht staat (die viel bijvoorbeeld op een ander apparaat
+ * terug): wat binnen is, is niet meer te ontvangen.
+ */
 function paidBy(trip: Trip, transactions: readonly Transaction[], date: string): boolean {
   const s = trip.salary
-  if (!s || s.status !== 'ontvangen') return false
+  if (!s) return false
+  if (transactions.some((x) => x.deletedAt === null && x.kind === 'loon' && x.tripId === trip.id && x.date <= date)) return true
+  if (s.status !== 'ontvangen') return false
   const tx = s.transactionId ? transactions.find((x) => x.id === s.transactionId) : undefined
   // Zonder bekend inkomen (een oudere of handmatige ontvangst): betaald.
   return !tx || tx.deletedAt !== null || tx.date <= date
@@ -168,6 +174,8 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     if (c.status === 'terugbetaald' && !c.repaid) continue
     if (c.amount === undefined || c.currency === undefined || c.amount <= 0 || c.date > date) continue
     if (c.repaid && c.repaid.date <= date) continue
+    // De terugbetaling staat er al (ook als de declaratie zelf nog niet op terugbetaald staat): niet meer te ontvangen.
+    if (transactions.some((tx) => tx.deletedAt === null && tx.kind === 'terugbetaling' && tx.claimId === c.id && tx.date <= date)) continue
     out.claims.push(c)
     add(out.totals.receivable, c.amount, c.currency, date, rates)
   }

@@ -159,13 +159,14 @@ export function salaryDefaultsLine(store: Store): string {
 export function SalaryQuestions({ store, notify }: { store: Store; notify: Notify }) {
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const counters = useCounters(store)
   const [other, setOther] = useState<Trip | null>(null)
   // Eén tik tegelijk: een tweede tik voordat het scherm bijgewerkt is, boekt het salaris niet nog eens.
   const [busy, setBusy] = useState(false)
   // Een organisatie die maandelijks uitbetaalt, krijgt één vraag per uitbetaling (PayoutQuestions), niet per trip.
-  const questions = salaryQuestions(trips, legs, todayIso())
+  const questions = salaryQuestions(trips, legs, todayIso(), transactions)
     .filter((x) => asksPerTrip(settings, x))
     .slice(0, 3)
   if (questions.length === 0 && !other) return null
@@ -230,13 +231,20 @@ function ReceiveSheet({ store, trip, notify, onClose }: { store: Store; trip: Tr
   const [currency, setCurrency] = useState<Currency>(s?.currency ?? 'EUR')
   const parsed = parseAmount(amount)
   const valid = parsed !== null && parsed > 0
+  // Eén tik tegelijk: een tweede tik tijdens het opslaan boekt niets nog eens.
+  const [busy, setBusy] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!valid) return
-    const undo = await receiveSalary(store, trip, todayIso(), { amount: parsed, currency })
-    onClose()
-    notify(t('salary.receivedToast'), undo)
+    if (!valid || busy) return
+    setBusy(true)
+    try {
+      const undo = await receiveSalary(store, trip, todayIso(), { amount: parsed, currency })
+      onClose()
+      notify(t('salary.receivedToast'), undo)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -258,7 +266,7 @@ function ReceiveSheet({ store, trip, notify, onClose }: { store: Store; trip: Tr
             </select>
           </label>
         </div>
-        <button className="btn primary" type="submit" disabled={!valid}>
+        <button className="btn primary" type="submit" disabled={!valid || busy}>
           <Icon icon={Check} />
           {t('salary.saveReceived')}
         </button>

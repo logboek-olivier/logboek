@@ -3,7 +3,7 @@ import { active } from './derive'
 import type { Undo } from './edit'
 import { eurOf, round2 } from './money'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
-import { salaryEur, salarySource, tripEnd } from './salary'
+import { salaryEur, salaryIncomeId, salarySource, tripEnd } from './salary'
 import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
 
 // Geldpad per trip: per soort geld een status. Salaris: verwacht (de trip is nog niet voorbij), te ontvangen (voorbij,
@@ -139,10 +139,12 @@ export async function recordPayout(store: Store, payout: Payout, chosen: readonl
   const legs = store.list('legs.json.enc')
   // De trips zoals ze nu op het apparaat staan; een trip die intussen al ontvangen is (een tweede tik, een ander
   // apparaat), gaat niet nog eens mee. Is er dan niets meer over, dan wordt er niets geboekt.
+  // Een trip met al een salarisinkomen (ook als zijn status nog op verwacht staat) gaat evenmin mee.
   const latest = store.list('trips.json.enc')
+  const booked = store.list('transactions.json.enc')
   const trips = chosen
     .map((x) => latest.find((t) => t.id === x.id) ?? x)
-    .filter((x) => x.deletedAt === null && x.salary && x.salary.status !== 'ontvangen')
+    .filter((x) => x.deletedAt === null && x.salary && x.salary.status !== 'ontvangen' && !hasSalaryIncome(x, booked))
   if (chosen.length > 0 && trips.length === 0) return async () => {}
   // Elke trip krijgt minstens één cent: een kleiner bedrag is geen uitbetaling.
   if (round2(payout.amount) < minimumPayout(Math.max(1, trips.length))) throw new Error('Bedrag te klein voor deze trips')
@@ -154,7 +156,8 @@ export async function recordPayout(store: Store, payout: Payout, chosen: readonl
     const trip = trips[i]
     const base = { date: payout.date, amount: part, currency: payout.currency }
     return {
-      id: newId(),
+      // Per trip het vaste id van zijn salarisinkomen: een tweede tik of een ander apparaat boekt hetzelfde record.
+      id: trip ? salaryIncomeId(trip.id) : newId(),
       ...base,
       kind: 'loon',
       source: trip ? salarySource(trip) : orgSource(payout.org),
