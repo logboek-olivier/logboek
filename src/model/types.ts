@@ -285,6 +285,11 @@ export interface Transaction extends SyncRecord {
   /** De declaratie waar deze uitgave of terugbetaling bij hoort (claims.json.enc). */
   claimId?: string
   /**
+   * Geboekte vaste last van een voorbije maand (id `vast:<vaste last>:<jjjj-mm>`, src/model/fixed-bookings.ts): hangt
+   * aan de maand, niet aan een periode.
+   */
+  fixedCostId?: string
+  /**
    * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
    * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.
    */

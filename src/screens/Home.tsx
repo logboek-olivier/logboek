@@ -153,6 +153,9 @@ export function Home({ store }: { store: Store }) {
     migrating.current = true
     void import('../model/migrate-periods')
       .then((m) => m.migratePeriods(store))
+      // Vaste lasten: elke voorbije maand als echte uitgave (Geld → Werkelijk).
+      .then(() => import('../model/fixed-bookings'))
+      .then((m) => m.bookFixedCosts(store, todayIso()))
       .catch((error: unknown) => {
         // Lukt het nu niet (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
         migrating.current = false
