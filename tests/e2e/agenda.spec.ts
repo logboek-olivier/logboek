@@ -72,7 +72,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Dagblad van een werkdag: trip, boot van de trip, nm en "Dag loggen".
       await day(11).click()
       const sheet = page.getByRole('dialog')
-      await expect(sheet.locator('.day-view-type')).toContainText(L('dayType.werk'))
+      await expect(sheet.locator('.day-view-type')).toContainText(L('periodKind.werk'))
       await expect(sheet.locator('.view-rows')).toContainText('Nepboot Twee')
       await expect(sheet.getByRole('button', { name: L('day.log') })).toBeVisible()
       await shots(page, 'dagkaart-werk', lang)

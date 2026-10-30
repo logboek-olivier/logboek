@@ -10,7 +10,7 @@ import { RouteMap } from './LazyMap'
 import { boatLine } from './boat-line'
 import { useCounters } from './useCounters'
 import { ViewRows } from './Views'
-import { clearDay, dayInfo, extendOptions, resizeTrip, setDay, shrinkFor, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
+import { clearDay, dayInfo, dayLabelKey, extendOptions, resizeTrip, setDay, shrinkFor, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
 import { setStayDays, stayName } from '../model/periods'
 import { bothUndo, type Undo } from '../model/changes'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
@@ -124,7 +124,9 @@ export function DaySheet({
     onClose()
   }
 
+  /** Terug naar automatisch: de eigen instelling vervalt en de dag gaat uit zijn periode aan land. */
   async function automatic() {
+    if (info.stay) await setStayDays(store, [date], null)
     await clearDay(store, date)
   }
 
@@ -161,7 +163,7 @@ export function DaySheet({
           </div>
           <p className="muted small day-source">
             {t(`day.source.${info.source ?? 'leeg'}`)}
-            {own && (
+            {(own || info.stay) && (
               <>
                 {' · '}
                 <button type="button" className="btn link small inline" onClick={() => void automatic()}>
@@ -416,7 +418,7 @@ export function DayView({
     <Sheet title={date.slice(0, 4) === today.slice(0, 4) ? formatWeekday(date) : `${formatWeekday(date)} ${date.slice(0, 4)}`} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack view day-view">
         <p className="day-view-type">
-          {info.type ? <span className={`chip-static day-chip day-${info.type}`}>{t(`dayType.${info.type}`)}</span> : <span className="muted">{t('dayType.leeg')}</span>}
+          {info.type ? <span className={`chip-static day-chip day-${info.type}`}>{t(dayLabelKey(info))}</span> : <span className="muted">{t('dayType.leeg')}</span>}
           <span className="muted small"> {t(`day.source.${info.source ?? 'leeg'}`)}</span>
         </p>
         {info.trips.map((v) => (

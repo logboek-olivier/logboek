@@ -22,7 +22,7 @@ import { useIsDemo } from '../components/DemoBar'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
-import { buildIndex, dayInfo } from '../model/calendar'
+import { buildIndex, dayInfo, dayLabelKey } from '../model/calendar'
 import { nmInYear } from '../model/derive'
 import { DueList, useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
@@ -315,8 +315,8 @@ function TodayTrip({ store, trip, day, onOpen, onDay }: { store: Store; trip: Tr
   return (
     <div className="card today-trip">
       <div className="today-trip-top">
-        <button type="button" className={`today-trip-day day-${dayType}`} onClick={onDay} aria-label={`${t('today.kind')}: ${t(`dayType.${dayType}`)}. ${t('today.change')}`}>
-          {t(`dayType.${dayType}`)}
+        <button type="button" className={`today-trip-day day-${dayType}`} onClick={onDay} aria-label={`${t('today.kind')}: ${t(dayLabelKey(day))}. ${t('today.change')}`}>
+          {t(dayLabelKey(day))}
           <Icon icon={ChevronRight} />
         </button>
         {when && <span className="today-trip-when">{when}</span>}
@@ -343,10 +343,10 @@ function DayKind({ day, onOpen }: { day: ReturnType<typeof dayInfo>; onOpen: () 
   const trip = day.type === 'werk' ? day.trips.at(-1)?.trip.name : undefined
   const place = day.type !== 'werk' && day.type !== 'reis' ? day.own?.location : undefined
   return (
-    <button type="button" className={`today-kind day-${type}`} onClick={onOpen} aria-label={`${t('today.kind')}: ${t(`dayType.${type}`)}${trip ? `, ${trip}` : ''}. ${t('today.change')}`}>
+    <button type="button" className={`today-kind day-${type}`} onClick={onOpen} aria-label={`${t('today.kind')}: ${t(dayLabelKey(day))}${trip ? `, ${trip}` : ''}. ${t('today.change')}`}>
       <span className="today-kind-head">
         <strong>
-          {t(`dayType.${type}`)}
+          {t(dayLabelKey(day))}
           {trip ? ` · ${trip}` : ''}
           {place ? ` · ${place}` : ''}
         </strong>

@@ -15,7 +15,7 @@ import { recordError } from '../errors'
 import { formatDate, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
-import { buildIndex, dayInfo, monthIncome, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
+import { buildIndex, dayInfo, dayLabelKey, monthIncome, monthOf, monthSummary, monthWeeks, shiftMonth, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
 import { tripOverlaps } from '../model/trip-ops'
 import { closingFor, sundayOf } from '../model/week-close'
@@ -307,7 +307,7 @@ function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, 
         const info = dayInfo(index, date, today)
         const hasDue = dueDates.has(date)
         const closed = closedSundays.has(date)
-        const label = [formatDate(date), t(`dayType.${info.type ?? 'leeg'}`), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', hasDue ? t('calendar.reminder') : '', closed ? t('calendar.weekClosed') : ''].filter(Boolean).join(', ')
+        const label = [formatDate(date), t(dayLabelKey(info)), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', hasDue ? t('calendar.reminder') : '', closed ? t('calendar.weekClosed') : ''].filter(Boolean).join(', ')
         const classes = ['cal-day', `col-${column + 1}`, `day-${info.type ?? 'leeg'}`, monthOf(date) !== month ? 'other-month' : '', date === today ? 'today' : '', info.source === 'eigen' ? 'own' : '', date === rangeStart ? 'range-start' : ''].filter(Boolean).join(' ')
         return (
           <button key={date} type="button" className={classes} aria-label={label} aria-current={date === today ? 'date' : undefined} aria-pressed={date === rangeStart ? true : undefined} onClick={() => onDay(date)}>

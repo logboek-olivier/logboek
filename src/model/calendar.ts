@@ -341,6 +341,15 @@ export function seasonWeeks(index: CalendarIndex, from: string, to: string, toda
   return weeks
 }
 
+/**
+ * De sleutel van de dagsoort zoals hij in beeld komt: op het water met de soort van de trip (werk, training, plezier),
+ * anders de dagsoort zelf ('leeg' zonder iets).
+ */
+export function dayLabelKey(info: Pick<DayInfo, 'type' | 'kind'>): `dayType.${DayType | 'leeg'}` | `periodKind.${PeriodKind}` {
+  if (info.type === 'werk' && (info.kind === 'werk' || info.kind === 'training' || info.kind === 'plezier')) return `periodKind.${info.kind}`
+  return `dayType.${info.type ?? 'leeg'}`
+}
+
 /** Van en naar van een reisdag: de dag zelf, anders de reisperiode. */
 export function stayTravel(info: Pick<DayInfo, 'own' | 'stay'>): DayTravel | undefined {
   if (info.own?.travel && (info.own.travel.from || info.own.travel.to)) return info.own.travel
