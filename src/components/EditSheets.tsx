@@ -1,3 +1,5 @@
+import { BelongsTo, useBelongsTo } from './BelongsTo'
+import { expenseCategory, kindForCategory, resolveTarget, sourceOnSave } from '../model/expenses'
 import { placeLeg } from '../model/leg-trip'
 import { resizeTrip } from '../model/calendar'
 import { weekView } from '../model/weeks'
@@ -21,7 +23,6 @@ import {
   CURRENCIES,
   INCOME_KIND_LIST,
   ROLES,
-  TRANSACTION_SOURCES,
   todayIso,
   type Currency,
   type Leg,
@@ -31,13 +32,12 @@ import {
   COST_CATEGORIES,
   type Transaction,
   type TransactionKind,
-  type TransactionSource,
 } from '../model/types'
 import type { Store } from '../storage/store'
 import { defaultTripName } from '../model/trip-name'
 import { Icon } from './Icon'
 import { NoteField } from './NoteField'
-import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
+import { kindLabel, roleLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
 import { TipFromPicker } from './TipFromPicker'
 import { TipViaPicker } from './TipViaPicker'
@@ -48,8 +48,6 @@ import { t } from '../i18n'
 // "Verwijderd · Ongedaan maken".
 
 export type Notify = (text: string, undo?: Undo) => void
-
-const KINDS: TransactionKind[] = [...INCOME_KIND_LIST, 'kosten', 'investering']
 
 /** 12.5 → "12,5"; 0 → "" zodat lege velden leeg blijven. */
 function toInput(n: number): string {
@@ -69,14 +67,16 @@ export function TransactionSheet({
 }) {
   const [amount, setAmount] = useState(tx.amount.toFixed(2).replace('.', ','))
   const [kind, setKind] = useState<TransactionKind>(tx.kind)
-  const [source, setSource] = useState<TransactionSource>(tx.source)
+  // Een uitgave heeft een soort (die bepaalt kosten of investering) en "Hoort bij" (docs/PERIODEMODEL.md).
+  const expense = tx.kind === 'kosten' || tx.kind === 'investering'
   const [currency, setCurrency] = useState<Currency>(tx.currency)
   const [date, setDate] = useState(tx.date)
   const [note, setNote] = useState(tx.note ?? '')
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
   const [tripId, setTripId] = useState(tx.tripId ?? '')
   const [tipVia, setTipVia] = useState<TipVia | null>(tx.tipVia ?? null)
-  const [category, setCategory] = useState<CostCategory>(tx.category ?? 'overig')
+  const [category, setCategory] = useState<CostCategory>(expenseCategory(tx) ?? 'opleiding')
+  const belongs = useBelongsTo(store, date || tx.date, category, tx.tripId)
   const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
@@ -94,18 +94,21 @@ export function TransactionSheet({
     if (parsed === null || parsedReceived === null || !date || busy) return
     setBusy(true)
     try {
+      // Een declaratie volgt zijn declaratie: daar wijzigt "Hoort bij" niets (de trip staat in de declaratie).
+      const chosenTrip = expense && !tx.claimId ? ((await resolveTarget(store, belongs.current, date)) ?? null) : tripId || null
+      const trip = chosenTrip ? store.list('trips.json.enc').find((x) => x.id === chosenTrip) : undefined
       await updateTransaction(store, tx, {
         amount: parsed,
-        kind,
-        source,
+        kind: expense ? kindForCategory(category) : kind,
+        source: sourceOnSave(trip, tx.source),
         currency,
         date,
         note: note.trim() || undefined,
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
-        tripId: tripId || null,
+        tripId: chosenTrip,
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
         tipVia: kind === 'fooi' ? tipVia : null,
-        category: kind === 'kosten' ? category : null,
+        category: expense ? category : null,
         // Gestort kan niet vóór de fooi zelf.
         depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? (depositedAt < date ? date : depositedAt) : null,
       })
@@ -145,16 +148,29 @@ export function TransactionSheet({
           />
         </label>
         <div className="two">
-          <label>
-            {t('field.kind')}
-            <select value={kind} onChange={(e) => setKind(e.target.value as TransactionKind)}>
-              {KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {kindLabel(k)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {expense ? (
+            <label>
+              {t('costs.category')}
+              <select value={category} onChange={(e) => setCategory(e.target.value as CostCategory)}>
+                {COST_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {t(`costCategory.${c}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>
+              {t('field.kind')}
+              <select value={kind} onChange={(e) => setKind(e.target.value as TransactionKind)}>
+                {INCOME_KIND_LIST.map((k) => (
+                  <option key={k} value={k}>
+                    {kindLabel(k)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             {t('field.currency')}
             <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
@@ -166,22 +182,10 @@ export function TransactionSheet({
             </select>
           </label>
         </div>
-        <div className="two">
-          <label>
-            {t('field.source')}
-            <select value={source} onChange={(e) => setSource(e.target.value as TransactionSource)}>
-              {TRANSACTION_SOURCES.map((s) => (
-                <option key={s} value={s}>
-                  {sourceLabel(s)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t('field.date')}
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-        </div>
+        <label>
+          {t('field.date')}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
         {currency !== 'EUR' && (
           <>
             <label>
@@ -196,17 +200,21 @@ export function TransactionSheet({
             </p>
           </>
         )}
-        <label>
-          {t('field.trip')}
-          <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
-            <option value="">{t('quick.noTrip')}</option>
-            {trips.map((trip) => (
-              <option key={trip.id} value={trip.id}>
-                {trip.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {expense && !tx.claimId ? (
+          <BelongsTo store={store} options={belongs.options} value={belongs.key} onChange={belongs.choose} />
+        ) : (
+          <label>
+            {t('field.trip')}
+            <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+              <option value="">{t('quick.noTrip')}</option>
+              {trips.map((trip) => (
+                <option key={trip.id} value={trip.id}>
+                  {trip.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {people.length > 0 && (
           <TipFromPicker
             participants={people}
@@ -220,18 +228,7 @@ export function TransactionSheet({
           />
         )}
         {kind === 'fooi' && <TipViaPicker value={tipVia} onChange={setTipVia} allowUnknown />}
-        {kind === 'kosten' && (
-          <label>
-            {t('costs.category')}
-            <select value={category} onChange={(e) => setCategory(e.target.value as CostCategory)}>
-              {COST_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {t(`costCategory.${c}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+
         {kind === 'fooi' && tipVia === 'contant' && (
           <label>
             {t('tipVia.depositedAt')}

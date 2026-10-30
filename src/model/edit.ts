@@ -239,7 +239,8 @@ export async function updateTransaction(store: Store, tx: Transaction, patch: Tr
   if (next.kind !== 'fooi') delete next.tipVia
   if (next.tipVia !== 'contant') delete next.depositedAt
   if (category) next.category = category
-  if (category === null || next.kind !== 'kosten') delete next.category
+  // Een soort hoort bij een uitgave (kosten of investering, docs/PERIODEMODEL.md).
+  if (category === null || (next.kind !== 'kosten' && next.kind !== 'investering')) delete next.category
   // Geen fooi meer, van onbekend, of een andere trip zonder nieuwe keuze: geen personen bewaren.
   if (tipFrom === null || next.kind !== 'fooi') delete next.tipFrom
   const trip = chosenTrip !== undefined ? (chosenTrip ? { id: chosenTrip } : null) : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)

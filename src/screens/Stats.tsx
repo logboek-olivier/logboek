@@ -15,6 +15,8 @@ import { effectiveCurricula } from '../model/curricula'
 import { totalNm } from '../model/derive'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
+import { careerInvestment } from '../model/expenses'
+import { eurOf } from '../model/money'
 import { instructorStats, moneyStats, periodFor, ryaYachtmasterOffshore, sailingStats, seasonStart, workStats, type PeriodKind, type Row } from '../model/stats'
 import { ROLES, todayIso, type BoatKind, type WeekType } from '../model/types'
 import { nameWithCounter } from '../model/counters'
@@ -63,6 +65,8 @@ export function Stats({ store }: { store: Store }) {
   const rya = ryaYachtmasterOffshore(legs)
   const work = useMemo(() => (period ? workStats(index, period, today) : null), [index, period?.from, period?.to, today])
   const money = period && showAmounts ? moneyStats(trips, legs, transactions, index, period, today) : null
+  // Investering in de zeilcarrière: opleiding en uitrusting in de periode (docs/PERIODEMODEL.md).
+  const investment = careerInvestment(transactions, eurOf, period?.from, period?.to)
   const instructor = period ? instructorStats(students, effectiveCurricula(storedCurricula), trips, legs, period, lang) : null
   const season = kind === 'seizoen' ? seasonStart(trips, legs, today) : null
   const hasWork = !!work && work.werk + work.rust + work.reis + work.thuis + work.onbeschikbaar > 0
@@ -244,6 +248,7 @@ export function Stats({ store }: { store: Store }) {
                 <Stat label={t('stats.earned')} value={formatMoney(money.earned, 'EUR')} />
                 <Stat label={t('money.workdays')} value={formatNumber(money.workdays)} />
                 <Stat label={t('money.perWorkday')} value={money.perWorkday === null ? '–' : formatMoney(money.perWorkday, 'EUR')} />
+                {investment.count > 0 && <Stat label={t('money.investment')} value={formatMoney(investment.eur, 'EUR')} />}
               </dl>
               {money.best && money.worst && (
                 <dl className="stack-sm best-worst">

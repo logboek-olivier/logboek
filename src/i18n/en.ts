@@ -1928,4 +1928,12 @@ export const en: Messages = {
   'day.willExtend': (p) => `Saving extends ${p.name} to ${p.date}.`,
   'day.goesTo': (p) => `This date falls outside ${p.name}: the day goes to ${p.target}.`,
   'day.goesToNew': (p) => `This date falls outside ${p.name}: the day goes into a new trip.`,
+  'costCategory.verblijf': 'Accommodation',
+  'costCategory.opleiding': 'Education',
+  'costCategory.uitrusting': 'Equipment',
+  'belongsTo.title': 'Belongs to',
+  'belongsTo.new': (p) => `${p.kind} (new)`,
+  'money.investment': 'Investment in my sailing career',
+  'money.perOrganisation': 'Per organisation',
+  'review.investmentKind': (p) => `Investment of ${p.date}${p.note}: education or equipment?`,
 }

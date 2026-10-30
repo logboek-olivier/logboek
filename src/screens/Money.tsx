@@ -17,8 +17,11 @@ import { buildIndex, incomePerWorkday } from '../model/calendar'
 import { tipsPerCountry, tipsPerGuest, tipsPerTrip, tipsPerTripType } from '../model/guests'
 import { weekTypeLabel } from '../components/WeekSheet'
 import { active } from '../model/derive'
-import { eurOf, isIncome, monthSeries, perMonth, perSource, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
-import { kindLabel, sourceLabel } from '../i18n/labels'
+import { eurOf, isIncome, monthSeries, perMonth, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
+import { groupOf, type TaxGroup } from '../model/tax-year'
+import { careerInvestment } from '../model/expenses'
+import { stayName } from '../model/periods'
+import { kindLabel, organisationLabel, sourceLabel } from '../i18n/labels'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { todayIso, type Leg, type Transaction, type Trip, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
@@ -39,7 +42,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const today = todayIso()
   const all = totals(live)
   const months = perMonth(live)
-  const sources = perSource(live)
+
   const weeks = tipsPerWeek(live, today)
   const series = monthSeries(live, today)
   const weekOther = mergeOther(weeks.map((w) => w.other))
@@ -49,6 +52,21 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const legs = useCollection(store, 'legs.json.enc')
   const stays = useCollection(store, 'periods.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs, [], stays), [calendar, trips, legs, stays])
+  // Per organisatie (de organisatie van de periode, docs/PERIODEMODEL.md) en de naam van de periode bij elke regel.
+  const tripMap = useMemo(() => new Map(trips.filter((x) => x.deletedAt === null).map((x) => [x.id, x])), [trips])
+  const stayMap = useMemo(() => new Map(stays.filter((x) => x.deletedAt === null).map((x) => [x.id, x])), [stays])
+  const groups = useMemo(() => {
+    const map = new Map<TaxGroup, Transaction[]>()
+    for (const tx of live) map.set(groupOf(tx, tripMap), [...(map.get(groupOf(tx, tripMap)) ?? []), tx])
+    return [...map.entries()].map(([group, txs]) => ({ group, ...totals(txs) })).sort((a, b) => b.incomeEur - a.incomeEur)
+  }, [live, tripMap])
+  const periodName = (tx: Transaction) => {
+    const trip = tx.tripId ? tripMap.get(tx.tripId) : undefined
+    if (trip) return trip.name
+    const stay = tx.tripId ? stayMap.get(tx.tripId) : undefined
+    return stay ? stayName(stay) : ''
+  }
+  const investment = careerInvestment(live, eurOf)
   const workdays = incomePerWorkday(index, live, today).filter((m) => m.workdays > 0 || m.eur > 0)
   const [tipView, setTipView] = useState<TipView>('gast')
 
@@ -86,6 +104,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             <Stat label={t('money.income')} value={formatMoney(all.incomeEur, 'EUR')} />
             <Stat label={t('money.costs')} value={formatMoney(all.costsEur, 'EUR')} />
             {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
+            {investment.count > 0 && <Stat label={t('money.investment')} value={formatMoney(investment.eur, 'EUR')} />}
             <OtherStat other={all.other} />
           </dl>
           <p className="muted small">{t('money.resultHint')}</p>
@@ -200,12 +219,12 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           <TipOverview trips={trips} transactions={live} legs={legs} view={tipView} onView={setTipView} />
 
           <div className="section">
-            <h2>{t('money.perSource')}</h2>
+            <h2>{t('money.perOrganisation')}</h2>
             <ul className="rows">
-              {sources.map((s) => (
-                <li key={s.source} className="row-item">
+              {groups.map((s) => (
+                <li key={s.group} className="row-item">
                   <div className="row-main">
-                    <span className="row-title">{sourceLabel(s.source)}</span>
+                    <span className="row-title">{s.group === 'delivery' ? sourceLabel('delivery') : organisationLabel(s.group)}</span>
                     <OtherLine other={s.other} />
                   </div>
                   <span className="row-value">
@@ -243,7 +262,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
                             <span className="row-title">{tx.note ?? kindLabel(tx.kind)}</span>
                             <span className="muted">
                               {formatDateShort(tx.date)}
-                              {tx.note ? ` · ${kindLabel(tx.kind)}` : ''} · {sourceLabel(tx.source)}
+                              {tx.note ? ` · ${kindLabel(tx.kind)}` : ''}
+                              {periodName(tx) ? ` · ${periodName(tx)}` : ''}
                             </span>
                           </div>
                           <TxAmount tx={tx} />

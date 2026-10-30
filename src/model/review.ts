@@ -36,6 +36,8 @@ export type ReviewItem =
   | { key: string; kind: 'werkdag-zonder-trip'; from: string; to: string }
   /** Agendadagen thuis, reis of rust zonder periode (bijvoorbeeld van een oudere versie op een ander apparaat). */
   | { key: string; kind: 'dag-zonder-periode'; stayKind: StayKind; from: string; to: string }
+  /** Een investering van vóór het periodemodel zonder soort: opleiding of uitrusting? */
+  | { key: string; kind: 'investering-soort'; tx: Transaction }
   /** Inkomen of uitgave zonder periode. */
   | { key: string; kind: 'geld-zonder-periode'; tx: Transaction; target: Period | null }
   /** Twee plaatsnamen die dezelfde plaats lijken: `from` gaat op in `into`. */
@@ -133,6 +135,9 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     if (tx.claimId || (tx.tripId && ids.has(tx.tripId))) continue
     items.push({ key: `geld:${tx.id}`, kind: 'geld-zonder-periode', tx, target: periodAt(periods, tx.date) })
   }
+
+  // Investeringen zonder soort (van vóór het periodemodel).
+  for (const tx of active(input.transactions)) if (tx.kind === 'investering' && tx.category !== 'opleiding' && tx.category !== 'uitrusting') items.push({ key: `investering:${tx.id}`, kind: 'investering-soort', tx })
 
   // Plaatsen die dubbel lijken: spelvarianten, en een van die niet aansluit op de naar van de dag ervoor.
   const uses = placeUses(legs, input.places)
@@ -314,4 +319,9 @@ export async function acceptAllKinds(store: Store, items: readonly ReviewItem[])
     if (current) undos.push(await setTripKind(store, current, item.suggestion))
   }
   return bothUndo(...undos)
+}
+
+/** Soort van een investering vastleggen (opleiding of uitrusting). */
+export function setInvestmentCategory(store: Store, tx: Transaction, category: 'opleiding' | 'uitrusting'): Promise<Undo> {
+  return applyChanges(store, [{ path: 'transactions.json.enc', before: tx, after: changed(tx, { category }) }])
 }

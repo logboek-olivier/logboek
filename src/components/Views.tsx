@@ -3,7 +3,9 @@ import { useState, type ReactNode } from 'react'
 import { formatDate, formatHours, formatMoney, formatNm } from '../format'
 import { todayIso } from '../model/types'
 import { t, useLang } from '../i18n'
-import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
+import { kindLabel, roleLabel } from '../i18n/labels'
+import { expenseCategory } from '../model/expenses'
+import { stayName } from '../model/periods'
 import { nameWithCounter } from '../model/counters'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { totalNm } from '../model/derive'
@@ -91,10 +93,14 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
   const [editing, setEditing] = useState(false)
   const trips = useCollection(store, 'trips.json.enc')
   const counters = useCounters(store)
+  const stays = useCollection(store, 'periods.json.enc')
   const all = useCollection(store, 'transactions.json.enc')
   const current = all.find((x) => x.id === tx.id) ?? tx
   if (editing) return <TransactionSheet store={store} tx={current} notify={notify} onClose={onClose} />
   const trip = trips.find((x) => x.id === current.tripId && x.deletedAt === null)
+  // Hoort bij: de trip, of een periode aan land (reis, thuis, vrij).
+  const stay = !trip ? stays.find((x) => x.id === current.tripId && x.deletedAt === null) : undefined
+  const category = expenseCategory(current)
   const value = eurValue(current)
   const amount =
     current.currency === 'EUR' || !value ? formatMoney(current.amount, current.currency) : `${formatMoney(value.eur, 'EUR')} (${formatMoney(current.amount, current.currency)}${value.provisional ? `, ${t('money.provisional')}` : ''})`
@@ -105,10 +111,9 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
         <ViewRows
           rows={[
             [t('field.date'), formatDate(current.date)],
-            [t('field.week'), trip && nameWithCounter(trip, counters.get(trip.id))],
-            [t('field.source'), sourceLabel(current.source)],
+            [t('belongsTo.title'), trip ? nameWithCounter(trip, counters.get(trip.id)) : stay && stayName(stay)],
             [t('tip.from'), current.kind === 'fooi' && tipFromText(current, trip)],
-            [t('costs.category'), current.kind === 'kosten' && current.category && t(`costCategory.${current.category}`)],
+            [t('costs.category'), (current.kind === 'kosten' || current.kind === 'investering') && category && t(`costCategory.${category}`)],
             [t('tipVia.label'), current.kind === 'fooi' && current.tipVia && `${t(`tipVia.${current.tipVia}`)}${current.depositedAt ? ` · ${t('tipVia.deposited', { date: formatDate(current.depositedAt) })}` : ''}`],
             [t('view.received'), typeof current.receivedEur === 'number' && formatMoney(current.receivedEur, 'EUR')],
             [t('payout.partLabel'), current.payoutId && t('payout.part', { n: all.filter((x) => x.payoutId === current.payoutId && x.deletedAt === null).length })],

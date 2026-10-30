@@ -1779,7 +1779,7 @@ export const nl = {
   'costs.defaultsHint': 'Euro per dag, zolang de app nog te weinig eigen gegevens heeft (minstens 14 dagen van een soort). Leeg = nog onbekend.',
   'costs.defaultFor': (p: { type: string }) => `${p.type} (€ per dag)`,
   'costs.category': 'Soort uitgave',
-  'costCategory.vervoer': 'Vervoer',
+  'costCategory.vervoer': 'Reizen',
   'costCategory.eten': 'Eten en drinken',
   'costCategory.overig': 'Overig',
   'forecast.costsPart': (p: { amount: string }) => `Daarvan kosten: −${p.amount} (vaste lasten en variabele kosten)`,
@@ -1965,6 +1965,14 @@ export const nl = {
   'day.willExtend': (p: { name: string; date: string }) => `Opslaan verlengt ${p.name} tot ${p.date}.`,
   'day.goesTo': (p: { name: string; target: string }) => `Deze datum valt buiten ${p.name}: de dag komt bij ${p.target}.`,
   'day.goesToNew': (p: { name: string }) => `Deze datum valt buiten ${p.name}: de dag komt in een nieuwe trip.`,
+  'costCategory.verblijf': 'Verblijf',
+  'costCategory.opleiding': 'Opleiding',
+  'costCategory.uitrusting': 'Uitrusting',
+  'belongsTo.title': 'Hoort bij',
+  'belongsTo.new': (p: { kind: string }) => `${p.kind} (nieuw)`,
+  'money.investment': 'Investering in mijn zeilcarrière',
+  'money.perOrganisation': 'Per organisatie',
+  'review.investmentKind': (p: { date: string; note: string }) => `Investering van ${p.date}${p.note}: opleiding of uitrusting?`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

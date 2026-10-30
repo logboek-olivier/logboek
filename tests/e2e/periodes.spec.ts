@@ -65,11 +65,11 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await shots(page, 'maand', lang)
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 
-      // Een uitgave op een dag zonder periode (10 februari): Nakijken.
+      // Een inkomen op een dag zonder periode (10 februari; er is nog geen trip): Nakijken. Een uitgave krijgt bij het
+      // opslaan zelf een periode (Hoort bij), een inkomen zonder trip niet.
       await nav.getByRole('button', { name: L('nav.add'), exact: true }).click()
-      await page.getByRole('tab', { name: L('quick.tabExpense') }).click()
+      await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
       await page.getByLabel(L('field.amount')).fill('12')
-      await page.getByRole('button', { name: L('common.more'), exact: true }).click()
       await page.getByLabel(L('field.date'), { exact: true }).fill('2027-02-10')
       await page.getByRole('button', { name: L('common.save') }).click()
       await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()

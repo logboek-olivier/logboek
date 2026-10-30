@@ -29,6 +29,9 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-4', date: '2026-10-22', kind: 'fooi', amount: 20, currency: 'USD', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'contant', depositedAt: '2026-10-23', updatedAt: T, deletedAt: null },
     { id: 'upg-tx-5', date: '2026-10-24', kind: 'fooi', amount: 15, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'bank', updatedAt: T, deletedAt: null },
     { id: 'upg-tx-payout', date: '2026-10-25', kind: 'loon', amount: 900, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', payoutId: 'upg-payout-1', updatedAt: T, deletedAt: null },
+    // Periodemodel (PR 2): opleiding is een investering met een soort; verblijf hangt aan een periode aan land.
+    { id: 'upg-tx-opleiding', date: '2026-12-02', kind: 'investering', amount: 450, currency: 'EUR', source: 'overig', category: 'opleiding', tripId: 'upg-stay-thuis', note: 'Nepcursus', updatedAt: T, deletedAt: null },
+    { id: 'upg-tx-verblijf', date: '2026-12-06', kind: 'kosten', amount: 80, currency: 'EUR', source: 'overig', category: 'verblijf', tripId: 'upg-stay-reis', updatedAt: T, deletedAt: null },
     // Periodemodel: een uitgave zonder trip op een thuisdag komt aan de thuisperiode.
     { id: 'upg-tx-thuis', date: '2026-11-11', kind: 'kosten', amount: 7.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
     // Kosten (ronde 3): een losse uitgave met een soort.
