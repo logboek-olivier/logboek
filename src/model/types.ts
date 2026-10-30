@@ -396,6 +396,8 @@ export interface PlanBlock {
   topicIds: string[]
   /** Thema's: onderdelen (groepen) van de cursus. Een planning met thema's toont die in plaats van losse onderwerpen. */
   themeIds?: string[]
+  /** Eigen thema's als tekst ("Mooring ball oppikken"), naast of in plaats van de thema's van de cursus. */
+  ownThemes?: string[]
   location?: string
   note?: string
 }

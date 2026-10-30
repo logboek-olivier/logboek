@@ -454,7 +454,7 @@ export const nl = {
   'plan.addGroup': 'Groep toevoegen',
   'plan.studentsOptional': 'Studenten (optioneel)',
   'plan.makeConcept': 'Concept maken',
-  'plan.conceptHint': 'Theorie in de ochtend, praktijk in de middag, examenkritische onderwerpen eerst, beginners verdeeld over alle dagen, op de laatste dag herhaling en examen. Na opslaan is elk blok aan te passen.',
+  'plan.conceptHint': 'Een grof voorstel: per dagdeel één thema voor alle groepen samen, theorie in de ochtend en praktijk in de middag, examenkritische thema\'s eerst, op de laatste dag herhaling en examen. Tik een blok aan om het nu al aan te passen, of een leeg dagdeel om het te vullen; daarna Opslaan.',
   'plan.save': 'Planning opslaan',
   'plan.saved': 'Planning opgeslagen',
   'plan.backToList': 'Terug naar Planning',
@@ -1880,6 +1880,18 @@ export const nl = {
   'weather.source.gebied': 'Bij het gebied van de trip',
   'weather.choosePoint': 'Weerpunt',
   'weather.automatic': 'Automatisch',
+  'plan.allGroups': 'Alle groepen',
+  'plan.emptySlot': 'Leeg · tik om te vullen',
+  'plan.emptyBlock': 'Leeg blok',
+  'plan.addEvening': 'Avond toevoegen',
+  'plan.together': 'Samen',
+  'plan.perGroup': 'Per groep',
+  'plan.perGroupHint': 'Elke gekozen groep krijgt een eigen blok, apart te bewerken.',
+  'plan.ownThemes': "Eigen thema's",
+  'plan.ownTheme': 'Eigen thema',
+  'plan.ownThemePlaceholder': 'Bijvoorbeeld Mooring ball oppikken',
+  'plan.addOwnTheme': 'Toevoegen',
+  'plan.clearBlock': 'Blok leegmaken',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

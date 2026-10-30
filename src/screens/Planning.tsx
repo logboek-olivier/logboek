@@ -1,5 +1,5 @@
 import { CalendarPlus, Check, ChevronLeft, ChevronRight, MapPin, Pencil, Plus, Presentation as PresentationIcon, Printer, Share2, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
@@ -11,6 +11,7 @@ import { allTopics, courseLabel, effectiveCurricula, localized } from '../model/
 import {
   activePlan,
   addBlock,
+  applyBlockEdit,
   blocksOn,
   capitalize,
   deletePlan,
@@ -18,7 +19,6 @@ import {
   findBlock,
   groupName,
   MAX_DAYS,
-  moveBlock,
   newGroup,
   noteIn,
   planEnd,
@@ -37,7 +37,6 @@ import {
   blockItems,
   topicChoices,
   topicIndex,
-  updateBlock,
   updateGroups,
   type BlockPatch,
   type PlanItem,
@@ -181,17 +180,20 @@ function PlanWizard({
 
   const days = Math.max(1, Math.min(MAX_DAYS, dayCount || 1))
   const finalTitle = title.trim() || t('plan.defaultTitle', { date: formatDateRange(startDate, planEnd({ startDate, dayCount: days }), lang) })
-  const concept = useMemo(
-    () => (step === 3 ? draftPlan({ title: finalTitle, startDate, dayCount: days, tripId: chosenTrip || undefined, groups }, curricula, lang) : null),
-    [step, finalTitle, startDate, days, chosenTrip, groups, curricula, lang],
-  )
+  // Het concept staat in stap 3 al open voor bewerken (blok aantikken), vóór het opslaan.
+  const [concept, setConcept] = useState<WeekPlan | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const editingBlock = concept && editing ? findBlock(concept, editing) : null
 
   const setGroup = (id: string, patch: Partial<PlanGroup>) => setGroups(groups.map((g) => (g.id === id ? { ...g, ...patch } : g)))
 
   const next = (e: FormEvent) => {
     e.preventDefault()
     if (step === 1 && startDate) setStep(2)
-    else if (step === 2 && groups.length > 0 && groups.every((g) => g.curriculumId)) setStep(3)
+    else if (step === 2 && groups.length > 0 && groups.every((g) => g.curriculumId)) {
+      setConcept(draftPlan({ title: finalTitle, startDate, dayCount: days, tripId: chosenTrip || undefined, groups }, curricula, lang))
+      setStep(3)
+    }
   }
 
   const save = () => {
@@ -259,10 +261,38 @@ function PlanWizard({
       {step === 3 && concept && (
         <>
           <p className="muted small">{t('plan.conceptHint')}</p>
-          <PlanDays plan={concept} curricula={curricula} lang={lang} />
+          <PlanDays
+            plan={concept}
+            curricula={curricula}
+            lang={lang}
+            onEditBlock={setEditing}
+            onShiftBlock={(id, delta) => setConcept(shiftBlock(concept, id, delta))}
+            onAddBlock={(date, slot) => {
+              const { plan: next, blockId } = addBlock(concept, date, slot, concept.groups.map((g) => g.id))
+              setConcept(next)
+              setEditing(blockId)
+            }}
+          />
           <button className="btn primary" onClick={save}>
             {t('plan.save')}
           </button>
+          {editingBlock && (
+            <BlockSheet
+              plan={concept}
+              block={editingBlock.block}
+              date={editingBlock.date}
+              curricula={curricula}
+              onClose={() => setEditing(null)}
+              onSave={(patch, date, slot, perGroup) => {
+                setConcept(applyBlockEdit(concept, editingBlock.block.id, patch, date, slot, perGroup))
+                setEditing(null)
+              }}
+              onDelete={() => {
+                setConcept(removeBlock(concept, editingBlock.block.id))
+                setEditing(null)
+              }}
+            />
+          )}
         </>
       )}
     </div>
@@ -425,8 +455,9 @@ function PlanView({
           const before = plan
           void savePlan(store, shiftBlock(plan, id, delta)).then(() => notify(t('plan.moved'), () => savePlan(store, before)))
         }}
-        onAddBlock={(date) => {
-          const { plan: next, blockId } = addBlock(plan, date, 'ochtend', plan.groups.length === 1 ? [plan.groups[0]!.id] : [])
+        onAddBlock={(date, slot) => {
+          // Een nieuw blok geldt standaard voor alle groepen samen.
+          const { plan: next, blockId } = addBlock(plan, date, slot, plan.groups.map((g) => g.id))
           void savePlan(store, next).then(() => setEditingBlock(blockId))
         }}
       />
@@ -437,10 +468,8 @@ function PlanView({
           date={block.date}
           curricula={curricula}
           onClose={() => setEditingBlock(null)}
-          onSave={(patch, date, slot) => {
-            let next = updateBlock(plan, block.block.id, patch)
-            if (date !== block.date || slot !== block.block.slot) next = moveBlock(next, block.block.id, date, slot)
-            void savePlan(store, next).then(() => setEditingBlock(null))
+          onSave={(patch, date, slot, perGroup) => {
+            void savePlan(store, applyBlockEdit(plan, block.block.id, patch, date, slot, perGroup)).then(() => setEditingBlock(null))
           }}
           onDelete={() => {
             const before = plan
@@ -489,7 +518,10 @@ function PlanView({
   )
 }
 
-/** Dagen met hun blokken. Zonder renderTopic alleen lezen (concept, tonen, printen). */
+/**
+ * Dagen als raster: elke dag een ochtend en een middag (en een avond als daar iets staat). Een leeg dagdeel is met één
+ * tik te vullen; een blok aantikken opent het om te bewerken. Zonder handlers alleen lezen (tonen, printen).
+ */
 function PlanDays({
   plan,
   curricula,
@@ -505,60 +537,86 @@ function PlanDays({
   renderItem?: (block: PlanBlock, item: PlanItem) => ReactNode
   onEditBlock?: (blockId: string) => void
   onShiftBlock?: (blockId: string, delta: -1 | 1) => void
-  onAddBlock?: (date: string) => void
+  onAddBlock?: (date: string, slot: DaySlot) => void
 }) {
+  const groupsText = (b: PlanBlock) =>
+    plan.groups.length > 1 && plan.groups.every((g) => b.groupIds.includes(g.id))
+      ? translate(lang, 'plan.allGroups')
+      : plan.groups
+          .filter((g) => b.groupIds.includes(g.id))
+          .map((g) => g.name)
+          .join(', ')
   return (
     <div className="plan-days">
-      {plan.days.map((day) => {
+      {plan.days.map((day, index) => {
         const blocks = sortBlocks(day.blocks)
         if (blocks.length === 0 && !onAddBlock) return null
+        const slots = DAY_SLOTS.filter((s) => s !== 'avond' || blocks.some((b) => b.slot === 'avond'))
         return (
           <section key={day.date} className="section plan-day">
             <h2>{capitalize(formatWeekday(day.date, lang))}</h2>
-            {blocks.map((b) => {
-              const index = plan.days.findIndex((d) => d.date === day.date)
-              const where = { slot: slotLabel(b.slot, lang), day: formatWeekday(day.date, lang) }
-              return (
-              <article key={b.id} className={`card plan-block slot-${b.slot}`}>
-                <header className="plan-block-head">
-                  <span className="plan-slot">{slotLabel(b.slot, lang)}</span>
-                  <span className="muted small grow">
-                    {plan.groups
-                      .filter((g) => b.groupIds.includes(g.id))
-                      .map((g) => g.name)
-                      .join(', ')}
-                  </span>
-                  {onShiftBlock && index > 0 && (
-                    <button className="btn icon" aria-label={translate(lang, 'plan.earlier', where)} onClick={() => onShiftBlock(b.id, -1)}>
-                      <Icon icon={ChevronLeft} />
-                    </button>
-                  )}
-                  {onShiftBlock && index < plan.days.length - 1 && (
-                    <button className="btn icon" aria-label={translate(lang, 'plan.later', where)} onClick={() => onShiftBlock(b.id, 1)}>
-                      <Icon icon={ChevronRight} />
-                    </button>
-                  )}
-                  {onEditBlock && (
-                    <button className="btn icon" aria-label={translate(lang, 'plan.editBlock', where)} onClick={() => onEditBlock(b.id)}>
-                      <Icon icon={Pencil} />
-                    </button>
-                  )}
-                </header>
-                {b.location && (
-                  <p className="muted small plan-location">
-                    <Icon icon={MapPin} />
-                    {b.location}
-                  </p>
-                )}
-                <PlanItems block={b} curricula={curricula} lang={lang} renderItem={renderItem} />
-                {b.note && <p className="small plan-note">{noteIn(b.note, lang)}</p>}
-              </article>
-              )
+            {slots.map((slot) => {
+              const inSlot = blocks.filter((b) => b.slot === slot)
+              if (inSlot.length === 0) {
+                return onAddBlock ? (
+                  <button key={slot} type="button" className={`card plan-block plan-empty slot-${slot}`} onClick={() => onAddBlock(day.date, slot)}>
+                    <span className="plan-slot">{slotLabel(slot, lang)}</span>
+                    <span className="muted small">
+                      <Icon icon={Plus} />
+                      {translate(lang, 'plan.emptySlot')}
+                    </span>
+                  </button>
+                ) : null
+              }
+              return inSlot.map((b) => {
+                const where = { slot: slotLabel(b.slot, lang), day: formatWeekday(day.date, lang) }
+                return (
+                  <article key={b.id} className={`card plan-block slot-${b.slot}`}>
+                    <header className="plan-block-head">
+                      {onEditBlock ? (
+                        <button type="button" className="plan-block-open grow" onClick={() => onEditBlock(b.id)}>
+                          <span className="plan-slot">{slotLabel(b.slot, lang)}</span>
+                          <span className="muted small">{groupsText(b)}</span>
+                        </button>
+                      ) : (
+                        <>
+                          <span className="plan-slot">{slotLabel(b.slot, lang)}</span>
+                          <span className="muted small grow">{groupsText(b)}</span>
+                        </>
+                      )}
+                      {onShiftBlock && index > 0 && (
+                        <button className="btn icon" aria-label={translate(lang, 'plan.earlier', where)} onClick={() => onShiftBlock(b.id, -1)}>
+                          <Icon icon={ChevronLeft} />
+                        </button>
+                      )}
+                      {onShiftBlock && index < plan.days.length - 1 && (
+                        <button className="btn icon" aria-label={translate(lang, 'plan.later', where)} onClick={() => onShiftBlock(b.id, 1)}>
+                          <Icon icon={ChevronRight} />
+                        </button>
+                      )}
+                      {onEditBlock && (
+                        <button className="btn icon" aria-label={translate(lang, 'plan.editBlock', where)} onClick={() => onEditBlock(b.id)}>
+                          <Icon icon={Pencil} />
+                        </button>
+                      )}
+                    </header>
+                    {b.location && (
+                      <p className="muted small plan-location">
+                        <Icon icon={MapPin} />
+                        {b.location}
+                      </p>
+                    )}
+                    <PlanItems block={b} curricula={curricula} lang={lang} renderItem={renderItem} />
+                    {blockItems(b, curricula, lang).length === 0 && !b.note && onEditBlock && <p className="muted small">{translate(lang, 'plan.emptyBlock')}</p>}
+                    {b.note && <p className="small plan-note">{noteIn(b.note, lang)}</p>}
+                  </article>
+                )
+              })
             })}
             {onAddBlock && (
-              <button className="btn link" onClick={() => onAddBlock(day.date)}>
+              <button className="btn link" onClick={() => onAddBlock(day.date, 'avond')}>
                 <Icon icon={Plus} />
-                {t('plan.addBlock')}
+                {t('plan.addEvening')}
               </button>
             )}
           </section>
@@ -638,25 +696,39 @@ function BlockSheet({
   block: PlanBlock
   date: string
   curricula: readonly Curriculum[]
-  onSave: (patch: BlockPatch, date: string, slot: DaySlot) => void
+  onSave: (patch: BlockPatch, date: string, slot: DaySlot, perGroup: boolean) => void
   onDelete: () => void
   onClose: () => void
 }) {
   const lang = useLang()
+  const allIds = plan.groups.map((g) => g.id)
+  // Samen (alle groepen, standaard) of per groep (dan één blok per gekozen groep).
+  const [together, setTogether] = useState(plan.groups.length <= 1 || allIds.every((id) => block.groupIds.includes(id)))
   const [groupIds, setGroupIds] = useState(block.groupIds)
+  const [ownThemes, setOwnThemes] = useState<string[]>(block.ownThemes ?? [])
+  const [ownText, setOwnText] = useState('')
   const [topicIds, setTopicIds] = useState(block.topicIds)
   const themeMode = block.themeIds !== undefined
   const [themeIds, setThemeIds] = useState(block.themeIds ?? [])
-  const themes = themeChoices(plan, groupIds, curricula)
+  const chosenGroups = together ? allIds : groupIds
+  const themes = themeChoices(plan, chosenGroups, curricula)
   const [location, setLocation] = useState(block.location ?? '')
   const [note, setNote] = useState(block.note ? noteIn(block.note, lang) : '')
   const [date, setDate] = useState(initialDate)
   const [slot, setSlot] = useState<DaySlot>(block.slot)
   const index = topicIndex(curricula)
-  const choices = topicChoices(plan, groupIds, curricula).filter((tp) => !topicIds.includes(tp.id))
+  const choices = topicChoices(plan, chosenGroups, curricula).filter((tp) => !topicIds.includes(tp.id))
+  const addOwn = () => {
+    const text = ownText.trim()
+    if (!text) return
+    setOwnThemes([...ownThemes, text])
+    setOwnText('')
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    const pending = ownText.trim() ? [...ownThemes, ownText.trim()] : ownThemes
+    const perGroup = !together && chosenGroups.length > 1
     if (themeMode) {
       // Onderwerpen volgen uit de gekozen thema's (bij herhaling blijven alleen de al gekozen onderwerpen van een thema).
       const chosen = themes.filter((th) => themeIds.includes(th.id))
@@ -664,8 +736,8 @@ function BlockSheet({
         const kept = th.topicIds.filter((id) => block.topicIds.includes(id))
         return block.themeIds?.includes(th.id) && kept.length > 0 ? kept : th.topicIds
       })
-      onSave({ groupIds, topicIds: topics, themeIds, location, note }, date, slot)
-    } else onSave({ groupIds, topicIds, location, note }, date, slot)
+      onSave({ groupIds: chosenGroups, topicIds: topics, themeIds, ownThemes: pending, location, note }, date, slot, perGroup)
+    } else onSave({ groupIds: chosenGroups, topicIds, ownThemes: pending, location, note }, date, slot, perGroup)
   }
 
   return (
@@ -694,15 +766,26 @@ function BlockSheet({
           </label>
         </div>
         {plan.groups.length > 1 && (
-          <fieldset className="checklist">
-            <legend className="muted small">{t('plan.groups')}</legend>
-            {plan.groups.map((g) => (
-              <label key={g.id} className="check">
-                <input type="checkbox" checked={groupIds.includes(g.id)} onChange={(e) => setGroupIds(e.target.checked ? [...groupIds, g.id] : groupIds.filter((id) => id !== g.id))} />
-                {g.name}
-              </label>
-            ))}
-          </fieldset>
+          <div className="stack-sm">
+            <div className="segments small" role="radiogroup" aria-label={t('plan.groups')}>
+              {([true, false] as const).map((on) => (
+                <button key={String(on)} type="button" role="radio" aria-checked={together === on} className={`segment${together === on ? ' active' : ''}`} onClick={() => setTogether(on)}>
+                  {t(on ? 'plan.together' : 'plan.perGroup')}
+                </button>
+              ))}
+            </div>
+            {!together && (
+              <fieldset className="checklist">
+                <legend className="muted small">{t('plan.perGroupHint')}</legend>
+                {plan.groups.map((g) => (
+                  <label key={g.id} className="check">
+                    <input type="checkbox" checked={groupIds.includes(g.id)} onChange={(e) => setGroupIds(e.target.checked ? [...groupIds, g.id] : groupIds.filter((id) => id !== g.id))} />
+                    {g.name}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+          </div>
         )}
         {themeMode && (
           <div className="stack-sm">
@@ -758,6 +841,43 @@ function BlockSheet({
           )}
         </div>
         )}
+        <div className="stack-sm">
+          <span className="label">{t('plan.ownThemes')}</span>
+          {ownThemes.length > 0 && (
+            <ul className="rows plan-edit-topics">
+              {ownThemes.map((text, i) => (
+                <li key={`${text}-${i}`} className="row-item">
+                  <span className="row-main">{text}</span>
+                  <button type="button" className="btn icon" aria-label={t('plan.removeTopic', { topic: text })} onClick={() => setOwnThemes(ownThemes.filter((_, j) => j !== i))}>
+                    <Icon icon={X} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="row">
+            <input
+              className="grow"
+              type="text"
+              autoComplete="off"
+              maxLength={120}
+              aria-label={t('plan.ownTheme')}
+              placeholder={t('plan.ownThemePlaceholder')}
+              value={ownText}
+              onChange={(e) => setOwnText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addOwn()
+                }
+              }}
+            />
+            <button type="button" className="btn small" disabled={!ownText.trim()} onClick={addOwn}>
+              <Icon icon={Plus} />
+              {t('plan.addOwnTheme')}
+            </button>
+          </div>
+        </div>
         <label>
           {t('plan.location')}
           <input type="text" autoComplete="off" maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} />
@@ -772,7 +892,7 @@ function BlockSheet({
           </button>
           <button className="btn danger" type="button" onClick={onDelete}>
             <Icon icon={Trash2} />
-            {t('plan.deleteBlock')}
+            {t('plan.clearBlock')}
           </button>
         </div>
       </form>
