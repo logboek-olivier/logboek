@@ -127,6 +127,9 @@ jobs:
         env:
           LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx vitest run tests/integratie
+      # Na de honderden schrijfacties in Node even wachten: GitHub telt schrijfacties per minuut (secundaire limiet).
+      - name: Even wachten (schrijflimiet van GitHub)
+        run: sleep 60
       - name: Integratietest in de browser (echte API)
         env:
           LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}

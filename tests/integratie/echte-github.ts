@@ -53,14 +53,57 @@ export function reachesDataRepo(url: string): boolean {
   return url.includes(`/repos/${DATA_REPO}`)
 }
 
+// GitHub heeft naast het aantal verzoeken per uur een "secundaire limiet" op schrijfacties (ongeveer 80 per minuut en
+// enkele honderden per uur). Daarboven geeft GitHub 403 met retry-after, ook op lezen. Een integratierun doet honderden
+// schrijfacties: daarom houdt de test minstens WRITE_GAP_MS tussen twee schrijfacties, en wacht hij bij een limiet even
+// in plaats van rood te worden. Alleen status en wachttijd gaan naar het log, nooit inhoud.
+const WRITE_GAP_MS = 1_000
+let nextWrite = 0
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Wacht tot er weer een schrijfactie mag (lezen wacht nooit). */
+export async function paceWrite(method: string): Promise<void> {
+  if (method === 'GET' || method === 'HEAD') return
+  const now = Date.now()
+  const at = Math.max(now, nextWrite)
+  nextWrite = at + WRITE_GAP_MS
+  if (at > now) await sleep(at - now)
+}
+
+/** Een antwoord van de limiet (403/429 met retry-after, geen verzoeken meer over, of "rate limit"): seconden wachten; anders null. */
+export async function limitWait(status: number, header: (name: string) => string | null, text: () => Promise<string>): Promise<number | null> {
+  if (status !== 403 && status !== 429) return null
+  const retry = Number(header('retry-after'))
+  if (Number.isFinite(retry) && retry > 0) return retry
+  if (header('x-ratelimit-remaining') === '0') return 60
+  return /rate limit/i.test(await text().catch(() => '')) ? 60 : null
+}
+
+/** Een onverwachte status van GitHub in het log (geen 2xx, en niet 404, 409 of 422 die de app zelf afhandelt). */
+export function noteStatus(method: string, status: number): void {
+  if (status >= 300 && status !== 404 && status !== 409 && status !== 422) console.log(`GitHub ${method} ${status}`)
+}
+
 /** Een fetch voor GithubClient in Node die naar de tijdelijke branch gaat. */
 export function branchFetch(t: Target): FetchLike {
-  return (input, init) => {
+  return async (input, init) => {
     const method = init.method ?? 'GET'
     const { url, body } = rewrite(input, method, typeof init.body === 'string' ? init.body : null, t)
-    if (reachesDataRepo(url)) return Promise.reject(new Error('Verzoek naar logboek-data geweigerd'))
-    requestCount.value++
-    return globalThis.fetch(url, { ...init, ...(body !== null ? { body } : {}) })
+    if (reachesDataRepo(url)) throw new Error('Verzoek naar logboek-data geweigerd')
+    for (let attempt = 0; ; attempt++) {
+      await paceWrite(method)
+      requestCount.value++
+      // Een herhaling na een limiet zonder de tijdsgrens van de app: die wacht gewoon op dit antwoord.
+      const response = await globalThis.fetch(url, { ...init, ...(attempt > 0 ? { signal: null } : {}), ...(body !== null ? { body } : {}) })
+      const wait = attempt < 3 ? await limitWait(response.status, (n) => response.headers.get(n), () => response.clone().text()) : null
+      if (wait === null) {
+        noteStatus(method, response.status)
+        return response
+      }
+      console.log(`GitHub-limiet (${response.status}): ${Math.min(wait, 120)} s wachten`)
+      await sleep(Math.min(wait, 120) * 1000)
+    }
   }
 }
 
