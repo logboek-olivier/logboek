@@ -1,3 +1,7 @@
+import { placeLeg } from '../model/leg-trip'
+import { resizeTrip } from '../model/calendar'
+import { weekView } from '../model/weeks'
+import { PlacementHint } from './PlacementHint'
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatNumber, formatRate } from '../format'
@@ -279,6 +283,14 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   const numbers = [inland, sea, tidal, night].map(parseNonNegative)
   // Niets is verplicht: zonder datum blijft de oude datum, zonder naam krijgt een nieuwe trip de standaardnaam.
   const ok = numbers.every((n) => n !== null)
+  const legs = store.list('legs.json.enc').filter((l) => l.id !== leg.id)
+  // Een dag ligt altijd binnen de datums van zijn trip: valt de datum erbuiten, dan de trip van die datum (of de
+  // gekozen trip een paar dagen langer, of een nieuwe trip).
+  const placement = placeLeg(trips, legs, tripId === NEW_TRIP ? null : tripId, date || leg.date)
+  const target = (): { id: string } | { newName: string } => {
+    if (tripId !== NEW_TRIP && placement.tripId) return { id: placement.tripId }
+    return { newName: newTripName.trim() || defaultTripName(boat.trim() || t('field.trip'), date || leg.date) }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -286,6 +298,8 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
     const [nmInland, nmSea, nmTidal, nightHours] = numbers as number[]
     setBusy(true)
     try {
+      const extendTrip = placement.extend && placement.tripId ? trips.find((x) => x.id === placement.tripId) : undefined
+      if (extendTrip && placement.extend) await resizeTrip(store, { view: weekView(extendTrip, legs), start: placement.extend.start, end: placement.extend.end })
       await updateLeg(
         store,
         leg,
@@ -306,7 +320,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
           nightHours: nightHours!,
           notes: notes.trim(),
         },
-        tripId === NEW_TRIP ? { newName: newTripName.trim() || defaultTripName(boat.trim() || t('field.trip'), date || leg.date) } : { id: tripId },
+        target(),
       )
       onClose()
       notify(t('toast.saved'))
@@ -410,6 +424,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
             <option value={NEW_TRIP}>{t('edit.newTrip')}</option>
           </select>
         </label>
+        {tripId !== NEW_TRIP && <PlacementHint trips={trips} placement={placement} chosenId={tripId} date={date || leg.date} />}
         {tripId === NEW_TRIP && (
           <label>
             {t('field.newTripName')}

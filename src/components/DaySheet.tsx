@@ -19,7 +19,7 @@ import { isEarned } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { logPlanned, plannedFor, plannedNm } from '../model/routes'
 import { currentSettings } from '../model/settings'
-import { DAY_TYPES, todayIso, type DayType, type Reminder, type Trip } from '../model/types'
+import { DAY_TYPES, todayIso, type DayType, type Reminder, type StayPeriod, type Trip } from '../model/types'
 import { useDueItems } from '../screens/Deadlines'
 import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
@@ -364,6 +364,7 @@ export function DayView({
   onEditTrip,
   onOpenTrip,
   onNewTrip,
+  onOpenStay,
   notify,
   discreet = false,
 }: {
@@ -380,6 +381,8 @@ export function DayView({
   onOpenTrip?: (trip: Trip) => void
   /** Nieuwe trip op deze dag (de dagkaart sluit dan). */
   onNewTrip?: (date: string) => void
+  /** Periode aan land openen (de dagkaart sluit dan). */
+  onOpenStay?: (stay: StayPeriod) => void
   notify: Notify
 }) {
   const lang = useLang()
@@ -430,12 +433,12 @@ export function DayView({
           </button>
         ))}
         {info.stay && (
-          <p className="day-view-trip row-item">
+          <button type="button" className="row-button day-view-trip" onClick={() => onOpenStay?.(info.stay!)} disabled={!onOpenStay}>
             <span className="row-main">
               <span className="row-title">{stayName(info.stay)}</span>
               <span className="muted small">{formatDateRange(info.stay.startDate, info.stay.endDate)}</span>
             </span>
-          </p>
+          </button>
         )}
         <RouteMap route={route} small />
         {route.unpinned.length > 0 && route.stops.length > 0 && <p className="muted small">{t('day.unpinned', { names: route.unpinned.join(', ') })}</p>}

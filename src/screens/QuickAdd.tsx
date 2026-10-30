@@ -24,7 +24,10 @@ import { parseNonNegative } from '../model/edit'
 import { addDays, parseAmount } from '../model/money'
 import { currentSettings, saveSettings } from '../model/settings'
 import { finalRateFields } from '../model/rates'
-import { activeWeek, roleForType } from '../model/weeks'
+import { activeWeek, roleForType, weekView } from '../model/weeks'
+import { placeLeg } from '../model/leg-trip'
+import { PlacementHint } from '../components/PlacementHint'
+import { resizeTrip } from '../model/calendar'
 import {
   CURRENCIES,
   INCOME_KIND_LIST,
@@ -161,7 +164,7 @@ async function saveTransaction(
  * trip waarin de datum valt (of de lopende trip); verandert de datum en heeft Olivier zelf niets gekozen, dan volgt
  * de trip mee. Bij een uitgave alleen de trip van de datum: thuis boodschappen doen hoort bij geen trip.
  */
-function useTripChoice(store: Store, date: string, expense = false) {
+function useTripChoice(store: Store, date: string, expense = false, preset?: string) {
   const { settings, trips, legs } = useDefaults(store)
   const running = activeWeek(trips, settings, date)
   const byDate = tripForDate(trips, legs, date)
@@ -172,15 +175,16 @@ function useTripChoice(store: Store, date: string, expense = false) {
     return before ?? dated.sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))[0] ?? active(trips)[0]
   }, [trips, date])
   const fallback = expense ? (byDate?.id ?? '') : (byDate?.id ?? running?.id ?? nearest?.id ?? '')
-  const [chosen, setChosen] = useState<string | null>(null)
+  const [chosen, setChosen] = useState<string | null>(preset ?? null)
   const options = useMemo(() => {
     const list = active(trips)
       .filter((trip) => !trip.closedAt || trip.id === byDate?.id)
       .sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
       .slice(0, 20)
-    for (const extra of [nearest, running, byDate]) if (extra && !list.some((x) => x.id === extra.id)) list.unshift(extra)
+    const given = preset ? active(trips).find((x) => x.id === preset) : undefined
+    for (const extra of [nearest, running, byDate, given]) if (extra && !list.some((x) => x.id === extra.id)) list.unshift(extra)
     return list
-  }, [trips, byDate, running, nearest])
+  }, [trips, byDate, running, nearest, preset])
   const tripId = chosen ?? fallback
   return { tripId, setTripId: setChosen, options }
 }
@@ -201,7 +205,14 @@ function TripField({ value, options, onChange, required }: { value: string; opti
   )
 }
 
-function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
+/** Voor een gekozen trip (vanaf de periodepagina): vandaag als die in de trip valt, anders de dichtstbijzijnde dag ervan. */
+function dateIn(trips: readonly Trip[], tripId: string | undefined, today: string): string {
+  const trip = tripId ? trips.find((x) => x.id === tripId) : undefined
+  if (!trip?.startDate || !trip.endDate) return today
+  return today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
+}
+
+export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de trip staat al vast. */ tripId?: string }) {
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
   const [kind, setKind] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
@@ -209,10 +220,10 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
   const [tipVia, setTipVia] = useState<TipVia>(settings.lastTipVia ?? 'contant')
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
-  const [date, setDate] = useState(todayIso())
+  const [date, setDate] = useState(() => dateIn(store.list('trips.json.enc'), preset, todayIso()))
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const { tripId, setTripId, options } = useTripChoice(store, date)
+  const { tripId, setTripId, options } = useTripChoice(store, date, false, preset)
   // Inkomsten horen bij een trip; alleen zonder enige trip mag het leeg blijven.
   const tripOk = tripId !== '' || options.length === 0
   // Fooi: van wie (deelnemers van de gekozen trip); een andere trip begint weer bij onbekend.
@@ -312,7 +323,7 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
   )
 }
 
-function CostForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
+export function CostForm({ store, onDone, tripId: preset }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de periode staat al vast. */ tripId?: string }) {
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -322,10 +333,10 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   const [more, setMore] = useState(false)
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
-  const [date, setDate] = useState(todayIso())
+  const [date, setDate] = useState(() => dateIn(store.list('trips.json.enc'), preset, todayIso()))
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
-  const { tripId, setTripId, options } = useTripChoice(store, date, true)
+  const { tripId, setTripId, options } = useTripChoice(store, date, true, preset)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -476,7 +487,9 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const requested = init?.tripId ? active(trips).find((trip) => trip.id === init.tripId) : undefined
   const current = requested ?? activeWeek(trips, settings)
   const sameTripDefault = !!lastTrip && !!lastLeg && lastLeg.date >= addDays(today, -3)
-  const defaultTripId = current?.id ?? (sameTripDefault && lastTrip ? lastTrip.id : NEW_WEEK)
+  // Een dag hoort bij de trip van zijn datum (docs/PERIODEMODEL.md): de lopende of meegegeven trip alleen als de datum
+  // erin valt (of vlak ernaast: dan wordt hij langer).
+  const defaultTripId = placeLeg(trips, legs, current?.id ?? (sameTripDefault && lastTrip ? lastTrip.id : null), init?.date ?? today).tripId ?? NEW_WEEK
   // Van: de vorige bestemming binnen deze trip; de eerste dag van een trip begint op de basis van de boot.
   const startDate = init?.date ?? today
   // Een geplande etappe van die dag (route-sjabloon of vorige trip) vult van en naar voor.
@@ -529,8 +542,8 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const [boat, setBoat] = useState(current?.boat || settings.lastBoat || lastLeg?.boat || '')
   const [role, setRole] = useState<Role>(weekRole(current ?? undefined) ?? settings.lastRole)
   const [tripId, setTripId] = useState<string>(defaultTripId)
-  // Zelf een trip gekozen (of meegegeven): dan volgt de trip de datum niet meer.
-  const [tripTouched, setTripTouched] = useState(!!init?.tripId)
+  // Waar de dag terechtkomt met deze trip en datum (verlengen, of een andere trip als de datum erbuiten valt).
+  const placement = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, date || today)
 
   /** Andere week gekozen: boot en rol volgen die week als die ze heeft; Van ook, zolang Olivier hem niet zelf koos. */
   function chooseWeek(id: string, forDate: string = date) {
@@ -580,7 +593,13 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
     try {
       const now = nowIso()
       const day = date || today
-      let id = tripId === NEW_WEEK ? undefined : tripId
+      // De dag komt altijd binnen de datums van zijn trip: de trip van de datum, of de gekozen trip een paar dagen langer.
+      const place = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, day)
+      let id = place.tripId ?? undefined
+      if (id && place.extend) {
+        const trip = trips.find((x) => x.id === id)
+        if (trip) await resizeTrip(store, { view: weekView(trip, legs), start: place.extend.start, end: place.extend.end })
+      }
       if (!id) {
         // Een trip vanuit Dag: begin en eind volgen de dagen (src/model/trip-dates.ts).
         const trip: Trip = {
@@ -646,9 +665,8 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
                 const next = e.target.value || today
                 setDate(e.target.value)
                 // Een andere datum: de trip van die datum (een vergeten dag in een eerdere trip komt in die trip, niet in
-                // een nieuwe), zolang Olivier zelf geen trip koos.
-                const byDate = tripTouched ? null : tripForDate(trips, legs, next)
-                const id = tripTouched ? tripId : (byDate?.id ?? defaultTripId)
+                // een nieuwe of in een trip waar de datum buiten valt).
+                const id = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, next).tripId ?? NEW_WEEK
                 if (id !== tripId) chooseWeek(id, next)
                 else if (!fromTouched) setFromPlaceState(defaultFromPlace(legs, trips.find((w) => w.id === tripId), next))
               }}
@@ -741,13 +759,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
         </div>
         <label>
           {t('field.week')}
-          <select
-            value={tripId}
-            onChange={(e) => {
-              setTripTouched(true)
-              chooseWeek(e.target.value)
-            }}
-          >
+          <select value={tripId} onChange={(e) => chooseWeek(e.target.value)}>
             <option value={NEW_WEEK}>{t('quick.newWeek')}</option>
             {[...(weeks.some((w) => w.id === tripId) ? [] : trips.filter((w) => w.id === tripId)), ...weeks].map((w) => (
               <option key={w.id} value={w.id}>
@@ -756,6 +768,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
             ))}
           </select>
         </label>
+        <PlacementHint trips={trips} placement={placement} chosenId={tripId === NEW_WEEK ? null : tripId} date={date || today} />
         {tripId === NEW_WEEK && (
           <label>
             {t('field.weekName')}

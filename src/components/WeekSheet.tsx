@@ -9,7 +9,7 @@ import { addDays, parseAmount, totals } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { newTripName } from '../model/counters'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
-import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WEEK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
+import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
   boatProfile,
   closeWeek,
@@ -33,6 +33,8 @@ import { Sheet } from './Sheet'
 import { DeleteTrip } from './TripSheets'
 import { SalaryFields, useSalaryDraft } from './SalaryFields'
 import { TripIncomeFields } from './TripMoney'
+import { PeriodDays } from './PeriodPage'
+import { kindForType, typeForKind } from '../model/trip-kind'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -54,7 +56,13 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const trips = store.get('trips.json.enc')
   const { boats, areas, bases, charters } = suggestions(trips, legs)
   const [name, setName] = useState(trip?.name ?? '')
-  const [type, setType] = useState<WeekType>(view?.type ?? 'training-geven')
+  const [type, setTypeState] = useState<WeekType>(view?.type ?? 'training-geven')
+  // Het laatst gekozen subtype van werk, zodat Training → Werk terugkomt op hetzelfde subtype.
+  const [lastWork, setLastWork] = useState<WeekType>(view && view.kind === 'werk' ? view.type : 'training-geven')
+  const setType = (next: WeekType) => {
+    setTypeState(next)
+    if (kindForType(next) === 'werk') setLastWork(next)
+  }
   const [startDate, setStartDate] = useState(view?.startDate || initial?.startDate || todayIso())
   const [dayCount, setDayCount] = useState(String(view ? dayCountOf(view) : (initial?.dayCount ?? DEFAULT_WEEK_DAYS)))
   const [boat, setBoat] = useState(view?.boat ?? '')
@@ -149,7 +157,9 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     e.preventDefault()
     if (busy) return
     setBusy(true)
-    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route, salary: salary.input() }
+    // Salaris alleen bij werk: training en plezier houden een bestaand salaris niet vast (wel als het al ontvangen is).
+    const salaryInput = kindForType(type) === 'werk' || trip?.salary?.status === 'ontvangen' ? salary.input() : null
+    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route, salary: salaryInput }
     try {
       if (trip) {
         await updateWeek(store, trip, input, getLang())
@@ -195,13 +205,23 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
           {t('field.name')}
           <input type="text" autoComplete="off" maxLength={120} placeholder={trip ? defaultWeekName(startDate || todayIso(), lang, base) : namePlaceholder} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        <div className="type-buttons" role="radiogroup" aria-label={t('week.type')}>
-          {WEEK_TYPES.map((wt) => (
-            <button key={wt} type="button" role="radio" aria-checked={type === wt} className={`chip${type === wt ? ' active' : ''}`} onClick={() => setType(wt)}>
-              {weekTypeLabel(wt)}
+        {/* Soort periode op het water, en bij werk het subtype (docs/PERIODEMODEL.md). */}
+        <div className="type-buttons" role="radiogroup" aria-label={t('period.kind')}>
+          {WATER_KINDS.map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={kindForType(type) === k} className={`chip${kindForType(type) === k ? ' active' : ''}`} onClick={() => setType(typeForKind(k, kindForType(type) === 'werk' ? type : lastWork))}>
+              {t(`periodKind.${k}`)}
             </button>
           ))}
         </div>
+        {kindForType(type) === 'werk' && (
+          <div className="type-buttons" role="radiogroup" aria-label={t('week.type')}>
+            {WORK_TYPES.map((wt) => (
+              <button key={wt} type="button" role="radio" aria-checked={type === wt} className={`chip${type === wt ? ' active' : ''}`} onClick={() => setType(wt)}>
+                {weekTypeLabel(wt)}
+              </button>
+            ))}
+          </div>
+        )}
         {view?.typeSuggested && <p className="muted small">{t('week.typeSuggested')}</p>}
         <div className="two">
           <label>
@@ -290,7 +310,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </select>
         </label>
-        <SalaryFields {...salary.props} />
+        {kindForType(type) === 'werk' && <SalaryFields {...salary.props} />}
         {trip && <TripIncomeFields store={store} trip={trip} notify={notify} />}
         <fieldset className="participants">
           <legend>{t('week.participants')}</legend>
@@ -371,6 +391,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             </button>
           </div>
         )}
+        {trip && <PeriodDays store={store} legs={store.list('legs.json.enc').filter((l) => l.tripId === trip.id)} notify={notify} />}
         <NoteField label={t('field.note')} value={note} onChange={setNote} />
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={busy}>

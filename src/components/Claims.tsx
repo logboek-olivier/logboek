@@ -65,7 +65,7 @@ function TripSelect({ store, value, onChange }: { store: Store; value: string; o
 }
 
 /** De velden van een declaratie (nieuw of bewerken); de trip volgt de datum zolang Olivier zelf niets kiest. */
-function useClaimFields(store: Store, claim: Claim | null) {
+function useClaimFields(store: Store, claim: Claim | null, preset?: string) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
@@ -73,7 +73,7 @@ function useClaimFields(store: Store, claim: Claim | null) {
   const [note, setNote] = useState(claim?.note ?? '')
   const [amount, setAmount] = useState(claim?.amount !== undefined ? amountInput(claim.amount) : '')
   const [currency, setCurrency] = useState<Currency>(claim?.currency ?? settings.lastCurrency)
-  const [chosenTrip, setChosenTrip] = useState<string | null>(claim ? (claim.tripId ?? '') : null)
+  const [chosenTrip, setChosenTrip] = useState<string | null>(claim ? (claim.tripId ?? '') : (preset ?? null))
   // Zoals bij inkomsten: de trip van de datum, anders de lopende trip, anders de dichtstbijzijnde (de laatste die vóór de
   // datum begon, anders de eerstvolgende). Een declaratie zonder trip is alleen een eigen keuze.
   const fallback = useMemo(() => {
@@ -116,8 +116,8 @@ function ClaimFieldsView({ store, f }: { store: Store; f: ReturnType<typeof useC
 }
 
 /** Toevoegen → Declaratie: foto van het bonnetje (camera of galerij), notitie, optioneel bedrag, bij de trip van de datum. */
-export function ClaimForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
-  const f = useClaimFields(store, null)
+export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de trip staat al vast. */ tripId?: string }) {
+  const f = useClaimFields(store, null, tripId)
   const camera = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<{ bytes: Bytes; mime: string } | null>(null)

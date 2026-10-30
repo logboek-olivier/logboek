@@ -263,3 +263,41 @@ export function rangeDates(from: string, to: string): string[] {
 export function deleteStay(store: Store, stay: StayPeriod): Promise<Undo> {
   return setStayDays(store, rangeDates(stay.startDate, stay.endDate), null)
 }
+
+export interface StayInput {
+  kind: StayKind
+  name: string
+  startDate: string
+  endDate: string
+  note: string
+  travel?: StayPeriod['travel']
+}
+
+/** Een periode aan land bewerken (soort, naam, datums, notitie, reis), met ongedaan maken. Dagen in een trip blijven bij de trip. */
+export async function updateStay(store: Store, stay: StayPeriod, input: StayInput): Promise<Undo> {
+  const [start, end] = input.startDate <= input.endDate ? [input.startDate, input.endDate] : [input.endDate, input.startDate]
+  const next = rangeDates(start, end).slice(0, 400)
+  const removed = rangeDates(stay.startDate, stay.endDate).filter((d) => !next.includes(d))
+  const undoRemoved = removed.length > 0 ? await setStayDays(store, removed, null, {}, false) : async () => {}
+  const undoDays = await setStayDays(store, next, input.kind, {}, false)
+  // Naam, notitie en reis van de periode die nu op de begindag staat (ook leegmaken mag).
+  const record = active(store.list('periods.json.enc')).find((s) => s.kind === input.kind && s.startDate <= next[0]! && next[0]! <= s.endDate)
+  let undoFields: Undo = async () => {}
+  if (record) {
+    const { name: _n, note: _o, travel: _t, ...rest } = record
+    void [_n, _o, _t]
+    const name = input.name.trim().slice(0, 120)
+    const note = input.note.trim().slice(0, 2000)
+    const from = input.travel?.from?.trim().slice(0, 80)
+    const to = input.travel?.to?.trim().slice(0, 80)
+    const travel = input.kind === 'reis' && (from || to || input.travel?.by) ? { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(input.travel?.by ? { by: input.travel.by } : {}) } : undefined
+    const after: StayPeriod = { ...rest, ...(name ? { name } : {}), ...(note ? { note } : {}), ...(travel ? { travel } : {}), updatedAt: new Date().toISOString() }
+    if (JSON.stringify({ ...after, updatedAt: '' }) !== JSON.stringify({ ...record, updatedAt: '' })) undoFields = await applyChanges(store, [{ path: 'periods.json.enc', before: record, after }], false)
+  }
+  void store.sync()
+  return async () => {
+    await undoFields()
+    await undoDays()
+    await undoRemoved()
+  }
+}

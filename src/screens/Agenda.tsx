@@ -1,7 +1,7 @@
 import { CalendarRange, ChevronLeft, ChevronRight, Eye, EyeOff, FileUp, ListOrdered, NotebookPen, Share2, X } from 'lucide-react'
 import { useMemo, useRef, useState, useSyncExternalStore, type TouchEvent } from 'react'
 import { DayView } from '../components/DaySheet'
-import { TripOverviewSheet } from '../components/TripOverview'
+import { StayOverviewSheet, TripOverviewSheet } from '../components/TripOverview'
 import { ReminderView } from '../components/Views'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
@@ -22,7 +22,7 @@ import { closingFor, sundayOf } from '../model/week-close'
 import { salaryState, type SalaryState } from '../model/money-path'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
-import { todayIso, type Reminder, type Trip } from '../model/types'
+import { todayIso, type Reminder, type StayPeriod, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { AgendaShare } from './AgendaShare'
 import { useDueItems } from './Deadlines'
@@ -60,6 +60,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [showAmounts, setShowAmounts] = useState(false)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
   const [viewTrip, setViewTrip] = useState<Trip | null>(null)
+  const [viewStay, setViewStay] = useState<StayPeriod | null>(null)
   const counters = useCounters(store)
   // Het salaris per trip als bolletje in de balk (grijs verwacht, oranje te ontvangen, groen ontvangen).
   const salaryStates = useMemo(() => new Map(trips.filter((x) => x.deletedAt === null).map((x) => [x.id, salaryState(x, legs, today)])), [trips, legs, today])
@@ -269,10 +270,18 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             setOpen(null)
             setNewTrip({ startDate: date, dayCount: 1 })
           }}
+          onOpenStay={(stay) => {
+            setOpen(null)
+            setViewStay(stay)
+          }}
         />
       )}
       {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
-      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} />}
+      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} onAddDay={(init) => {
+        setViewTrip(null)
+        onAdd(init)
+      }} />}
+      {viewStay && <StayOverviewSheet key={viewStay.id} store={store} stay={viewStay} notify={notify} onClose={() => setViewStay(null)} />}
       {reminder &&
         (reminder.reminder ? (
           <ReminderView store={store} reminder={reminder.reminder} notify={notify} onClose={() => setReminder(null)} />
