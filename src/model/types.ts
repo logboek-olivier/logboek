@@ -85,6 +85,29 @@ export type TipVia = 'contant' | 'bank'
 export type CostCategory = 'vervoer' | 'eten' | 'overig'
 export const COST_CATEGORIES: readonly CostCategory[] = ['vervoer', 'eten', 'overig']
 
+/** Status van een declaratie: open (nog niet ingediend), ingediend, terugbetaald. */
+export type ClaimStatus = 'open' | 'ingediend' | 'terugbetaald'
+
+/**
+ * Een declaratie (claims.json.enc): een uitgave die de organisatie terugbetaalt. Het bonnetje staat versleuteld in de
+ * kluis (een document in documents/index.json.enc met zijn bestand), deze declaratie verwijst ernaar.
+ */
+export interface Claim extends SyncRecord {
+  /** jjjj-mm-dd: datum van de uitgave. */
+  date: string
+  tripId?: string
+  note?: string
+  amount?: number
+  currency?: Currency
+  /** Het bonnetje in de kluis. */
+  documentId?: string
+  status: ClaimStatus
+  /** jjjj-mm-dd */
+  submittedAt?: string
+  /** Terugbetaald: datum, bedrag en het inkomen (soort terugbetaling) bij Geld. */
+  repaid?: { date: string; amount: number; currency: Currency; transactionId?: string }
+}
+
 /** Dagsoort voor de kosten per dag (thuis, reis, werk, rust); de andere dagsoorten tellen als thuis. */
 export type CostDayType = 'thuis' | 'reis' | 'werk' | 'rust'
 export const COST_DAY_TYPES: readonly CostDayType[] = ['thuis', 'reis', 'werk', 'rust']
@@ -220,6 +243,8 @@ export interface Transaction extends SyncRecord {
   depositedAt?: string
   /** Alleen bij kosten: vervoer, eten en drinken of overig (ontbreekt = overig). */
   category?: CostCategory
+  /** De declaratie waar deze uitgave of terugbetaling bij hoort (claims.json.enc). */
+  claimId?: string
   /**
    * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
    * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.
@@ -227,7 +252,7 @@ export interface Transaction extends SyncRecord {
   payoutId?: string
 }
 
-export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave' | 'skill'
+export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave' | 'skill' | 'declaratie'
 export type Water = 'zee' | 'getij' | 'binnen'
 
 export interface Settings extends SyncRecord {
@@ -640,6 +665,7 @@ export interface Collections {
   'accounts.json.enc': Account
   'balances.json.enc': Balance
   'fixedcosts.json.enc': FixedCost
+  'claims.json.enc': Claim
 }
 
 export type CollectionPath = keyof Collections
@@ -665,6 +691,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'accounts.json.enc',
   'balances.json.enc',
   'fixedcosts.json.enc',
+  'claims.json.enc',
 ]
 
 export function newId(): string {

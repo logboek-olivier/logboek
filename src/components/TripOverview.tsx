@@ -28,6 +28,7 @@ import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
 import { LegView, ParticipantView } from './Views'
 import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
+import { TripClaims } from './Claims'
 
 // Tripoverzicht (lopende trip in Deze trip, en elke eerdere trip uit het Logboek): kop "SV #3 · BVI · 8–21 nov ·
 // Lagoon 42", een kaart met de hele route (lijnen tussen de stops, genummerde stops, start en eind duidelijk), plaatsen
@@ -185,6 +186,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
           <h3>{t('week.sailedDays')}</h3>
           <TripDays store={store} legs={view.legs} notify={notify} />
         </div>
+        <TripClaims store={store} trip={current} notify={notify} heading="h3" />
         {people.length > 0 && (
           <div className="section">
             <h3>{t('week.participants')}</h3>

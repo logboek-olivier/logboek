@@ -124,7 +124,8 @@ export function dayAverages(transactions: readonly Transaction[], closings: read
   const spend = new Map<string, number>()
   const observed = new Set<string>()
   for (const tx of active(transactions)) {
-    if (tx.kind !== 'kosten' || tx.date < start || tx.date > end) continue
+    // Een uitgave die gedeclareerd wordt (claimId), komt terug: geen losse kosten van het leven.
+    if (tx.kind !== 'kosten' || tx.claimId || tx.date < start || tx.date > end) continue
     const v = eurOf(tx)
     if (v === null) continue
     spend.set(tx.date, (spend.get(tx.date) ?? 0) + v)

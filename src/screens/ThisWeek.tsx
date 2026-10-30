@@ -13,6 +13,8 @@ import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
 import { totals } from '../model/money'
 import { tripMoney } from '../model/money-path'
 import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
+import { TripClaims } from '../components/Claims'
+import { claimCounts, tripClaims } from '../model/claims'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
@@ -196,6 +198,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
           <TripChecklists store={store} notify={notify} trip={week} type={view.type} />
           <SailedDays store={store} notify={notify} legs={view.legs} nm={view.nm} onAdd={() => onAddDay({ date: nextDay, tripId: week.id })} />
           <WeekMoney store={store} trip={week} />
+          <TripClaims store={store} trip={week} notify={notify} />
           {upcomingSection}
         </>
       )}
@@ -296,6 +299,8 @@ function UpcomingTrips({ trips, counters, onOpen }: { trips: Trip[]; counters: R
 function WeekMoney({ store, trip }: { store: Store; trip: Trip }) {
   const all = useCollection(store, 'transactions.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const claims = tripClaims(useCollection(store, 'claims.json.enc'), trip.id)
+  const counts = claimCounts(claims)
   const transactions = all.filter((tx) => tx.deletedAt === null && tx.tripId === trip.id)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
@@ -343,6 +348,7 @@ function WeekMoney({ store, trip }: { store: Store; trip: Trip }) {
             </p>
           )}
           {tipParts.length > 0 && <p className="muted small">{t('tipVia.line', { parts: tipParts.join(' · ') })}</p>}
+          {claims.length > 0 && <p className="muted small">{t('claims.counts', { open: counts.open, submitted: counts.ingediend, repaid: counts.terugbetaald })}</p>}
         </>
       ) : (
         <p className="muted small">

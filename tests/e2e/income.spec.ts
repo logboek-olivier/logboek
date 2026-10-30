@@ -29,7 +29,7 @@ test('Toevoegen: Dag · Inkomsten · Uitgave; inkomsten horen bij een trip, de t
   }
 
   await nav.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await expect(page.getByRole('tab')).toHaveText(['Trip', 'Dag', 'Inkomsten', 'Uitgave', 'Skill'])
+  await expect(page.getByRole('tab')).toHaveText(['Trip', 'Dag', 'Inkomsten', 'Uitgave', 'Declaratie', 'Skill'])
   await page.getByRole('tab', { name: 'Inkomsten' }).click()
   const kinds = page.getByRole('radiogroup', { name: 'Soort' })
   await expect(kinds.getByRole('radio')).toHaveText(['Fooi', 'Loon of dagtarief', 'Bonus of provisie', 'Terugbetaling onkosten', 'Overig'])

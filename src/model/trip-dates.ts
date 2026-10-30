@@ -64,7 +64,7 @@ export async function followDays(store: Store, tripIds: readonly (string | null 
   if (changed) void store.sync()
 }
 
-/** Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, review of afgevinkte lijsten)? */
+/** Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, declaraties, review of afgevinkte lijsten)? */
 function hasOtherData(store: Store, trip: Trip): boolean {
   return (
     (trip.participants?.length ?? 0) > 0 ||
@@ -72,6 +72,7 @@ function hasOtherData(store: Store, trip: Trip): boolean {
     Object.keys(trip.checks ?? {}).length > 0 ||
     store.list('transactions.json.enc').some((t) => t.tripId === trip.id) ||
     store.list('students.json.enc').some((s) => s.weekId === trip.id) ||
-    store.list('plans.json.enc').some((p) => p.tripId === trip.id)
+    store.list('plans.json.enc').some((p) => p.tripId === trip.id) ||
+    store.list('claims.json.enc').some((c) => c.tripId === trip.id)
   )
 }

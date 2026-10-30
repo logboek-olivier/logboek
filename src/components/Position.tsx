@@ -28,8 +28,9 @@ function usePositionInput(store: Store): PositionInput {
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const transactions = useCollection(store, 'transactions.json.enc')
+  const claims = useCollection(store, 'claims.json.enc')
   const rates = useSyncExternalStore(subscribeRates, getRates)
-  return useMemo(() => ({ accounts, balances, trips, legs, transactions, rates }), [accounts, balances, trips, legs, transactions, rates])
+  return useMemo(() => ({ accounts, balances, trips, legs, transactions, rates, claims }), [accounts, balances, trips, legs, transactions, rates, claims])
 }
 
 /** € 1.234,00 plus wat zonder koers apart blijft ("+ $ 20,00"). */
@@ -53,7 +54,7 @@ export function PositionSection({ store, notify }: { store: Store; notify: Notif
   const then = positionAt(input, start, true)
   const since = today > start ? difference(now.totals.net, then.totals.net) : null
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
-  const empty = !hasAccounts && now.receivable.length === 0 && Object.keys(now.cashTips).length === 0
+  const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0 && Object.keys(now.cashTips).length === 0
   if (empty) return null
 
   const accountRows = (rows: AccountRow[]) =>
@@ -93,12 +94,18 @@ export function PositionSection({ store, notify }: { store: Store; notify: Notif
             ))}
           </ul>
         </PositionGroup>
-        <PositionGroup label={t('position.receivable')} sum={now.totals.receivable} show={now.receivable.length > 0}>
+        <PositionGroup label={t('position.receivable')} sum={now.totals.receivable} show={now.receivable.length > 0 || now.claims.length > 0}>
           <ul className="plain-list">
             {now.receivable.map((r) => (
               <li key={r.trip.id} className="row muted small">
                 <span className="grow">{t('position.salaryOf', { trip: nameWithCounter(r.trip, counters.get(r.trip.id)) })}</span>
                 <span className="num">{formatMoney(r.amount, r.currency)}</span>
+              </li>
+            ))}
+            {now.claims.map((c) => (
+              <li key={c.id} className="row muted small">
+                <span className="grow">{t('position.claimOf', { date: formatDate(c.date) })}</span>
+                <span className="num">{formatMoney(c.amount!, c.currency!)}</span>
               </li>
             ))}
           </ul>
