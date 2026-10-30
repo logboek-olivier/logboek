@@ -279,6 +279,8 @@ describe('opslaan', () => {
     expect(await writeBalances(store, bank, [{ date: '2026-10-03', amount: 1600 }], 'import')).toEqual([])
     expect(await setBalance(store, bank, '2026-10-10', 1)).toBeNull()
     expect(await setBalance(store, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
+    // Precies dezelfde stand nog eens: opgeslagen (niet "er staat al een nieuwere stand").
+    expect(await setBalance(store, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
     expect(store.list('balances.json.enc').filter((b) => b.date.startsWith('2026-10')).map((b) => b.amount)).toEqual([1800])
   })
 

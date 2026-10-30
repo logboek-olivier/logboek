@@ -1,4 +1,4 @@
-import { BookOpen, CalendarPlus, Check } from 'lucide-react'
+import { BookOpen, Check } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { formatDate, formatHours, formatMoney, formatNm } from '../format'
 import { todayIso } from '../model/types'
@@ -208,15 +208,5 @@ export function ParticipantView({
         )}
       </div>
     </Sheet>
-  )
-}
-
-/** Knop onder een leesweergave om iets nieuws toe te voegen (bijvoorbeeld een termijn op deze dag). */
-export function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button type="button" className="btn small" onClick={onClick}>
-      <Icon icon={CalendarPlus} />
-      {label}
-    </button>
   )
 }

@@ -45,13 +45,14 @@ function signed(n: number): string {
 
 export function PositionSection({ store, notify }: { store: Store; notify: Notify }) {
   const input = usePositionInput(store)
-  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const settingsRecords = useCollection(store, 'settings.json.enc')
+  const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
   const counters = useCounters(store)
   const [stand, setStand] = useState<Account | null>(null)
   const today = todayIso()
   const start = careerStart(settings)
-  const now = positionAt(input, today)
-  const then = positionAt(input, start, true)
+  // Alleen opnieuw rekenen als de gegevens veranderen (niet bij elke render): over alle trips en transacties.
+  const { now, then } = useMemo(() => ({ now: positionAt(input, today), then: positionAt(input, start, true) }), [input, today, start])
   const since = today > start ? difference(now.totals.net, then.totals.net) : null
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
   const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0 && Object.keys(now.cashTips).length === 0
@@ -187,16 +188,20 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
  */
 export function ForecastSection({ store }: { store: Store }) {
   const input = usePositionInput(store)
-  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const settingsRecords = useCollection(store, 'settings.json.enc')
+  const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
   const calendar = useCollection(store, 'calendar.json.enc')
   const fixed = useCollection(store, 'fixedcosts.json.enc')
   const closings = useCollection(store, 'weekreviews.json.enc')
   const counters = useCounters(store)
   const today = todayIso()
   const index = useMemo(() => buildIndex(calendar, input.trips, input.legs), [calendar, input.trips, input.legs])
-  // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten.
-  const averages = dayAverages(input.transactions, closings, index, today, settings, input.rates)
-  const f = forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index })
+  // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten. Alleen
+  // opnieuw rekenen als de gegevens veranderen (de vooruitblik loopt over alle trips, dagen en transacties).
+  const f = useMemo(() => {
+    const averages = dayAverages(input.transactions, closings, index, today, settings, input.rates)
+    return forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index })
+  }, [input, closings, index, today, settings, fixed])
   if (f.items.length === 0 && f.months.every((m) => m.eur === null)) return null
   const until = formatMonth(f.until)
   // Maanden zonder gegevens aan het begin laten we weg (vóór de eerste stand is er niets te tekenen).

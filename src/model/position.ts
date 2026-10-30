@@ -4,7 +4,7 @@ import { expectedCosts, type DayAverage } from './costs'
 import { active } from './derive'
 import { eurOf, round2 } from './money'
 import { payoutRule } from './money-path'
-import { rateFor, type RatesFile } from './rates'
+import { type RatesFile } from './rates'
 import { salaryEur, tipAverages, tripEnd } from './salary'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
@@ -334,11 +334,4 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   }
   // De lopende maand: wat er nog deze maand binnenkomt, telt pas in de verwachte lijn; het punt van nu is gemeten.
   return { now, items, until, endEur: nowKnown ? round2(now.eur + addsEur) : null, addsEur, tipEstimateEur, costsEur, costsUnknown, other, months }
-}
-
-/** Een stand in euro met de koers van vandaag, voor de snelle invoer (null zonder koers). */
-export function eurToday(amount: number, currency: Currency, today: string, rates: RatesFile | null): number | null {
-  if (currency === 'EUR') return amount
-  const hit = rateFor(rates, currency, today)
-  return hit ? round2(amount / hit.rate) : null
 }

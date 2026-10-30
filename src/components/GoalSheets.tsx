@@ -101,6 +101,8 @@ export function GoalView({ store, goal, notify, onClose }: { store: Store; goal:
   const current = goals.find((g) => g.id === goal.id) ?? goal
   const [value, setValue] = useState('')
   const [date, setDate] = useState(todayIso())
+  // Eén tik tegelijk: twee tikken gaven twee metingen.
+  const [busy, setBusy] = useState(false)
   if (editing) return <GoalSheet store={store} goal={current} notify={notify} onClose={onClose} />
   const p = goalProgress(current, sessions, data)
   const list = measurements(current, sessions).reverse()
@@ -108,10 +110,15 @@ export function GoalView({ store, goal, notify, onClose }: { store: Store; goal:
 
   async function measure(e: FormEvent) {
     e.preventDefault()
-    if (parsed === null) return
-    await logSession(store, { date, goalId: current.id, value: parsed })
-    setValue('')
-    notify(t('goals.measurementSaved'))
+    if (parsed === null || busy) return
+    setBusy(true)
+    try {
+      await logSession(store, { date, goalId: current.id, value: parsed })
+      setValue('')
+      notify(t('goals.measurementSaved'))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (

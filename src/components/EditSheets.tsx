@@ -113,9 +113,17 @@ export function TransactionSheet({
   }
 
   async function remove() {
-    const undo = await deleteTransaction(store, tx)
-    onClose()
-    notify(t('toast.deleted'), undo)
+    // Eén tik tegelijk: een tweede tik zou het (al verwijderde) record nog eens verwijderen, en ongedaan maken zette dan
+    // het salaris niet terug.
+    if (busy) return
+    setBusy(true)
+    try {
+      const undo = await deleteTransaction(store, tx)
+      onClose()
+      notify(t('toast.deleted'), undo)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -234,7 +242,7 @@ export function TransactionSheet({
           <button className="btn primary" type="submit" disabled={parsed === null || parsedReceived === null || !date || busy}>
             {t('common.save')}
           </button>
-          <button className="btn danger" type="button" onClick={() => void remove()}>
+          <button className="btn danger" type="button" disabled={busy} onClick={() => void remove()}>
             <Icon icon={Trash2} />
             {t('common.delete')}
           </button>

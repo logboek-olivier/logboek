@@ -224,8 +224,12 @@ export async function saveAccount(store: Store, id: string | null, fields: Omit<
  */
 export async function setBalance(store: Store, account: Account, date: string, amount: number, today = todayIso()): Promise<Balance | null> {
   if (date > today) return null
-  const [written] = await writeBalances(store, account, [{ date, amount: signedAmount(account, amount) }], 'handmatig', true, today)
-  return written ?? null
+  const signed = signedAmount(account, amount)
+  const [written] = await writeBalances(store, account, [{ date, amount: signed }], 'handmatig', true, today)
+  if (written) return written
+  // Precies deze stand stond er al (niet opnieuw geschreven): dat is gewoon opgeslagen, geen "nieuwere stand".
+  const same = store.list('balances.json.enc').find((b) => b.id === balanceId(account.id, date) && b.date === date && b.amount === signed)
+  return same ?? null
 }
 
 export interface BalancePoint {

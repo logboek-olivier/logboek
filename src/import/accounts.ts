@@ -1,4 +1,3 @@
-import type { AccountProvider } from '../model/types'
 import type { BalancePoint } from '../model/accounts'
 import type { SheetCell, SheetRow } from './rows'
 
@@ -39,8 +38,6 @@ export interface ColumnMapping {
 }
 
 export type PresetId = 'asn' | 'revolut' | 'bux' | 'degiro-portefeuille'
-
-export const PRESET_PROVIDER: Record<PresetId, AccountProvider> = { asn: 'asn', revolut: 'revolut', bux: 'bux', 'degiro-portefeuille': 'degiro' }
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
 
