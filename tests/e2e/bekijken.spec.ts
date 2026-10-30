@@ -90,11 +90,11 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
   await expect(card).toContainText('SV #1 · Nepgebied')
   await expect(card).toContainText('46 nm')
   await expect(card).toContainText('Geen fooi op deze dag.')
-  await expect(card.getByRole('radio', { name: 'Rust' })).toHaveCount(0)
+  await expect(card.getByRole('radio', { name: 'Vrij' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/bekijken/dagkaart.png', fullPage: true })
   await card.getByRole('button', { name: 'Bewerken' }).click()
-  await expect(page.getByRole('dialog').getByRole('radio', { name: 'Rust' })).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('radio', { name: 'Vrij' })).toBeVisible()
   await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
 
   // Logboek: een kaartje per trip met routeplaatje; tikken opent het overzicht met de kaart.
