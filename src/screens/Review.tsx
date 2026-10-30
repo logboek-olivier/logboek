@@ -86,7 +86,7 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
       <OverlapNotices store={store} overlaps={overlaps} notify={notify} onEditTrip={setEditTrip} />
       <ul className="rows review-list">
         {rest.map((item) => (
-          <li key={item.key} className="card review-item">
+          <li key={item.key} className="card card-body review-item">
             <p>{describe(item)}</p>
             <div className="review-actions">
               {fixes(store, item, lang).map((fix) => (
