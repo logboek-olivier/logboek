@@ -6,7 +6,7 @@ import { eurOf, round2 } from './money'
 import { payoutRule } from './money-path'
 import { rateFor, type RatesFile } from './rates'
 import { salaryEur, tipAverages, tripEnd } from './salary'
-import type { Account, AccountKind, Balance, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
+import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 
 // Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. Op de bank (betaal- en
 // spaarrekeningen), contant (contante fooien die nog niet gestort zijn, plus de stand van een kasrekening), te ontvangen
@@ -65,6 +65,8 @@ export interface Position {
   cashAccounts: AccountRow[]
   cashTips: Partial<Record<Currency, number>>
   receivable: ReceivableRow[]
+  /** Declaraties met een bedrag die op die dag nog niet terugbetaald waren (open of ingediend). */
+  claims: Claim[]
   investments: AccountRow[]
   debts: AccountRow[]
   totals: Record<'bank' | 'cash' | 'receivable' | 'investments' | 'debts' | 'net', Sum>
@@ -96,6 +98,8 @@ export interface PositionInput {
   legs: readonly Leg[]
   transactions: readonly Transaction[]
   rates: RatesFile | null
+  /** Declaraties (open of ingediend met een bedrag tellen als te ontvangen). */
+  claims?: readonly Claim[]
 }
 
 /**
@@ -110,6 +114,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     cashAccounts: [],
     cashTips: {},
     receivable: [],
+    claims: [],
     investments: [],
     debts: [],
     totals: { bank: emptySum(), cash: emptySum(), receivable: emptySum(), investments: emptySum(), debts: emptySum(), net: emptySum() },
@@ -158,6 +163,13 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     add(out.totals.receivable, s.amount, s.currency, date, rates)
   }
   out.receivable.sort((a, b) => tripEnd(a.trip, legs).localeCompare(tripEnd(b.trip, legs)))
+  // Declaraties: met een bedrag, op die dag al gedaan en nog niet terugbetaald.
+  for (const c of active(input.claims ?? [])) {
+    if (c.amount === undefined || c.currency === undefined || c.amount <= 0 || c.date > date) continue
+    if (c.repaid && c.repaid.date <= date) continue
+    out.claims.push(c)
+    add(out.totals.receivable, c.amount, c.currency, date, rates)
+  }
   for (const key of ['bank', 'cash', 'receivable', 'investments', 'debts'] as const) addSum(out.totals.net, out.totals[key])
   return out
 }
@@ -301,7 +313,7 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   for (let i = history - 1; i >= 1; i--) {
     const month = shiftMonth(current, -i)
     const p = positionAt(input, monthLast(month))
-    const known = p.counted > 0 || p.receivable.length > 0 || Object.keys(p.cashTips).length > 0
+    const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0 || Object.keys(p.cashTips).length > 0
     months.push({ month, eur: known && Object.keys(p.totals.net.other).length === 0 ? p.totals.net.eur : null, future: false })
   }
   months.push({ month: current, eur: nowKnown ? now.eur : null, future: false })

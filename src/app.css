@@ -3343,9 +3343,12 @@ body.presenting .bottom-bar {
 .add-tabs .segment {
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
   min-height: 52px;
-  padding: var(--s-1) 2px;
-  font-size: var(--fs-xs);
+  padding: var(--s-1) 1px;
+  /* Zes tabbladen op 360 px: net iets kleiner, zodat "Inkomsten" en "Declaratie" niet tegen elkaar staan. */
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
 }
 
 .add-tabs .segment .icon {
@@ -4550,4 +4553,52 @@ textarea.note {
 
 .cost-day {
   gap: var(--s-2);
+}
+
+/* ---------- Declaraties ---------- */
+
+.claim-preview,
+.claim-receipt {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 45vh;
+  /* In een kolom rekt een afbeelding anders uit tot de volle breedte. */
+  align-self: center;
+  border-radius: var(--r-md);
+  object-fit: contain;
+}
+
+.claim-row {
+  width: 100%;
+  min-height: 44px;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.claim-status {
+  flex: none;
+  padding: 2px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--chart-track);
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+
+.claim-status.ingediend {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.claim-status.terugbetaald {
+  background: var(--accent-soft);
+  color: var(--positive);
 }

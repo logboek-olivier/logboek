@@ -55,6 +55,11 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'weekreviews.json.enc': [{ id: 'week:2026-W43', week: '2026-W43', start: '2026-10-19', rating: 8, lesson: 'Nepzin over de week', spent: { amount: 85, currency: 'EUR' }, updatedAt: T, deletedAt: null }],
   // Vaste lasten (ronde 3): een bedrag dat vanaf een maand verandert.
   'fixedcosts.json.enc': [{ id: 'upg-fixed-1', name: 'Nepabonnement', currency: 'EUR', amounts: [{ from: '2026-09', amount: 20 }, { from: '2026-11', amount: 25 }], updatedAt: T, deletedAt: null }],
+  // Declaraties (ronde 3): een ingediende declaratie zonder bonnetje en een terugbetaalde.
+  'claims.json.enc': [
+    { id: 'upg-claim-1', date: '2026-10-20', tripId: 'upg-trip-1', note: 'Nepbonnetje', amount: 18.4, currency: 'EUR', status: 'ingediend', submittedAt: '2026-10-21', updatedAt: T, deletedAt: null },
+    { id: 'upg-claim-2', date: '2026-10-19', tripId: 'upg-trip-1', amount: 9, currency: 'EUR', status: 'terugbetaald', submittedAt: '2026-10-19', repaid: { date: '2026-10-22', amount: 9, currency: 'EUR' }, updatedAt: T, deletedAt: null },
+  ],
   // Doelen en skills (ronde 2): een zelfvullend doel, een meetdoel, een skill met mijlpalen en twee sessies.
   'goals.json.enc': [
     { id: 'upg-goal-nm', title: '', kind: 'auto', metric: 'trips', organisation: 'sailing-virgins', year: 2026, target: 12, doneAt: null, updatedAt: T, deletedAt: null },

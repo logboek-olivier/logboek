@@ -9,7 +9,7 @@ test('Toevoegen: tabs Dag · Fooi · Kosten, opent op Dag; zonder boot geen blok
   await mockGithub(page)
   await createNewLogbook(page)
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
-  await expect(page.getByRole('tab')).toHaveText(['Trip', 'Dag', 'Inkomsten', 'Uitgave', 'Skill'])
+  await expect(page.getByRole('tab')).toHaveText(['Trip', 'Dag', 'Inkomsten', 'Uitgave', 'Declaratie', 'Skill'])
   await expect(page.getByRole('tab', { name: 'Dag' })).toHaveAttribute('aria-selected', 'true')
   for (const label of ['Datum', 'Van', 'Naar', 'Zeemijlen', 'Nachturen', 'Wind (bft)', 'Boot', 'Notitie']) {
     await expect(page.getByLabel(label, { exact: true })).toBeVisible()

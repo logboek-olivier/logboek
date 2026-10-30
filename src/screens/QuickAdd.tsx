@@ -1,4 +1,4 @@
-import { CalendarPlus, Coins, MapPin, Receipt, Sailboat, Zap } from 'lucide-react'
+import { CalendarPlus, Coins, MapPin, Receipt, ReceiptText, Sailboat, Zap } from 'lucide-react'
 import { TripForm } from '../components/QuickTrip'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
@@ -7,6 +7,8 @@ import { SessionForm, SkillSheet } from '../components/GoalSheets'
 import { MapSheet } from '../components/MapSheet'
 import { TipFromPicker } from '../components/TipFromPicker'
 import { TipViaPicker } from '../components/TipViaPicker'
+import { ClaimForm } from '../components/Claims'
+import { useIsDemo } from '../components/DemoBar'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { formatNm, formatNumber } from '../format'
 import { defaultFromPlace, findPlace, knownPlaceNames, mergeCandidates, nearestKnownPlace, placeCountry, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
@@ -73,6 +75,9 @@ export interface AddInit {
 
 export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify; tab?: AddTab }) {
   const [tab, setTab] = useState<AddTab>(initialTab)
+  // De demo heeft geen kluis: daar geen declaraties (het bonnetje staat in de kluis).
+  const demo = useIsDemo()
+  const tabs: AddTab[] = demo ? ['trip', 'dag', 'inkomsten', 'uitgave', 'skill'] : ['trip', 'dag', 'inkomsten', 'uitgave', 'declaratie', 'skill']
   const choose = (next: AddTab) => setTab(next)
   return (
     <section className="stack">
@@ -80,7 +85,7 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
         <h1>{t('nav.add')}</h1>
       </header>
       <div className="segments add-tabs" role="tablist">
-        {(['trip', 'dag', 'inkomsten', 'uitgave', 'skill'] as AddTab[]).map((id) => (
+        {tabs.map((id) => (
           <button
             key={id}
             role="tab"
@@ -88,8 +93,8 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
             className={`segment${tab === id ? ' active' : ''}`}
             onClick={() => choose(id)}
           >
-            <Icon icon={id === 'trip' ? CalendarPlus : id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : id === 'skill' ? Zap : Sailboat} />
-            {t(id === 'trip' ? 'quick.tabTrip' : id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : id === 'skill' ? 'quick.tabSkill' : 'quick.tabDay')}
+            <Icon icon={id === 'trip' ? CalendarPlus : id === 'inkomsten' ? Coins : id === 'uitgave' ? Receipt : id === 'declaratie' ? ReceiptText : id === 'skill' ? Zap : Sailboat} />
+            {t(id === 'trip' ? 'quick.tabTrip' : id === 'inkomsten' ? 'quick.tabIncome' : id === 'uitgave' ? 'quick.tabExpense' : id === 'declaratie' ? 'quick.tabClaim' : id === 'skill' ? 'quick.tabSkill' : 'quick.tabDay')}
           </button>
         ))}
       </div>
@@ -98,6 +103,7 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
       {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}
       {tab === 'skill' && <SkillTab store={store} onDone={onDone} notify={notify} />}
+      {tab === 'declaratie' && !demo && <ClaimForm store={store} onDone={onDone} />}
     </section>
   )
 }

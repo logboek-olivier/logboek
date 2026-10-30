@@ -27,7 +27,7 @@ export function categoryLabel(category: DocumentCategory): string {
   return t(`vault.category.${category}` as MessageKey)
 }
 
-function fileError(error: unknown): string {
+export function fileError(error: unknown): string {
   if (error instanceof DocumentTooLargeError || error instanceof RangeError) return t('vault.tooLarge')
   if (error instanceof UnsupportedFileError) return t('vault.unsupported')
   if (error instanceof DocumentUnavailableError) return t('vault.notYetUploaded')

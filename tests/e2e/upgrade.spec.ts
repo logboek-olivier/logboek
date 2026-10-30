@@ -314,6 +314,16 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('fixedcosts.json.enc'), { timeout: 20_000 }).toBeGreaterThan(fixedPuts)
     await expectSynced(page)
+    // Declaraties (claims.json.enc, nieuw in ronde 3): een declaratie zonder bonnetje.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    const claimPuts = puts('claims.json.enc')
+    await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
+    await page.getByRole('tab', { name: L('quick.tabClaim') }).click()
+    await page.getByLabel(L('claims.note')).fill('Nepdeclaratie upgrade')
+    await page.getByLabel(L('claims.amount')).fill('12')
+    await page.getByRole('button', { name: L('common.save') }).click()
+    await expect.poll(() => puts('claims.json.enc'), { timeout: 20_000 }).toBeGreaterThan(claimPuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
@@ -387,6 +397,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(balances).toEqual(expect.arrayContaining([expect.objectContaining({ accountId: bank!.id, amount: 321, source: 'handmatig', deletedAt: null })]))
     // De vaste last staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende); de soort
     // van een uitgave, de schatting bij de weekafsluiting en de standaardbedragen komen ongeschonden over.
+    const claims = await decryptRecords(key, 'claims.json.enc', Uint8Array.from(Buffer.from(github.files.get('claims.json.enc')!.content, 'base64')))
+    expect(claims).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'Nepdeclaratie upgrade', amount: 12, status: 'open', deletedAt: null })]))
     const fixed = await decryptRecords(key, 'fixedcosts.json.enc', Uint8Array.from(Buffer.from(github.files.get('fixedcosts.json.enc')!.content, 'base64')))
     expect(fixed).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nephuur upgrade', amounts: [expect.objectContaining({ amount: 500 })], deletedAt: null })]))
     expect(transactions.find((tx) => tx.id === 'upg-tx-kosten')).toMatchObject({ category: 'eten' })
