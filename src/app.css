@@ -4350,3 +4350,90 @@ textarea.note {
 .storage-evidence li + li {
   margin-top: 2px;
 }
+
+/* ---------- Geldpad: salaris als bolletje (grijs verwacht, oranje te ontvangen, groen ontvangen) ---------- */
+
+.salary-dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  vertical-align: middle;
+}
+
+.salary-dot.te-ontvangen {
+  background: var(--warning);
+}
+
+.salary-dot.ontvangen {
+  background: var(--positive);
+}
+
+.salary-dot.geen {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+}
+
+.cal-bar .salary-dot {
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  vertical-align: 0;
+  box-shadow: 0 0 0 1px var(--cal-bar-text);
+}
+
+.season-item .salary-dot {
+  margin-right: var(--s-1);
+}
+
+.plain-list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plain-list .row {
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.money-path h3 {
+  margin: var(--s-3) 0 0;
+  font-size: var(--fs-md);
+}
+
+.salary-org {
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.salary-line.row {
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.month-salaries .small-heading {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.month-salary {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--s-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.payout-trip .grow {
+  min-width: 0;
+}

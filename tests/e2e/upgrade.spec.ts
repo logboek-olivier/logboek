@@ -229,6 +229,18 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await salaryQuestion.getByRole('button', { name: L('salary.yes'), exact: true }).click()
     await expect.poll(() => puts('trips.json.enc'), { timeout: 20_000 }).toBeGreaterThan(salaryPuts)
     await expectSynced(page)
+    // Geldpad (nieuwe velden in transacties en instellingen): de contante fooien in euro (het voorbeeld en de nieuwe fooi
+    // van daarnet) storten; de al gestorte dollars blijven zoals ze waren.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await openMore(page, L('nav.money'), L('nav.more'))
+    const cashRow = page.locator('.cash-row', { hasText: '55' })
+    await expect(cashRow).toBeVisible()
+    await cashRow.getByRole('button', { name: L('cash.deposit') }).click()
+    const cashPuts = puts('transactions.json.enc')
+    await page.getByRole('dialog').getByRole('button', { name: L('cash.depositSave') }).click()
+    await expect.poll(() => puts('transactions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(cashPuts)
+    await expectSynced(page)
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     // Weekafsluiting (weekreviews.json.enc, nieuw in ronde 2): de week van vandaag afsluiten via de dagkaart van de
     // zondag in de agenda; het nieuwe bestand ontstaat bij de sync.
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
@@ -310,8 +322,24 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
         expect.objectContaining({ amount: 25, tripId: 'upg-trip-1', tipFrom: { kind: 'personen', participantIds: ['upg-p-1'] } }),
       ]),
     )
+    // Geldpad: de contante euro's gestort (ook de nieuwe fooi, contant zoals laatst gekozen), de dollars en de bank en het
+    // deel van de uitbetaling ongewijzigd.
+    const cashed = (id: string) => transactions.find((tx) => tx.id === id) as { tipVia?: string; depositedAt?: string; payoutId?: string } | undefined
+    expect(cashed('upg-tx-3')).toMatchObject({ tipVia: 'contant', depositedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) })
+    expect(cashed('upg-tx-4')).toMatchObject({ tipVia: 'contant', depositedAt: '2026-10-23' })
+    expect(cashed('upg-tx-5')).toMatchObject({ tipVia: 'bank' })
+    expect(cashed('upg-tx-5')!.depositedAt).toBeUndefined()
+    expect(cashed('upg-tx-payout')).toMatchObject({ payoutId: 'upg-payout-1', deletedAt: null })
+    expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({ amount: 25, tipVia: 'contant', depositedAt: expect.any(String) })]))
     const settings = await decryptRecords(key, 'settings.json.enc', Uint8Array.from(Buffer.from(github.files.get('settings.json.enc')!.content, 'base64')))
-    expect(settings.find((s) => s.id === 'settings')).toMatchObject({ orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true } })
+    expect(settings.find((s) => s.id === 'settings')).toMatchObject({
+      orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 },
+      orgAnswered: ['upg-trip-0'],
+      salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } },
+      dailyReminder: { time: '19:30', workdaysOnly: true },
+      payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } },
+      lastTipVia: 'contant',
+    })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
     // Het salaris is ontvangen (eigen bedrag blijft), met het inkomen bij de trip.

@@ -18,9 +18,11 @@ import {
   INCOME_KIND_LIST,
   ROLES,
   TRANSACTION_SOURCES,
+  todayIso,
   type Currency,
   type Leg,
   type Role,
+  type TipVia,
   type Transaction,
   type TransactionKind,
   type TransactionSource,
@@ -32,6 +34,7 @@ import { NoteField } from './NoteField'
 import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
 import { TipFromPicker } from './TipFromPicker'
+import { TipViaPicker } from './TipViaPicker'
 import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { t } from '../i18n'
 
@@ -66,6 +69,8 @@ export function TransactionSheet({
   const [note, setNote] = useState(tx.note ?? '')
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
   const [tripId, setTripId] = useState(tx.tripId ?? '')
+  const [tipVia, setTipVia] = useState<TipVia | null>(tx.tipVia ?? null)
+  const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
   // Fooi: van wie, achteraf te wijzigen; een andere trip begint weer bij onbekend.
@@ -92,6 +97,8 @@ export function TransactionSheet({
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
         tripId: tripId || null,
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
+        tipVia: kind === 'fooi' ? tipVia : null,
+        depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? depositedAt : null,
       })
       onClose()
       notify(t('toast.saved'))
@@ -194,6 +201,13 @@ export function TransactionSheet({
               setTip({ tripId, draft: next })
             }}
           />
+        )}
+        {kind === 'fooi' && <TipViaPicker value={tipVia} onChange={setTipVia} allowUnknown />}
+        {kind === 'fooi' && tipVia === 'contant' && (
+          <label>
+            {t('tipVia.depositedAt')}
+            <input type="date" value={depositedAt} max={todayIso()} onChange={(e) => setDepositedAt(e.target.value)} />
+          </label>
         )}
         <label>
           {t('field.description')}

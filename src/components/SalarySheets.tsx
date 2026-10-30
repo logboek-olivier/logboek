@@ -5,8 +5,9 @@ import { t } from '../i18n'
 import { nameWithCounter } from '../model/counters'
 import { parseAmount } from '../model/money'
 import { askSalaryLater, defaultChanges, receiveSalary, salaryQuestions, saveSalaryDefaults } from '../model/salary'
-import { currentSettings } from '../model/settings'
-import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type SalaryDefault, type Trip } from '../model/types'
+import { asksPerTrip, payoutRule } from '../model/money-path'
+import { currentSettings, saveSettings } from '../model/settings'
+import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -19,6 +20,7 @@ import { organisationLabel } from '../i18n/labels'
 // einddatum. Vandaag toont geen bedragen; het werkelijke bedrag staat pas in het blad "Ander bedrag".
 
 type Row = { amount: string; currency: Currency }
+type PayoutRow = { kind: PayoutRule['kind']; day: string }
 
 /** Instellingen → Salaris per organisatie. Een gewijzigd bedrag vraagt eerst of het ook voor komende trips geldt. */
 export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; onClose: () => void; notify: Notify }) {
@@ -31,8 +33,26 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
     }
     return out
   })
+  // Uitbetaling per organisatie: na elke trip (standaard) of maandelijks rond dag N voor de trips van de vorige maand.
+  const [payouts, setPayouts] = useState<Record<Organisation, PayoutRow>>(() => {
+    const out = {} as Record<Organisation, PayoutRow>
+    for (const org of ORGANISATIONS) {
+      const rule = payoutRule(settings, org)
+      out[org] = { kind: rule.kind, day: rule.kind === 'maandelijks' ? String(rule.day) : '1' }
+    }
+    return out
+  })
   const [asking, setAsking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+
+  function nextPayouts(): Partial<Record<Organisation, PayoutRule>> {
+    const out: Partial<Record<Organisation, PayoutRule>> = {}
+    for (const org of ORGANISATIONS) {
+      const day = Math.round(Number(payouts[org].day))
+      if (payouts[org].kind === 'maandelijks') out[org] = { kind: 'maandelijks', day: Number.isFinite(day) ? Math.min(28, Math.max(1, day)) : 1 }
+    }
+    return out
+  }
 
   function next(): Partial<Record<Organisation, SalaryDefault>> {
     const out: Partial<Record<Organisation, SalaryDefault>> = {}
@@ -47,6 +67,7 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
     setBusy(true)
     try {
       await saveSalaryDefaults(store, next(), alsoStale, todayIso())
+      await saveSettings(store, { payouts: nextPayouts() })
       onClose()
       notify(t('salary.saved'))
     } finally {
@@ -79,27 +100,44 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
         <form className="stack" onSubmit={submit}>
           <p className="muted small">{t('salary.defaultsHint')}</p>
           {ORGANISATIONS.map((org) => (
-            <div key={org} className="row">
-              <label className="grow">
-                {organisationLabel(org)}
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={rows[org].amount}
-                  onChange={(e) => setRows({ ...rows, [org]: { ...rows[org], amount: e.target.value } })}
-                />
-              </label>
-              <label>
-                {t('field.currency')}
-                <select aria-label={`${t('field.currency')}: ${organisationLabel(org)}`} value={rows[org].currency} onChange={(e) => setRows({ ...rows, [org]: { ...rows[org], currency: e.target.value as Currency } })}>
-                  {CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div key={org} className="stack-sm salary-org">
+              <div className="row">
+                <label className="grow">
+                  {organisationLabel(org)}
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={rows[org].amount}
+                    onChange={(e) => setRows({ ...rows, [org]: { ...rows[org], amount: e.target.value } })}
+                  />
+                </label>
+                <label>
+                  {t('field.currency')}
+                  <select aria-label={`${t('field.currency')}: ${organisationLabel(org)}`} value={rows[org].currency} onChange={(e) => setRows({ ...rows, [org]: { ...rows[org], currency: e.target.value as Currency } })}>
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="row payout-rule">
+                <label className="grow">
+                  {t('payout.rule')}
+                  <select aria-label={`${t('payout.rule')}: ${organisationLabel(org)}`} value={payouts[org].kind} onChange={(e) => setPayouts({ ...payouts, [org]: { ...payouts[org], kind: e.target.value as PayoutRule['kind'] } })}>
+                    <option value="per-trip">{t('payout.perTrip')}</option>
+                    <option value="maandelijks">{t('payout.monthly')}</option>
+                  </select>
+                </label>
+                {payouts[org].kind === 'maandelijks' && (
+                  <label>
+                    {t('payout.day')}
+                    <input aria-label={`${t('payout.day')}: ${organisationLabel(org)}`} type="number" inputMode="numeric" min={1} max={28} value={payouts[org].day} onChange={(e) => setPayouts({ ...payouts, [org]: { ...payouts[org], day: e.target.value } })} />
+                  </label>
+                )}
+              </div>
             </div>
           ))}
           <button className="btn primary" type="submit" disabled={busy}>
@@ -122,9 +160,13 @@ export function salaryDefaultsLine(store: Store): string {
 export function SalaryQuestions({ store, notify }: { store: Store; notify: Notify }) {
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const counters = useCounters(store)
   const [other, setOther] = useState<Trip | null>(null)
-  const questions = salaryQuestions(trips, legs, todayIso()).slice(0, 3)
+  // Een organisatie die maandelijks uitbetaalt, krijgt één vraag per uitbetaling (PayoutQuestions), niet per trip.
+  const questions = salaryQuestions(trips, legs, todayIso())
+    .filter((x) => asksPerTrip(settings, x))
+    .slice(0, 3)
   if (questions.length === 0 && !other) return null
   return (
     <>

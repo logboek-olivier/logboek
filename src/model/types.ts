@@ -72,6 +72,15 @@ export interface SalaryDefault {
   currency: Currency
 }
 
+/**
+ * Hoe een organisatie uitbetaalt (Instellingen → Salaris per organisatie): na elke trip, of maandelijks rond dag N
+ * voor de trips van de vorige maand. Ontbreekt = na elke trip.
+ */
+export type PayoutRule = { kind: 'per-trip' } | { kind: 'maandelijks'; day: number }
+
+/** Hoe een fooi binnenkwam: contant (staat in Contant tot hij gestort is) of op de bank. Ontbreekt = onbekend. */
+export type TipVia = 'contant' | 'bank'
+
 export interface WeekReview {
   /** Reviewscore zoals de organisatie die geeft, bijvoorbeeld 9,4. */
   score?: number
@@ -186,6 +195,15 @@ export interface Transaction extends SyncRecord {
   note?: string
   /** Alleen bij een fooi: van wie. */
   tipFrom?: TipFrom
+  /** Alleen bij een fooi: contant of op de bank (ontbreekt = onbekend, ook bij oudere fooien). */
+  tipVia?: TipVia
+  /** Alleen bij een contante fooi: jjjj-mm-dd waarop hij gestort is (dan telt hij niet meer in Contant). */
+  depositedAt?: string
+  /**
+   * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
+   * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.
+   */
+  payoutId?: string
 }
 
 export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave' | 'skill'
@@ -218,6 +236,10 @@ export interface Settings extends SyncRecord {
   salaryDefaults?: Partial<Record<Organisation, SalaryDefault>>
   /** Dagelijkse herinnering in de eigen agenda (Instellingen → Herinnering): tijd (uu:mm) en alleen op werkdagen. */
   dailyReminder?: { time: string; workdaysOnly: boolean }
+  /** Uitbetaling per organisatie (na elke trip of maandelijks rond dag N); ontbreekt = na elke trip. */
+  payouts?: Partial<Record<Organisation, PayoutRule>>
+  /** Laatst gekozen: fooi contant of op de bank. */
+  lastTipVia?: TipVia
 }
 
 /** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */

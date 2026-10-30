@@ -8,6 +8,7 @@ import { Icon } from '../components/Icon'
 import { PeriodSheet, PlanningImportSheet } from '../components/PeriodSheets'
 import { ReminderSheet } from '../components/ReminderSheet'
 import { OverlapNotices } from '../components/TripSheets'
+import { MonthSalaries, SalaryDot } from '../components/MoneyPath'
 import { useCollection } from '../components/useCollection'
 import { WeekSheet } from '../components/WeekSheet'
 import { recordError } from '../errors'
@@ -18,6 +19,7 @@ import { buildIndex, dayInfo, monthIncome, monthOf, monthSummary, monthWeeks, sh
 import { getRates, subscribeRates } from '../model/rates'
 import { tripOverlaps } from '../model/trip-ops'
 import { closingFor, sundayOf } from '../model/week-close'
+import { salaryState, type SalaryState } from '../model/money-path'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import { todayIso, type Reminder, type Trip } from '../model/types'
@@ -58,6 +60,8 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
   const [viewTrip, setViewTrip] = useState<Trip | null>(null)
   const counters = useCounters(store)
+  // Het salaris per trip als bolletje in de balk (grijs verwacht, oranje te ontvangen, groen ontvangen).
+  const salaryStates = useMemo(() => new Map(trips.filter((x) => x.deletedAt === null).map((x) => [x.id, salaryState(x, legs, today)])), [trips, legs, today])
   const fileInput = useRef<HTMLInputElement>(null)
   const touch = useRef<{ x: number; y: number } | null>(null)
   const transactions = useCollection(store, 'transactions.json.enc')
@@ -173,7 +177,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           ))}
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} onDay={onDay} />
+          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} salaryStates={salaryStates} onDay={onDay} />
         ))}
       </div>
       <dl className={`agenda-summary${summary.onbeschikbaar > 0 ? ' six' : ''}`} aria-label={t('calendar.summaryTitle')}>
@@ -215,6 +219,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           </span>
         )}
       </div>
+      <MonthSalaries store={store} month={month} showAmounts={showAmounts} notify={notify} />
       <div className="agenda-actions">
         <button className={`btn small${marking ? ' active' : ''}`} aria-pressed={!!marking} onClick={() => setMarking(marking ? null : { start: null })}>
           <Icon icon={CalendarRange} />
@@ -289,7 +294,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   )
 }
 
-function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, counters, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; closedSundays: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; onDay: (date: string) => void }) {
+function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, counters, salaryStates, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; closedSundays: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; salaryStates: ReadonlyMap<string, SalaryState | null>; onDay: (date: string) => void }) {
   const bars = tripBars(index, week)
   return (
     <div className="cal-week">
@@ -316,6 +321,7 @@ function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, 
       })}
       {bars.map((bar) => (
         <span key={bar.view.trip.id} className={`cal-bar col-${bar.from + 1} span-${bar.to - bar.from + 1} lane-${Math.min(bar.lane, 2)}`} aria-hidden="true">
+          {(bar.starts || bar.from === 0) && salaryStates.get(bar.view.trip.id) && <SalaryDot state={salaryStates.get(bar.view.trip.id)!} />}
           {bar.starts || bar.from === 0 ? nameWithCounter(bar.view.trip, counters.get(bar.view.trip.id)) : ''}
         </span>
       ))}

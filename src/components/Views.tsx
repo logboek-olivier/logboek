@@ -107,6 +107,7 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
             [t('field.week'), trip && nameWithCounter(trip, counters.get(trip.id))],
             [t('field.source'), sourceLabel(current.source)],
             [t('tip.from'), current.kind === 'fooi' && tipFromText(current, trip)],
+            [t('tipVia.label'), current.kind === 'fooi' && current.tipVia && `${t(`tipVia.${current.tipVia}`)}${current.depositedAt ? ` · ${t('tipVia.deposited', { date: formatDate(current.depositedAt) })}` : ''}`],
             [t('view.received'), typeof current.receivedEur === 'number' && formatMoney(current.receivedEur, 'EUR')],
             [t('field.note'), current.note],
           ]}

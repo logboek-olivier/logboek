@@ -25,6 +25,7 @@ import { buildIndex, dayInfo } from '../model/calendar'
 import { nmInYear } from '../model/derive'
 import { DueList, useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
+import { PayoutQuestions } from '../components/MoneyPath'
 import { currentSettings, yearGoal } from '../model/settings'
 import { todayIso, type Reminder, type Trip } from '../model/types'
 import { daysUntil, useSession } from '../session'
@@ -193,6 +194,7 @@ export function Today({
         </div>
       )}
       <SalaryQuestions store={store} notify={notify} />
+      <PayoutQuestions store={store} notify={notify} />
       {gaps.length > 0 && (
         <div className="notice">
           <span>{t('gaps.card', { n: gaps.length })}</span>

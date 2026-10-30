@@ -6,6 +6,7 @@ import { NoteField } from '../components/NoteField'
 import { SessionForm, SkillSheet } from '../components/GoalSheets'
 import { MapSheet } from '../components/MapSheet'
 import { TipFromPicker } from '../components/TipFromPicker'
+import { TipViaPicker } from '../components/TipViaPicker'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { formatNm, formatNumber } from '../format'
 import { defaultFromPlace, findPlace, knownPlaceNames, mergeCandidates, nearestKnownPlace, placeCountry, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
@@ -33,6 +34,7 @@ import {
   type AddTab,
   type Currency,
   type Settings,
+  type TipVia,
   type Water,
   type Leg,
   type Role,
@@ -132,7 +134,7 @@ function useDefaults(store: Store) {
 async function saveTransaction(
   store: Store,
   tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>,
-  remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind'>>,
+  remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind' | 'lastTipVia'>>,
   tripId?: string,
 ) {
   const trip = tripId ? { id: tripId } : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), tx.date)
@@ -195,6 +197,8 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
   const [kind, setKind] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
+  // Fooi contant of op de bank (laatst gekozen); contant staat in Geld → Contant tot hij gestort is.
+  const [tipVia, setTipVia] = useState<TipVia>(settings.lastTipVia ?? 'contant')
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [date, setDate] = useState(todayIso())
@@ -216,7 +220,13 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
     setBusy(true)
     try {
       const tipFrom = people.length > 0 ? tipFromDraft(draft, people) : undefined
-      await saveTransaction(store, { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}) }, { lastIncomeKind: kind }, tripId || undefined)
+      const tip = kind === 'fooi' ? { tipVia } : {}
+      await saveTransaction(
+        store,
+        { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}), ...tip },
+        { lastIncomeKind: kind, ...(kind === 'fooi' ? { lastTipVia: tipVia } : {}) },
+        tripId || undefined,
+      )
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
       setBusy(false)
@@ -246,6 +256,7 @@ function IncomeForm({ store, onDone }: { store: Store; onDone: (message: string)
           </button>
         ))}
       </div>
+      {kind === 'fooi' && <TipViaPicker value={tipVia} onChange={(via) => via && setTipVia(via)} />}
       <TripField value={tripId} options={options} onChange={setTripId} required={options.length > 0} />
       {people.length > 0 && (
         <TipFromPicker
