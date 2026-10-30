@@ -1812,4 +1812,13 @@ export const en: Messages = {
   'claims.pdfReceipt': 'Receipt as PDF',
   'claims.receiptGone': 'The receipt is no longer in the vault.',
   'trip.part.claims': (p) => `${p.n} ${p.n === 1 ? 'claim' : 'claims'}`,
+  'weekMoney.title': 'Money this week (2 minutes)',
+  'weekMoney.hint': 'You can skip all of it: only what you fill in or tick is saved.',
+  'weekMoney.balances': 'Balance per account (today)',
+  'weekMoney.lastStand': (p) => `last ${p.amount} on ${p.date}`,
+  'weekMoney.received': 'Salary received',
+  'weekMoney.receivedHint': 'Ticking books the expected amount; a different amount via Money → Enter payment.',
+  'weekMoney.cash': 'Cash paid in',
+  'weekMoney.deposited': (p) => `${p.amount} cash paid in`,
+  'weekMoney.skipped': (p) => `Week closed; salary from ${p.orgs} not entered (no rate): enter the payment under Money.`,
 }

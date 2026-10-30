@@ -1,11 +1,19 @@
-import { CalendarCheck, Pencil, Trash2 } from 'lucide-react'
+import { CalendarCheck, ChevronDown, ChevronUp, Pencil, Trash2, Wallet } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { formatDateRange, formatHours, formatNm } from '../format'
-import { t } from '../i18n'
+import { formatDate, formatDateRange, formatHours, formatMoney, formatNm } from '../format'
+import { getLang, t } from '../i18n'
+import { balanceOn, liveAccounts, parseStand } from '../model/accounts'
+import { nameWithCounter } from '../model/counters'
+import { cashOnHand, hasSalaryIncome, openSalaryTrips } from '../model/money-path'
+import { getRates } from '../model/rates'
+import { applyMoneyStep, isEmptyStep, type MoneyStep } from '../model/week-money'
+import { useIsDemo } from './DemoBar'
+import { organisationLabel } from '../i18n/labels'
+import { useCounters } from './useCounters'
 import type { CalendarIndex } from '../model/calendar'
 import { deleteWeekClosing } from '../model/edit'
 import { canClose, closingFor, LESSON_MAX, saveClosing, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
-import { CURRENCIES, type Currency, type WeekClosing } from '../model/types'
+import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type WeekClosing } from '../model/types'
 import { amountInput, parseAmount } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { isoWeek } from '../model/weeks'
@@ -37,8 +45,111 @@ export function SummaryLines({ summary }: { summary: WeekSummary }) {
   )
 }
 
-function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: string; initial: WeekClosing | null; onSaved: () => void }) {
+/**
+ * De geldstap (wekelijks 2 minuten), ingeklapt: pas na een tik bedragen in beeld (de kaart staat op Vandaag). De stand
+ * per rekening, ontvangen uitbetalingen en gestorte contanten afvinken; alles overslaan mag.
+ */
+function useMoneyStep(store: Store) {
+  const demo = useIsDemo()
+  const accounts = liveAccounts(useCollection(store, 'accounts.json.enc')).filter((a) => !a.closedAt)
+  const balances = useCollection(store, 'balances.json.enc')
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
+  const counters = useCounters(store)
+  const [open, setOpen] = useState(false)
+  const [stands, setStands] = useState<Record<string, string>>({})
+  const [received, setReceived] = useState<ReadonlySet<string>>(new Set())
+  const [deposited, setDeposited] = useState<ReadonlySet<Currency>>(new Set())
+  const today = todayIso()
+  const openTrips = ORGANISATIONS.flatMap((org) => openSalaryTrips(trips, legs, org, today)).filter((x) => !hasSalaryIncome(x, transactions))
+  const cash = Object.entries(cashOnHand(transactions)) as [Currency, number][]
+  const lang = getLang()
+  const parsedStands = accounts.map((a) => ({ account: a, text: stands[a.id] ?? '', value: (stands[a.id] ?? '').trim() === '' ? null : parseStand(stands[a.id]!, lang) }))
+  const invalid = parsedStands.some((s) => s.text.trim() !== '' && s.value === null)
+  const step: MoneyStep = {
+    balances: parsedStands.filter((s) => s.value !== null).map((s) => ({ account: s.account, amount: s.value! })),
+    received: openTrips.filter((x) => received.has(x.id)),
+    deposited: cash.map(([c]) => c).filter((c) => deposited.has(c)),
+  }
+  const available = !demo && (accounts.length > 0 || openTrips.length > 0 || cash.length > 0)
+  const view = !available ? null : (
+    <div className="money-step stack-sm">
+      <button type="button" className="btn quiet disclosure" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon icon={Wallet} />
+        <span className="grow">{t('weekMoney.title')}</span>
+        <Icon icon={open ? ChevronUp : ChevronDown} />
+      </button>
+      {open && (
+        <div className="stack-sm">
+          <p className="muted small">{t('weekMoney.hint')}</p>
+          {accounts.length > 0 && (
+            <>
+              <h3>{t('weekMoney.balances')}</h3>
+              {parsedStands.map(({ account, text }) => {
+                const last = balanceOn(balances, account.id, today)
+                return (
+                  <label key={account.id}>
+                    {account.name}
+                    {last && <span className="muted small"> · {t('weekMoney.lastStand', { amount: formatMoney(last.amount, account.currency), date: formatDate(last.date) })}</span>}
+                    <input type="text" inputMode="decimal" autoComplete="off" placeholder={account.currency} value={text} onChange={(e) => setStands({ ...stands, [account.id]: e.target.value })} />
+                  </label>
+                )
+              })}
+            </>
+          )}
+          {openTrips.length > 0 && (
+            <>
+              <h3>{t('weekMoney.received')}</h3>
+              {openTrips.map((x) => (
+                <label key={x.id} className="check">
+                  <input
+                    type="checkbox"
+                    checked={received.has(x.id)}
+                    onChange={() => {
+                      const next = new Set(received)
+                      if (next.has(x.id)) next.delete(x.id)
+                      else next.add(x.id)
+                      setReceived(next)
+                    }}
+                  />
+                  <span className="grow">{nameWithCounter(x, counters.get(x.id))}</span>
+                  <span className="num small">{formatMoney(x.salary!.amount, x.salary!.currency)}</span>
+                </label>
+              ))}
+              <p className="muted small">{t('weekMoney.receivedHint')}</p>
+            </>
+          )}
+          {cash.length > 0 && (
+            <>
+              <h3>{t('weekMoney.cash')}</h3>
+              {cash.map(([c, v]) => (
+                <label key={c} className="check">
+                  <input
+                    type="checkbox"
+                    checked={deposited.has(c)}
+                    onChange={() => {
+                      const next = new Set(deposited)
+                      if (next.has(c)) next.delete(c)
+                      else next.add(c)
+                      setDeposited(next)
+                    }}
+                  />
+                  <span className="grow">{t('weekMoney.deposited', { amount: formatMoney(v, c) })}</span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+  return { view, step, invalid }
+}
+
+function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: string; initial: WeekClosing | null; onSaved: (undo?: () => Promise<void>, message?: string) => void }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const money = useMoneyStep(store)
   const [rating, setRating] = useState<number | null>(initial?.rating ?? null)
   const [lesson, setLesson] = useState(initial?.lesson ?? '')
   // Eén getal: ongeveer los uitgegeven deze week (telt als variabele kosten van die week). Leeg = niet ingevuld.
@@ -49,8 +160,15 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
 
   async function save(e: FormEvent) {
     e.preventDefault()
-    if (spentInvalid) return
-    await saveClosing(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null })
+    if (spentInvalid || money.invalid) return
+    if (rating !== null || lesson.trim() !== '' || spentValue !== null || initial) await saveClosing(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null })
+    // De geldstap: alleen wat is ingevuld of aangevinkt; één ongedaan maken voor alles daarvan.
+    if (!isEmptyStep(money.step)) {
+      const { undo, skipped } = await applyMoneyStep(store, money.step, todayIso(), getRates())
+      // Zonder koers is een uitbetaling in gemengde valuta niet op te tellen: dan zeggen we dat, zonder te boeken.
+      onSaved(undo, skipped.length > 0 ? t('weekMoney.skipped', { orgs: skipped.map((o) => organisationLabel(o)).join(', ') }) : undefined)
+      return
+    }
     onSaved()
   }
 
@@ -86,7 +204,8 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
           </select>
         </label>
       </div>
-      <button type="submit" className="btn primary" disabled={spentInvalid || (rating === null && lesson.trim() === '' && spentValue === null)}>
+      {money.view}
+      <button type="submit" className="btn primary" disabled={spentInvalid || money.invalid || (rating === null && lesson.trim() === '' && spentValue === null && isEmptyStep(money.step))}>
         <Icon icon={CalendarCheck} />
         {t('weekClose.save')}
       </button>
@@ -109,7 +228,7 @@ export function WeekClose({ store, index, today, notify }: { store: Store; index
       </h2>
       <p className="muted small">{formatDateRange(summary.start, summary.end)}</p>
       <SummaryLines summary={summary} />
-      <WeekCloseForm key={date} store={store} date={date} initial={null} onSaved={() => notify(t('weekClose.saved'))} />
+      <WeekCloseForm key={date} store={store} date={date} initial={null} onSaved={(undo, message) => notify(message ?? t('weekClose.saved'), undo)} />
     </div>
   )
 }
@@ -137,9 +256,9 @@ function WeekClosingSheet({ store, index, date, today, notify, onClose }: { stor
           store={store}
           date={date}
           initial={closing}
-          onSaved={() => {
+          onSaved={(undo, message) => {
             onClose()
-            notify(t('weekClose.saved'))
+            notify(message ?? t('weekClose.saved'), undo)
           }}
         />
         {closing && (

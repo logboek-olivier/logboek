@@ -4602,3 +4602,10 @@ textarea.note {
   background: var(--accent-soft);
   color: var(--positive);
 }
+
+/* ---------- Geldstap van de weekafsluiting ---------- */
+
+.money-step h3 {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-md);
+}
