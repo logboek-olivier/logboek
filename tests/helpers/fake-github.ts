@@ -33,6 +33,8 @@ interface StoredFile {
 const REPO = 'logboek-olivier/logboek-data'
 
 export class FakeGithub {
+  /** De data-repo die deze nagebootste GitHub kent (een tweede gebruiker heeft een eigen repo). */
+  repo = REPO
   readonly files = new Map<string, StoredFile>()
   /** sha → base64, voor de blob-API. */
   readonly blobs = new Map<string, string>()
@@ -105,10 +107,10 @@ export class FakeGithub {
     const headers = init.headers as Record<string, string>
     if (!headers.Authorization?.startsWith('Bearer ')) return json(401, { message: 'Requires authentication' })
 
-    const prefix = `https://api.github.com/repos/${REPO}`
+    const prefix = `https://api.github.com/repos/${this.repo}`
     if (!url.startsWith(prefix)) return json(404, { message: 'Not Found' })
     const rest = url.slice(prefix.length)
-    if (rest === '') return json(200, { full_name: REPO }, this.forceHeaders)
+    if (rest === '') return json(200, { full_name: this.repo }, this.forceHeaders)
 
     const blob = /^\/git\/blobs\/(.+)$/.exec(rest)
     if (blob && method === 'GET') {

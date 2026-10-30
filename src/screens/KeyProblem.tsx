@@ -5,7 +5,7 @@ import type { CollectionPath } from '../model/types'
 import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import type { RepairReport } from '../repair'
 import { describeError, SetupError, useSession } from '../session'
-import { AuthError } from '../storage/github'
+import { AuthError, DATA_REPO } from '../storage/github'
 import { ErrorLine, Screen } from './Setup'
 
 // Sleutel past niet bij het logboek (fase 'mismatch'), of gegevens die niet met de sleutel uit meta.json.enc te lezen
@@ -90,6 +90,7 @@ function RestoreMeta() {
   const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
   const [secret, setSecret] = useState('')
   const [token, setToken] = useState('')
+  const [repo, setRepo] = useState('')
   const [tokenNeeded, setTokenNeeded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,7 +101,7 @@ function RestoreMeta() {
     setBusy(true)
     setError(null)
     try {
-      await session.restoreRemoteMeta(mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret }, tokenNeeded ? token : undefined)
+      await session.restoreRemoteMeta(mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret }, tokenNeeded ? token : undefined, tokenNeeded && repo.trim() ? repo : undefined)
     } catch (err) {
       // De token op dit apparaat ontbreekt of is onleesbaar: alleen Olivier kan een nieuwe geven.
       if ((err instanceof SetupError && err.key === 'error.tokenRequired') || err instanceof AuthError) setTokenNeeded(true)
@@ -129,6 +130,12 @@ function RestoreMeta() {
           {t('token.label')}
           <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" />
           <span className="muted small">{t('repair.tokenHint')}</span>
+        </label>
+      )}
+      {tokenNeeded && (
+        <label>
+          {t('token.repo')}
+          <input type="text" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={repo} placeholder={DATA_REPO} onChange={(e) => setRepo(e.target.value)} />
         </label>
       )}
       <ErrorLine error={error} />
@@ -191,6 +198,7 @@ export function Repair({ report, needsSecret }: { report: RepairReport | null; n
   const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
   const [secret, setSecret] = useState('')
   const [token, setToken] = useState('')
+  const [repo, setRepo] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const tokenNeeded = report?.tokenNeeded ?? false
@@ -204,6 +212,7 @@ export function Repair({ report, needsSecret }: { report: RepairReport | null; n
       await session.repair({
         secret: needsSecret ? (mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret }) : undefined,
         token: tokenNeeded ? token : undefined,
+        ...(tokenNeeded && repo.trim() ? { repo } : {}),
       })
     } catch (err) {
       setError(describeError(err))
@@ -259,6 +268,12 @@ export function Repair({ report, needsSecret }: { report: RepairReport | null; n
             {t('token.label')}
             <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" />
             <span className="muted small">{t('repair.tokenHint')}</span>
+          </label>
+        )}
+        {tokenNeeded && (
+          <label>
+            {t('token.repo')}
+            <input type="text" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={repo} placeholder={DATA_REPO} onChange={(e) => setRepo(e.target.value)} />
           </label>
         )}
         <ErrorLine error={error} />

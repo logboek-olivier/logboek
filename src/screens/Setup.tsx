@@ -7,6 +7,7 @@ import { RECOVERY_WORD_COUNT } from '../crypto/recovery'
 import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } from '../session'
 import { t } from '../i18n'
 import { useBack } from '../back'
+import { DATA_REPO, isRepoName } from '../storage/github'
 
 // Eerste keer op een apparaat: nieuw logboek of bestaand logboek koppelen.
 
@@ -14,6 +15,8 @@ interface TokenInfo {
   token: string
   /** Vervaldatum jjjj-mm-dd, of null als onbekend (klassieke token zonder einddatum). */
   expiresAt: string | null
+  /** De data-repo ("eigenaar/naam"). */
+  repo: string
 }
 
 type Step =
@@ -65,12 +68,13 @@ export function Setup() {
   }
 
   if (step.kind === 'token') {
-    const check = (token: string) =>
-      step.mode === 'new' ? session.checkEmptyRepo(token) : session.checkToken(token)
+    const check = (token: string, repo: string) =>
+      step.mode === 'new' ? session.checkEmptyRepo(token, repo) : session.checkToken(token, repo)
     return (
       <Screen title={step.mode === 'new' ? t('setup.new') : t('setup.linkTitle')} onBack={() => setStep({ kind: 'choose' })}>
         <TokenForm
           check={check}
+          withRepo
           onDone={(token) => setStep(step.mode === 'new' ? { kind: 'passphrase', token } : { kind: 'secret', token })}
         />
       </Screen>
@@ -124,7 +128,7 @@ export function Setup() {
           error={error}
           positions={step.positions}
           words={step.vault.recoveryWords}
-          onSubmit={() => run(() => session.finishNewVault(step.token.token, step.token.expiresAt, step.vault))}
+          onSubmit={() => run(() => session.finishNewVault(step.token.token, step.token.expiresAt, step.vault, step.token.repo))}
         />
       </Screen>
     )
@@ -136,7 +140,7 @@ export function Setup() {
         busy={busy}
         error={error}
         submitLabel={t('setup.linkButton')}
-        onSubmit={(secret) => run(() => session.link(step.token.token, step.token.expiresAt, secret))}
+        onSubmit={(secret) => run(() => session.link(step.token.token, step.token.expiresAt, secret, step.token.repo))}
       />
     </Screen>
   )
@@ -207,14 +211,18 @@ export function TokenForm({
   onDone,
   submitLabel = t('common.next'),
   disabled = false,
+  withRepo = false,
 }: {
-  check: (token: string) => Promise<{ expiresAt: string | null }>
+  check: (token: string, repo: string) => Promise<{ expiresAt: string | null }>
   onDone: (token: TokenInfo) => void
   submitLabel?: string
   /** Bijvoorbeeld zolang de aanroeper nog bezig is met opslaan; voorkomt dubbel tikken. */
   disabled?: boolean
+  /** De eerste keer: ook de data-repo ("eigenaar/naam"), standaard die van Olivier. */
+  withRepo?: boolean
 }) {
   const [token, setToken] = useState('')
+  const [repo, setRepo] = useState(DATA_REPO)
   const [expiresAt, setExpiresAt] = useState('')
   const [checked, setChecked] = useState(false)
   const [fromHeader, setFromHeader] = useState(false)
@@ -225,15 +233,19 @@ export function TokenForm({
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (token.trim().length === 0 || blocked) return
+    if (withRepo && !isRepoName(repo)) {
+      setError(t('error.repoName'))
+      return
+    }
     if (checked) {
       // De waarde in het veld is leidend, ook als Olivier hem bewust leegmaakt.
-      onDone({ token: token.trim(), expiresAt: expiresAt || null })
+      onDone({ token: token.trim(), expiresAt: expiresAt || null, repo: repo.trim() })
       return
     }
     setBusy(true)
     setError(null)
     try {
-      const result = await check(token)
+      const result = await check(token, repo.trim())
       setExpiresAt(result.expiresAt ?? '')
       setFromHeader(result.expiresAt !== null)
       setChecked(true)
@@ -263,6 +275,24 @@ export function TokenForm({
           required
         />
       </label>
+      {withRepo && (
+        <label>
+          {t('token.repo')}
+          <input
+            type="text"
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={repo}
+            onChange={(e) => {
+              setRepo(e.target.value)
+              setChecked(false)
+            }}
+          />
+          <span className="muted small">{t('token.repoHint')}</span>
+        </label>
+      )}
       {!checked && <p className="muted">{t('token.hint')}</p>}
       {checked && (
         <>

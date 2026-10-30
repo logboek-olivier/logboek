@@ -21,12 +21,12 @@ import { deriveKekFromPrf, evaluateFingerprint, fingerprintAvailable, registerFi
 import { deleteFingerprint, FINGERPRINT_AAD, loadFingerprint, saveFingerprint } from './storage/fingerprint'
 import { recordError } from './errors'
 import { t, type MessageKey } from './i18n'
-import { AuthError, ConflictError, GithubClient, GithubError, NetworkError } from './storage/github'
+import { AuthError, ConflictError, DATA_REPO, GithubClient, GithubError, NetworkError } from './storage/github'
 import { clearAll, deleteSessionKey, getObject, getSessionKey, openLogboekDb, putObjectIfVault, putSessionKeyIfVault, type Db } from './storage/idb'
 import { clearMarker, covers, diagnose, diagnoseLocal, executeRepair, localReport, readMarker, writeMarker, type RepairReport } from './repair'
 import { NewerSchemaError } from './model/schema'
 import { KeyMismatchError, Store } from './storage/store'
-import { loadToken, storeToken, type StoredToken } from './storage/token'
+import { loadToken, repoOf, storeToken, type StoredToken } from './storage/token'
 import { decryptRecords } from './storage/sync'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 
@@ -273,8 +273,8 @@ export class Session {
    * Controleert een nieuwe token (toegang tot logboek-data) en geeft de vervaldatum uit de header
    * `github-authentication-token-expiration` als de browser die mag lezen; anders null.
    */
-  async checkToken(token: string): Promise<{ expiresAt: string | null }> {
-    return new GithubClient(token.trim()).checkAccess()
+  async checkToken(token: string, repo: string = this.unlockedClient?.repo ?? DATA_REPO): Promise<{ expiresAt: string | null }> {
+    return new GithubClient(token.trim(), undefined, repo).checkAccess()
   }
 
   /** Lopende vervanging; een tweede aanroep krijgt dezelfde promise, zodat er nooit twee Stores ontstaan. */
@@ -291,13 +291,14 @@ export class Session {
   /** `expiresAt` komt uit het formulier en is leidend, ook als het leeg is; de header is alleen voorvulling. */
   private async doReplaceToken(token: string, expiresAt: string | null): Promise<void> {
     const db = this.requireDb()
-    const { masterKey, store: previous } = this.requireUnlocked()
+    const { masterKey, store: previous, client: current } = this.requireUnlocked()
     const generation = this.generation
-    const client = new GithubClient(token.trim())
+    // Een nieuwe token voor dezelfde data-repo.
+    const client = new GithubClient(token.trim(), undefined, current.repo)
     await client.checkAccess()
     this.assertSameSession(generation)
     await this.assertLocalVault(generation, masterKey)
-    await storeToken(db, masterKey, token.trim(), expiresAt)
+    await storeToken(db, masterKey, token.trim(), expiresAt, current.repo)
     this.tokenExpiresAt = expiresAt
     this.assertSameSession(generation)
     // De Store houdt de oude client; een nieuwe Store openen zorgt dat sync de nieuwe token gebruikt.
@@ -372,8 +373,8 @@ export class Session {
    * Nieuw logboek, stap 1: token controleren en nagaan dat logboek-data geen logboek bevat.
    * Een repo zonder commits (404/409) of met alleen een README is leeg genoeg.
    */
-  async checkEmptyRepo(token: string): Promise<{ expiresAt: string | null }> {
-    const client = new GithubClient(token.trim())
+  async checkEmptyRepo(token: string, repo: string = DATA_REPO): Promise<{ expiresAt: string | null }> {
+    const client = new GithubClient(token.trim(), undefined, repo)
     const access = await client.checkAccess()
     if ((await client.getFile(META_PATH)) !== null) {
       throw new SetupError('error.repoHasLogbook')
@@ -392,9 +393,9 @@ export class Session {
   }
 
   /** Nieuw logboek, stap 3: meta.json.enc aanmaken, token opslaan, ontgrendeld verder. */
-  async finishNewVault(token: string, expiresAt: string | null, vault: PreparedVault): Promise<void> {
+  async finishNewVault(token: string, expiresAt: string | null, vault: PreparedVault, repo: string = DATA_REPO): Promise<void> {
     const db = this.requireDb()
-    const client = new GithubClient(token.trim())
+    const client = new GithubClient(token.trim(), undefined, repo)
     const bytes = new TextEncoder().encode(JSON.stringify(vault.meta))
     const sha = await client.putFile(META_PATH, bytes, null)
     // Andere tabbladen (ook een oudere versie die nog open staat) houden de sleutel van het vorige logboek: vergrendelen.
@@ -403,7 +404,7 @@ export class Session {
     this.dropKey()
     await clearAll(db)
     await Store.storeMeta(db, vault.meta, sha)
-    await this.open(client, { token: token.trim(), expiresAt }, vault.masterKey, 'new')
+    await this.open(client, { token: token.trim(), expiresAt, repo }, vault.masterKey, 'new')
   }
 
   /** Bestaand logboek koppelen: meta ophalen, ontgrendelen met wachtzin of herstelcode, alles ophalen. */
@@ -411,9 +412,10 @@ export class Session {
     token: string,
     expiresAt: string | null,
     secret: { passphrase: string } | { recoveryCode: string },
+    repo: string = DATA_REPO,
   ): Promise<void> {
     const db = this.requireDb()
-    const client = new GithubClient(token.trim())
+    const client = new GithubClient(token.trim(), undefined, repo)
     const file = await client.getFile(META_PATH)
     if (!file) throw new SetupError('error.repoEmpty')
     const meta = parseMeta(new TextDecoder().decode(file.content))
@@ -422,7 +424,7 @@ export class Session {
     this.dropKey()
     await clearAll(db)
     await Store.storeMeta(db, meta, file.sha)
-    await this.open(client, { token: token.trim(), expiresAt }, masterKey, 'link')
+    await this.open(client, { token: token.trim(), expiresAt, repo }, masterKey, 'link')
   }
 
   /** Ontgrendelen op een apparaat dat al gekoppeld is. */
@@ -457,7 +459,7 @@ export class Session {
         throw new SetupError('error.tokenMissing')
       }
       this.tokenExpiresAt = stored.expiresAt
-      client = new GithubClient(stored.token)
+      client = new GithubClient(stored.token, undefined, repoOf(stored))
       try {
         await this.open(client, null, masterKey, source, resumedLastUsed)
       } catch (error) {
@@ -665,11 +667,12 @@ export class Session {
    * niet met de sleutel uit meta.json.enc te lezen is en vervangt onleesbare bestanden op GitHub (zie src/repair.ts).
    * Blijkt er meer verloren te gaan dan getoond, dan eerst het nieuwe verslag tonen en opnieuw een tik vragen.
    */
-  repair(input: { secret?: { passphrase: string } | { recoveryCode: string }; token?: string }): Promise<void> {
+  /** `repo`: bij een ingetypte token de data-repo ("eigenaar/naam"); anders die van de opgeslagen token. */
+  repair(input: { secret?: { passphrase: string } | { recoveryCode: string }; token?: string; repo?: string }): Promise<void> {
     return this.busy(() => this.doRepair(input))
   }
 
-  private async doRepair(input: { secret?: { passphrase: string } | { recoveryCode: string }; token?: string }): Promise<void> {
+  private async doRepair(input: { secret?: { passphrase: string } | { recoveryCode: string }; token?: string; repo?: string }): Promise<void> {
     const db = this.requireDb()
     if (this.state.phase !== 'repair') throw new Error('Geen herstel')
     const pending = this.state.phase === 'repair' && !this.state.needsSecret ? this.heldRepairKey() : null
@@ -689,20 +692,20 @@ export class Session {
     let client = pending?.client ?? null
     let token = pending?.token ?? null
     const typed = input.token?.trim() ?? ''
+    const stored = await loadToken(db, masterKey).catch((error: unknown) => {
+      if (error instanceof DecryptError) return null
+      throw error
+    })
     if (typed) {
-      const { expiresAt } = await new GithubClient(typed).checkAccess()
-      token = { token: typed, expiresAt }
-      client = new GithubClient(typed)
+      // De repo die Olivier intypte, anders die van de opgeslagen token, anders de standaard.
+      const repo = input.repo?.trim() || repoOf(stored)
+      const { expiresAt } = await new GithubClient(typed, undefined, repo).checkAccess()
+      token = { token: typed, expiresAt, repo }
+      client = new GithubClient(typed, undefined, repo)
     }
-    if (!client) {
-      const stored = await loadToken(db, masterKey).catch((error: unknown) => {
-        if (error instanceof DecryptError) return null
-        throw error
-      })
-      if (stored) {
-        client = new GithubClient(stored.token)
-        this.tokenExpiresAt = stored.expiresAt
-      }
+    if (!client && stored) {
+      client = new GithubClient(stored.token, undefined, repoOf(stored))
+      this.tokenExpiresAt = stored.expiresAt
     }
     this.assertSameSession(generation)
     if (!client) {
@@ -765,11 +768,11 @@ export class Session {
    * ander logboek). Een meta van een ander logboek, of een meta die deze app niet kan lezen, wordt nooit overschreven.
    * `token`: alleen nodig als de token op dit apparaat ontbreekt of onleesbaar is.
    */
-  restoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }, token?: string): Promise<void> {
-    return this.busy(() => this.doRestoreRemoteMeta(secret, token))
+  restoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }, token?: string, repo?: string): Promise<void> {
+    return this.busy(() => this.doRestoreRemoteMeta(secret, token, repo))
   }
 
-  private async doRestoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }, typedToken?: string): Promise<void> {
+  private async doRestoreRemoteMeta(secret: { passphrase: string } | { recoveryCode: string }, typedToken?: string, typedRepo?: string): Promise<void> {
     if (this.state.phase !== 'mismatch' || !this.state.metaRestorable) throw new Error('Niet van toepassing')
     const db = this.requireDb()
     const generation = this.generation
@@ -779,20 +782,22 @@ export class Session {
     this.assertSameSession(generation)
     if ((await this.boundCheck(masterKey)) !== meta.check) throw this.keyMismatch(new KeyMismatchError('local'))
     let token: StoredToken | null
+    const stored = await loadToken(db, masterKey).catch((error: unknown) => {
+      if (error instanceof DecryptError) return null
+      throw error
+    })
     if (typedToken?.trim()) {
-      const client = new GithubClient(typedToken.trim())
+      const repo = typedRepo?.trim() || repoOf(stored)
+      const client = new GithubClient(typedToken.trim(), undefined, repo)
       const { expiresAt } = await client.checkAccess()
-      token = { token: typedToken.trim(), expiresAt }
+      token = { token: typedToken.trim(), expiresAt, repo }
     } else {
-      token = await loadToken(db, masterKey).catch((error: unknown) => {
-        if (error instanceof DecryptError) return null
-        throw error
-      })
+      token = stored
     }
     // Alleen een token kan Olivier zelf geven: het scherm vraagt erom.
     if (!token) throw new SetupError('error.tokenRequired')
     this.tokenExpiresAt = token.expiresAt
-    const client = new GithubClient(token.token)
+    const client = new GithubClient(token.token, undefined, repoOf(token))
     const remote = await client.getFile(META_PATH)
     if (remote) {
       const text = new TextDecoder().decode(remote.content)
@@ -988,7 +993,7 @@ export class Session {
     const db = this.requireDb()
     const vaultCheck = await this.bindKey(masterKey, source)
     if (tokenToStore !== null) {
-      await storeToken(db, masterKey, tokenToStore.token, tokenToStore.expiresAt)
+      await storeToken(db, masterKey, tokenToStore.token, tokenToStore.expiresAt, tokenToStore.repo)
       this.tokenExpiresAt = tokenToStore.expiresAt
     }
     // Blijvende opslag aanvragen, zodat de browser de versleutelde kopie en de outbox niet opruimt.
