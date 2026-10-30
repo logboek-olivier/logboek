@@ -1861,6 +1861,17 @@ export const nl = {
   'trip.daysLogged': (p: { days: number; logged: number }) => `${p.days} ${plural(p.days, 'dag', 'dagen')} · ${p.logged} gelogd`,
   'trip.loggedOnly': (p: { logged: number }) => `${p.logged} gelogd`,
   'trip.logged': 'Gelogd',
+  'period.title': 'Periode',
+  'period.carriere': 'Sinds start zeilcarrière',
+  'period.jaar': 'Dit jaar',
+  'period.planning': 'Tot einde planning',
+  'period.alles': 'Alles',
+  'period.eigen': 'Zelf kiezen',
+  'period.from': 'Van',
+  'period.to': 'Tot en met',
+  'position.between': (p: { from: string; to: string }) => `Van ${p.from} tot ${p.to}`,
+  'position.sinceHint': 'De verandering van de netto waarde in de periode (tot vandaag). Te ontvangen salaris telt al mee vanaf het einde van de trip.',
+  'forecast.endOn': (p: { date: string; amount: string }) => `Netto waarde op ${p.date}: ≈ ${p.amount}`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
