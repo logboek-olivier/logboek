@@ -7,6 +7,7 @@ import { payoutRule } from './money-path'
 import { rateFor, type RatesFile } from './rates'
 import { salaryEur, tipAverages, tripEnd } from './salary'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
+import { endedFor } from './trip-dates'
 
 // Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. Op de bank (betaal- en
 // spaarrekeningen), contant (contante fooien die nog niet gestort zijn, plus de stand van een kasrekening), te ontvangen
@@ -164,7 +165,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
   for (const trip of active(trips)) {
     const s = trip.salary
     const end = tripEnd(trip, legs)
-    if (!s || !end || end >= date || paidBy(trip, transactions, date)) continue
+    if (!s || !end || endedFor(trip, end) >= date || paidBy(trip, transactions, date)) continue
     out.receivable.push({ trip, amount: s.amount, currency: s.currency })
     add(out.totals.receivable, s.amount, s.currency, date, rates)
   }

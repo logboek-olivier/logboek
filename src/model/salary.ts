@@ -6,6 +6,7 @@ import { currentSettings, saveSettings } from './settings'
 import { type Currency, type Leg, type Organisation, type SalaryDefault, type Settings, type Transaction, type TransactionSource, type Trip, type TripSalary } from './types'
 import { weekView } from './weeks'
 import type { Undo } from './edit'
+import { endedFor } from './trip-dates'
 
 // Salaris per trip (Olivier wordt per trip betaald): bedrag en valuta, verwacht of ontvangen, en of het bedrag het
 // standaardbedrag van de organisatie is of een eigen bedrag. Harde regel: een eigen bedrag (zelf ingevuld of aangepast)
@@ -49,8 +50,11 @@ function standard(d: SalaryDefault): TripSalary {
 /**
  * Nieuwe trip of andere organisatie: het standaardbedrag als de trip nog geen salaris heeft, of als hij het
  * standaardbedrag van zijn vorige organisatie had (nog niet ontvangen). Een eigen of ontvangen salaris blijft staan.
+ * Een trip die voorbij is (of geen einddatum heeft), krijgt nooit vanzelf een salaris: dat is al betaald of onbekend, en
+ * anders telt het als te ontvangen en vraagt Vandaag of het binnen is.
  */
-export function withSalaryDefault(trip: Trip, settings: Settings, previous?: Trip): Trip {
+export function withSalaryDefault(trip: Trip, settings: Settings, previous: Trip | undefined, legs: readonly Leg[], today: string): Trip {
+  if (!notEnded(trip, legs, today)) return trip
   const d = salaryDefault(settings, trip.organisation)
   const s = trip.salary
   if (!s) return d ? { ...trip, salary: standard(d) } : trip
@@ -146,7 +150,8 @@ export function salaryQuestions(trips: readonly Trip[], legs: readonly Leg[], to
       const s = x.salary
       if (!s || s.status !== 'verwacht' || salaryIncomeOf(x.id, transactions)) return false
       const end = tripEnd(x, legs)
-      return !!end && end < today && (!s.askAfter || s.askAfter <= today)
+      // Een trip die de dagen volgt, is pas drie dagen na de laatste dag voorbij (hij kan nog doorlopen).
+      return !!end && endedFor(x, end) < today && (!s.askAfter || s.askAfter <= today)
     })
     .sort((a, b) => tripEnd(a, legs).localeCompare(tripEnd(b, legs)))
 }

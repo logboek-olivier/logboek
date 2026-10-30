@@ -272,7 +272,7 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
 export async function startWeek(store: Store, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
   const fields: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
   const settings = currentSettings(store.list('settings.json.enc'))
-  const trip = input.salary ? { ...fields, salary: cleanSalary(input.salary) } : input.salary === null ? fields : withSalaryDefault(fields, settings)
+  const trip = input.salary ? { ...fields, salary: cleanSalary(input.salary) } : input.salary === null ? fields : withSalaryDefault(fields, settings, undefined, store.list('legs.json.enc'), today)
   await store.put('trips.json.enc', trip)
   // De agenda volgt direct: zelf ingestelde dagen in de nieuwe trip maken plaats voor werk.
   await followTrip(store, trip.id, null, tripRange(trip, store.list('legs.json.enc')))
@@ -295,7 +295,7 @@ export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lan
   void _old
   const next: Trip =
     input.salary === undefined
-      ? withSalaryDefault(merged, currentSettings(store.list('settings.json.enc')), trip)
+      ? withSalaryDefault(merged, currentSettings(store.list('settings.json.enc')), trip, store.list('legs.json.enc'), todayIso())
       : input.salary === null
         ? withoutSalary
         : { ...merged, salary: cleanSalary(input.salary) }

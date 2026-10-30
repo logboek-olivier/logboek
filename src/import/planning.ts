@@ -1,7 +1,7 @@
 import { t } from '../i18n'
 import { datesBetween, followTrip, type CalendarIndex } from '../model/calendar'
 import { suggestType, weekFields, MAX_WEEK_DAYS, type WeekInput } from '../model/weeks'
-import { DAY_TYPES, newId, ORGANISATIONS, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type Trip, type WeekType } from '../model/types'
+import { DAY_TYPES, newId, ORGANISATIONS, todayIso, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type Trip, type WeekType } from '../model/types'
 import type { Lang } from '../i18n'
 import type { Store } from '../storage/store'
 import { withSalaryDefault } from '../model/salary'
@@ -198,7 +198,7 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
         note: row.note,
       }
       // Een werkregel met organisatie krijgt het standaardsalaris van die organisatie.
-      trips.push(withSalaryDefault({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null }, settings))
+      trips.push(withSalaryDefault({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null }, settings, undefined, [], todayIso()))
     } else {
       for (const date of datesBetween(row.start, row.end)) {
         // Bij onbeschikbaar is de notitie de reden (die alleen Olivier ziet, nooit in een gedeelde PDF).

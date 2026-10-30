@@ -3,7 +3,7 @@ import type { Store } from '../storage/store'
 import { tripRange } from './calendar'
 import { active } from './derive'
 import { currentSettings, saveSettings } from './settings'
-import { COUNTED_ORGANISATIONS, type CountedOrganisation, type Leg, type Settings, type Trip } from './types'
+import { COUNTED_ORGANISATIONS, todayIso, type CountedOrganisation, type Leg, type Settings, type Trip } from './types'
 
 // Teller per organisatie: elke trip van Sailing Virgins of Yacht Week krijgt zijn volgnummer op datum ("SV #3",
 // "YW #10"), vanaf een instelbaar beginnummer voor trips van vóór de app. Ook geïmporteerde trips tellen mee: een naam
@@ -127,7 +127,7 @@ export function counterName(org: CountedOrganisation, n: number, area: string): 
 /** Twijfelgeval beantwoorden: ja = de trip hoort bij de organisatie (opgeslagen), nee = niet meer vragen. */
 export async function answerDoubt(store: Store, trip: Trip, org: CountedOrganisation, yes: boolean): Promise<void> {
   // Hoort de trip bij de organisatie, dan krijgt hij ook het standaardsalaris daarvan (alleen zonder eigen bedrag).
-  if (yes) await store.put('trips.json.enc', withSalaryDefault({ ...trip, organisation: org, updatedAt: new Date().toISOString() }, currentSettings(store.get('settings.json.enc')), trip))
+  if (yes) await store.put('trips.json.enc', withSalaryDefault({ ...trip, organisation: org, updatedAt: new Date().toISOString() }, currentSettings(store.get('settings.json.enc')), trip, store.list('legs.json.enc'), todayIso()))
   else {
     const settings = currentSettings(store.get('settings.json.enc'))
     await saveSettings(store, { orgAnswered: [...new Set([...answeredIds(settings), trip.id])] })

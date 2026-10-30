@@ -1,9 +1,12 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { addClaim, markRepaid } from '../src/model/claims'
-import { recordPayout } from '../src/model/money-path'
+import { answerDoubt } from '../src/model/counters'
+import { recordPayout, salaryState } from '../src/model/money-path'
 import { positionAt } from '../src/model/position'
 import { receiveSalary, salaryQuestions } from '../src/model/salary'
+import { saveSettings } from '../src/model/settings'
+import { startWeek, updateWeek, type WeekInput } from '../src/model/weeks'
 import type { Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -35,6 +38,21 @@ const trip = (id: string): Trip => ({
   salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' },
   updatedAt: T0,
   deletedAt: null,
+})
+const weekInput = (startDate: string, dayCount: number): WeekInput => ({
+  name: 'Nepweek SV',
+  type: 'training-geven',
+  startDate,
+  dayCount,
+  boat: 'Nepboot',
+  boatModel: '',
+  boatLengthFt: null,
+  base: '',
+  charter: '',
+  area: 'BVI',
+  organisation: 'sailing-virgins',
+  participants: [],
+  note: '',
 })
 const loon = (s: Store) => s.list('transactions.json.enc').filter((tx) => tx.kind === 'loon')
 const position = (s: Store, date: string) =>
@@ -106,5 +124,42 @@ describe('terugbetaling van een declaratie', () => {
     await markRepaid(s, s.list('claims.json.enc')[0]!, { date: '2026-10-09', amount: 20, currency: 'EUR' })
     expect(s.list('transactions.json.enc').filter((tx) => tx.kind === 'terugbetaling')).toHaveLength(1)
     expect(s.list('claims.json.enc')[0]!.status).toBe('terugbetaald')
+  })
+})
+
+describe('voorbije trips krijgen nooit vanzelf een salaris', () => {
+  it('"Hoort bij Sailing Virgins?" of een oude trip bewerken geeft een voorbije trip geen standaardsalaris; een komende trip wel', async () => {
+    const s = await store()
+    await saveSettings(s, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
+    const old: Trip = { id: 'oud', name: 'SV BVI', updatedAt: T0, deletedAt: null }
+    await s.put('trips.json.enc', old)
+    await s.put('legs.json.enc', { id: 'l1', tripId: 'oud', date: '2025-03-01', fromPlace: 'Nep', fromCountry: '', toPlace: 'Nep', toCountry: '', role: 'instructeur', boat: 'Nepboot', nmInland: 0, nmSea: 10, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T0, deletedAt: null })
+    await answerDoubt(s, old, 'sailing-virgins', true)
+    expect(s.list('trips.json.enc').find((t) => t.id === 'oud')).toMatchObject({ organisation: 'sailing-virgins' })
+    expect(s.list('trips.json.enc').find((t) => t.id === 'oud')!.salary).toBeUndefined()
+    // Een oude trip met eigen datums bewerken (alleen de boot): geen salaris erbij.
+    const past = await startWeek(s, weekInput('2025-06-01', 7), 'nl', '2026-10-30')
+    expect(past.salary).toBeUndefined()
+    await updateWeek(s, s.list('trips.json.enc').find((t) => t.id === past.id)!, { ...weekInput('2025-06-01', 7), boat: 'Andere nepboot' }, 'nl')
+    expect(s.list('trips.json.enc').find((t) => t.id === past.id)!.salary).toBeUndefined()
+    expect(salaryQuestions(s.list('trips.json.enc'), s.list('legs.json.enc'), '2026-10-30')).toHaveLength(0)
+    // Een komende trip krijgt het standaardbedrag wel.
+    const next = await startWeek(s, weekInput('2099-01-01', 7), 'nl', '2026-10-30')
+    expect(next.salary).toMatchObject({ amount: 1200, status: 'verwacht', source: 'standaard' })
+  })
+})
+
+describe('een trip die de dagen volgt, is pas na drie dagen voorbij (ook voor het salaris)', () => {
+  it('de dag na de laatste gelogde dag: niet vragen en niet te ontvangen; na drie dagen wel', async () => {
+    const s = await store()
+    const t: Trip = { ...trip('d'), startDate: '2026-10-20', endDate: '2026-10-22', datesFromDays: true }
+    await s.put('trips.json.enc', t)
+    const legs = s.list('legs.json.enc')
+    expect(salaryQuestions([t], legs, '2026-10-23')).toHaveLength(0)
+    expect(salaryState(t, legs, '2026-10-23')).toBe('verwacht')
+    expect(position(s, '2026-10-23').totals.receivable.eur).toBe(0)
+    expect(salaryQuestions([t], legs, '2026-10-26').map((x) => x.id)).toEqual(['d'])
+    expect(salaryState(t, legs, '2026-10-26')).toBe('te-ontvangen')
+    expect(position(s, '2026-10-26').totals.receivable.eur).toBe(1000)
   })
 })

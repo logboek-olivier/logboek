@@ -5,6 +5,7 @@ import { eurOf, round2 } from './money'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
 import { salaryEur, salaryIncomeId, salarySource, tripEnd } from './salary'
 import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
+import { endedFor } from './trip-dates'
 
 // Geldpad per trip: per soort geld een status. Salaris: verwacht (de trip is nog niet voorbij), te ontvangen (voorbij,
 // nog niet betaald) of ontvangen. Fooi: contant of op de bank; contant staat in "Contant" tot hij gestort is, zodat
@@ -20,7 +21,8 @@ export function salaryState(trip: Trip, legs: readonly Leg[], today: string): Sa
   if (!s) return null
   if (s.status === 'ontvangen') return 'ontvangen'
   const end = tripEnd(trip, legs)
-  return end && end < today ? 'te-ontvangen' : 'verwacht'
+  // Een trip die de dagen volgt, is pas drie dagen na de laatste dag voorbij (zoals overal).
+  return end && endedFor(trip, end) < today ? 'te-ontvangen' : 'verwacht'
 }
 
 /** Hoe de organisatie uitbetaalt; zonder (geldige) instelling na elke trip. */
