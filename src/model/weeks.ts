@@ -315,6 +315,16 @@ export function dayCountOf(week: Pick<WeekView, 'startDate' | 'endDate'>): numbe
   return Math.max(1, Math.round(ms / 86_400_000) + 1)
 }
 
+/**
+ * Dagen van een trip voor de tripkop ("6 dagen · 5 gelogd"): dagen = van de startdatum tot en met de einddatum (null
+ * zonder datums); gelogd = de verschillende datums met een gelogde dag, tot en met `until` als die er is.
+ */
+export function tripDayCounts(week: Pick<WeekView, 'startDate' | 'endDate' | 'legs'>, until?: string): { days: number | null; logged: number } {
+  const days = week.startDate && week.endDate ? dayCountOf(week) : null
+  const logged = new Set(week.legs.filter((l) => !until || l.date <= until).map((l) => l.date)).size
+  return { days, logged }
+}
+
 /** Week afronden: review opslaan, afgerond, en niet meer de lopende week. */
 export async function closeWeek(store: Store, trip: Trip, review: WeekReview, today: string, settings: Settings): Promise<Undo> {
   const before = trip

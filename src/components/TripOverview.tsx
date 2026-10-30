@@ -4,19 +4,18 @@ import { formatDate, formatDateRangeShort, formatHours, formatNm, formatNumber }
 import { t, useLang } from '../i18n'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
-import { daysBetween } from '../model/calendar'
 import { totalNm } from '../model/derive'
 import { participantName } from '../model/guests'
 import { placeUses } from '../model/places'
 import { routeOf } from '../model/trip-route'
 import type { Leg, Participant, Trip } from '../model/types'
-import { planWeek, studentWeek, weekView, type WeekView } from '../model/weeks'
+import { planWeek, studentWeek, tripDayCounts, weekView, type WeekView } from '../model/weeks'
 import { activeStudents } from '../model/students'
 import { openStudent } from '../navigation'
 import { StudentRow } from '../screens/Students'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
-import { boatLine } from './boat-line'
+import { boatLine, tripDaysText } from './boat-line'
 import { Icon } from './Icon'
 import { lazyComponent } from '../lazy'
 import { IncompleteBadge } from './Incomplete'
@@ -64,6 +63,7 @@ export function TripHead({ view, counter, onEdit, legs, compact = false }: { vie
         )}
       </div>
       <p className="muted small">{[weekTypeLabel(view.type), trip.organisation ? organisationLabel(trip.organisation) : '', trip.area].filter(Boolean).join(' · ')}</p>
+      <p className="muted small trip-day-count">{tripDaysText(view)}</p>
       <p className="muted small">{boatLine(trip, legs.find((l) => l.tripId === trip.id)?.boat)}</p>
       {(trip.base || trip.charter) && <p className="muted small">{[trip.base, trip.charter].filter(Boolean).join(' · ')}</p>}
     </div>
@@ -77,7 +77,6 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
   const [pinning, setPinning] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
   const route = routeOf(view.legs, places)
-  const nights = view.startDate && view.endDate ? Math.max(0, daysBetween(view.startDate, view.endDate)) : 0
   const use = pinning ? placeUses(legs, places).find((u) => u.name.toLowerCase() === pinning.toLowerCase()) ?? null : null
   return (
     <div className="section stack trip-route">
@@ -105,11 +104,11 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
         </div>
         <div className="stat">
           <dt>{t('stat.days')}</dt>
-          <dd>{formatNumber(route.days)}</dd>
+          <dd>{formatNumber(tripDayCounts(view).days ?? route.days)}</dd>
         </div>
         <div className="stat">
-          <dt>{t('trip.nights')}</dt>
-          <dd>{formatNumber(nights)}</dd>
+          <dt>{t('trip.logged')}</dt>
+          <dd>{formatNumber(tripDayCounts(view).logged)}</dd>
         </div>
         {route.nightHours > 0 && (
           <div className="stat">

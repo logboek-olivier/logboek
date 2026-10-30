@@ -8,7 +8,7 @@ import { totalNm } from '../model/derive'
 import { nameWithCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import { RouteMap } from '../components/LazyMap'
-import { boatLine } from '../components/boat-line'
+import { boatLine, tripDaysText } from '../components/boat-line'
 import type { AddInit } from './QuickAdd'
 import { Suspense, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { collectGaps, isSunday } from '../model/gaps'
@@ -322,7 +322,7 @@ function TodayTrip({ store, trip, day, onOpen, onDay }: { store: Store; trip: Tr
           <span>
             <strong>{formatNm(nm)}</strong> {t('today.soFar')}
           </span>
-          <span>{t('unit.days', { n: soFar.length })}</span>
+          <span>{tripDaysText(view, today)}</span>
         </span>
       </button>
       <RouteMap route={routeOf(soFar, places)} small />

@@ -1858,6 +1858,9 @@ export const nl = {
   'money.result': 'Zeilgeld: resultaat',
   'money.resultHint': 'Alle inkomsten en terugbetalingen min alle uitgaven die je in Geld invoerde. Dit is niet je netto waarde: die staat bij Mijn positie en komt uit je rekeningen, contant geld en wat je nog krijgt.',
   'money.monthResult': 'Resultaat',
+  'trip.daysLogged': (p: { days: number; logged: number }) => `${p.days} ${plural(p.days, 'dag', 'dagen')} · ${p.logged} gelogd`,
+  'trip.loggedOnly': (p: { logged: number }) => `${p.logged} gelogd`,
+  'trip.logged': 'Gelogd',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
