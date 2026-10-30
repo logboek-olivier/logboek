@@ -355,6 +355,8 @@ function ConfirmWordsForm({
             type="text"
             autoComplete="off"
             autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={typed[i] ?? ''}
             onChange={(e) => setTyped(typed.map((w, j) => (j === i ? e.target.value : w)))}
           />
@@ -403,7 +405,7 @@ export function SecretForm({
       ) : (
         <label>
           {t('setup.recoveryField', { n: RECOVERY_WORD_COUNT })}
-          <textarea rows={4} autoComplete="off" autoCapitalize="none" value={value} onChange={(e) => setValue(e.target.value)} />
+          <textarea rows={4} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={value} onChange={(e) => setValue(e.target.value)} />
         </label>
       )}
       <ErrorLine error={error} />

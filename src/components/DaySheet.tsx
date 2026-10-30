@@ -321,10 +321,13 @@ export function DayView({
   onEditTrip,
   onOpenTrip,
   notify,
+  discreet = false,
 }: {
   store: Store
   index: CalendarIndex
   date: string
+  /** Vanaf Vandaag (studenten kunnen meekijken): een document uit de kluis en een sollicitatie zonder titel. */
+  discreet?: boolean
   onClose: () => void
   onAdd: (init: AddInit) => void
   onReminder: (reminder: Reminder | null) => void
@@ -433,7 +436,7 @@ export function DayView({
                     <>
                       <Icon icon={item.source === 'token' ? KeyRound : CalendarClock} />
                       <span className="row-main">
-                        <span>{item.title}</span>
+                        <span>{discreet && item.source === 'document' ? t('vault.dueTitle') : discreet && item.source === 'career' ? t('career.dueTitle') : item.title}</span>
                         <span className="muted small">{t(item.kind === 'trip' ? 'reminderKind.deadline' : `reminderKind.${item.kind}`)}</span>
                       </span>
                     </>

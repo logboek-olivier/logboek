@@ -716,6 +716,11 @@ export function justAfter(iso: string): string {
   return Number.isFinite(ms) ? new Date(ms + 1).toISOString() : new Date().toISOString()
 }
 
+/** Alleen het eerste woord van een ingetypte naam: een voornaam, nooit een achternaam (regel 14). */
+export function firstNameOnly(text: string): string {
+  return text.trim().split(/\s+/)[0] ?? ''
+}
+
 /** Datum van vandaag als jjjj-mm-dd in lokale tijd. */
 export function todayIso(): string {
   const d = new Date()

@@ -251,6 +251,7 @@ export function Today({
           store={store}
           index={index}
           date={today}
+          discreet
           notify={notify}
           onClose={() => setDayOpen(false)}
           onAdd={(init) => {

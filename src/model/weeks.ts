@@ -8,7 +8,7 @@ import type { Undo } from './edit'
 import { addDays } from './money'
 import { currentSettings, saveSettings } from './settings'
 import { cleanSalary, withSalaryDefault } from './salary'
-import { newId, todayIso, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { firstNameOnly, newId, todayIso, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
 // charterbedrijf), gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een naam; dan worden type
@@ -227,7 +227,7 @@ export function cleanRoute(route: readonly PlannedLeg[]): PlannedLeg[] {
 /** Alleen voornaam, niveau, cursus, land, kort kenmerk en de koppeling met een eerdere gast; lege regels vallen weg (regel 14). */
 export function cleanParticipants(rows: readonly ParticipantInput[]): Participant[] {
   return rows
-    .map((r) => ({ ...r, firstName: r.firstName.trim().slice(0, 40) }))
+    .map((r) => ({ ...r, firstName: firstNameOnly(r.firstName).slice(0, 40) }))
     .filter((r) => r.firstName !== '')
     .map((r) => {
       const country = (r.country ?? '').trim().slice(0, MAX_COUNTRY)
