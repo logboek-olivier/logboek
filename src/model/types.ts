@@ -256,7 +256,12 @@ export type AddTab = 'trip' | 'dag' | 'inkomsten' | 'uitgave' | 'skill' | 'decla
 export type Water = 'zee' | 'getij' | 'binnen'
 
 export interface Settings extends SyncRecord {
-  id: 'settings'
+  /**
+   * 'settings' = de instellingen; `laatst:<apparaat-id>` = wat dit apparaat het laatst koos bij invoer (boot, rol, valuta,
+   * ...), een eigen record per apparaat (src/model/settings.ts), zodat loggen nooit een instelling van een ander apparaat
+   * overschrijft.
+   */
+  id: 'settings' | `laatst:${string}`
   lastBoat: string
   lastRole: Role
   lastCurrency: Currency

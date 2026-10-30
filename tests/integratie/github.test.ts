@@ -8,6 +8,8 @@ import { classify } from '../../src/storage/evidence'
 import { GithubClient } from '../../src/storage/github'
 import { openLogboekDb, putObject } from '../../src/storage/idb'
 import { integrityEvents } from '../../src/storage/integrity'
+import { receiveSalary } from '../../src/model/salary'
+import { currentSettings, saveSettings } from '../../src/model/settings'
 import { Store } from '../../src/storage/store'
 import { createVault, parseWordlistForTests } from '../helpers/vault'
 import { branchFetch, createBranch, deleteBranch, eventually, requestCount, target, TOKEN } from './echte-github'
@@ -137,6 +139,29 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
     expect(results).toEqual([{ path, ok: true }])
     await settle(a)
     await everythingReadable()
+  }, 240_000)
+
+  it('twee apparaten zonder sync ertussen: het salaris één keer, de instelling van het andere apparaat blijft', async () => {
+    const laptop = await device('geld-laptop')
+    const phone = await device('geld-telefoon')
+    const trip: Trip = { id: 'it-salaris', name: 'Neptrip salaris', organisation: 'sailing-virgins', startDate: '2026-09-01', endDate: '2026-09-07', salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' }, updatedAt: T(), deletedAt: null }
+    await laptop.put('trips.json.enc', trip)
+    await settle(laptop)
+    await settle(phone)
+    // Laptop: een instelling en het salaris ontvangen. Telefoon (nog zonder die wijzigingen): een dag loggen onthoudt de
+    // boot, en ook daar "salaris ontvangen".
+    await saveSettings(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
+    await receiveSalary(laptop, laptop.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-10')
+    await settle(laptop)
+    await saveSettings(phone, { lastBoat: 'Nepboot telefoon' })
+    await receiveSalary(phone, phone.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-11')
+    await settle(phone)
+    await settle(laptop)
+    for (const store of [laptop, phone]) {
+      expect(store.list('transactions.json.enc').filter((tx) => tx.kind === 'loon' && tx.tripId === trip.id)).toHaveLength(1)
+      expect(currentSettings(store.list('settings.json.enc')).salaryDefaults?.['sailing-virgins']?.amount).toBe(1200)
+    }
+    await everythingReadable(['trips.json.enc', 'transactions.json.enc', 'settings.json.enc'])
   }, 240_000)
 
   it('meta.json.enc blijft die van dit logboek', async () => {
