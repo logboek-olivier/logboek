@@ -1,9 +1,16 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { amountInput, parseAmount } from '../src/model/money'
+import { deleteTransaction, updateTransaction } from '../src/model/edit'
+import { receiveSalary } from '../src/model/salary'
+import { taxYear } from '../src/model/tax-year'
 import {
+  asksPerTrip,
   cashOnHand,
   depositCash,
   expectedPayout,
+  hasSalaryIncome,
+  minimumPayout,
   payoutQuestions,
   payoutRule,
   payoutSuggestion,
@@ -84,6 +91,26 @@ describe('uitbetaling per organisatie', () => {
     expect(expectedPayout(trips, [], 'USD', '2026-11-05', RATES)).toBe(3300)
     expect(splitPayout(2900, trips, [], 'EUR', '2026-11-05', null)).toEqual([966.67, 1933.33])
     expect(splitPayout(100, trips, [], 'USD', '2026-11-05', null)).toEqual([50, 50])
+    // In centen naar de grootste rest: samen precies het bedrag, nooit negatief.
+    const three = [trip('a', '2026-10-01', '2026-10-07'), trip('b', '2026-10-08', '2026-10-14'), trip('c', '2026-10-15', '2026-10-21')]
+    const parts = splitPayout(1000, three, [], 'EUR', '2026-11-05', null)
+    expect(parts).toEqual([333.34, 333.33, 333.33])
+    expect(Math.round(parts.reduce((n, x) => n + x, 0) * 100)).toBe(100000)
+    expect(minimumPayout(3)).toBe(0.03)
+  })
+
+  it('een voorgevuld bedrag leest precies zo terug, in het Nederlands en in het Engels', () => {
+    for (const lang of ['nl', 'en'] as const) {
+      for (const n of [2000, 1234.56, 12500, 0.5, 1100, 2162.43, 999999.99]) expect(parseAmount(amountInput(n, lang), lang)).toBe(n)
+    }
+    expect(amountInput(2000, 'en')).toBe('2000')
+    expect(amountInput(1234.5, 'nl')).toBe('1234,50')
+    // Engelse duizendtallen worden niet meer als decimalen gelezen.
+    expect(parseAmount('2,000', 'en')).toBe(2000)
+    expect(parseAmount('1,234.56', 'en')).toBe(1234.56)
+    expect(parseAmount('12,50', 'en')).toBe(12.5)
+    expect(parseAmount('2.000', 'nl')).toBe(2000)
+    expect(parseAmount('12,50', 'nl')).toBe(12.5)
   })
 
   it('een uitbetaling invoeren vinkt de trips af, met per trip een eigen inkomen; ongedaan maken zet alles terug', async () => {
@@ -102,9 +129,54 @@ describe('uitbetaling per organisatie', () => {
     }
     // Het eigen bedrag blijft staan, ook na ontvangen.
     expect(s.list('trips.json.enc').find((t) => t.id === 'a')!.salary).toMatchObject({ amount: 1000, source: 'eigen' })
+    // Een tweede tik op dezelfde trips boekt niets nog eens.
+    await recordPayout(s, { org: 'sailing-virgins', amount: 1950, currency: 'EUR', date: '2026-11-05' }, [a, b], null)
+    expect(s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)).toHaveLength(2)
+    // In het jaaroverzicht telt de uitbetaling precies één keer.
+    expect(taxYear(s.list('transactions.json.enc'), s.list('trips.json.enc'), 2026, null).totalEur).toBe(1950)
+    // Ongedaan maken zet alleen het salaris terug: een naamwijziging intussen blijft.
+    await s.put('trips.json.enc', { ...s.list('trips.json.enc').find((t) => t.id === 'b')!, name: 'Nep b nieuw', updatedAt: new Date().toISOString() })
     await undo()
     expect(s.list('transactions.json.enc').every((tx) => tx.deletedAt !== null)).toBe(true)
     expect(s.list('trips.json.enc').map((t) => t.salary!.status)).toEqual(['verwacht', 'verwacht'])
+    expect(s.list('trips.json.enc').find((t) => t.id === 'b')!.name).toBe('Nep b nieuw')
+  })
+
+  it('een uitbetaling in dollars krijgt de koers van de datum; te klein voor de trips wordt geweigerd', async () => {
+    const s = await store()
+    const a = trip('a', '2026-10-01', '2026-10-07', { salary: { amount: 1100, currency: 'USD', status: 'verwacht', source: 'eigen' } })
+    await s.putMany('trips.json.enc', [a])
+    await expect(recordPayout(s, { org: 'sailing-virgins', amount: 0.001, currency: 'USD', date: '2026-11-05' }, [a], RATES)).rejects.toThrow()
+    // Een definitieve koers (de datum staat in het koersbestand) wordt opgeslagen; een voorlopige nooit.
+    await recordPayout(s, { org: 'sailing-virgins', amount: 1100, currency: 'USD', date: '2026-10-01' }, [a], RATES)
+    expect(s.list('transactions.json.enc')[0]).toMatchObject({ amount: 1100, currency: 'USD', rate: 1.1, amountEur: 1000 })
+  })
+
+  it('salaris ontvangen twee keer achter elkaar boekt één inkomen; het inkomen verwijderen zet het salaris weer op te ontvangen', async () => {
+    const s = await store()
+    const a = trip('a', '2026-10-01', '2026-10-07')
+    await s.putMany('trips.json.enc', [a])
+    await receiveSalary(s, a, '2026-10-30')
+    await receiveSalary(s, a, '2026-10-30')
+    const incomes = s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)
+    expect(incomes).toHaveLength(1)
+    const undo = await deleteTransaction(s, incomes[0]!)
+    expect(s.list('trips.json.enc')[0]!.salary).toMatchObject({ status: 'verwacht' })
+    expect(s.list('trips.json.enc')[0]!.salary!.transactionId).toBeUndefined()
+    await undo()
+    expect(s.list('trips.json.enc')[0]!.salary).toMatchObject({ status: 'ontvangen', transactionId: incomes[0]!.id })
+    expect(s.list('transactions.json.enc')[0]!.deletedAt).toBeNull()
+  })
+
+  it('een trip met al een inkomen van soort loon wordt niet vanzelf voorgesteld of gevraagd; maandelijks geen vraag per trip', () => {
+    const x = trip('x', '2026-10-01', '2026-10-07')
+    const loon = { id: 'l', date: '2026-10-10', kind: 'loon' as const, amount: 1000, currency: 'EUR' as const, source: 'sailing-virgins' as const, tripId: 'x', updatedAt: T0, deletedAt: null }
+    expect(hasSalaryIncome(x, [loon])).toBe(true)
+    expect(payoutSuggestion([x], [], settings(), 'sailing-virgins', '2026-11-05', [loon])).toEqual([])
+    const monthly = settings({ payouts: { 'sailing-virgins': { kind: 'maandelijks', day: 1 } } })
+    expect(payoutQuestions([x], [], monthly, '2026-11-05', [loon])).toEqual([])
+    expect(asksPerTrip(monthly, x)).toBe(false)
+    expect(asksPerTrip(settings(), x)).toBe(true)
   })
 
   it('Vandaag vraagt bij maandelijks pas vanaf dag N, voor de trips van de vorige maand en wat nog openstond', () => {
@@ -126,6 +198,25 @@ describe('contant', () => {
     expect(s.list('transactions.json.enc').find((tx) => tx.id === 'c1')!.depositedAt).toBe('2026-10-30')
     await undo()
     expect(cashOnHand(s.list('transactions.json.enc'))).toEqual({ EUR: 50, USD: 20 })
+    // Gestort op een eerdere datum: een fooi van daarna kan er niet bij zitten.
+    await depositCash(s, 'EUR', '2026-10-05')
+    expect(cashOnHand(s.list('transactions.json.enc'))).toEqual({ EUR: 50, USD: 20 })
+  })
+
+  it('contant of bank in het bewerkblad: onbekend, een andere soort en van contant naar bank ruimen gestort op', async () => {
+    const s = await store()
+    const c = tip('c', { tipVia: 'contant', depositedAt: '2026-10-12' })
+    await s.putMany('transactions.json.enc', [c])
+    const base = { date: c.date, kind: c.kind, amount: c.amount, currency: c.currency, source: c.source }
+    await updateTransaction(s, c, { ...base, tipVia: 'bank' })
+    expect(s.list('transactions.json.enc')[0]).toMatchObject({ tipVia: 'bank' })
+    expect(s.list('transactions.json.enc')[0]!.depositedAt).toBeUndefined()
+    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { ...base, tipVia: null })
+    expect(s.list('transactions.json.enc')[0]!.tipVia).toBeUndefined()
+    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { ...base, tipVia: 'contant', depositedAt: '2026-10-12' })
+    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { ...base, kind: 'kosten' })
+    expect(s.list('transactions.json.enc')[0]!.tipVia).toBeUndefined()
+    expect(s.list('transactions.json.enc')[0]!.depositedAt).toBeUndefined()
   })
 
   it('het geldpad van een trip: salaris met status en fooi naar contant, bank en onbekend', () => {
@@ -135,5 +226,8 @@ describe('contant', () => {
     expect(money.tips.contant.eur).toBe(50)
     expect(money.tips.bank.eur).toBe(30)
     expect(money.tips.onbekend).toEqual({ eur: 0, other: { USD: 10 } })
+    // Een onbekende waarde van een nieuwere versie telt als onbekend en breekt niets.
+    const future = tripMoney(x, [], [tip('n', { tripId: 't', tipVia: 'paypal' as never })], '2026-10-30')
+    expect(future.tips.onbekend.eur).toBe(50)
   })
 })

@@ -1,9 +1,8 @@
 import { Check, Clock, Pencil, Wallet } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { formatNumber } from '../format'
 import { t } from '../i18n'
 import { nameWithCounter } from '../model/counters'
-import { parseAmount } from '../model/money'
+import { amountInput, parseAmount } from '../model/money'
 import { askSalaryLater, defaultChanges, receiveSalary, salaryQuestions, saveSalaryDefaults } from '../model/salary'
 import { asksPerTrip, payoutRule } from '../model/money-path'
 import { currentSettings, saveSettings } from '../model/settings'
@@ -29,7 +28,7 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
     const out = {} as Record<Organisation, Row>
     for (const org of ORGANISATIONS) {
       const d = settings.salaryDefaults?.[org]
-      out[org] = { amount: d ? formatNumber(d.amount) : '', currency: d?.currency ?? 'EUR' }
+      out[org] = { amount: d ? amountInput(d.amount) : '', currency: d?.currency ?? 'EUR' }
     }
     return out
   })
@@ -163,6 +162,8 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const counters = useCounters(store)
   const [other, setOther] = useState<Trip | null>(null)
+  // Eén tik tegelijk: een tweede tik voordat het scherm bijgewerkt is, boekt het salaris niet nog eens.
+  const [busy, setBusy] = useState(false)
   // Een organisatie die maandelijks uitbetaalt, krijgt één vraag per uitbetaling (PayoutQuestions), niet per trip.
   const questions = salaryQuestions(trips, legs, todayIso())
     .filter((x) => asksPerTrip(settings, x))
@@ -182,9 +183,16 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
               <button
                 type="button"
                 className="btn small primary"
+                disabled={busy}
                 onClick={async () => {
-                  const undo = await receiveSalary(store, trip, todayIso())
-                  notify(t('salary.receivedToast'), undo)
+                  if (busy) return
+                  setBusy(true)
+                  try {
+                    const undo = await receiveSalary(store, trip, todayIso())
+                    notify(t('salary.receivedToast'), undo)
+                  } finally {
+                    setBusy(false)
+                  }
                 }}
               >
                 <Icon icon={Check} />
@@ -218,7 +226,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
 function ReceiveSheet({ store, trip, notify, onClose }: { store: Store; trip: Trip; notify: Notify; onClose: () => void }) {
   const counters = useCounters(store)
   const s = trip.salary
-  const [amount, setAmount] = useState(s ? formatNumber(s.amount) : '')
+  const [amount, setAmount] = useState(s ? amountInput(s.amount) : '')
   const [currency, setCurrency] = useState<Currency>(s?.currency ?? 'EUR')
   const parsed = parseAmount(amount)
   const valid = parsed !== null && parsed > 0

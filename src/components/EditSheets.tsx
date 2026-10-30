@@ -98,7 +98,8 @@ export function TransactionSheet({
         tripId: tripId || null,
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
         tipVia: kind === 'fooi' ? tipVia : null,
-        depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? depositedAt : null,
+        // Gestort kan niet vóór de fooi zelf.
+        depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? (depositedAt < date ? date : depositedAt) : null,
       })
       onClose()
       notify(t('toast.saved'))
@@ -206,7 +207,7 @@ export function TransactionSheet({
         {kind === 'fooi' && tipVia === 'contant' && (
           <label>
             {t('tipVia.depositedAt')}
-            <input type="date" value={depositedAt} max={todayIso()} onChange={(e) => setDepositedAt(e.target.value)} />
+            <input type="date" value={depositedAt} min={date} max={todayIso()} onChange={(e) => setDepositedAt(e.target.value)} />
           </label>
         )}
         <label>

@@ -1,11 +1,11 @@
 import { ChevronLeft, ChevronUp, Eye, EyeOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
-import { SalaryDot, salaryStateLabel } from '../components/MoneyPath'
+import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
 import { useCollection } from '../components/useCollection'
 import { useCounters } from '../components/useCounters'
 import { weekTypeLabel } from '../components/WeekSheet'
-import { formatDateRange, formatMoney } from '../format'
+import { formatDateRange } from '../format'
 import { t } from '../i18n'
 import { buildIndex, planningEnd, seasonWeeks, weekStart, type SeasonItem } from '../model/calendar'
 import { nameWithCounter, type TripCounter } from '../model/counters'
@@ -34,6 +34,7 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
   const calendar = useCollection(store, 'calendar.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
   const counters = useCounters(store)
   const [start, setStart] = useState(weekStart(today))
@@ -85,7 +86,7 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
                           <span className="muted small">
                             {' · '}
                             {salaryStateLabel(salaryState(item.view.trip, legs, today))}
-                            {showAmounts && ` ${formatMoney(item.view.trip.salary.amount, item.view.trip.salary.currency)}`}
+                            {showAmounts && ` ${salaryAmountText(item.view.trip, transactions)}`}
                           </span>
                         )}
                       </>

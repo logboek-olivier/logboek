@@ -86,6 +86,12 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(list).not.toContainText('1,000')
       await page.getByRole('button', { name: L('week.showAmounts') }).click()
       await expect(list.getByRole('button', { name: /Nepweek een/ })).toContainText(lang === 'nl' ? '1.000' : '1,000')
+      // Opnieuw openen en opslaan zonder te typen: het bedrag blijft precies hetzelfde (ook in het Engels).
+      await list.getByRole('button', { name: /Nepweek een/ }).click()
+      await expect(page.getByRole('dialog').getByLabel(L('salary.amount'))).toHaveValue('1000')
+      await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect(list.getByRole('button', { name: /Nepweek een/ })).toContainText(lang === 'nl' ? '€ 1.000,00' : '€1,000.00')
       await expect(page.locator('.cal-bar .salary-dot.te-ontvangen').first()).toBeAttached()
       await shoot('agenda')
 
@@ -101,9 +107,15 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const payout = page.getByRole('dialog')
       await expect(payout.getByRole('checkbox')).toHaveCount(2)
       for (const box of await payout.getByRole('checkbox').all()) await expect(box).toBeChecked()
-      await expect(payout.getByLabel(L('payout.amount'))).toHaveValue(lang === 'nl' ? '2.000' : '2,000')
-      await payout.getByLabel(L('payout.amount')).fill(lang === 'nl' ? '1950' : '1950')
-      await expect(payout.locator('.payout-expected')).toContainText(lang === 'nl' ? '−€ 50,00' : '−€50.00')
+      await expect(payout.getByLabel(L('payout.amount'))).toHaveValue('2000')
+      if (lang === 'nl') {
+        // Een ander bedrag: het verschil met het verwachte bedrag staat erbij.
+        await payout.getByLabel(L('payout.amount')).fill('1950')
+        await expect(payout.locator('.payout-expected')).toContainText('−€ 50,00')
+      } else {
+        // Opslaan zonder te typen: precies het verwachte bedrag, geen verschil.
+        await expect(payout.locator('.payout-expected')).toContainText(L('payout.asExpected'))
+      }
       await shoot('uitbetaling')
       await payout.getByRole('button', { name: L('payout.save', { n: 2 }) }).click()
       await expect(page.locator('.toast')).toContainText(L('payout.saved', { n: 2 }))
@@ -114,6 +126,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
       await page.getByRole('button', { name: L('calendar.prev') }).click()
       await expect(page.locator('.month-salaries .salary-dot.ontvangen')).toHaveCount(2)
+
+      // Bij Geld staat de uitbetaling als inkomsten: in het Engels zonder typen precies 2.000, in het Nederlands 1.950.
+      await openMore(page, L('nav.money'), L('nav.more'))
+      await expect(page.locator('.stat.hero dd')).toContainText(lang === 'nl' ? '€ 1.950,00' : '€2,000.00')
 
       // Een contante fooi (de standaard), dan in Geld → Contant en "Gestort": daarna is Contant leeg.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()

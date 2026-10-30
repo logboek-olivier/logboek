@@ -32,11 +32,22 @@ export function payoutRule(settings: Settings, org: Organisation | undefined): P
 
 const byEnd = (legs: readonly Leg[]) => (a: Trip, b: Trip) => tripEnd(a, legs).localeCompare(tripEnd(b, legs)) || a.id.localeCompare(b.id)
 
-/** Trips van een organisatie met een salaris dat op `date` te ontvangen is, oudste eerst. */
+/**
+ * Trips van een organisatie met een salaris dat nog niet ontvangen is en op `date` voorbij is (een uitbetaling op de
+ * laatste dag van de trip telt mee), oudste eerst.
+ */
 export function openSalaryTrips(trips: readonly Trip[], legs: readonly Leg[], org: Organisation, date: string): Trip[] {
   return active(trips)
-    .filter((x) => x.organisation === org && salaryState(x, legs, date) === 'te-ontvangen')
+    .filter((x) => {
+      const end = tripEnd(x, legs)
+      return x.organisation === org && x.salary?.status === 'verwacht' && !!end && end <= date
+    })
     .sort(byEnd(legs))
+}
+
+/** Staat er al een inkomen van soort loon bij deze trip (met de hand ingevoerd)? Dan niet vanzelf nog eens voorstellen. */
+export function hasSalaryIncome(trip: Trip, transactions: readonly Transaction[]): boolean {
+  return transactions.some((tx) => tx.deletedAt === null && tx.kind === 'loon' && tx.tripId === trip.id)
 }
 
 function firstOfMonth(date: string): string {
@@ -52,8 +63,8 @@ function previousMonthStart(date: string): string {
  * Welke trips een uitbetaling op `date` waarschijnlijk afrekent: na elke trip de oudste open trip; maandelijks de open
  * trips die vóór de maand van de uitbetaling eindigden (de trips van de vorige maand, en wat daarvóór nog openstond).
  */
-export function payoutSuggestion(trips: readonly Trip[], legs: readonly Leg[], settings: Settings, org: Organisation, date: string): Trip[] {
-  const open = openSalaryTrips(trips, legs, org, date)
+export function payoutSuggestion(trips: readonly Trip[], legs: readonly Leg[], settings: Settings, org: Organisation, date: string, transactions: readonly Transaction[] = []): Trip[] {
+  const open = openSalaryTrips(trips, legs, org, date).filter((x) => !hasSalaryIncome(x, transactions))
   if (payoutRule(settings, org).kind === 'per-trip') return open.slice(0, 1)
   const before = open.filter((x) => tripEnd(x, legs) < firstOfMonth(date))
   return before.length > 0 ? before : open
@@ -89,10 +100,23 @@ export function splitPayout(amount: number, trips: readonly Trip[], legs: readon
   const usable = weights.every((w): w is number => w !== null && w > 0)
   const w = usable ? (weights as number[]) : trips.map(() => 1)
   const sum = w.reduce((n, x) => n + x, 0)
-  const parts = w.map((x) => round2((amount * x) / sum))
-  // Afronding: het laatste deel krijgt het verschil, zodat de delen samen precies het betaalde bedrag zijn.
-  parts[parts.length - 1] = round2(amount - parts.slice(0, -1).reduce((n, x) => n + x, 0))
-  return parts
+  // In centen, naar de grootste rest: de delen zijn samen precies het betaalde bedrag en nooit negatief.
+  const cents = Math.round(amount * 100)
+  const exact = w.map((x) => (cents * x) / sum)
+  const parts = exact.map((x) => Math.floor(x))
+  let left = cents - parts.reduce((n, x) => n + x, 0)
+  const order = exact.map((x, i) => ({ i, rest: x - Math.floor(x) })).sort((a, b) => b.rest - a.rest || a.i - b.i)
+  for (const { i } of order) {
+    if (left <= 0) break
+    parts[i]!++
+    left--
+  }
+  return parts.map((c) => c / 100)
+}
+
+/** Het kleinste bedrag dat over deze trips te verdelen is (elke trip minstens één cent). */
+export function minimumPayout(trips: number): number {
+  return trips * 0.01
 }
 
 function orgSource(org: Organisation): TransactionSource {
@@ -111,8 +135,17 @@ export interface Payout {
  * Een uitbetaling opslaan: per trip een inkomen (loon) met hetzelfde payoutId, en elke trip op ontvangen. Zonder trips
  * één inkomen van de organisatie. Ongedaan maken haalt de inkomens weg en zet de trips terug.
  */
-export async function recordPayout(store: Store, payout: Payout, trips: readonly Trip[], rates: RatesFile | null): Promise<Undo> {
+export async function recordPayout(store: Store, payout: Payout, chosen: readonly Trip[], rates: RatesFile | null): Promise<Undo> {
   const legs = store.list('legs.json.enc')
+  // De trips zoals ze nu op het apparaat staan; een trip die intussen al ontvangen is (een tweede tik, een ander
+  // apparaat), gaat niet nog eens mee. Is er dan niets meer over, dan wordt er niets geboekt.
+  const latest = store.list('trips.json.enc')
+  const trips = chosen
+    .map((x) => latest.find((t) => t.id === x.id) ?? x)
+    .filter((x) => x.deletedAt === null && x.salary && x.salary.status !== 'ontvangen')
+  if (chosen.length > 0 && trips.length === 0) return async () => {}
+  // Elke trip krijgt minstens één cent: een kleiner bedrag is geen uitbetaling.
+  if (round2(payout.amount) < minimumPayout(Math.max(1, trips.length))) throw new Error('Bedrag te klein voor deze trips')
   const now = new Date().toISOString()
   const payoutId = newId()
   const amount = round2(payout.amount)
@@ -143,7 +176,13 @@ export async function recordPayout(store: Store, payout: Payout, trips: readonly
   return async () => {
     const later = new Date().toISOString()
     await store.putMany('transactions.json.enc', txs.map((tx) => ({ ...tx, deletedAt: later, updatedAt: later })))
-    if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((trip) => ({ ...trip, updatedAt: later })))
+    // Alleen het salaris terug; wat er intussen aan de trip veranderde, blijft.
+    const restored: Trip[] = []
+    for (const before of trips) {
+      const current = store.list('trips.json.enc').find((t) => t.id === before.id)
+      if (current) restored.push({ ...current, salary: before.salary!, updatedAt: later })
+    }
+    if (restored.length > 0) await store.putMany('trips.json.enc', restored)
     void store.sync()
   }
 }
@@ -159,14 +198,14 @@ export interface PayoutQuestion {
  * Vandaag bij een maandelijkse uitbetaling: vanaf dag N van de maand "Uitbetaling van <organisatie> voor <maand>
  * ontvangen?" voor de open trips die vóór deze maand eindigden (en wat daarvóór nog openstond). Zonder bedragen.
  */
-export function payoutQuestions(trips: readonly Trip[], legs: readonly Leg[], settings: Settings, today: string): PayoutQuestion[] {
+export function payoutQuestions(trips: readonly Trip[], legs: readonly Leg[], settings: Settings, today: string, transactions: readonly Transaction[] = []): PayoutQuestion[] {
   const out: PayoutQuestion[] = []
   for (const org of new Set(active(trips).map((x) => x.organisation).filter((o): o is Organisation => !!o))) {
     const rule = payoutRule(settings, org)
     if (rule.kind !== 'maandelijks') continue
     const day = Number(today.slice(8, 10))
     const cutoff = day >= rule.day ? firstOfMonth(today) : previousMonthStart(today)
-    const due = openSalaryTrips(trips, legs, org, today).filter((x) => tripEnd(x, legs) < cutoff && (!x.salary!.askAfter || x.salary!.askAfter <= today))
+    const due = openSalaryTrips(trips, legs, org, today).filter((x) => tripEnd(x, legs) < cutoff && (!x.salary!.askAfter || x.salary!.askAfter <= today) && !hasSalaryIncome(x, transactions))
     if (due.length > 0) out.push({ org, month: previousMonthStart(cutoff).slice(0, 7), trips: due })
   }
   return out
@@ -175,6 +214,13 @@ export function payoutQuestions(trips: readonly Trip[], legs: readonly Leg[], se
 /** Een organisatie met een maandelijkse uitbetaling: geen vraag per trip, wel één per uitbetaling. */
 export function asksPerTrip(settings: Settings, trip: Trip): boolean {
   return payoutRule(settings, trip.organisation).kind === 'per-trip'
+}
+
+/** Het werkelijk ontvangen salaris (het inkomen dat bij "ontvangen" hoort), of null zonder levend inkomen. */
+export function receivedSalary(trip: Trip, transactions: readonly Transaction[]): { amount: number; currency: Currency } | null {
+  const id = trip.salary?.status === 'ontvangen' ? trip.salary.transactionId : undefined
+  const tx = id ? transactions.find((x) => x.id === id && x.deletedAt === null) : undefined
+  return tx ? { amount: tx.amount, currency: tx.currency } : null
 }
 
 /** Contante fooien die nog niet gestort zijn. */
@@ -191,7 +237,8 @@ export function cashOnHand(transactions: readonly Transaction[]): Partial<Record
 
 /** "Gestort op …": alle contante fooien in deze valuta uit Contant (ze staan nu op de bank). Met ongedaan maken. */
 export async function depositCash(store: Store, currency: Currency, date: string): Promise<Undo> {
-  const tips = cashTips(store.list('transactions.json.enc')).filter((tx) => tx.currency === currency)
+  // Alleen fooien van vóór of op de stortdatum: een latere fooi kan er niet bij zitten.
+  const tips = cashTips(store.list('transactions.json.enc')).filter((tx) => tx.currency === currency && tx.date <= date)
   const now = new Date().toISOString()
   await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...tx, depositedAt: date, updatedAt: now })))
   void store.sync()
@@ -221,7 +268,8 @@ export function tripMoney(trip: Trip, legs: readonly Leg[], transactions: readon
   const tips: TripMoney['tips'] = { contant: emptySum(), bank: emptySum(), onbekend: emptySum() }
   for (const tx of active(transactions)) {
     if (tx.kind !== 'fooi' || tx.tripId !== trip.id) continue
-    const sum = tips[tx.tipVia ?? 'onbekend']
+    // Een onbekende waarde (van een nieuwere versie) telt als onbekend.
+    const sum = tips[tx.tipVia === 'contant' || tx.tipVia === 'bank' ? tx.tipVia : 'onbekend']
     const eur = eurOf(tx)
     if (eur === null) sum.other[tx.currency] = round2((sum.other[tx.currency] ?? 0) + tx.amount)
     else sum.eur = round2(sum.eur + eur)

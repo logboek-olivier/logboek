@@ -1,19 +1,22 @@
 import { Banknote, Check, Clock, HandCoins, Pencil, Wallet } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
-import { formatDate, formatMoney, formatMonth, formatNumber } from '../format'
+import { formatDate, formatMoney, formatMonth } from '../format'
 import { t } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
 import { nameWithCounter } from '../model/counters'
 import { active } from '../model/derive'
 import type { Undo } from '../model/edit'
-import { parseAmount, round2 } from '../model/money'
+import { amountInput, parseAmount, round2 } from '../model/money'
 import {
   cashOnHand,
   depositCash,
   expectedPayout,
+  hasSalaryIncome,
+  minimumPayout,
   openSalaryTrips,
   payoutQuestions,
   payoutSuggestion,
+  receivedSalary,
   recordPayout,
   salaryState,
   type PayoutQuestion,
@@ -23,7 +26,7 @@ import { getRates, subscribeRates } from '../model/rates'
 import { askSalaryLater, cleanSalary, receiveSalary, salaryDefault, tripEnd } from '../model/salary'
 import { weekView } from '../model/weeks'
 import { currentSettings } from '../model/settings'
-import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type SalarySource, type Trip } from '../model/types'
+import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type SalarySource, type Transaction, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -41,6 +44,13 @@ export function SalaryDot({ state }: { state: SalaryState | null }) {
 
 export function salaryStateLabel(state: SalaryState | null): string {
   return t(state ? `salaryState.${state}` : 'salaryState.geen')
+}
+
+/** Het bedrag bij het bolletje: ontvangen = wat er echt binnenkwam, anders het verwachte salaris. */
+export function salaryAmountText(trip: Trip, transactions: readonly Transaction[]): string {
+  const received = receivedSalary(trip, transactions)
+  if (received) return formatMoney(received.amount, received.currency)
+  return trip.salary ? formatMoney(trip.salary.amount, trip.salary.currency) : ''
 }
 
 function CurrencySelect({ value, onChange, label }: { value: Currency; onChange: (c: Currency) => void; label?: string }) {
@@ -159,6 +169,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
   const counters = useCounters(store)
   useSyncExternalStore(subscribeRates, getRates)
   const rates = getRates()
@@ -171,14 +182,14 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
   const [pickedCurrency, setPickedCurrency] = useState<Currency | null>(null)
   const [busy, setBusy] = useState(false)
   const open = openSalaryTrips(trips, legs, org, date)
-  const selected = chosen ? open.filter((x) => chosen.has(x.id)) : payoutSuggestion(trips, legs, settings, org, date)
+  const selected = chosen ? open.filter((x) => chosen.has(x.id)) : payoutSuggestion(trips, legs, settings, org, date, transactions)
   const tripCurrencies = new Set(selected.map((x) => x.salary!.currency))
   const currency = pickedCurrency ?? (tripCurrencies.size === 1 ? [...tripCurrencies][0]! : 'EUR')
   const expected = selected.length > 0 ? expectedPayout(selected, legs, currency, date, rates) : null
   // Het verwachte bedrag staat er al, zolang Olivier zelf niets typt.
-  const amountText = typedAmount ?? (expected !== null ? formatNumber(expected) : '')
+  const amountText = typedAmount ?? (expected !== null ? amountInput(expected) : '')
   const parsed = parseAmount(amountText)
-  const valid = parsed !== null && parsed > 0 && !!date && selected.length > 0
+  const valid = parsed !== null && parsed >= minimumPayout(selected.length) && !!date && selected.length > 0
   const diff = parsed !== null && expected !== null ? round2(parsed - expected) : null
 
   function setOrg(next: Organisation) {
@@ -224,7 +235,18 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
         <div className="row">
           <label className="grow">
             {t('payout.amount')}
-            <input className="amount" type="text" inputMode="decimal" autoComplete="off" value={amountText} onChange={(e) => setTypedAmount(e.target.value)} />
+            <input
+              className="amount"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={amountText}
+              onChange={(e) => {
+                setTypedAmount(e.target.value)
+                // Een getypt bedrag hoort bij de valuta van dat moment: die verandert daarna niet meer vanzelf.
+                if (pickedCurrency === null) setPickedCurrency(currency)
+              }}
+            />
           </label>
           <CurrencySelect value={currency} onChange={setPickedCurrency} />
         </div>
@@ -243,6 +265,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
                 <span className="grow">
                   {nameWithCounter(x, counters.get(x.id))}
                   <span className="muted small"> · {formatDate(tripEnd(x, legs))}</span>
+                  {hasSalaryIncome(x, transactions) && <span className="warning small"> · {t('payout.alreadyBooked')}</span>}
                 </span>
                 <span className="num small">{formatMoney(x.salary!.amount, x.salary!.currency)}</span>
               </label>
@@ -280,10 +303,12 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
   const legs = useCollection(store, 'legs.json.enc')
   const counters = useCounters(store)
   const current = useCollection(store, 'trips.json.enc').find((x) => x.id === trip.id) ?? trip
+  const transactions = useCollection(store, 'transactions.json.enc')
   const today = todayIso()
   const state = salaryState(current, legs, today)
+  const paid = receivedSalary(current, transactions)
   const def = salaryDefault(settings, current.organisation)
-  const [amount, setAmount] = useState(current.salary ? formatNumber(current.salary.amount) : def ? formatNumber(def.amount) : '')
+  const [amount, setAmount] = useState(current.salary ? amountInput(current.salary.amount) : def ? amountInput(def.amount) : '')
   const [currency, setCurrency] = useState<Currency>(current.salary?.currency ?? def?.currency ?? settings.lastCurrency)
   const [source, setSource] = useState<SalarySource>(current.salary?.source ?? (def ? 'standaard' : 'eigen'))
   const [busy, setBusy] = useState(false)
@@ -316,7 +341,8 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
     if (!valid || busy) return
     setBusy(true)
     try {
-      const undo = await receiveSalary(store, draft(), today)
+      // Het verwachte salaris blijft staan (behalve als er nog geen was); het ingevulde bedrag is wat er binnenkwam.
+      const undo = await receiveSalary(store, current.salary ? current : draft(), today, { amount: parsed!, currency })
       onClose()
       notify(t('salary.receivedToast'), undo)
     } finally {
@@ -332,7 +358,10 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
           <span>{salaryStateLabel(state)}</span>
         </p>
         {state === 'ontvangen' ? (
-          <p className="muted small">{t('salary.receivedFixed', { amount: formatMoney(current.salary!.amount, current.salary!.currency) })}</p>
+          <p className="muted small">
+            {t('salary.receivedFixed', { amount: paid ? formatMoney(paid.amount, paid.currency) : formatMoney(current.salary!.amount, current.salary!.currency) })}
+            {paid && (paid.amount !== current.salary!.amount || paid.currency !== current.salary!.currency) && ` ${t('salary.expectedWas', { amount: formatMoney(current.salary!.amount, current.salary!.currency) })}`}
+          </p>
         ) : (
           <form
             className="stack"
@@ -368,7 +397,7 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
                 type="button"
                 className="btn small"
                 onClick={() => {
-                  setAmount(formatNumber(def.amount))
+                  setAmount(amountInput(def.amount))
                   setCurrency(def.currency)
                   setSource('standaard')
                 }}
@@ -402,28 +431,43 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const transactions = useCollection(store, 'transactions.json.enc')
   useSyncExternalStore(subscribeRates, getRates)
   const [other, setOther] = useState<PayoutQuestion | null>(null)
+  // Eén tik tegelijk: een tweede tik voordat het scherm bijgewerkt is, boekt niets nog eens.
+  const [busy, setBusy] = useState(false)
   const today = todayIso()
-  const questions = payoutQuestions(trips, legs, settings, today)
+  const questions = payoutQuestions(trips, legs, settings, today, transactions)
   if (questions.length === 0 && !other) return null
 
   async function yes(q: PayoutQuestion) {
+    if (busy) return
     const currencies = new Set(q.trips.map((x) => x.salary!.currency))
     const currency = currencies.size === 1 ? [...currencies][0]! : 'EUR'
     const expected = expectedPayout(q.trips, legs, currency, today, getRates())
     // Zonder koers is het verwachte bedrag niet op te tellen: dan het bedrag zelf invullen.
     if (expected === null) return setOther(q)
-    const undo = await recordPayout(store, { org: q.org, amount: expected, currency, date: today }, q.trips, getRates())
-    notify(t('payout.saved', { n: q.trips.length }), undo)
+    setBusy(true)
+    try {
+      const undo = await recordPayout(store, { org: q.org, amount: expected, currency, date: today }, q.trips, getRates())
+      notify(t('payout.saved', { n: q.trips.length }), undo)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function later(q: PayoutQuestion) {
-    const undos: Undo[] = []
-    for (const x of q.trips) undos.push(await askSalaryLater(store, x, today))
-    notify(t('salary.laterToast'), async () => {
-      for (const undo of undos) await undo()
-    })
+    if (busy) return
+    setBusy(true)
+    try {
+      const undos: Undo[] = []
+      for (const x of q.trips) undos.push(await askSalaryLater(store, x, today))
+      notify(t('salary.laterToast'), async () => {
+        for (const undo of undos) await undo()
+      })
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -435,7 +479,7 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
             <span className="grow">{t('payout.question', { org: organisationLabel(q.org), month: formatMonth(q.month), n: q.trips.length })}</span>
           </p>
           <div className="row wrap">
-            <button type="button" className="btn small primary" onClick={() => void yes(q)}>
+            <button type="button" className="btn small primary" disabled={busy} onClick={() => void yes(q)}>
               <Icon icon={Check} />
               {t('salary.yes')}
             </button>
@@ -443,7 +487,7 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
               <Icon icon={Pencil} />
               {t('salary.otherAmount')}
             </button>
-            <button type="button" className="btn small quiet" onClick={() => void later(q)}>
+            <button type="button" className="btn small quiet" disabled={busy} onClick={() => void later(q)}>
               <Icon icon={Clock} />
               {t('salary.notYet')}
             </button>
@@ -462,10 +506,13 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
 export function MonthSalaries({ store, month, showAmounts, notify }: { store: Store; month: string; showAmounts: boolean; notify: Notify }) {
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
   const counters = useCounters(store)
   const [editing, setEditing] = useState<Trip | null>(null)
   const today = todayIso()
+  // Alleen trips waar salaris bij hoort: met een organisatie of al een salaris (eigen zeilen of trainen niet).
   const inMonth = active(trips)
+    .filter((x) => x.salary || (x.organisation && x.organisation !== 'eigen'))
     .map((x) => ({ trip: x, view: weekView(x, legs) }))
     .filter((e) => e.view.startDate && e.view.endDate && e.view.startDate <= `${month}-31` && e.view.endDate >= `${month}-01`)
     .sort((a, b) => a.view.startDate.localeCompare(b.view.startDate))
@@ -482,7 +529,7 @@ export function MonthSalaries({ store, month, showAmounts, notify }: { store: St
                 <SalaryDot state={state} />
                 <span className="grow">{nameWithCounter(trip, counters.get(trip.id))}</span>
                 <span className="muted small">{salaryStateLabel(state)}</span>
-                {showAmounts && trip.salary && <span className="num small">{formatMoney(trip.salary.amount, trip.salary.currency)}</span>}
+                {showAmounts && trip.salary && <span className="num small">{salaryAmountText(trip, transactions)}</span>}
               </button>
             </li>
           )

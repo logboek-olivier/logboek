@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronUp, Wallet } from 'lucide-react'
 import { useState } from 'react'
-import { formatMoney, formatNumber } from '../format'
+import { formatMoney } from '../format'
 import { t } from '../i18n'
-import { parseAmount } from '../model/money'
+import { amountInput, parseAmount } from '../model/money'
 import { salaryDefault, withSalaryDefault } from '../model/salary'
 import { CURRENCIES, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
 import { Icon } from './Icon'
@@ -28,6 +28,8 @@ interface SalaryFieldsProps {
   status: SalaryStatus
   source: TripSalary['source'] | null
   standard: { amount: number; currency: Currency; org: Organisation } | null
+  /** Ontvangen met een inkomen bij Geld: de status ligt vast (terug naar verwacht zou het salaris twee keer laten tellen). */
+  locked: boolean
   onAmount: (text: string) => void
   onCurrency: (c: Currency) => void
   onStatus: (s: SalaryStatus) => void
@@ -52,8 +54,8 @@ export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '
     mode === 'eigen'
       ? { amount: text, currency, source: 'eigen' as const }
       : mode === 'standaard' && def
-        ? { amount: formatNumber(def.amount), currency: def.currency, source: 'standaard' as const }
-        : { amount: effective ? formatNumber(effective.amount) : '', currency: effective?.currency ?? currency, source: effective?.source ?? null }
+        ? { amount: amountInput(def.amount), currency: def.currency, source: 'standaard' as const }
+        : { amount: effective ? amountInput(effective.amount) : '', currency: effective?.currency ?? currency, source: effective?.source ?? null }
 
   function input(): TripSalary | null | undefined {
     const keep = trip?.salary?.transactionId ? { transactionId: trip.salary.transactionId } : {}
@@ -77,6 +79,7 @@ export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '
       status: shownStatus,
       source: shown.source,
       standard: def && org ? { ...def, org } : null,
+      locked: trip?.salary?.status === 'ontvangen' && !!trip.salary.transactionId,
       onAmount: (value) => {
         if (mode !== 'eigen') setCurrency(shown.currency)
         setMode('eigen')
@@ -121,13 +124,17 @@ export function SalaryFields(p: SalaryFieldsProps) {
               </select>
             </label>
           </div>
-          <div className="segments small" role="radiogroup" aria-label={t('salary.status')}>
-            {(['verwacht', 'ontvangen'] as const).map((s) => (
-              <button key={s} type="button" role="radio" aria-checked={p.status === s} className={`segment${p.status === s ? ' active' : ''}`} onClick={() => p.onStatus(s)}>
-                {t(`salaryStatus.${s}`)}
-              </button>
-            ))}
-          </div>
+          {p.locked ? (
+            <p className="muted small">{t('salary.receivedLocked')}</p>
+          ) : (
+            <div className="segments small" role="radiogroup" aria-label={t('salary.status')}>
+              {(['verwacht', 'ontvangen'] as const).map((s) => (
+                <button key={s} type="button" role="radio" aria-checked={p.status === s} className={`segment${p.status === s ? ' active' : ''}`} onClick={() => p.onStatus(s)}>
+                  {t(`salaryStatus.${s}`)}
+                </button>
+              ))}
+            </div>
+          )}
           {p.source === 'standaard' && p.standard && <p className="muted small">{t('salary.isStandard', { org: organisationLabel(p.standard.org) })}</p>}
           {p.source !== 'standaard' && p.standard && (
             <button type="button" className="btn small" onClick={p.onStandard}>

@@ -34,7 +34,7 @@ async function newTrip(page: Page, name: string, start: string, ownSalary?: stri
   await sheet.getByRole('button', { name: /^Salaris/ }).click()
   if (ownSalary) await sheet.getByLabel('Salaris (bedrag)').fill(ownSalary)
   else {
-    await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveValue('1.200')
+    await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveValue('1200')
     await expect(sheet).toContainText('Standaardbedrag van Sailing Virgins')
   }
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
@@ -76,8 +76,8 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   await page.screenshot({ path: 'screenshots/salaris/vraag-standaard.png' })
   await sheet.getByRole('button', { name: 'Ja, ook voor die trips' }).click()
   await expect(page.locator('.toast')).toHaveText('Salaris opgeslagen')
-  expect(await salaryOf(page, 'Nepweek straks')).toBe('1.300')
-  expect(await salaryOf(page, 'Nepweek eigen')).toBe('1.500')
+  expect(await salaryOf(page, 'Nepweek straks')).toBe('1300')
+  expect(await salaryOf(page, 'Nepweek eigen')).toBe('1500')
 
   // Vandaag: de vraag na de einddatum, zonder bedragen; ander bedrag invullen.
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
@@ -89,7 +89,7 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   await page.screenshot({ path: 'screenshots/salaris/vandaag-vraag.png' })
   await question.getByRole('button', { name: 'Ander bedrag' }).click()
   const receive = page.getByRole('dialog')
-  await expect(receive.getByLabel('Ontvangen bedrag')).toHaveValue('1.200')
+  await expect(receive.getByLabel('Ontvangen bedrag')).toHaveValue('1200')
   await receive.getByLabel('Ontvangen bedrag').fill('1250')
   await receive.getByRole('button', { name: 'Ontvangen opslaan' }).click()
   await expect(page.locator('.toast')).toContainText('Salaris ontvangen')

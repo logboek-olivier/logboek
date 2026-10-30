@@ -114,8 +114,31 @@ export function deleteSession(store: Store, session: Session): Promise<Undo> {
   return removeWithUndo(store, [{ path: 'sessions.json.enc', record: session }])
 }
 
-export function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {
-  return removeWithUndo(store, [{ path: 'transactions.json.enc', record: tx }])
+/**
+ * Een transactie verwijderen. Was het het inkomen van een ontvangen salaris (ook een deel van een uitbetaling), dan
+ * staat dat salaris weer op te ontvangen; ongedaan maken zet beide terug.
+ */
+export async function deleteTransaction(store: Store, tx: Transaction): Promise<Undo> {
+  const paid = store.list('trips.json.enc').filter((x) => x.deletedAt === null && x.salary?.status === 'ontvangen' && x.salary.transactionId === tx.id)
+  const undoTx = await removeWithUndo(store, [{ path: 'transactions.json.enc', record: tx }])
+  if (paid.length === 0) return undoTx
+  const now = new Date().toISOString()
+  await store.putMany(
+    'trips.json.enc',
+    paid.map((x) => {
+      const { transactionId: _t, ...salary } = x.salary!
+      void _t
+      return { ...x, salary: { ...salary, status: 'verwacht' as const }, updatedAt: now }
+    }),
+  )
+  void store.sync()
+  return async () => {
+    await undoTx()
+    const later = new Date().toISOString()
+    const restored = paid.map((before) => ({ ...(store.list('trips.json.enc').find((x) => x.id === before.id) ?? before), salary: before.salary!, updatedAt: later }))
+    await store.putMany('trips.json.enc', restored)
+    void store.sync()
+  }
 }
 
 /**

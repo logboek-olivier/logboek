@@ -1704,4 +1704,9 @@ export const en: Messages = {
   'tipVia.onbekend': 'Unknown',
   'tipVia.depositedAt': 'Paid in on (optional)',
   'tipVia.deposited': (p) => `paid in on ${p.date}`,
+  'payout.alreadyBooked': 'salary already entered',
+  'payout.partLabel': 'Payment',
+  'payout.part': (p) => (p.n === 1 ? 'One payment for 1 trip' : `Part of one payment for ${p.n} trips`),
+  'salary.expectedWas': (p) => `Expected was ${p.amount}.`,
+  'salary.receivedLocked': 'Received; the income is under Money. Delete that income to set the salary back to to be paid.',
 }

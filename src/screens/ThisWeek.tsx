@@ -12,7 +12,7 @@ import { t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
 import { totals } from '../model/money'
 import { tripMoney } from '../model/money-path'
-import { SalaryDot, salaryStateLabel } from '../components/MoneyPath'
+import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
@@ -339,7 +339,7 @@ function WeekMoney({ store, trip }: { store: Store; trip: Trip }) {
           {salary && (
             <p className="salary-line row">
               <SalaryDot state={state} />
-              <span>{t('salary.line', { amount: formatMoney(salary.amount, salary.currency), status: salaryStateLabel(state), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}</span>
+              <span>{t('salary.line', { amount: salaryAmountText(trip, all), status: salaryStateLabel(state), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}</span>
             </p>
           )}
           {tipParts.length > 0 && <p className="muted small">{t('tipVia.line', { parts: tipParts.join(' · ') })}</p>}

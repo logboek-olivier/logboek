@@ -1741,6 +1741,11 @@ export const nl = {
   'tipVia.onbekend': 'Onbekend',
   'tipVia.depositedAt': 'Gestort op (optioneel)',
   'tipVia.deposited': (p: { date: string }) => `gestort op ${p.date}`,
+  'payout.alreadyBooked': 'loon al geboekt',
+  'payout.partLabel': 'Uitbetaling',
+  'payout.part': (p: { n: number }) => (p.n === 1 ? 'Eén uitbetaling voor 1 trip' : `Deel van één uitbetaling voor ${p.n} trips`),
+  'salary.expectedWas': (p: { amount: string }) => `Verwacht was ${p.amount}.`,
+  'salary.receivedLocked': 'Ontvangen; het inkomen staat bij Geld. Verwijder dat inkomen om het salaris weer op te ontvangen te zetten.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
