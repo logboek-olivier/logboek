@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 // @ts-expect-error: Node-script zonder typen
 import { FORECAST_URL, KEEP_HOURS, MARINE_URL, POINTS, SOURCE, forecastUrl, keptPoint, marineUrl, parsePoint, weatherFile } from '../scripts/build-weather.mjs'
 import type { Leg, Place, Trip } from '../src/model/types'
-import { beaufort, compass, dayParts, fetchedAtOf, isStale, isWeatherFile, loadWeather, localDates, localHour, needsRefresh, pointNear, POINT_MAX_NM, tripPoints, upcoming, type WeatherFile, type WeatherPoint } from '../src/model/weather'
+import { choosePoint, compass, dayParts, downwindDeg, pointForArea, fetchedAtOf, isStale, isWeatherFile, loadWeather, localDates, localHour, needsRefresh, pointNear, POINT_MAX_NM, tripPoints, upcoming, type WeatherFile, type WeatherPoint } from '../src/model/weather'
 
 // Wind en weer: public/weather.json wordt door deploy.yml gebouwd uit Open-Meteo; de app leest alleen dat bestand.
 // Verzonnen antwoorden in de vorm die Open-Meteo documenteert (hourly.time in plaatselijke tijd, timezone=auto).
@@ -111,17 +111,11 @@ describe('weer in de app', () => {
     expect(upcoming(parts, 23).map((p) => p.part)).toEqual(['avond'])
   })
 
-  it('kompas en Beaufort', () => {
+  it('kompas', () => {
     expect(compass(0)).toBe('N')
     expect(compass(359)).toBe('N')
     expect(compass(120)).toBe('ZO')
     expect(compass(-90)).toBe('W')
-    expect(beaufort(0.5)).toBe(0)
-    expect(beaufort(3)).toBe(1)
-    expect(beaufort(12)).toBe(4)
-    expect(beaufort(16.4)).toBe(4)
-    expect(beaufort(16.6)).toBe(5)
-    expect(beaufort(70)).toBe(12)
   })
 
   it('vandaag en morgen en het uur in de plaatselijke tijd van het punt', () => {
@@ -185,5 +179,31 @@ describe('beveiliging', () => {
     expect(csp).toBe("default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' blob: data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'")
     // De app noemt Open-Meteo alleen als bron, nooit als adres om op te halen.
     for (const file of ['../src/model/weather.ts', '../src/components/WeatherCard.tsx']) expect(readFileSync(new URL(file, import.meta.url), 'utf8')).not.toMatch(/open-meteo\.com|https?:\/\//)
+  })
+})
+
+describe('welk weerpunt', () => {
+  const at = (id: string) => parsePoint(POINTS.find((p: { id: string }) => p.id === id), fakeForecast('2026-10-29'), null) as WeatherPoint
+  const file: WeatherFile = weatherFile([at('bvi'), at('sint-maarten'), at('saint-barthelemy'), at('sint-eustatius'), at('antigua'), at('split')], NOW)
+
+  it('nieuwe punten in de Bovenwindse Eilanden', () => {
+    for (const id of ['saint-barthelemy', 'sint-eustatius', 'antigua']) expect(POINTS.some((p: { id: string }) => p.id === id)).toBe(true)
+  })
+
+  it('zelf gekozen gaat voor; dan de laatste pin; dan GPS; dan het gebied van de trip', () => {
+    const statia = { lat: 17.48, lon: -62.98 }
+    expect(choosePoint(file, { chosen: 'antigua', pins: [statia] })).toMatchObject({ point: { id: 'antigua' }, source: 'zelf' })
+    expect(choosePoint(file, { chosen: 'bestaat-niet', pins: [statia] })).toMatchObject({ point: { id: 'sint-eustatius' }, source: 'pin' })
+    expect(choosePoint(file, { pins: [], gps: { lat: 17.9, lon: -62.85 } })).toMatchObject({ point: { id: 'saint-barthelemy' }, source: 'gps' })
+    expect(choosePoint(file, { pins: [], gps: null, area: ['Nep Sint Maarten'] })).toMatchObject({ point: { id: 'sint-maarten' }, source: 'gebied' })
+    expect(choosePoint(file, { pins: [], area: ['BVI'] })?.point.id).toBe('bvi')
+    expect(choosePoint(file, { pins: [], area: ['Nepgebied'] })).toBeNull()
+    expect(pointForArea(file, ['split'])?.id).toBe('split')
+  })
+
+  it('het pijltje wijst met de wind mee: wind uit het oosten gaat naar het westen', () => {
+    expect(downwindDeg('O')).toBe(270)
+    expect(downwindDeg('N')).toBe(180)
+    expect(downwindDeg('ZW')).toBe(45)
   })
 })

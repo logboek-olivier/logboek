@@ -85,9 +85,18 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const card = page.locator('.weather-card')
       await expect(card.getByRole('heading', { name: L('weather.title', { area: 'BVI' }) })).toBeVisible()
       await expect(card.getByRole('heading', { name: L('weather.tomorrow') })).toBeVisible()
-      // Morgenmiddag: wind 10–15 kn uit het zuidoosten, 4 Bft; stoten 23 kn, golven 1,2 m, regen 1,2 mm.
+      // Morgenmiddag: wind 10–15 kn uit het zuidoosten (pijltje met de wind mee, geen windkracht); stoten 23 kn, golven 1,2 m, regen 1,2 mm.
       const tomorrowMiddag = card.locator('.weather-day', { hasText: L('weather.tomorrow') }).locator('li', { hasText: L('weather.part.middag') })
-      await expect(tomorrowMiddag).toContainText(L('weather.wind', { dir: L('weather.dir.ZO'), range: '10–15', bft: 4 }))
+      await expect(tomorrowMiddag).toContainText(L('weather.windFrom', { dir: L('weather.dir.ZO'), range: '10–15' }))
+      await expect(tomorrowMiddag.locator('.wind-arrow')).toBeVisible()
+      await expect(card).not.toContainText('Bft')
+      await expect(card).toContainText(L('weather.source.pin'))
+      // Zelf een ander punt kiezen; terug naar automatisch.
+      await card.getByRole('combobox', { name: L('weather.choosePoint') }).selectOption('split')
+      await expect(card.getByRole('heading', { name: L('weather.title', { area: lang === 'nl' ? 'Split en Brač' : 'Split and Brač' }) })).toBeVisible()
+      await expect(card).toContainText(L('weather.source.zelf'))
+      await card.getByRole('combobox', { name: L('weather.choosePoint') }).selectOption('')
+      await expect(card.getByRole('heading', { name: L('weather.title', { area: 'BVI' }) })).toBeVisible()
       await expect(tomorrowMiddag).toContainText(L('weather.gust', { kn: '23' }))
       await expect(tomorrowMiddag).toContainText(L('weather.wave', { m: lang === 'nl' ? '1,2' : '1.2' }))
       await expect(tomorrowMiddag).toContainText(L('weather.rain', { mm: lang === 'nl' ? '1,2' : '1.2' }))

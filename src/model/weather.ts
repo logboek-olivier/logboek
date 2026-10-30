@@ -146,6 +146,49 @@ export function pointNear(file: WeatherFile | null, near: readonly { lat: number
   return best?.point ?? null
 }
 
+/** Hoe het weerpunt gekozen is: zelf, bij de laatste plaats met pin, bij de eigen locatie (GPS) of bij het gebied van de trip. */
+export type PointSource = 'zelf' | 'pin' | 'gps' | 'gebied'
+
+const normalized = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** Het weerpunt bij het gebied of de basis van een trip (op naam: "BVI", "Sint Maarten", "Split"), als dat er is. */
+export function pointForArea(file: WeatherFile | null, texts: readonly (string | undefined)[]): WeatherPoint | null {
+  if (!file) return null
+  const words = texts.map((x) => normalized(x ?? '')).filter(Boolean)
+  for (const text of words) {
+    for (const point of file.points) {
+      const names = [point.id.replace(/-/g, ' '), point.name.nl, point.name.en].map(normalized).filter(Boolean)
+      if (names.some((n) => ` ${text} `.includes(` ${n} `) || ` ${n} `.includes(` ${text} `))) return point
+    }
+  }
+  return null
+}
+
+/**
+ * Het weerpunt voor Vandaag: zelf gekozen (als dat punt in het bestand staat); anders het dichtstbijzijnde bij de laatste
+ * plaats met een pin van de lopende trip; anders bij de eigen locatie (alleen als GPS al is toegestaan); anders het punt
+ * bij het gebied of de basis van de trip. Automatisch hoogstens POINT_MAX_NM ver.
+ */
+export function choosePoint(
+  file: WeatherFile | null,
+  opts: { chosen?: string | null; pins: readonly { lat: number; lon: number }[]; gps?: { lat: number; lon: number } | null; area?: readonly (string | undefined)[] },
+): { point: WeatherPoint; source: PointSource } | null {
+  if (!file) return null
+  const own = opts.chosen ? file.points.find((p) => p.id === opts.chosen) : undefined
+  if (own) return { point: own, source: 'zelf' }
+  const byPin = pointNear(file, opts.pins)
+  if (byPin) return { point: byPin, source: 'pin' }
+  const byGps = opts.gps ? pointNear(file, [opts.gps]) : null
+  if (byGps) return { point: byGps, source: 'gps' }
+  const byArea = pointForArea(file, opts.area ?? [])
+  return byArea ? { point: byArea, source: 'gebied' } : null
+}
+
+/** De richting waar de wind heen gaat, in graden (het pijltje wijst met de wind mee): de kompasstreek plus 180°. */
+export function downwindDeg(dir: Compass): number {
+  return (COMPASS.indexOf(dir) * 45 + 180) % 360
+}
+
 export type DayPart = 'ochtend' | 'middag' | 'avond'
 export const DAY_PARTS: readonly DayPart[] = ['ochtend', 'middag', 'avond']
 const PART_HOURS: Record<DayPart, [number, number]> = { ochtend: [6, 12], middag: [12, 18], avond: [18, 24] }
@@ -168,13 +211,6 @@ export type Compass = (typeof COMPASS)[number]
 /** Kompasstreek van een windrichting in graden (acht streken; de vertaling volgt bij het tonen). */
 export function compass(deg: number): Compass {
   return COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]!
-}
-
-/** Beaufort uit knopen (bovengrenzen van de schaal). */
-export function beaufort(kn: number): number {
-  const limits = [0.9, 3.4, 6.4, 10.4, 16.4, 21.4, 27.4, 33.4, 40.4, 47.4, 55.4, 63.4]
-  const i = limits.findIndex((l) => kn <= l)
-  return i === -1 ? 12 : i
 }
 
 /** De uren van één dag (plaatselijke datum jjjj-mm-dd) per dagdeel samengevat; dagdelen zonder gegevens vallen weg. */

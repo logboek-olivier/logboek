@@ -4162,6 +4162,29 @@ textarea.note {
   color: var(--warning);
 }
 
+/* Het weerpunt (automatisch of zelf gekozen) en een pijltje dat met de wind meewijst. */
+.weather-point {
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.weather-point-choice {
+  width: auto;
+  max-width: 55%;
+}
+
+.weather-wind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.wind-arrow {
+  width: var(--icon);
+  height: var(--icon);
+  flex: none;
+}
+
 /* Doelen en skills (Meer → Doelen): voortgangsbalk onder de naam, mijlpalen om af te vinken. */
 .goal-row .row-main {
   flex: 1;
