@@ -65,7 +65,9 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const [filledFrom, setFilledFrom] = useState(false)
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
-  const salary = useSalaryDraft(trip, organisation, currentSettings(store.get('settings.json.enc')))
+  // De datums uit het formulier: een voorbije trip krijgt geen standaardsalaris (zoals bij opslaan).
+  const formEnd = /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? addDays(startDate, Math.max(1, Math.round(Number(dayCount)) || 1) - 1) : ''
+  const salary = useSalaryDraft(trip, organisation, currentSettings(store.get('settings.json.enc')), { startDate, endDate: formEnd })
   // Nieuwe trip bij Sailing Virgins of Yacht Week: naamvoorstel met teller ("SV #4 · BVI").
   const namePlaceholder = newTripName(trips, legs, currentSettings(store.get('settings.json.enc')), organisation, startDate || todayIso(), area, defaultWeekName(startDate || todayIso(), lang, base))
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])

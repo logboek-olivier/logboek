@@ -3,9 +3,10 @@ import { active } from './derive'
 import { eurOf, round2 } from './money'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
 import { currentSettings, saveSettings } from './settings'
-import { newId, type Currency, type Leg, type Organisation, type SalaryDefault, type Settings, type Transaction, type TransactionSource, type Trip, type TripSalary } from './types'
+import { type Currency, type Leg, type Organisation, type SalaryDefault, type Settings, type Transaction, type TransactionSource, type Trip, type TripSalary } from './types'
 import { weekView } from './weeks'
 import type { Undo } from './edit'
+import { endedFor } from './trip-dates'
 
 // Salaris per trip (Olivier wordt per trip betaald): bedrag en valuta, verwacht of ontvangen, en of het bedrag het
 // standaardbedrag van de organisatie is of een eigen bedrag. Harde regel: een eigen bedrag (zelf ingevuld of aangepast)
@@ -49,8 +50,11 @@ function standard(d: SalaryDefault): TripSalary {
 /**
  * Nieuwe trip of andere organisatie: het standaardbedrag als de trip nog geen salaris heeft, of als hij het
  * standaardbedrag van zijn vorige organisatie had (nog niet ontvangen). Een eigen of ontvangen salaris blijft staan.
+ * Een trip die voorbij is (of geen einddatum heeft), krijgt nooit vanzelf een salaris: dat is al betaald of onbekend, en
+ * anders telt het als te ontvangen en vraagt Vandaag of het binnen is.
  */
-export function withSalaryDefault(trip: Trip, settings: Settings, previous?: Trip): Trip {
+export function withSalaryDefault(trip: Trip, settings: Settings, previous: Trip | undefined, legs: readonly Leg[], today: string): Trip {
+  if (!notEnded(trip, legs, today)) return trip
   const d = salaryDefault(settings, trip.organisation)
   const s = trip.salary
   if (!s) return d ? { ...trip, salary: standard(d) } : trip
@@ -126,13 +130,28 @@ export async function saveSalaryDefaults(store: Store, next: Partial<Record<Orga
 }
 
 /** Vandaag vraagt "Salaris van <trip> ontvangen?" na de einddatum, zolang het salaris verwacht is. */
-export function salaryQuestions(trips: readonly Trip[], legs: readonly Leg[], today: string): Trip[] {
+/**
+ * Het id van het salarisinkomen van een trip: vast per trip, zodat een tweede tik, een uitbetaling of een ander apparaat
+ * nooit een tweede inkomen voor hetzelfde salaris maakt (twee apparaten schrijven dan hetzelfde record).
+ */
+export function salaryIncomeId(tripId: string): string {
+  return `salaris:${tripId}`
+}
+
+/** Het salarisinkomen (loon) dat al bij deze trip staat, als dat er is. */
+export function salaryIncomeOf(tripId: string, transactions: readonly Transaction[]): Transaction | undefined {
+  return transactions.find((tx) => tx.deletedAt === null && tx.kind === 'loon' && tx.tripId === tripId)
+}
+
+/** Trips waarvan Vandaag vraagt of het salaris binnen is; niet als er al een salarisinkomen bij de trip staat. */
+export function salaryQuestions(trips: readonly Trip[], legs: readonly Leg[], today: string, transactions: readonly Transaction[] = []): Trip[] {
   return active(trips)
     .filter((x) => {
       const s = x.salary
-      if (!s || s.status !== 'verwacht') return false
+      if (!s || s.status !== 'verwacht' || salaryIncomeOf(x.id, transactions)) return false
       const end = tripEnd(x, legs)
-      return !!end && end < today && (!s.askAfter || s.askAfter <= today)
+      // Een trip die de dagen volgt, is pas drie dagen na de laatste dag voorbij (hij kan nog doorlopen).
+      return !!end && endedFor(x, end) < today && (!s.askAfter || s.askAfter <= today)
     })
     .sort((a, b) => tripEnd(a, legs).localeCompare(tripEnd(b, legs)))
 }
@@ -155,12 +174,32 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
   const latest = store.list('trips.json.enc').find((x) => x.id === trip.id) ?? trip
   if (latest.salary?.status === 'ontvangen') return async () => {}
   const before = latest.salary
+  const now = new Date().toISOString()
+  const { askAfter: _ask, ...current } = s
+  void _ask
+  // Er staat al een salarisinkomen bij de trip (een tweede tik, of de status viel op een ander apparaat terug naar
+  // verwacht): niets nog eens boeken, alleen de status bijwerken.
+  const existing = salaryIncomeOf(trip.id, store.list('transactions.json.enc'))
+  if (existing) {
+    await store.put('trips.json.enc', { ...latest, salary: { ...current, status: 'ontvangen', transactionId: existing.id }, updatedAt: now })
+    void store.sync()
+    return async () => {
+      const later = new Date().toISOString()
+      const now2 = store.list('trips.json.enc').find((x) => x.id === trip.id)
+      if (now2) {
+        const restored: Trip = { ...now2, updatedAt: later }
+        if (before) restored.salary = before
+        else delete restored.salary
+        await store.put('trips.json.enc', restored)
+      }
+      void store.sync()
+    }
+  }
   const amount = round2(actual?.amount ?? s.amount)
   const currency = actual?.currency ?? s.currency
-  const now = new Date().toISOString()
   const base = { date: today, amount, currency }
   const tx: Transaction = {
-    id: newId(),
+    id: salaryIncomeId(trip.id),
     ...base,
     kind: 'loon',
     source: salarySource(latest),
@@ -169,10 +208,8 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
     updatedAt: now,
     deletedAt: null,
   }
-  const { askAfter: _a, ...rest } = s
-  void _a
   await store.put('transactions.json.enc', tx)
-  await store.put('trips.json.enc', { ...latest, salary: { ...rest, status: 'ontvangen', transactionId: tx.id }, updatedAt: now })
+  await store.put('trips.json.enc', { ...latest, salary: { ...current, status: 'ontvangen', transactionId: tx.id }, updatedAt: now })
   void store.sync()
   return async () => {
     const later = new Date().toISOString()

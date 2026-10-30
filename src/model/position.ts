@@ -7,6 +7,7 @@ import { payoutRule } from './money-path'
 import { rateFor, type RatesFile } from './rates'
 import { salaryEur, tipAverages, tripEnd } from './salary'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
+import { endedFor } from './trip-dates'
 
 // Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. Op de bank (betaal- en
 // spaarrekeningen), contant (contante fooien die nog niet gestort zijn, plus de stand van een kasrekening), te ontvangen
@@ -82,10 +83,16 @@ const GROUP: Record<AccountKind, 'bank' | 'cash' | 'investments' | 'debts'> = {
   schuld: 'debts',
 }
 
-/** Is het salaris van deze trip op `date` al betaald (het inkomen van "ontvangen" staat op of vóór die dag)? */
+/**
+ * Is het salaris van deze trip op `date` al betaald (het inkomen van "ontvangen" staat op of vóór die dag)? Een
+ * salarisinkomen bij de trip telt ook als de status nog op verwacht staat (die viel bijvoorbeeld op een ander apparaat
+ * terug): wat binnen is, is niet meer te ontvangen.
+ */
 function paidBy(trip: Trip, transactions: readonly Transaction[], date: string): boolean {
   const s = trip.salary
-  if (!s || s.status !== 'ontvangen') return false
+  if (!s) return false
+  if (transactions.some((x) => x.deletedAt === null && x.kind === 'loon' && x.tripId === trip.id && x.date <= date)) return true
+  if (s.status !== 'ontvangen') return false
   const tx = s.transactionId ? transactions.find((x) => x.id === s.transactionId) : undefined
   // Zonder bekend inkomen (een oudere of handmatige ontvangst): betaald.
   return !tx || tx.deletedAt !== null || tx.date <= date
@@ -158,7 +165,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
   for (const trip of active(trips)) {
     const s = trip.salary
     const end = tripEnd(trip, legs)
-    if (!s || !end || end >= date || paidBy(trip, transactions, date)) continue
+    if (!s || !end || endedFor(trip, end) >= date || paidBy(trip, transactions, date)) continue
     out.receivable.push({ trip, amount: s.amount, currency: s.currency })
     add(out.totals.receivable, s.amount, s.currency, date, rates)
   }
@@ -168,6 +175,8 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     if (c.status === 'terugbetaald' && !c.repaid) continue
     if (c.amount === undefined || c.currency === undefined || c.amount <= 0 || c.date > date) continue
     if (c.repaid && c.repaid.date <= date) continue
+    // De terugbetaling staat er al (ook als de declaratie zelf nog niet op terugbetaald staat): niet meer te ontvangen.
+    if (transactions.some((tx) => tx.deletedAt === null && tx.kind === 'terugbetaling' && tx.claimId === c.id && tx.date <= date)) continue
     out.claims.push(c)
     add(out.totals.receivable, c.amount, c.currency, date, rates)
   }

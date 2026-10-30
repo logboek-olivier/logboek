@@ -53,22 +53,22 @@ const get = (s: Store, id: string) => s.list('trips.json.enc').find((t) => t.id 
 describe('standaardbedrag per organisatie', () => {
   it('vult alleen een trip zonder salaris; eigen en ontvangen blijven staan', () => {
     const st = settings({ salaryDefaults: { 'sailing-virgins': SV } })
-    expect(withSalaryDefault(trip('a', '2026-12-01', '2026-12-07'), st).salary).toEqual({ ...SV, status: 'verwacht', source: 'standaard' })
+    expect(withSalaryDefault(trip('a', '2026-12-01', '2026-12-07'), st, undefined, [], '2026-10-30').salary).toEqual({ ...SV, status: 'verwacht', source: 'standaard' })
     const own = trip('b', '2026-12-01', '2026-12-07', { salary: { amount: 900, currency: 'USD', status: 'verwacht', source: 'eigen' } })
-    expect(withSalaryDefault(own, st)).toBe(own)
+    expect(withSalaryDefault(own, st, undefined, [], '2026-10-30')).toBe(own)
     const other = trip('c', '2026-12-01', '2026-12-07', { organisation: 'eigen' })
-    expect(withSalaryDefault(other, st).salary).toBeUndefined()
+    expect(withSalaryDefault(other, st, undefined, [], '2026-10-30').salary).toBeUndefined()
   })
 
   it('andere organisatie: het standaardbedrag volgt, een eigen bedrag niet', () => {
     const st = settings({ salaryDefaults: { 'sailing-virgins': SV, 'yacht-week': { amount: 800, currency: 'EUR' } } })
     const before = trip('a', '2026-12-01', '2026-12-07', { salary: { ...SV, status: 'verwacht', source: 'standaard' } })
-    expect(withSalaryDefault({ ...before, organisation: 'yacht-week' }, st, before).salary?.amount).toBe(800)
-    expect(withSalaryDefault({ ...before, organisation: 'eigen' }, st, before).salary).toBeUndefined()
+    expect(withSalaryDefault({ ...before, organisation: 'yacht-week' }, st, before, [], '2026-10-30').salary?.amount).toBe(800)
+    expect(withSalaryDefault({ ...before, organisation: 'eigen' }, st, before, [], '2026-10-30').salary).toBeUndefined()
     const own = { ...before, salary: { ...SV, amount: 1500, status: 'verwacht' as const, source: 'eigen' as const } }
-    expect(withSalaryDefault({ ...own, organisation: 'yacht-week' }, st, own).salary?.amount).toBe(1500)
+    expect(withSalaryDefault({ ...own, organisation: 'yacht-week' }, st, own, [], '2026-10-30').salary?.amount).toBe(1500)
     const received = { ...before, salary: { ...SV, status: 'ontvangen' as const, source: 'standaard' as const } }
-    expect(withSalaryDefault({ ...received, organisation: 'yacht-week' }, st, received).salary?.amount).toBe(1200)
+    expect(withSalaryDefault({ ...received, organisation: 'yacht-week' }, st, received, [], '2026-10-30').salary?.amount).toBe(1200)
   })
 
   it('nieuw standaardbedrag: de vraag noemt alleen komende trips met nog het oude bedrag', () => {

@@ -4,7 +4,7 @@ import { formatMoney } from '../format'
 import { t } from '../i18n'
 import { amountInput, parseAmount } from '../model/money'
 import { salaryDefault, withSalaryDefault } from '../model/salary'
-import { CURRENCIES, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
+import { CURRENCIES, todayIso, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
 import { Icon } from './Icon'
 import { organisationLabel } from '../i18n/labels'
 
@@ -37,7 +37,7 @@ interface SalaryFieldsProps {
 }
 
 /** Toestand van het salarisveld voor een trip (of een nieuwe trip) met de gekozen organisatie. */
-export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '', settings: Settings): SalaryDraft {
+export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '', settings: Settings, dates?: { startDate: string; endDate: string }): SalaryDraft {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<Mode>('auto')
   const [text, setText] = useState('')
@@ -48,7 +48,12 @@ export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '
   // Wat er zonder aanpassen gebeurt: het bestaande salaris, of het standaardbedrag van de (nieuwe) organisatie.
   const draftTrip: Trip = trip ? { ...trip, ...(org ? { organisation: org } : {}) } : { id: '', name: '', updatedAt: '', deletedAt: null, ...(org ? { organisation: org } : {}) }
   if (trip && !org) delete draftTrip.organisation
-  const effective = withSalaryDefault(draftTrip, settings, trip ?? undefined).salary ?? null
+  // Met de datums uit het formulier (zonder: die van de trip); een voorbije trip krijgt geen standaardsalaris.
+  if (dates?.startDate && dates.endDate) {
+    draftTrip.startDate = dates.startDate
+    draftTrip.endDate = dates.endDate
+  }
+  const effective = withSalaryDefault(draftTrip, settings, trip ?? undefined, [], todayIso()).salary ?? null
   const shownStatus = status ?? effective?.status ?? 'verwacht'
   const shown =
     mode === 'eigen'

@@ -67,6 +67,15 @@ function costFor(store: Store, claim: Claim, id: string, now: string): Transacti
   }
 }
 
+/** Vaste id's voor de uitgave en de terugbetaling van een declaratie: een tweede tik of een ander apparaat boekt hetzelfde record. */
+function costIdOf(claimId: string): string {
+  return `uitgave:${claimId}`
+}
+
+function repaymentIdOf(claimId: string): string {
+  return `terugbetaling:${claimId}`
+}
+
 /** De levende uitgave bij een declaratie. */
 function costOf(store: Store, claimId: string): Transaction | undefined {
   return store.list('transactions.json.enc').find((tx) => tx.claimId === claimId && tx.kind === 'kosten')
@@ -83,7 +92,7 @@ export async function addClaim(store: Store, input: ClaimInput, receipt: { bytes
   const now = new Date().toISOString()
   const claim: Claim = { id: newId(), ...fields, ...(document ? { documentId: document.id } : {}), status: 'open', updatedAt: now, deletedAt: null }
   await store.put('claims.json.enc', claim)
-  const cost = costFor(store, claim, newId(), now)
+  const cost = costFor(store, claim, costIdOf(claim.id), now)
   if (cost) await store.put('transactions.json.enc', cost)
   void store.sync()
   return claim
@@ -99,7 +108,7 @@ export async function updateClaim(store: Store, claim: Claim, input: ClaimInput)
   if (latest.repaid) next.repaid = latest.repaid
   await store.put('claims.json.enc', next)
   const existing = costOf(store, latest.id)
-  const cost = costFor(store, next, existing?.id ?? newId(), now)
+  const cost = costFor(store, next, existing?.id ?? costIdOf(latest.id), now)
   if (cost) await store.put('transactions.json.enc', cost)
   else if (existing) await store.put('transactions.json.enc', { ...existing, updatedAt: now, deletedAt: now })
   // De titel van het bonnetje volgt de datum.
@@ -130,9 +139,20 @@ export async function markRepaid(store: Store, claim: Claim, repaid: { date: str
   if (before.status === 'terugbetaald') return async () => {}
   const trip = before.tripId ? store.list('trips.json.enc').find((x) => x.id === before.tripId) : undefined
   const now = new Date().toISOString()
+  // De terugbetaling staat er al (de app sloot na het inkomen, vóór de declaratie): alleen de declaratie bijwerken.
+  const existing = store.list('transactions.json.enc').find((tx) => tx.kind === 'terugbetaling' && tx.claimId === before.id)
+  if (existing) {
+    const paid = { date: existing.date, amount: existing.amount, currency: existing.currency, transactionId: existing.id }
+    await store.put('claims.json.enc', { ...before, status: 'terugbetaald', ...(before.submittedAt ? {} : { submittedAt: paid.date }), repaid: paid, updatedAt: now })
+    void store.sync()
+    return async () => {
+      await store.put('claims.json.enc', { ...before, updatedAt: new Date().toISOString() })
+      void store.sync()
+    }
+  }
   const base = { date: repaid.date, amount: round2(repaid.amount), currency: repaid.currency }
   const tx: Transaction = {
-    id: newId(),
+    id: repaymentIdOf(before.id),
     ...base,
     kind: 'terugbetaling',
     source: sourceOf(trip),
@@ -142,9 +162,11 @@ export async function markRepaid(store: Store, claim: Claim, repaid: { date: str
     updatedAt: now,
     deletedAt: null,
   }
-  // Eerst de declaratie (zo ziet een tweede, gelijktijdige aanroep hem al als terugbetaald), dan het inkomen.
-  await store.put('claims.json.enc', { ...before, status: 'terugbetaald', ...(before.submittedAt ? {} : { submittedAt: repaid.date }), repaid: { ...base, transactionId: tx.id }, updatedAt: now })
+  // Eerst het inkomen (met een vast id: een tweede tik of een ander apparaat schrijft hetzelfde record), dan de
+  // declaratie. Sluit de app ertussen, dan telt de declaratie niet meer als te ontvangen en zet een tweede tik alleen de
+  // status bij; zo verdwijnt een terugbetaling nooit stil uit het saldo.
   await store.put('transactions.json.enc', tx)
+  await store.put('claims.json.enc', { ...before, status: 'terugbetaald', ...(before.submittedAt ? {} : { submittedAt: repaid.date }), repaid: { ...base, transactionId: tx.id }, updatedAt: now })
   void store.sync()
   return async () => {
     const later = new Date().toISOString()

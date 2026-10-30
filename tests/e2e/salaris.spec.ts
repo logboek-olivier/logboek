@@ -22,7 +22,7 @@ async function setDefault(page: Page, amount: string) {
   await sheet.getByRole('button', { name: 'Opslaan' }).click()
 }
 
-async function newTrip(page: Page, name: string, start: string, ownSalary?: string) {
+async function newTrip(page: Page, name: string, start: string, ownSalary?: string, past = false) {
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
   await page.getByRole('main').getByRole('button', { name: 'Nieuwe trip' }).click()
   const sheet = page.getByRole('dialog')
@@ -32,6 +32,8 @@ async function newTrip(page: Page, name: string, start: string, ownSalary?: stri
   // Het salaris staat ingeklapt: geen bedragen in beeld zolang Olivier er niet om vraagt.
   await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveCount(0)
   await sheet.getByRole('button', { name: /^Salaris/ }).click()
+  // Een voorbije trip krijgt nooit vanzelf het standaardbedrag: Olivier vult het zelf in als het nog moet komen.
+  if (past) await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveValue('')
   if (ownSalary) await sheet.getByLabel('Salaris (bedrag)').fill(ownSalary)
   else {
     await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveValue('1200')
@@ -63,8 +65,9 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   await expect(page.getByRole('button', { name: /^Salaris per organisatie/ })).toContainText('Sailing Virgins')
   await expect(page.getByRole('button', { name: /^Salaris per organisatie/ })).not.toContainText('1.200')
 
-  // Een voorbije trip met het standaardbedrag, een komende met het standaardbedrag en een komende met een eigen bedrag.
-  await newTrip(page, 'Nepweek voorbij', iso(-12))
+  // Een voorbije trip (zonder standaardbedrag: dat komt alleen bij komende trips; Olivier typt het zelf), een komende
+  // met het standaardbedrag en een komende met een eigen bedrag.
+  await newTrip(page, 'Nepweek voorbij', iso(-12), '1200', true)
   await newTrip(page, 'Nepweek straks', iso(20))
   await newTrip(page, 'Nepweek eigen', iso(40), '1500')
 
