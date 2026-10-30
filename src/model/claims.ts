@@ -5,7 +5,7 @@ import { addDocument, scrubbedDocument } from './documents'
 import type { Undo } from './edit'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import { newId, todayIso, type Claim, type ClaimStatus, type Currency, type Transaction, type TransactionSource, type Trip, type VaultDocument } from './types'
+import { keepUnknownFields, newId, todayIso, type Claim, type ClaimStatus, type Currency, type Transaction, type TransactionSource, type Trip, type VaultDocument } from './types'
 import type { Bytes } from '../crypto/encrypt'
 
 // Declaraties: een uitgave die de organisatie terugbetaalt. + → Declaratie: een foto van het bonnetje (camera of
@@ -36,6 +36,9 @@ function clean(input: ClaimInput): Pick<Claim, 'date'> & Partial<Pick<Claim, 'tr
     ...(amount !== null ? { amount, currency: input.currency } : {}),
   }
 }
+
+/** De velden van een declaratie die deze versie kent (de rest blijft bij bewerken staan, zie keepUnknownFields). */
+const CLAIM_FIELDS = ['id', 'date', 'tripId', 'note', 'amount', 'currency', 'documentId', 'status', 'submittedAt', 'repaid', 'updatedAt', 'deletedAt'] as const
 
 /** Titel van het bonnetje in de kluis: neutraal, met de datum (de notitie staat alleen bij de declaratie). */
 function receiptTitle(date: string): string {
@@ -102,10 +105,11 @@ export async function addClaim(store: Store, input: ClaimInput, receipt: { bytes
 export async function updateClaim(store: Store, claim: Claim, input: ClaimInput): Promise<void> {
   const latest = store.list('claims.json.enc').find((c) => c.id === claim.id) ?? claim
   const now = new Date().toISOString()
-  const next: Claim = { id: latest.id, ...clean(input), status: latest.status, updatedAt: now, deletedAt: null }
-  if (latest.documentId) next.documentId = latest.documentId
-  if (latest.submittedAt) next.submittedAt = latest.submittedAt
-  if (latest.repaid) next.repaid = latest.repaid
+  const rebuilt: Claim = { id: latest.id, ...clean(input), status: latest.status, updatedAt: now, deletedAt: null }
+  if (latest.documentId) rebuilt.documentId = latest.documentId
+  if (latest.submittedAt) rebuilt.submittedAt = latest.submittedAt
+  if (latest.repaid) rebuilt.repaid = latest.repaid
+  const next = keepUnknownFields(latest, rebuilt, CLAIM_FIELDS)
   await store.put('claims.json.enc', next)
   const existing = costOf(store, latest.id)
   const cost = costFor(store, next, existing?.id ?? costIdOf(latest.id), now)

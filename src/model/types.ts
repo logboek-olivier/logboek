@@ -721,6 +721,17 @@ export function firstNameOnly(text: string): string {
   return text.trim().split(/\s+/)[0] ?? ''
 }
 
+/**
+ * Een opnieuw opgebouwd record met de velden die deze versie niet kent (geschreven door een nieuwere versie op een ander
+ * apparaat) uit de vorige versie: bewerken in een oudere versie gooit die nooit weg. Velden in `known` beheert deze
+ * versie zelf: ontbreken ze in `next`, dan zijn ze bewust gewist.
+ */
+export function keepUnknownFields<T extends object>(previous: object | undefined, next: T, known: readonly string[]): T {
+  if (!previous) return next
+  const extra = Object.fromEntries(Object.entries(previous).filter(([key]) => !known.includes(key)))
+  return { ...extra, ...next }
+}
+
 /** Datum van vandaag als jjjj-mm-dd in lokale tijd. */
 export function todayIso(): string {
   const d = new Date()
