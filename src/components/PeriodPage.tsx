@@ -73,6 +73,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
   const legs = useCollection(store, 'legs.json.enc')
   const plans = useCollection(store, 'plans.json.enc')
   const students = useCollection(store, 'students.json.enc')
+  const transactions = useCollection(store, 'transactions.json.enc')
   const curricula = effectiveCurricula(useCollection(store, 'curricula.json.enc'))
   const counters = useCounters(store)
   const [participant, setParticipant] = useState<Participant | null>(null)
@@ -96,6 +97,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
   const ownPlans = plans.filter((p) => p.deletedAt === null && planWeek(p, trips, legs) === trip.id)
   const hasCourses = people.some((p) => p.curriculumId) || teaching || tripStudents.length > 0
   const Heading = mode === 'page' ? 'h2' : 'h3'
+  const hasMoney = !!trip.salary || transactions.some((tx) => tx.deletedAt === null && tx.tripId === trip.id)
 
   return (
     <div className="stack-lg period-page">
@@ -222,6 +224,9 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
 
           {/* 5. Geld */}
           <div className="stack-sm period-money">
+            {/* Zonder geld en zonder salaris toont het geldblok zelf niets: dan de kop met "nog niets". */}
+            {!hasMoney && <Heading>{t('week.money')}</Heading>}
+            {!hasMoney && <p className="muted small">{t('period.noMoney')}</p>}
             <TripMoneySection store={store} trip={trip} heading={Heading} />
             <TripClaims store={store} trip={trip} notify={notify} heading={mode === 'page' ? 'h2' : 'h3'} />
             <MoneyButtons onAdd={setAdding} claims={view.kind === 'werk' && !demo} />
