@@ -1,12 +1,14 @@
 import { FileUp, Landmark, Plus, Trash2 } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import type { Notify } from '../components/EditSheets'
+import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { NoteField } from '../components/NoteField'
 import { Sheet } from '../components/Sheet'
 import { useCollection } from '../components/useCollection'
 import { ViewRows } from '../components/Views'
+import { recordError } from '../errors'
 import { formatDate, formatMoney, formatMonth } from '../format'
 import { getLang, t, type MessageKey } from '../i18n'
 import { columnChoices, detectPreset, guessMapping, MappingIncompleteError, monthlyPoints, readBalances, type ColumnMapping, type ImportMode, type ImportResult, type PresetId } from '../import/accounts'
@@ -436,10 +438,12 @@ function ImportSheet({ store, account, notify, onClose }: { store: Store; accoun
   const [current, setCurrent] = useState('')
   const [onDate, setOnDate] = useState(todayIso())
   const [error, setError] = useState<string | null>(null)
+  const [unexpected, setUnexpected] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function choose(file: File | undefined) {
     setError(null)
+    setUnexpected(false)
     setRows(null)
     if (!file) return
     try {
@@ -452,6 +456,11 @@ function ImportSheet({ store, account, notify, onClose }: { store: Store; accoun
       setMapping(found?.mapping ?? guessMapping(first))
       setAdjusting(!found)
     } catch (e) {
+      // Een onverwachte fout (geen kapot bestand) bewaren voor "Kopieer foutdetails" (zonder inhoud, src/errors.ts).
+      if (!(e instanceof FileFormatError)) {
+        recordError(e)
+        setUnexpected(true)
+      }
       setError(e instanceof FileFormatError ? e.message : t('accounts.importUnreadable'))
     }
   }
@@ -505,6 +514,7 @@ function ImportSheet({ store, account, notify, onClose }: { store: Store; accoun
             {error}
           </p>
         )}
+        {error && unexpected && <CopyErrorDetails />}
         {rows && mapping && (
           <>
             <div className="notice" role="note">

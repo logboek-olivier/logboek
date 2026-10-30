@@ -1,6 +1,6 @@
 # Architectuur van Logboek
 
-Kort en feitelijk: hoe de app in elkaar zit, stand 30 oktober 2026 (na ronde 3). CLAUDE.md is de bron van waarheid voor
+Kort en feitelijk: hoe de app in elkaar zit, stand 30 oktober 2026 (na ronde 3 en de controle van de fundering). CLAUDE.md is de bron van waarheid voor
 regels en gedrag; dit bestand beschrijft waar die regels in de code zitten. Wijkt dit bestand af van de code, dan is dit
 bestand verouderd.
 
@@ -8,13 +8,13 @@ bestand verouderd.
 
 | Laag | Bestanden | Verantwoordelijkheid |
 |---|---|---|
-| Opstart | `index.html`, `src/main.tsx`, `src/App.tsx`, `src/splash.css` | CSP (meta-tag), opstartscherm, registratie van de service worker, bouw noteren (`noteStartedBuild`), keuze tussen sessie en demo |
+| Opstart | `index.html`, `src/main.tsx`, `src/App.tsx`, `src/splash.css` | CSP (meta-tag), niet in een frame, opstartscherm, registratie van de service worker, bouw noteren (`noteStartedBuild`), keuze tussen sessie en demo |
 | Service worker | `vite.config.ts` (Workbox), `public/sw-vensters.js`, `src/updates.ts`, `public/reset.html` + `reset.js` | Precache, runtime-caches (koersen, weer, kaart-osm), nieuwe versie neemt over en herlaadt vensters, noodpagina |
 | Sessie | `src/session.ts` | Eerste keer (nieuw of koppelen), ontgrendelen (wachtzin, herstelcode, vingerafdruk, sessiesleutel), vergrendelen na 5 minuten, wachtzin wijzigen, token vervangen, "Logboek herstellen", meta terugzetten |
 | Crypto | `src/crypto/encrypt.ts`, `keys.ts`, `passphrase.ts`, `recovery.ts`, `webauthn.ts` | AES-GCM-objecten met pad als AAD, meta.json.enc (verpakte hoofdsleutel, check-veld), PBKDF2, herstelcode (BIP39), WebAuthn-PRF |
 | Opslag op het apparaat | `src/storage/idb.ts`, `outbox.ts`, `token.ts`, `fingerprint.ts`, `writer.ts` | IndexedDB (`objects`, `local`, `session`), outbox, versleutelde token en vingerafdruk-verpakking, Web Locks (`lokaal`, `sync`) |
 | Store | `src/storage/store.ts` | Ontsleutelde records in het geheugen, opslaan (één schrijver), sync-rondes, sleutel-invariant, onleesbare bestanden, herstellen, controle (Opslag), kluisbestanden |
-| GitHub | `src/storage/github.ts`, `sync.ts`, `integrity.ts`, `versions.ts`, `evidence.ts`, `device.ts` | Enige netwerklaag (api.github.com), samenvoegen per record, `sealForUpload`, sha-controle, schrijfverbod voor oudere vensters, bewijs per bestand, commitberichten |
+| GitHub | `src/storage/github.ts`, `sync.ts`, `integrity.ts`, `versions.ts`, `evidence.ts`, `device.ts` | Enige netwerklaag (api.github.com; de data-repo staat bij de token, standaard `logboek-olivier/logboek-data`), samenvoegen per record, `sealForUpload`, sha-controle, schrijfverbod voor oudere vensters, bewijs per bestand, commitberichten |
 | Herstel en diagnose | `src/repair.ts`, `src/errors.ts`, `src/storage/storage-log.ts` | Diagnose lokaal en op GitHub, herstelverslag, foutdetails zonder inhoud, opslaglogboek in `localStorage` |
 | Back-up en export | `src/storage/backup.ts`, `src/model/export.ts`, `src/components/ExportSection.tsx`, `src/share.ts` | Versleutelde back-up (tekstbestand), onversleutelde CSV-export na waarschuwing, delen of downloaden |
 | Demo | `src/demo.ts`, `src/demo/data.ts` | Eigen IndexedDB `logboek-demo`, eigen sleutel, `blockNetwork` |
@@ -45,8 +45,8 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 | `meta.json.enc` | `Meta` (geen collectie) | `Session.finishNewVault`, `doChangePassphrase`, `doRestoreRemoteMeta` | sessie (ontgrendelen), `Store.checkMeta` | Niet onder de hoofdsleutel: JSON met salts, verpakte MK (wachtzin, herstelcode) en `check` (binding aan MK). Lokaal als platte JSON in `objects` |
 | `trips.json.enc` | `Trip` | `weeks`, `trip-ops`, `trip-dates`, `edit`, `salary`, `money-path`, `boats`, `gaps`, `guests`, `counters`, `checklists`, `calendar`, `import/apply`, `import/planning`, QuickAdd, MoneyPath | bijna alle schermen | Alle velden optioneel; type, datums en boot afgeleid |
 | `legs.json.enc` | `Leg` | `edit`, `trip-ops`, `places`, `routes`, `boats`, `gaps`, `import/apply`, QuickAdd | Vandaag, Deze trip, Logboek, Agenda, Statistieken, Plaatsen | Import vervangt alle `source: import`-legs |
-| `transactions.json.enc` | `Transaction` | `edit`, `salary`, `money-path`, `claims`, `trip-ops`, `rates` (koers vastleggen), QuickAdd | Geld, Deze trip, Agenda, positie, kosten | Richting volgt uit `kind`; `payoutId`, `claimId` koppelen |
-| `settings.json.enc` | `Settings` | `settings`, `trip-dates` | overal | Eén record; `currentSettings` vult standaardwaarden |
+| `transactions.json.enc` | `Transaction` | `edit`, `salary`, `money-path`, `claims`, `trip-ops`, `rates` (koers vastleggen), QuickAdd | Geld, Deze trip, Agenda, positie, kosten | Richting volgt uit `kind`; `payoutId`, `claimId` koppelen. Vaste id's voor wat de app zelf boekt: `salaris:<trip>` (salaris ontvangen of uitbetaling), `uitgave:<declaratie>` en `terugbetaling:<declaratie>`, zodat een tweede tik of een tweede apparaat nooit dubbel boekt |
+| `settings.json.enc` | `Settings` | `settings`, `trip-dates` | overal | Hoofdrecord `settings` plus per apparaat `laatst:<apparaat-id>` (laatst gebruikte boot, rol, valuta enzovoort), zodat loggen op het ene apparaat nooit een instelling van het andere overschrijft; `currentSettings` legt ze over elkaar en vult standaardwaarden |
 | `curricula.json.enc` | `Curriculum` | `curricula` | Cursussen, studenten, planning | Alleen eigen en bewerkte; seeds in de code. Onleesbaar → vanzelf hersteld |
 | `students.json.enc` | `Student` | `students`, `weeks`, `trip-ops` | Deze trip, Studentenarchief | Regel 14; archiveren na 12 maanden |
 | `plans.json.enc` | `WeekPlan` | `plans`, `trip-ops` | Planning, Vandaag | |
@@ -70,9 +70,13 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 
 1. **Invoer** (scherm) → een modelfunctie (`src/model/*.ts`) maakt een nieuw record met nieuwe `updatedAt` en roept
    `store.put` / `putMany` aan. Verwijderen = tombstone (`deletedAt`), vaak geschoond (`scrubbed*`), met ongedaan maken
-   uit het geheugen.
+   uit het geheugen. Bewerken neemt velden die deze build niet kent ongewijzigd mee (`keepUnknownFields`), zodat een
+   oudere build niets weggooit wat een nieuwere schreef.
 2. **Geheugen:** `putMany` werkt de collectie in het geheugen bij en zet het record in de outbox (`markPending`) en in
-   `unsaved`. Een lokaal bestand van een nieuwere app (`frozen`) → weigeren vóór er iets verandert.
+   `unsaved`. Een `updatedAt` die niet later is dan die van de vorige versie (een klok die achterloopt, of een record
+   met een tijd in de toekomst) wordt `justAfter(vorige)`, zodat de laatste wijziging echt wint. Wat de app vanzelf
+   vastlegt (koers, archiveren) krijgt `justAfter` van het record waarop het rekende, zodat het nooit wint van een echte
+   wijziging op een ander apparaat. Een lokaal bestand van een nieuwere app (`frozen`) → weigeren vóór er iets verandert.
 3. **Apparaat (`persist`):** onder het slot `lokaal` (Web Locks): de kopie op schijf lezen en samenvoegen (een ander
    venster kan geschreven hebben), versleutelen, en bestand plus outbox in één IndexedDB-transactie schrijven, alleen als
    de lokale meta nog het check-veld van deze sessie heeft (`putObjectAndLocal`). Daarna `BroadcastChannel` naar andere
@@ -97,6 +101,9 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 - **Nieuw logboek:** `createVault` maakt een willekeurige MK, verpakt hem onder de wachtzin-KEK (PBKDF2, 600.000) en de
   herstelcode-KEK (HKDF uit 24 woorden), plus `check` (de verpakkingen versleuteld onder MK). `finishNewVault` zet
   meta.json.enc op GitHub (PUT zonder sha), vergrendelt andere tabbladen, wist de lokale opslag en opent.
+- **Data-repo:** bij de eerste keer (en bij herstel met een nieuwe token) "eigenaar/naam", standaard
+  `logboek-olivier/logboek-data`; bewaard bij de token (`StoredToken.repo`), dus per apparaat en browserprofiel één
+  logboek. Een tweede gebruiker heeft een eigen repo, token, wachtzin en hoofdsleutel (CLAUDE.md, Twee gebruikers).
 - **Koppelen:** meta.json.enc ophalen, `unlock` met wachtzin of herstelcode, lokale opslag wissen, openen.
 - **Ontgrendelen:** `unlock` (wachtzin of herstelcode) of de vingerafdruk (WebAuthn-PRF → KEK → MK, verpakking in
   IndexedDB `local` onder `fingerprint`, AAD `local/fingerprint#masterKey`). `bindKey`: de MK moet via `check` bij de lokale meta horen; anders "Sleutel past niet" of
@@ -107,6 +114,10 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 - **Vergrendelen:** timer (monotone klok) of handmatig; in elk tabblad (`BroadcastChannel logboek-session:<db>`):
   sessiesleutel wissen, Store wissen (`lock`), naar het ontgrendelscherm.
 - **Wachtzin wijzigen:** zelfde MK opnieuw verpakken, nieuwe meta naar GitHub (sha als voorwaarde) en lokaal.
+- **Meta van GitHub overnemen** (`refreshMeta`, en bij een conflict tijdens wachtzin wijzigen): alleen als `safeToAdopt`
+  klopt: een verpakking van de wachtzin of herstelcode die niet veranderd is, houdt dezelfde salt, rondes en kdf. Zo kan
+  wie alleen de token heeft de wachtzin of herstelcode niet onbruikbaar maken door de salt te wijzigen (het check-veld
+  dekt de salts niet).
 - **Herstel:** `src/repair.ts` + `Session.doRepair`: na wachtzin of herstelcode alleen wissen wat met de sleutel niet te
   ontsleutelen is, en op GitHub alleen niet te ontsleutelen bestanden vervangen.
 - **Meta terugzetten:** `doRestoreRemoteMeta` als meta.json.enc op GitHub ontbreekt of kapot is en er geen ander logboek
@@ -171,7 +182,7 @@ dezelfde weg voor het bonnetje.
 | Plek | Sleutel | Inhoud |
 |---|---|---|
 | IndexedDB `logboek` | `objects` | versleutelde databestanden (met sha), lokale meta (platte JSON), documentbestanden, apart gezette bestanden (`apart/<pad>/<tijd>`) |
-| | `local` | outbox, token, vingerafdruk-verpakking (versleuteld onder MK) |
+| | `local` | outbox, token (met vervaldatum en data-repo), vingerafdruk-verpakking (versleuteld onder MK) |
 | | `session` | niet-exporteerbare MK met `lastUsed` (hoogstens 5 minuten) |
 | `localStorage` | `logboek-taal`, `logboek-apparaat`, `logboek-gestarte-build`, `logboek-vergrendeld:<db>`, `logboek-opslag:<db>` (opslaglogboek: paden, aantallen, tijden, bewijs zonder inhoud), `logboek-herstel:<db>` (herstelverslag: paden), `logboek-herstelpogingen:<db>`, `logboek-vervangen:<db>` (sha's), `logboek-kluis-weg:<db>` (bestands-id's) | geen inhoud, geen sleutels |
 | `sessionStorage` | `logboek-demo-actief`, `logboek-herladen-na-update` | vlaggen |

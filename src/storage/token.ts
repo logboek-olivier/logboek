@@ -1,6 +1,6 @@
 import { decryptObject, encryptObject, utf8 } from '../crypto/encrypt'
 import { DATA_REPO, isRepoName } from './github'
-import { deleteLocal, getLocal, putLocal, type Db } from './idb'
+import { getLocal, putLocal, type Db } from './idb'
 
 // De GitHub-token staat na ontgrendelen versleuteld onder de hoofdsleutel in IndexedDB (beveiligingsregel 5),
 // samen met de vervaldatum (jjjj-mm-dd of null). Vóór ontgrendelen bestaat hij alleen in het geheugen.
@@ -43,8 +43,4 @@ export async function loadToken(db: Db, masterKey: CryptoKey): Promise<StoredTok
 /** De data-repo bij een opgeslagen token; zonder (oudere opslag) de standaard. */
 export function repoOf(token: Pick<StoredToken, 'repo'> | null | undefined): string {
   return token?.repo && isRepoName(token.repo) ? token.repo : DATA_REPO
-}
-
-export async function forgetToken(db: Db): Promise<void> {
-  await deleteLocal(db, TOKEN_NAME)
 }

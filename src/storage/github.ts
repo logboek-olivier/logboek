@@ -89,11 +89,6 @@ export interface RemoteFile {
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
-/** Een fine-grained token is 'github_pat_' plus base62; een klassieke token 'ghp_'. Alleen vorm, geen netwerk. */
-export function looksLikeToken(token: string): boolean {
-  return /^(github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,})$/.test(token.trim())
-}
-
 const EXPIRATION_HEADER = 'github-authentication-token-expiration'
 
 /** "2026-11-24 12:00:00 UTC" of een ISO-tijd → jjjj-mm-dd; onleesbaar → null. */

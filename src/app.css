@@ -200,17 +200,10 @@ pre {
 .num,
 .amount,
 .stat-value,
-.tabular {
-  font-variant-numeric: tabular-nums;
-}
 
 .muted {
   color: var(--text-muted);
   font-size: var(--fs-sm);
-}
-
-.faint {
-  color: var(--text-faint);
 }
 
 .small {
@@ -229,15 +222,6 @@ pre {
 .error {
   color: var(--negative);
   font-size: var(--fs-sm);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 .icon {
@@ -1408,13 +1392,6 @@ button.row-item {
   padding: 0;
 }
 
-.legs-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--s-2) 0;
-  border-top: 1px solid var(--border);
-}
-
 /* ---------- Voortgang en kaarten op Vandaag ---------- */
 
 .progress {
@@ -2098,62 +2075,7 @@ body.presenting .bottom-bar {
   align-self: flex-start;
 }
 
-.week-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-.week-card-main {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.week-card .btn {
-  align-self: flex-start;
-}
-
-.small-value {
-  font-size: var(--fs-xl);
-}
-
 /* ---------- Deze week ---------- */
-
-.week-head {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  padding: var(--s-4);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.week-head-title {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-}
-
-.week-head-title .icon {
-  color: var(--accent);
-}
 
 /* Deelnemers: naam met icoon, niveau en cursus op een tweede regel. */
 .participant-chips {
@@ -3365,20 +3287,6 @@ body.presenting .bottom-bar {
 }
 
 /* Teller per organisatie ("SV #3") in de kop van Deze trip. */
-.counter-chip {
-  display: inline-block;
-  margin-right: var(--s-2);
-  padding: 1px var(--s-2);
-  border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--lh-tight);
-  vertical-align: middle;
-  white-space: nowrap;
-}
 
 /* ---------- Statistieken ---------- */
 
