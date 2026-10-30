@@ -121,7 +121,7 @@ function RestoreMeta() {
       ) : (
         <label>
           {t('setup.recoveryField', { n: RECOVERY_WORD_COUNT })}
-          <textarea rows={4} autoComplete="off" autoCapitalize="none" value={secret} onChange={(e) => setSecret(e.target.value)} />
+          <textarea rows={4} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={secret} onChange={(e) => setSecret(e.target.value)} />
         </label>
       )}
       {tokenNeeded && (
@@ -251,7 +251,7 @@ export function Repair({ report, needsSecret }: { report: RepairReport | null; n
           ) : (
             <label>
               {t('setup.recoveryField', { n: RECOVERY_WORD_COUNT })}
-              <textarea rows={4} autoComplete="off" autoCapitalize="none" value={secret} onChange={(e) => setSecret(e.target.value)} />
+              <textarea rows={4} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={secret} onChange={(e) => setSecret(e.target.value)} />
             </label>
           ))}
         {tokenNeeded && (

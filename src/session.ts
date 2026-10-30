@@ -9,6 +9,7 @@ import {
   revealRecoveryWords,
   rewrapMasterKey,
   serializeMeta,
+  safeToAdopt,
   unlock,
   unwrapMasterKey,
   verifyMetaCheck,
@@ -209,6 +210,9 @@ export class Session {
       if (!remote || remote.sha === stored?.sha || generation !== this.generation) return
       const meta = parseMeta(new TextDecoder().decode(remote.content))
       if (!(await verifyMetaCheck(meta, masterKey))) return
+      // Alleen een echte wijziging overnemen, nooit alleen andere salts of rondes (zie safeToAdopt).
+      const local = await Store.loadMeta(db).catch(() => null)
+      if (local && !safeToAdopt(local, meta)) return
       if (generation !== this.generation) return
       await Store.storeMeta(db, meta, remote.sha)
       this.lastMeta = meta
@@ -249,7 +253,7 @@ export class Session {
         if (!remote) throw error
         // Alleen een meta overnemen die aan deze hoofdsleutel gebonden is (zie refreshMeta).
         const theirs = parseMeta(new TextDecoder().decode(remote.content))
-        if (!(await verifyMetaCheck(theirs, masterKey))) throw error
+        if (!(await verifyMetaCheck(theirs, masterKey)) || !safeToAdopt(meta, theirs)) throw error
         await Store.storeMeta(db, theirs, remote.sha)
         if (theirs.check) this.vaultCheck = theirs.check
       }

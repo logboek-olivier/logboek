@@ -2,7 +2,7 @@ import type { Store } from '../storage/store'
 import { allTopics } from './curricula'
 import type { Undo } from './edit'
 import { addDays, mondayOf } from './money'
-import { justAfter, newId, type Curriculum, type Student, type StudentExam, type StudentLevel, type Topic, type TopicStatus } from './types'
+import { firstNameOnly, justAfter, newId, type Curriculum, type Student, type StudentExam, type TipFrom, type StudentLevel, type Topic, type TopicStatus } from './types'
 
 // Studenten en hun voortgang per onderwerp. Beveiligingsregel 14: alleen voornaam, cursus, niveau, voortgang en
 // examenuitslag; geen contact-, gezondheids- of identiteitsgegevens; nooit in logs of foutdetails. Na 12 maanden
@@ -112,7 +112,7 @@ export interface StudentInput {
 /** Alleen de toegestane velden, ingekort; nooit andere gegevens (regel 14). */
 export function cleanInput(input: StudentInput): StudentInput {
   const out: StudentInput = {
-    firstName: input.firstName.trim().slice(0, MAX_FIRST_NAME),
+    firstName: firstNameOnly(input.firstName).slice(0, MAX_FIRST_NAME),
     curriculumId: input.curriculumId,
     level: input.level,
     startedAt: input.startedAt,
@@ -174,15 +174,35 @@ export function scrubbed(student: Student, now: string): Student {
   return { id: student.id, firstName: '', curriculumId: '', level: 'beginner', progress: {}, archivedAt: null, updatedAt: now, deletedAt: now }
 }
 
-/** Wist studenten (geschoonde tombstones). Ongedaan maken zet ze uit het geheugen terug, alleen binnen de melding. */
+/**
+ * Wist studenten (geschoonde tombstones), ook als deelnemer van hun trip (een student met cursus is een deelnemer met
+ * hetzelfde id) en uit een fooi per persoon, zodat voornaam, land en kenmerk nergens blijven staan (regel 14). Ongedaan
+ * maken zet alles uit het geheugen terug, alleen binnen de melding.
+ */
 export async function deleteStudents(store: Store, students: readonly Student[]): Promise<Undo> {
   const now = new Date().toISOString()
+  const ids = new Set(students.map((s) => s.id))
   const originals = students.map((s) => ({ ...s }))
+  const trips = store.list('trips.json.enc').filter((t) => t.participants?.some((p) => ids.has(p.id)))
+  const tips = store.list('transactions.json.enc').filter((tx) => tx.tipFrom?.kind === 'personen' && tx.tipFrom.participantIds.some((id) => ids.has(id)))
   await store.putMany('students.json.enc', students.map((s) => scrubbed(s, now)))
+  if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...t, participants: (t.participants ?? []).filter((p) => !ids.has(p.id)), updatedAt: now })))
+  if (tips.length > 0) await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...tx, tipFrom: withoutPeople(tx.tipFrom!, ids), updatedAt: now })))
   void store.sync()
   return async () => {
     const later = new Date().toISOString()
     await store.putMany('students.json.enc', originals.map((s) => ({ ...s, updatedAt: later, deletedAt: null })))
+    if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...(store.list('trips.json.enc').find((x) => x.id === t.id) ?? t), participants: t.participants, updatedAt: later })))
+    if (tips.length > 0) await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...(store.list('transactions.json.enc').find((x) => x.id === tx.id) ?? tx), tipFrom: tx.tipFrom, updatedAt: later })))
     void store.sync()
   }
+}
+
+/** Een fooi per persoon zonder deze deelnemers; blijft er niemand over, dan is de gever onbekend. */
+function withoutPeople(from: TipFrom, ids: ReadonlySet<string>): TipFrom {
+  if (from.kind !== 'personen') return from
+  const participantIds = from.participantIds.filter((id) => !ids.has(id))
+  if (participantIds.length === 0) return { kind: 'onbekend' }
+  const amounts = from.amounts ? Object.fromEntries(Object.entries(from.amounts).filter(([id]) => !ids.has(id))) : undefined
+  return { kind: 'personen', participantIds, ...(amounts ? { amounts } : {}) }
 }

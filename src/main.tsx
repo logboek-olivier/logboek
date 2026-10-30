@@ -8,6 +8,8 @@ import { noteStartedBuild } from './storage/versions'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('root ontbreekt')
+// Nooit in een frame van een andere pagina (de CSP in een meta-tag kan geen frame-ancestors zetten): dan niets tonen.
+if (window.top !== window.self) throw new Error('Logboek opent niet in een frame')
 
 // Deze build is nu de geldende: een ouder venster dat nog openstaat (bevroren op de achtergrond), schrijft niet meer
 // naar GitHub (src/storage/versions.ts).
