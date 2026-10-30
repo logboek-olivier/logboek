@@ -1821,4 +1821,7 @@ export const en: Messages = {
   'money.result': 'Sailing money: result',
   'money.resultHint': 'All income and reimbursements minus all expenses you entered in Money. This is not your net worth: that is under My position and comes from your accounts, cash and what you are still owed.',
   'money.monthResult': 'Result',
+  'trip.daysLogged': (p) => `${p.days} ${plural(p.days, 'day', 'days')} · ${p.logged} logged`,
+  'trip.loggedOnly': (p) => `${p.logged} logged`,
+  'trip.logged': 'Logged',
 }
