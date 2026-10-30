@@ -38,6 +38,7 @@ const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
 const Review = lazyComponent(() => import('./Review').then((m) => m.Review))
+const Periods = lazyComponent(() => import('./Periods').then((m) => m.Periods))
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
 // Geld, Cursussen, Studentenarchief en Instellingen zitten onder Meer.
@@ -66,6 +67,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   instellingen: 'Instellingen',
   opslag: 'Opslag',
   nakijken: 'Nakijken',
+  periodes: 'Periodes',
 }
 
 
@@ -210,7 +212,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes'
         ? 'meer'
         : screen
 
@@ -338,6 +340,19 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Storage store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'periodes' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Periods
+            store={store}
+            notify={notify}
+            onAddDay={(init) => {
+              select('toevoegen')
+              setAddInit(init)
+            }}
+          />
         </>
       )}
       {screen === 'nakijken' && (
