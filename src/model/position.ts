@@ -24,6 +24,56 @@ export function careerStart(settings: Settings): string {
   return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : DEFAULT_CAREER_START
 }
 
+/** Periode voor Mijn positie en de vooruitblik (Geld): een snelkeuze of zelf gekozen van en tot. */
+export type PeriodPreset = 'carriere' | 'jaar' | 'planning' | 'alles' | 'eigen'
+export interface PeriodChoice {
+  preset: PeriodPreset
+  /** jjjj-mm-dd, alleen bij `eigen`. */
+  from?: string
+  to?: string
+}
+export interface Period {
+  from: string
+  to: string
+}
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * De periode bij een keuze: sinds de start van de zeilcarrière (tot het einde van de planning), dit kalenderjaar, van
+ * vandaag tot het einde van de planning, alles (vanaf de eerste gegevens tot het einde van de planning), of zelf gekozen.
+ * Zonder planning is het einde vandaag. Een ongeldige eigen keuze valt terug op sinds de start van de zeilcarrière.
+ */
+export function resolvePeriod(choice: PeriodChoice, settings: Settings, today: string, planningEnd: string | null, earliest: string | null): Period {
+  const end = planningEnd && planningEnd > today ? planningEnd : today
+  const start = careerStart(settings)
+  switch (choice.preset) {
+    case 'jaar':
+      return { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` }
+    case 'planning':
+      return { from: today, to: end }
+    case 'alles':
+      return { from: earliest && earliest < start ? earliest : start, to: end }
+    case 'eigen':
+      if (choice.from && choice.to && ISO.test(choice.from) && ISO.test(choice.to) && choice.from <= choice.to) return { from: choice.from, to: choice.to }
+      return { from: start, to: end }
+    default:
+      return { from: start, to: end }
+  }
+}
+
+/** De vroegste datum met gegevens (stand, transactie of trip), voor "alles". */
+export function earliestDate(input: PositionInput): string | null {
+  let min: string | null = null
+  const see = (d: string | undefined) => {
+    if (d && ISO.test(d) && (min === null || d < min)) min = d
+  }
+  for (const b of input.balances) if (b.deletedAt === null) see(b.date)
+  for (const tx of input.transactions) if (tx.deletedAt === null) see(tx.date)
+  for (const trip of input.trips) if (trip.deletedAt === null) see(trip.startDate)
+  return min
+}
+
 /** Een bedrag in euro plus wat zonder koers per valuta blijft. */
 export interface Sum {
   eur: number
@@ -250,6 +300,12 @@ function shiftMonth(month: string, n: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
+function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number) as [number, number]
+  const [ty, tm] = to.split('-').map(Number) as [number, number]
+  return Math.max(0, (ty - fy) * 12 + (tm - fm))
+}
+
 function monthLast(month: string): string {
   const [y, m] = month.split('-').map(Number) as [number, number]
   return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
@@ -267,22 +323,30 @@ export interface CostInput {
   index: CalendarIndex
 }
 
-export function forecast(input: PositionInput, settings: Settings, today: string, planningEnd: string | null = null, history = 6, costs: CostInput | null = null): Forecast {
+/**
+ * `range` (zelf gekozen periode): de grafiek van de maand van `from` tot de maand van `to`, en alleen salaris, fooi en
+ * kosten tot en met `to`. Zonder `range` de laatste `history` maanden tot het einde van de planning.
+ */
+export function forecast(input: PositionInput, settings: Settings, today: string, planningEnd: string | null = null, history = 6, costs: CostInput | null = null, range: Period | null = null): Forecast {
   const { trips, legs, transactions, rates } = input
   const now = positionAt(input, today).totals.net
   const items: ForecastItem[] = []
   const other: Partial<Record<Currency, number>> = {}
   let until = monthOf(today)
-  if (planningEnd && monthOf(planningEnd) > until) until = monthOf(planningEnd)
+  if (range) {
+    if (monthOf(range.to) > until) until = monthOf(range.to)
+  } else if (planningEnd && monthOf(planningEnd) > until) until = monthOf(planningEnd)
+  // Binnen de gekozen periode: alleen wat er tot en met `to` binnenkomt of afgaat.
+  const inRange = (date: string) => !range || date <= range.to
   const averages = tipAverages(trips, legs, transactions, today)
   for (const trip of active(trips)) {
     const end = tripEnd(trip, legs)
     if (!end || end < today) continue
-    if (monthOf(end) > until) until = monthOf(end)
+    if (!range && monthOf(end) > until) until = monthOf(end)
     const s = countedSalary(trip)
-    if (s && s.status === 'verwacht') {
-      const moment = payoutMoment(trip, legs, settings) ?? end
-      if (monthOf(moment) > until) until = monthOf(moment)
+    const moment = s && s.status === 'verwacht' ? (payoutMoment(trip, legs, settings) ?? end) : end
+    if (s && s.status === 'verwacht' && inRange(moment)) {
+      if (!range && monthOf(moment) > until) until = monthOf(moment)
       const eur = salaryEur(s, end, rates) ?? (s.currency === 'EUR' ? s.amount : null)
       if (eur === null) other[s.currency] = round2((other[s.currency] ?? 0) + s.amount)
       else {
@@ -294,7 +358,7 @@ export function forecast(input: PositionInput, settings: Settings, today: string
       }
     }
     const avg = trip.organisation ? averages[trip.organisation] : undefined
-    if (avg !== undefined) {
+    if (avg !== undefined && inRange(end)) {
       const already = active(transactions)
         .filter((tx) => tx.kind === 'fooi' && tx.tripId === trip.id)
         .reduce((n, tx) => n + (eurOf(tx) ?? 0), 0)
@@ -306,7 +370,7 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   let costsUnknown = false
   if (costs) {
     for (const m of expectedCosts(costs.fixed, costs.averages, costs.index, today, until, rates)) {
-      const last = monthLast(m.month)
+      const last = range && monthLast(m.month) > range.to ? range.to : monthLast(m.month)
       if (m.fixedEur > 0) items.push({ date: last, kind: 'vaste-lasten', trips: [], eur: -m.fixedEur })
       if (m.variableEur > 0) items.push({ date: last, kind: 'kosten', trips: [], eur: -m.variableEur })
       costsUnknown ||= m.unknown
@@ -320,15 +384,23 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   const nowKnown = Object.keys(now.other).length === 0
   const months: ForecastMonth[] = []
   const current = monthOf(today)
+  // Gemeten maanden: de laatste `history`, of vanaf de maand van `from` (hoogstens vijf jaar terug).
+  if (range) history = Math.min(60, monthsBetween(monthOf(range.from), current) + 1)
   for (let i = history - 1; i >= 1; i--) {
     const month = shiftMonth(current, -i)
-    const p = positionAt(input, monthLast(month))
+    const p = positionAt(input, range && range.to < monthLast(month) ? range.to : monthLast(month))
     const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0 || Object.keys(p.cashTips).length > 0
     months.push({ month, eur: known && Object.keys(p.totals.net.other).length === 0 ? p.totals.net.eur : null, future: false })
   }
   months.push({ month: current, eur: nowKnown ? now.eur : null, future: false })
+  // Een periode die al voorbij is: niets verwachts, alleen gemeten tot en met `to`.
+  if (range && range.to < today) {
+    const past = months.filter((m) => m.month <= monthOf(range.to))
+    const end = positionAt(input, range.to).totals.net
+    return { now, items: [], until: monthOf(range.to), endEur: Object.keys(end.other).length === 0 ? end.eur : null, addsEur: 0, tipEstimateEur: 0, costsEur: 0, costsUnknown: false, other, months: past }
+  }
   for (let month = shiftMonth(current, 1); month <= until; month = shiftMonth(month, 1)) {
-    const by = monthLast(month)
+    const by = range && monthLast(month) > range.to ? range.to : monthLast(month)
     const added = items.filter((i) => i.date <= by).reduce((n, i) => n + i.eur, 0)
     months.push({ month, eur: nowKnown ? round2(now.eur + added) : null, future: true })
   }

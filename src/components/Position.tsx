@@ -4,13 +4,13 @@ import { formatDate, formatMoney, formatMoneyShort, formatMonth, formatMonthShor
 import { getLang, t } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
 import { isDebt, parseStand, setBalance } from '../model/accounts'
-import { buildIndex, planningEnd } from '../model/calendar'
+import { buildIndex, planningEnd, type CalendarIndex } from '../model/calendar'
 import { nameWithCounter } from '../model/counters'
-import { careerStart, difference, forecast, positionAt, type AccountRow, type PositionInput, type Sum } from '../model/position'
+import { careerStart, difference, earliestDate, forecast, positionAt, resolvePeriod, type AccountRow, type Period, type PositionInput, type Sum } from '../model/position'
 import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings, saveSettings } from '../model/settings'
-import { todayIso, type Account, type Currency } from '../model/types'
+import { todayIso, type Account, type Currency, type Settings } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -18,6 +18,7 @@ import { LineChart } from './LineChart'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
+import { PeriodPicker, usePeriodChoice } from './money-period'
 
 // Geld → Mijn positie en de vooruitblik (src/model/position.ts). Een stand per rekening is hier in een paar seconden
 // in te tikken (tik op de rekening); de import onder Meer → Rekeningen blijft optioneel.
@@ -43,17 +44,38 @@ function signed(n: number): string {
   return `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n), 'EUR')}`
 }
 
-export function PositionSection({ store, notify }: { store: Store; notify: Notify }) {
+/**
+ * Mijn positie en de vooruitblik met één periode bovenaan (snelkeuze of zelf van en tot, per apparaat onthouden).
+ */
+export function PositionAndForecast({ store, notify }: { store: Store; notify: Notify }) {
   const input = usePositionInput(store)
   const settingsRecords = useCollection(store, 'settings.json.enc')
   const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
+  const calendar = useCollection(store, 'calendar.json.enc')
+  const index = useMemo(() => buildIndex(calendar, input.trips, input.legs), [calendar, input.trips, input.legs])
+  const choice = usePeriodChoice()
+  const today = todayIso()
+  const period = useMemo(() => resolvePeriod(choice, settings, today, planningEnd(index), earliestDate(input)), [choice, settings, today, index, input])
+  const hasData = input.accounts.some((a) => a.deletedAt === null) || input.trips.some((x) => x.deletedAt === null) || input.transactions.some((x) => x.deletedAt === null)
+  return (
+    <>
+      {hasData && <PeriodPicker period={period} />}
+      <PositionSection store={store} notify={notify} input={input} settings={settings} period={period} />
+      <ForecastSection store={store} input={input} settings={settings} index={index} period={period} />
+    </>
+  )
+}
+
+function PositionSection({ store, notify, input, period }: { store: Store; notify: Notify; input: PositionInput; settings: Settings; period: Period }) {
   const counters = useCounters(store)
   const [stand, setStand] = useState<Account | null>(null)
   const today = todayIso()
-  const start = careerStart(settings)
+  // De verandering in de gekozen periode, tot en met vandaag (de toekomst staat in de vooruitblik).
+  const start = period.from
+  const end = period.to < today ? period.to : today
   // Alleen opnieuw rekenen als de gegevens veranderen (niet bij elke render): over alle trips en transacties.
-  const { now, then } = useMemo(() => ({ now: positionAt(input, today), then: positionAt(input, start, true) }), [input, today, start])
-  const since = today > start ? difference(now.totals.net, then.totals.net) : null
+  const { now, then, atEnd } = useMemo(() => ({ now: positionAt(input, today), then: positionAt(input, start, true), atEnd: positionAt(input, end) }), [input, today, start, end])
+  const since = end > start ? difference(atEnd.totals.net, then.totals.net) : null
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
   const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0 && Object.keys(now.cashTips).length === 0
   if (empty) return null
@@ -125,10 +147,11 @@ export function PositionSection({ store, notify }: { store: Store; notify: Notif
         </p>
         {since !== null && (
           <p className="row">
-            <span className="grow">{t('position.since', { date: formatDate(start) })}</span>
+            <span className="grow">{end === today ? t('position.since', { date: formatDate(start) }) : t('position.between', { from: formatDate(start), to: formatDate(end) })}</span>
             <span className={`num ${since >= 0 ? 'positive' : 'negative'}`}>{signed(since)}</span>
           </p>
         )}
+        {since !== null && <p className="muted small">{t('position.sinceHint')}</p>}
       </div>
       {!hasAccounts && <p className="muted small">{t('position.noAccounts')}</p>}
       {stand && <QuickStandSheet store={store} account={stand} notify={notify} onClose={() => setStand(null)} />}
@@ -186,24 +209,18 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
  * Vooruitblik tot het einde van de planning: de netto waarde aan het einde ("≈"), wat de planning toevoegt, een grafiek
  * (gemeten doorgetrokken, verwacht gestippeld) en het verwachte salaris per uitbetaalmoment plus de geschatte fooi.
  */
-export function ForecastSection({ store }: { store: Store }) {
-  const input = usePositionInput(store)
-  const settingsRecords = useCollection(store, 'settings.json.enc')
-  const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
-  const calendar = useCollection(store, 'calendar.json.enc')
+function ForecastSection({ store, input, settings, index, period }: { store: Store; input: PositionInput; settings: Settings; index: CalendarIndex; period: Period }) {
   const fixed = useCollection(store, 'fixedcosts.json.enc')
   const closings = useCollection(store, 'weekreviews.json.enc')
   const counters = useCounters(store)
   const today = todayIso()
-  const index = useMemo(() => buildIndex(calendar, input.trips, input.legs), [calendar, input.trips, input.legs])
   // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten. Alleen
   // opnieuw rekenen als de gegevens veranderen (de vooruitblik loopt over alle trips, dagen en transacties).
   const f = useMemo(() => {
     const averages = dayAverages(input.transactions, closings, index, today, settings, input.rates)
-    return forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index })
-  }, [input, closings, index, today, settings, fixed])
+    return forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index }, period)
+  }, [input, closings, index, today, settings, fixed, period])
   if (f.items.length === 0 && f.months.every((m) => m.eur === null)) return null
-  const until = formatMonth(f.until)
   // Maanden zonder gegevens aan het begin laten we weg (vóór de eerste stand is er niets te tekenen).
   const first = f.months.findIndex((m) => m.eur !== null)
   const months = first > 0 ? f.months.slice(first) : f.months
@@ -215,7 +232,7 @@ export function ForecastSection({ store }: { store: Store }) {
           {t('forecast.title')}
         </h2>
       </div>
-      {f.endEur !== null ? <p className="forecast-end">{t('forecast.end', { month: until, amount: formatMoney(f.endEur, 'EUR') })}</p> : <p className="muted small">{t('forecast.noRate')}</p>}
+      {f.endEur !== null ? <p className="forecast-end">{t('forecast.endOn', { date: formatDate(period.to), amount: formatMoney(f.endEur, 'EUR') })}</p> : <p className="muted small">{t('forecast.noRate')}</p>}
       <p className="row">
         <span className="grow">{t('forecast.adds')}</span>
         <strong className="num">{signed(f.addsEur)}</strong>

@@ -97,12 +97,24 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // De vooruitblik: het salaris van de komende trip komt erbij.
       const forecast = page.locator('.forecast')
-      await expect(forecast).toContainText(lang === 'nl' ? 'Netto waarde eind' : 'Net worth at the end of')
+      await expect(forecast).toContainText(lang === 'nl' ? 'Netto waarde op' : 'Net worth on')
       await expect(forecast).toContainText(money(-7500))
       await expect(forecast).toContainText(`+${money(1000)}`)
       await expect(forecast.locator('svg.line-chart')).toBeVisible()
       await forecast.scrollIntoViewIfNeeded()
       await shots(page, 'vooruitblik', lang)
+
+      // Periode zelf kiezen (van en tot), per apparaat onthouden: ook na herladen.
+      const period = page.locator('.money-period')
+      await period.getByRole('radio', { name: L('period.eigen') }).click()
+      await period.getByLabel(L('period.to')).fill(iso(150))
+      await expect(forecast).toContainText(lang === 'nl' ? 'Netto waarde op' : 'Net worth on')
+      await period.scrollIntoViewIfNeeded()
+      await shots(page, 'periode', lang)
+      await page.reload()
+      await openMore(page, L('nav.money'), L('nav.more'))
+      await expect(page.locator('.money-period').getByRole('radio', { name: L('period.eigen') })).toHaveAttribute('aria-checked', 'true')
+      await page.locator('.money-period').getByRole('radio', { name: L('period.carriere') }).click()
 
       // Instellingen → Start zeilcarrière.
       await openMore(page, L('nav.settings'), L('nav.more'))
