@@ -18,7 +18,7 @@ import { followDays } from '../model/trip-dates'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
 import { kindLabel, roleLabel } from '../i18n/labels'
 import { BelongsTo, useBelongsTo, usePeriods } from '../components/BelongsTo'
-import { kindForCategory, resolveTarget, sourceForPeriod, sourceOnSave } from '../model/expenses'
+import { kindForCategory, resolveTarget, sourceForPeriod } from '../model/expenses'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../model/trip-name'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
@@ -239,7 +239,7 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
       const tipFrom = people.length > 0 ? tipFromDraft(draft, people) : undefined
       const tip = kind === 'fooi' ? { tipVia } : {}
       // Geen bron meer in beeld: die volgt uit de organisatie van de trip (oudere versies lezen hem nog).
-      const source = sourceOnSave(options.find((x) => x.id === tripId), settings.lastSource)
+      const source = sourceForPeriod(options.find((x) => x.id === tripId))
       await saveTransaction(
         store,
         { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}), ...tip },

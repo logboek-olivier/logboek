@@ -2,6 +2,8 @@ import { active } from './derive'
 import { addDays } from './money'
 import { isWaterKind, periodAt, setStayDays, type Period } from './periods'
 import type { Store } from '../storage/store'
+import { tripOrganisation } from './counters'
+import { DAYS_TRIP_GRACE } from './trip-dates'
 import { REST_GAP_DAYS } from './calendar'
 import type { CostCategory, StayKind, Transaction, TransactionKind, TransactionSource, Trip } from './types'
 
@@ -20,9 +22,13 @@ export function expenseCategory(tx: Pick<Transaction, 'kind' | 'category'>): Cos
   return tx.kind === 'investering' ? null : 'overig'
 }
 
-/** De bron die oudere versies lezen: de organisatie van de trip, delivery bij een delivery, anders overig. */
+/**
+ * De bron die oudere versies (en het jaaroverzicht als terugval) lezen: de organisatie van de trip, ook uit de naam zoals
+ * de teller ("Yacht week 7"), delivery bij een delivery, anders overig. Nooit een eerder gekozen bron.
+ */
 export function sourceForPeriod(trip: Trip | undefined): TransactionSource {
-  if (trip?.organisation === 'sailing-virgins' || trip?.organisation === 'yacht-week') return trip.organisation
+  const org = trip ? tripOrganisation(trip) : null
+  if (org) return org
   if (trip?.type === 'delivery') return 'delivery'
   return 'overig'
 }
@@ -42,13 +48,18 @@ const AROUND_DAYS = 21
  * periode van de datum; op een reisdag met soort reizen de trip direct na (of vóór) de reis: een vlucht naar een
  * werkweek hoort bij die werkweek. Zonder periode op die dag: een nieuwe periode thuis (of vrij, tussen twee trips).
  */
-export function expenseTargets(periods: readonly Period[], date: string, category: CostCategory): { options: ExpenseTarget[]; fallback: ExpenseTarget } {
+export function expenseTargets(periods: readonly Period[], date: string, category: CostCategory, dayState = false): { options: ExpenseTarget[]; fallback: ExpenseTarget } {
   const dated = periods.filter((p) => p.start && p.end)
-  const current = periodAt(dated, date)
-  const before = dated.filter((p) => p.end < date && p.end >= addDays(date, -AROUND_DAYS)).at(-1)
+  // Een trip die zijn dagen volgt, loopt tot drie dagen na de laatste gelogde dag (zoals de lopende trip): 's ochtends
+  // vóór het loggen hoort een uitgave nog bij die trip.
+  const grace = dated.filter((p) => p.view?.trip.datesFromDays && p.end < date && date <= addDays(p.end, DAYS_TRIP_GRACE) && !dated.some((q) => q.id !== p.id && q.start <= date && date <= q.end))
+  const current = periodAt(dated, date) ?? grace.at(-1) ?? null
+  // Op een wisseldag (of bij overlap) staan alle periodes van die datum als keuze.
+  const inside = [...dated.filter((p) => p.start <= date && date <= p.end), ...grace]
+  const before = dated.filter((p) => p.end < date && p.end >= addDays(date, -AROUND_DAYS) && !inside.includes(p)).at(-1)
   const after = dated.filter((p) => p.start > date && p.start <= addDays(date, AROUND_DAYS))[0]
   const options: ExpenseTarget[] = []
-  for (const p of [before, current, after]) if (p && !options.some((o) => o.kind === 'periode' && o.period.id === p.id)) options.push({ kind: 'periode', period: p })
+  for (const p of [before, ...inside, after]) if (p && !options.some((o) => o.kind === 'periode' && o.period.id === p.id)) options.push({ kind: 'periode', period: p })
   if (current) {
     if (category === 'vervoer' && current.kind === 'reis') {
       // Een vlucht naar (of van) een werkweek: de trip die direct na de reis begint, anders de trip die er vlak voor eindigde.
@@ -62,10 +73,13 @@ export function expenseTargets(periods: readonly Period[], date: string, categor
     }
     return { options: sortTargets(options), fallback: { kind: 'periode', period: current } }
   }
-  // Geen periode op die dag: tussen twee trips (hoogstens twee dagen) is het vrij, anders thuis.
+  // Geen periode op die dag: tussen twee trips (hoogstens twee dagen) is het vrij, anders thuis. Staat er een zelf
+  // ingestelde dagtoestand (optie, onbeschikbaar), dan niet vanzelf een nieuwe periode (die zou de dagtoestand
+  // vervangen): standaard de periode ervoor of erna.
   const between = !!before && !!after && isWaterKind(before.kind) && isWaterKind(after.kind) && addDays(before.end, REST_GAP_DAYS + 1) >= after.start
   const fresh: ExpenseTarget[] = between ? [{ kind: 'nieuw', stayKind: 'vrij' }, { kind: 'nieuw', stayKind: 'thuis' }] : [{ kind: 'nieuw', stayKind: 'thuis' }, { kind: 'nieuw', stayKind: 'vrij' }]
-  return { options: [...sortTargets(options), ...fresh], fallback: fresh[0]! }
+  const near = dayState ? (before ?? after) : undefined
+  return { options: [...sortTargets(options), ...fresh], fallback: near ? { kind: 'periode', period: near } : fresh[0]! }
 }
 
 function sortTargets(list: ExpenseTarget[]): ExpenseTarget[] {
@@ -102,7 +116,7 @@ export async function resolveTarget(store: Store, target: ExpenseTarget, date: s
   return active(store.list('periods.json.enc')).find((s) => s.startDate <= date && date <= s.endDate)?.id
 }
 
-/** De bron bij opslaan: uit de organisatie van de trip; zonder trip (of zonder organisatie) blijft de oude bron. */
+/** De bron bij bewerken: uit de organisatie van de trip; zonder trip (of zonder organisatie) blijft de oude bron. */
 export function sourceOnSave(trip: Trip | undefined, previous: TransactionSource | undefined): TransactionSource {
   const fromTrip = sourceForPeriod(trip)
   return fromTrip !== 'overig' ? fromTrip : (previous ?? 'overig')

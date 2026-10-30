@@ -20,13 +20,16 @@ export function usePeriods(store: Store): Period[] {
 
 export function useBelongsTo(store: Store, date: string, category: CostCategory, preset?: string) {
   const periods = usePeriods(store)
+  const calendar = useCollection(store, 'calendar.json.enc')
+  // Een zelf ingestelde dagtoestand (optie, onbeschikbaar, beschikbaar) op die dag.
+  const dayState = calendar.some((d) => d.deletedAt === null && d.date === date && (d.type === 'optie' || d.type === 'onbeschikbaar' || d.type === 'beschikbaar'))
   const { options, fallback } = useMemo(() => {
-    const result = expenseTargets(periods, date, category)
+    const result = expenseTargets(periods, date, category, dayState)
     // Een vooraf gekozen periode (vanaf de periodepagina, of de huidige bij bewerken) staat er altijd bij.
     const given = preset ? periods.find((p) => p.id === preset) : undefined
     if (given && !result.options.some((o) => o.kind === 'periode' && o.period.id === given.id)) result.options.unshift({ kind: 'periode', period: given })
     return result
-  }, [periods, date, category, preset])
+  }, [periods, date, category, preset, dayState])
   const [chosen, setChosen] = useState<string | null>(preset ?? null)
   const key = chosen && options.some((o) => targetKey(o) === chosen) ? chosen : targetKey(fallback)
   const current = options.find((o) => targetKey(o) === key) ?? fallback

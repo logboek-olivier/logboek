@@ -248,7 +248,7 @@ export function Stats({ store }: { store: Store }) {
                 <Stat label={t('stats.earned')} value={formatMoney(money.earned, 'EUR')} />
                 <Stat label={t('money.workdays')} value={formatNumber(money.workdays)} />
                 <Stat label={t('money.perWorkday')} value={money.perWorkday === null ? '–' : formatMoney(money.perWorkday, 'EUR')} />
-                {investment.count > 0 && <Stat label={t('money.investment')} value={formatMoney(investment.eur, 'EUR')} />}
+                {investment.count > 0 && <Stat label={t('money.investment')} value={[formatMoney(investment.eur, 'EUR'), ...Object.entries(investment.other).map(([c, v]) => formatMoney(v, c))].join(' + ')} />}
               </dl>
               {money.best && money.worst && (
                 <dl className="stack-sm best-worst">

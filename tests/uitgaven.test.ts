@@ -108,3 +108,24 @@ describe('soort en bron', () => {
     expect(reviewItems(reviewInput(s)).some((i) => i.kind === 'investering-soort')).toBe(false)
   })
 })
+
+describe('punten uit de review', () => {
+  it('een nieuw inkomen krijgt nooit een eerder gekozen bron: de organisatie uit de naam, anders overig', async () => {
+    const { sourceForPeriod } = await import('../src/model/expenses')
+    expect(sourceForPeriod(trip('y', { name: 'Yacht week 7' }))).toBe('yacht-week')
+    expect(sourceForPeriod(trip('e', { name: 'Nep eigen charter', type: 'skipper-charter' }))).toBe('overig')
+    expect(sourceForPeriod(undefined)).toBe('overig')
+  })
+
+  it('een trip die zijn dagen volgt: de ochtend na de laatste gelogde dag hoort de uitgave nog bij de trip', () => {
+    const run = allPeriods([trip('run', { startDate: '2026-11-01', endDate: '2026-11-03', datesFromDays: true })], [], [])
+    expect(targetKey(expenseTargets(run, '2026-11-04', 'eten').fallback)).toBe('run')
+    expect(targetKey(expenseTargets(run, '2026-11-08', 'eten').fallback)).toBe('nieuw:thuis')
+  })
+
+  it('wisseldag: beide trips staan als keuze; een dag met een dagtoestand krijgt niet vanzelf een nieuwe periode', () => {
+    const two = allPeriods([trip('a', { startDate: '2026-11-01', endDate: '2026-11-07' }), trip('b', { startDate: '2026-11-07', endDate: '2026-11-14' })], [], [])
+    expect(expenseTargets(two, '2026-11-07', 'eten').options.map(targetKey)).toEqual(['a', 'b'])
+    expect(targetKey(expenseTargets(periods, '2026-11-20', 'eten', true).fallback)).toBe('terug')
+  })
+})

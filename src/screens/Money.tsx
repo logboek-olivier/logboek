@@ -104,7 +104,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
             <Stat label={t('money.income')} value={formatMoney(all.incomeEur, 'EUR')} />
             <Stat label={t('money.costs')} value={formatMoney(all.costsEur, 'EUR')} />
             {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
-            {investment.count > 0 && <Stat label={t('money.investment')} value={formatMoney(investment.eur, 'EUR')} />}
+            {investment.count > 0 && <Stat label={t('money.investment')} value={[formatMoney(investment.eur, 'EUR'), ...Object.entries(investment.other).map(([c, v]) => formatMoney(v, c))].join(' + ')} />}
             <OtherStat other={all.other} />
           </dl>
           <p className="muted small">{t('money.resultHint')}</p>

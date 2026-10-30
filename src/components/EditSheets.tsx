@@ -75,8 +75,9 @@ export function TransactionSheet({
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
   const [tripId, setTripId] = useState(tx.tripId ?? '')
   const [tipVia, setTipVia] = useState<TipVia | null>(tx.tipVia ?? null)
-  const [category, setCategory] = useState<CostCategory>(expenseCategory(tx) ?? 'opleiding')
-  const belongs = useBelongsTo(store, date || tx.date, category, tx.tripId)
+  // Een oude investering zonder soort: geen gok, Olivier kiest zelf (anders blijft hij zonder soort, in Nakijken).
+  const [category, setCategory] = useState<CostCategory | null>(expenseCategory(tx))
+  const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId)
   const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
@@ -99,7 +100,8 @@ export function TransactionSheet({
       const trip = chosenTrip ? store.list('trips.json.enc').find((x) => x.id === chosenTrip) : undefined
       await updateTransaction(store, tx, {
         amount: parsed,
-        kind: expense ? kindForCategory(category) : kind,
+        // Een declaratie-uitgave blijft kosten (de declaratie zoekt haar uitgave en houdt haar bij).
+        kind: expense && category && !tx.claimId ? kindForCategory(category) : kind,
         source: sourceOnSave(trip, tx.source),
         currency,
         date,
@@ -108,7 +110,7 @@ export function TransactionSheet({
         tripId: chosenTrip,
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
         tipVia: kind === 'fooi' ? tipVia : null,
-        category: expense ? category : null,
+        category: expense ? (category ?? undefined) : null,
         // Gestort kan niet vóór de fooi zelf.
         depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? (depositedAt < date ? date : depositedAt) : null,
       })
@@ -151,8 +153,9 @@ export function TransactionSheet({
           {expense ? (
             <label>
               {t('costs.category')}
-              <select value={category} onChange={(e) => setCategory(e.target.value as CostCategory)}>
-                {COST_CATEGORIES.map((c) => (
+              <select value={category ?? ''} onChange={(e) => setCategory((e.target.value || null) as CostCategory | null)}>
+                {category === null && <option value="">–</option>}
+                {COST_CATEGORIES.filter((c) => !tx.claimId || kindForCategory(c) === 'kosten').map((c) => (
                   <option key={c} value={c}>
                     {t(`costCategory.${c}`)}
                   </option>
