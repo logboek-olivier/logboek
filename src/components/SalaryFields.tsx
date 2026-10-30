@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { formatMoney } from '../format'
 import { t } from '../i18n'
 import { amountInput, parseAmount } from '../model/money'
-import { salaryDefault, withSalaryDefault } from '../model/salary'
+import { noSalary, salaryDefault, withSalaryDefault } from '../model/salary'
 import { CURRENCIES, todayIso, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
 import { Icon } from './Icon'
 import { organisationLabel } from '../i18n/labels'
@@ -64,9 +64,12 @@ export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '
 
   function input(): TripSalary | null | undefined {
     const keep = trip?.salary?.transactionId ? { transactionId: trip.salary.transactionId } : {}
+    // "Geen salaris": zelf gekozen, ook zonder bedrag of standaardbedrag.
+    if (shownStatus === 'geen' && !keep.transactionId) return noSalary(shown.currency)
     if (mode === 'eigen') {
+      // Een bedrag van 0 mag (telt nergens als verwacht of te ontvangen); leeg of ongeldig = geen salaris.
       const amount = parseAmount(text)
-      if (amount === null || amount <= 0) return null
+      if (amount === null || amount < 0) return null
       return { amount, currency, status: shownStatus, source: 'eigen', ...keep }
     }
     if (mode === 'standaard' && def) return { amount: def.amount, currency: def.currency, status: shownStatus, source: 'standaard', ...keep }
@@ -96,13 +99,16 @@ export function useSalaryDraft(trip: Trip | null, organisation: Organisation | '
         setCurrency(c)
       },
       onStatus: setStatus,
-      onStandard: () => setMode('standaard'),
+      onStandard: () => {
+        setMode('standaard')
+        if (shownStatus === 'geen') setStatus('verwacht')
+      },
     },
   }
 }
 
 export function SalaryFields(p: SalaryFieldsProps) {
-  const summary = p.source ? `${t(`salaryStatus.${p.status}`)} · ${t(p.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn')}` : t('salary.none')
+  const summary = p.status === 'geen' ? t('salaryStatus.geen') : p.source ? `${t(`salaryStatus.${p.status}`)} · ${t(p.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn')}` : t('salary.none')
   return (
     <fieldset className="salary-fields">
       <button type="button" className="btn quiet disclosure" aria-expanded={p.open} onClick={() => p.setOpen(!p.open)}>
@@ -116,7 +122,7 @@ export function SalaryFields(p: SalaryFieldsProps) {
           <div className="row">
             <label className="grow">
               {t('salary.amount')}
-              <input type="text" inputMode="decimal" autoComplete="off" value={p.amount} onChange={(e) => p.onAmount(e.target.value)} />
+              <input type="text" inputMode="decimal" autoComplete="off" value={p.status === 'geen' ? '0' : p.amount} disabled={p.status === 'geen'} onChange={(e) => p.onAmount(e.target.value)} />
             </label>
             <label>
               {t('field.currency')}
@@ -133,20 +139,21 @@ export function SalaryFields(p: SalaryFieldsProps) {
             <p className="muted small">{t('salary.receivedLocked')}</p>
           ) : (
             <div className="segments small" role="radiogroup" aria-label={t('salary.status')}>
-              {(['verwacht', 'ontvangen'] as const).map((s) => (
+              {(['verwacht', 'ontvangen', 'geen'] as const).map((s) => (
                 <button key={s} type="button" role="radio" aria-checked={p.status === s} className={`segment${p.status === s ? ' active' : ''}`} onClick={() => p.onStatus(s)}>
                   {t(`salaryStatus.${s}`)}
                 </button>
               ))}
             </div>
           )}
-          {p.source === 'standaard' && p.standard && <p className="muted small">{t('salary.isStandard', { org: organisationLabel(p.standard.org) })}</p>}
-          {p.source !== 'standaard' && p.standard && (
+          {p.status === 'geen' && <p className="muted small">{t('salary.noneHint')}</p>}
+          {p.status !== 'geen' && p.source === 'standaard' && p.standard && <p className="muted small">{t('salary.isStandard', { org: organisationLabel(p.standard.org) })}</p>}
+          {p.status !== 'geen' && p.source !== 'standaard' && p.standard && (
             <button type="button" className="btn small" onClick={p.onStandard}>
               {t('salary.useStandard', { amount: formatMoney(p.standard.amount, p.standard.currency) })}
             </button>
           )}
-          {!p.standard && <p className="muted small">{t('salary.noStandard')}</p>}
+          {p.status !== 'geen' && !p.standard && <p className="muted small">{t('salary.noStandard')}</p>}
         </div>
       )}
     </fieldset>

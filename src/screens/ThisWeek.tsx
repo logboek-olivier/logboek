@@ -1,21 +1,17 @@
-import { CalendarPlus, ChevronRight, Eye, EyeOff, ListChecks, Plus, Users } from 'lucide-react'
+import { CalendarPlus, ListChecks, Plus, Users } from 'lucide-react'
 import { ChecklistSheet, NewChecklistButton } from '../components/ChecklistSheet'
 import { addChecklist, checkedItems, checklistsFor, effectiveChecklists } from '../model/checklists'
-import { useCallback, useState, useSyncExternalStore } from 'react'
+import { useCallback, useState } from 'react'
 import type { Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { CloseWeekSheet, WeekSheet } from '../components/WeekSheet'
-import { formatDate, formatDateRange, formatMoney, formatNm } from '../format'
+import { formatDate, formatDateRange, formatNm } from '../format'
 import { t, useLang } from '../i18n'
 import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
-import { totals } from '../model/money'
-import { tripMoney } from '../model/money-path'
-import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
 import { TripClaims } from '../components/Claims'
-import { claimCounts, tripClaims } from '../model/claims'
-import { eurValue, getRates, subscribeRates } from '../model/rates'
+import { TripMoneySection } from '../components/TripMoney'
 import { currentSettings } from '../model/settings'
 import { todayIso } from '../model/types'
 import { daysUntil } from '../session'
@@ -197,7 +193,7 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
         <>
           <TripChecklists store={store} notify={notify} trip={week} type={view.type} />
           <SailedDays store={store} notify={notify} legs={view.legs} nm={view.nm} onAdd={() => onAddDay({ date: nextDay, tripId: week.id })} />
-          <WeekMoney store={store} trip={week} />
+          <TripMoneySection store={store} trip={week} />
           <TripClaims store={store} trip={week} notify={notify} />
           {upcomingSection}
         </>
@@ -292,70 +288,3 @@ function UpcomingTrips({ trips, counters, onOpen }: { trips: Trip[]; counters: R
   )
 }
 
-/**
- * Fooien en kosten van de week in euro, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee), met het
- * geldpad: het salaris als verwacht, te ontvangen of ontvangen, en de fooi contant, op de bank of onbekend.
- */
-function WeekMoney({ store, trip }: { store: Store; trip: Trip }) {
-  const all = useCollection(store, 'transactions.json.enc')
-  const legs = useCollection(store, 'legs.json.enc')
-  const claims = tripClaims(useCollection(store, 'claims.json.enc'), trip.id)
-  const counts = claimCounts(claims)
-  const transactions = all.filter((tx) => tx.deletedAt === null && tx.tripId === trip.id)
-  useSyncExternalStore(subscribeRates, getRates)
-  const [shown, setShown] = useState(false)
-  const salary = trip.salary
-  if (transactions.length === 0 && !salary) return null
-  const path = tripMoney(trip, legs, all, todayIso())
-  const state = path.salary?.state ?? null
-  const tipParts = (['contant', 'bank', 'onbekend'] as const)
-    .map((via) => ({ via, sum: path.tips[via] }))
-    .filter((p) => p.sum.eur > 0 || Object.keys(p.sum.other).length > 0)
-    .map((p) => `${t(`tipVia.${p.via}`)} ${[p.sum.eur > 0 ? formatMoney(p.sum.eur, 'EUR') : '', ...Object.entries(p.sum.other).map(([c, v]) => formatMoney(v, c))].filter(Boolean).join(' + ')}`)
-  const sum = totals(transactions)
-  const provisional = transactions.some((tx) => eurValue(tx)?.provisional)
-  return (
-    <div className="section">
-      <div className="section-head">
-        <h2>{t('week.money')}</h2>
-        <button className="btn link small" onClick={() => setShown(!shown)} aria-pressed={shown}>
-          <Icon icon={shown ? EyeOff : Eye} />
-          {t(shown ? 'week.hideAmounts' : 'week.showAmounts')}
-        </button>
-      </div>
-      {shown ? (
-        <>
-          <dl className="grid">
-            <div className="stat">
-              <dt>{t('week.income')}</dt>
-              <dd>{formatMoney(sum.incomeEur, 'EUR')}</dd>
-            </div>
-            <div className="stat">
-              <dt>{t('week.costs')}</dt>
-              <dd>{formatMoney(sum.costsEur, 'EUR')}</dd>
-            </div>
-          </dl>
-          {Object.entries(sum.other).map(([c, v]) => (
-            <p key={c} className="muted small">
-              {t('money.noRateFor', { currency: c })}: +{formatMoney(v.income, c)} −{formatMoney(v.costs, c)}
-            </p>
-          ))}
-          {provisional && <p className="muted small">{t('money.provisionalHint')}</p>}
-          {salary && (
-            <p className="salary-line row">
-              <SalaryDot state={state} />
-              <span>{t('salary.line', { amount: salaryAmountText(trip, all), status: salaryStateLabel(state), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}</span>
-            </p>
-          )}
-          {tipParts.length > 0 && <p className="muted small">{t('tipVia.line', { parts: tipParts.join(' · ') })}</p>}
-          {claims.length > 0 && <p className="muted small">{t('claims.counts', { open: counts.open, submitted: counts.ingediend, repaid: counts.terugbetaald })}</p>}
-        </>
-      ) : (
-        <p className="muted small">
-          <Icon icon={ChevronRight} />
-          {[transactions.length > 0 ? t('week.amountsHidden', { n: transactions.length }) : '', salary ? t('salary.hiddenLine', { status: salaryStateLabel(state) }) : ''].filter(Boolean).join(' · ')}
-        </p>
-      )}
-    </div>
-  )
-}

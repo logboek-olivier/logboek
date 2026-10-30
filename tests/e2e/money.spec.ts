@@ -80,7 +80,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   // $ 200 tegen 1,25 USD per euro = € 160; het originele bedrag staat klein bij de transactie.
   await expect(grid).toContainText('Inkomsten€ 280,50')
   await expect(grid).toContainText('Kosten€ 35,00')
-  await expect(grid).toContainText('Saldo€ 245,50')
+  await expect(grid).toContainText('Zeilgeld: resultaat€ 245,50')
   await expect(page.locator('main')).not.toContainText('Andere valuta')
   await expect(page.locator('.tx').filter({ hasText: '$ 200,00' })).toContainText('€ 160,00')
   await expect(page.locator('.tx')).toHaveCount(3)

@@ -193,6 +193,12 @@ for (const { width, scheme, lang } of RUNS) {
       const overview = page.getByRole('dialog')
       await expect(overview).toBeVisible()
       await shot('tripoverzicht')
+      // Geld van de trip achter "Toon bedragen": het resultaat van de trip.
+      if ((await overview.getByRole('button', { name: L('week.showAmounts') }).count()) > 0) {
+        await overview.getByRole('button', { name: L('week.showAmounts') }).click()
+        await overview.locator('.trip-result').scrollIntoViewIfNeeded()
+        await shot('tripoverzicht-geld')
+      }
       await page.locator('.leg-button').first().click()
       const day = page.getByRole('dialog').last()
       await expect(day.locator('.view-rows')).toBeVisible()
@@ -201,7 +207,14 @@ for (const { width, scheme, lang } of RUNS) {
       await expect(page.getByRole('dialog').last().getByRole('button', { name: L('common.delete') })).toBeVisible()
       await shot('dag-bewerken')
       await page.getByRole('dialog').last().getByRole('button', { name: L('common.close') }).click()
-      await overview.getByRole('button', { name: L('common.close') }).click()
+      // Trip bewerken: salaris en de fooien en inkomsten van de trip.
+      await overview.getByRole('button', { name: L('common.edit') }).click()
+      const tripEdit = page.getByRole('dialog')
+      await tripEdit.getByRole('button', { name: new RegExp(`^${L('salary.title')}`) }).click()
+      await tripEdit.getByRole('button', { name: new RegExp(L('tripIncome.title')) }).click()
+      await tripEdit.locator('.trip-income').scrollIntoViewIfNeeded()
+      await shot('trip-bewerken-geld')
+      await tripEdit.getByRole('button', { name: L('common.close') }).click()
       await openMore(page, L('nav.money'), L('nav.more'))
       await shot('geld')
       await page.locator('.tx button').first().click()

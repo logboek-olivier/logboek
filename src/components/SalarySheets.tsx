@@ -1,9 +1,9 @@
-import { Check, Clock, Pencil, Wallet } from 'lucide-react'
+import { Ban, Check, Clock, Pencil, Wallet } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { nameWithCounter } from '../model/counters'
 import { amountInput, parseAmount } from '../model/money'
-import { askSalaryLater, defaultChanges, receiveSalary, salaryQuestions, saveSalaryDefaults } from '../model/salary'
+import { askSalaryLater, defaultChanges, receiveSalary, salaryQuestions, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { asksPerTrip, payoutRule } from '../model/money-path'
 import { currentSettings, saveSettings } from '../model/settings'
 import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
@@ -213,6 +213,24 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
               >
                 <Icon icon={Clock} />
                 {t('salary.notYet')}
+              </button>
+              <button
+                type="button"
+                className="btn small quiet"
+                disabled={busy}
+                onClick={async () => {
+                  if (busy) return
+                  setBusy(true)
+                  try {
+                    const undo = await setNoSalary(store, trip)
+                    notify(t('salary.noneToast'), undo)
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                <Icon icon={Ban} />
+                {t('salary.noneButton')}
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { Banknote, Check, Clock, HandCoins, Pencil, Wallet } from 'lucide-react'
+import { Ban, Banknote, Check, Clock, HandCoins, Pencil, Wallet } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatMoney, formatMonth } from '../format'
 import { t } from '../i18n'
@@ -23,7 +23,7 @@ import {
   type SalaryState,
 } from '../model/money-path'
 import { getRates, subscribeRates } from '../model/rates'
-import { askSalaryLater, cleanSalary, receiveSalary, salaryDefault, tripEnd } from '../model/salary'
+import { askSalaryLater, cleanSalary, receiveSalary, salaryDefault, setNoSalary, tripEnd } from '../model/salary'
 import { weekView } from '../model/weeks'
 import { currentSettings } from '../model/settings'
 import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type SalarySource, type Transaction, type Trip } from '../model/types'
@@ -313,12 +313,25 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
   const [source, setSource] = useState<SalarySource>(current.salary?.source ?? (def ? 'standaard' : 'eigen'))
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
-  const valid = parsed !== null && parsed > 0
+  // Een salaris van 0 mag (telt nergens als verwacht of te ontvangen); ontvangen kan alleen met een bedrag.
+  const valid = parsed !== null && parsed >= 0
   const name = nameWithCounter(current, counters.get(current.id))
 
   function draft(): Trip {
-    const base = current.salary ?? { status: 'verwacht' as const }
+    const base = current.salary && current.salary.status !== 'geen' ? current.salary : { status: 'verwacht' as const }
     return { ...current, salary: cleanSalary({ ...base, amount: parsed!, currency, source, status: base.status }) }
+  }
+
+  async function none() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const undo = await setNoSalary(store, current)
+      onClose()
+      notify(t('salary.noneToast'), undo)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function save() {
@@ -338,7 +351,7 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
   }
 
   async function received() {
-    if (!valid || busy) return
+    if (!valid || !parsed || busy) return
     setBusy(true)
     try {
       // Het verwachte salaris blijft staan (behalve als er nog geen was); het ingevulde bedrag is wat er binnenkwam.
@@ -411,9 +424,15 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
               {t('common.save')}
             </button>
             {state === 'te-ontvangen' && (
-              <button type="button" className="btn" disabled={!valid || busy} onClick={() => void received()}>
+              <button type="button" className="btn" disabled={!valid || !parsed || busy} onClick={() => void received()}>
                 <Icon icon={Check} />
                 {t('salary.markReceived')}
+              </button>
+            )}
+            {current.salary?.status !== 'geen' && (
+              <button type="button" className="btn quiet" disabled={busy} onClick={() => void none()}>
+                <Icon icon={Ban} />
+                {t('salary.noneButton')}
               </button>
             )}
           </form>

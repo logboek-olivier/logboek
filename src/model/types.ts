@@ -46,8 +46,8 @@ export type TipFrom =
   /** Eén of meer deelnemers van de trip; `amounts` per persoon, zonder = samen gegeven. */
   | { kind: 'personen'; participantIds: string[]; amounts?: Record<string, number> }
 
-/** Salaris van een trip: verwacht of ontvangen. */
-export type SalaryStatus = 'verwacht' | 'ontvangen'
+/** Salaris van een trip: verwacht, ontvangen, of geen salaris (zelf zo gekozen; telt nergens mee). */
+export type SalaryStatus = 'verwacht' | 'ontvangen' | 'geen'
 /** standaard: het standaardbedrag van de organisatie (Instellingen); eigen: zelf ingevuld of aangepast. */
 export type SalarySource = 'standaard' | 'eigen'
 
