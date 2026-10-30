@@ -23,6 +23,8 @@ import {
 // onderwerpen. Een concept wordt zonder netwerk gemaakt uit de cursussen van de groepen: theorie-thema's 's ochtends,
 // praktijk-thema's 's middags, thema's met examenkritische onderwerpen eerst, laatste dag herhaling en examen.
 // Daarna is alles snel te veranderen: thema aan of uit met een tik, een blok met één tik een dag eerder of later.
+// Grof plannen: elke dag een ochtend en een middag; een blok geldt standaard voor alle groepen samen (per cursus), en
+// splitst alleen per groep als Olivier dat kiest. Eigen thema's als tekst kunnen erbij; een leeg dagdeel mag.
 
 export const MAX_DAYS = 14
 export const MAX_TEXT = 120
@@ -72,13 +74,6 @@ export interface DraftInput {
   groups: PlanGroup[]
 }
 
-/** Thema's over de lesdagen verdelen, zo gelijk mogelijk en in volgorde (meer dagen dan thema's: rustdagdelen). */
-function spread<T>(items: readonly T[], days: number): T[][] {
-  const out: T[][] = Array.from({ length: days }, () => [])
-  items.forEach((item, i) => out[Math.floor((i * days) / items.length)]!.push(item))
-  return out
-}
-
 interface Theme {
   id: string
   topics: Topic[]
@@ -98,33 +93,53 @@ function themesOf(course: Curriculum): Theme[] {
   return [...list.filter((th) => th.critical), ...list.filter((th) => !th.critical)]
 }
 
+/**
+ * Grof concept: per cursus één gezamenlijk blok per dagdeel (alle groepen van die cursus samen), met één thema per blok:
+ * theorie-thema's 's ochtends, praktijk-thema's 's middags, examenkritische eerst. Zijn er meer thema's van één soort dan
+ * dagdelen, dan schuiven ze naar de lege dagdelen van de andere soort, en pas daarna komen er twee in één blok. Een
+ * dagdeel zonder thema blijft leeg. Laatste dag: herhaling ('s ochtends) en examen ('s middags).
+ */
 export function draftPlan(input: DraftInput, curricula: readonly Curriculum[], lang: Lang): WeekPlan {
   const dates = planDates(input.startDate, input.dayCount)
   const reviewDay = dates.length > 1
   const teachDays = reviewDay ? dates.length - 1 : dates.length
   const days = dates.map((date) => ({ date, blocks: [] as PlanBlock[] }))
-  for (const group of input.groups) {
-    const course = curricula.find((c) => c.id === group.curriculumId)
+  const courseIds = [...new Set(input.groups.map((g) => g.curriculumId))]
+  for (const courseId of courseIds) {
+    const course = curricula.find((c) => c.id === courseId)
     if (!course) continue
+    const groupIds = input.groups.filter((g) => g.curriculumId === courseId).map((g) => g.id)
     const themes = themesOf(course)
-    // Groot en overzichtelijk: per dagdeel een of twee thema's, niet tientallen onderwerpen.
-    const theory = spread(themes.filter((th) => th.theory), teachDays)
-    const practice = spread(themes.filter((th) => !th.theory), teachDays)
-    for (let i = 0; i < teachDays; i++) {
-      const day = days[i]!
-      for (const [slot, list] of [['ochtend', theory[i]!], ['middag', practice[i]!]] as const) {
-        if (list.length > 0) day.blocks.push(themeBlock(slot, [group.id], list))
+    // Dagdelen in volgorde: per lesdag ochtend en middag.
+    const slots: { day: number; slot: DaySlot; themes: Theme[] }[] = []
+    for (let i = 0; i < teachDays; i++) for (const slot of ['ochtend', 'middag'] as const) slots.push({ day: i, slot, themes: [] })
+    const place = (list: Theme[], prefer: DaySlot) => {
+      for (const th of list) {
+        const free = slots.find((x) => x.slot === prefer && x.themes.length === 0) ?? slots.find((x) => x.themes.length === 0)
+        if (free) free.themes.push(th)
+        else {
+          // Alles bezet: bij het blok met de minste thema's (twee in één blok).
+          const least = slots.reduce((a, b) => (b.themes.length < a.themes.length ? b : a), slots[0]!)
+          least.themes.push(th)
+        }
       }
     }
+    if (slots.length > 0) {
+      place(themes.filter((th) => th.theory), 'ochtend')
+      place(themes.filter((th) => !th.theory), 'middag')
+    }
+    for (const x of slots) if (x.themes.length > 0) days[x.day]!.blocks.push(themeBlock(x.slot, groupIds, x.themes))
     if (reviewDay) {
       const last = days[days.length - 1]!
       const critical = themes.filter((th) => th.critical)
       // Herhaling: de thema's met examenkritische onderwerpen, en daarvan alleen die onderwerpen.
-      const review = themeBlock('ochtend', [group.id], critical, translate(lang, 'plan.reviewNote'))
+      const review = themeBlock('ochtend', groupIds, critical, translate(lang, 'plan.reviewNote'))
       last.blocks.push({ ...review, topicIds: critical.flatMap((th) => th.topics.filter((t) => t.examCritical).map((t) => t.id)) })
-      last.blocks.push(block('middag', [group.id], [], translate(lang, 'plan.examNote')))
+      last.blocks.push({ ...block('middag', groupIds, [], translate(lang, 'plan.examNote')), themeIds: [] })
     }
   }
+  // Dagen in volgorde van de dagdelen (ochtend vóór middag), per cursus naast elkaar.
+  for (const d of days) d.blocks = sortBlocks(d.blocks)
   return {
     id: newId(),
     title: input.title.trim().slice(0, MAX_TEXT),
@@ -162,6 +177,8 @@ export interface BlockPatch {
   topicIds: string[]
   /** Thema's (cursusonderdelen); bij een blok met thema's volgen de onderwerpen daaruit. */
   themeIds?: string[]
+  /** Eigen thema's als tekst. */
+  ownThemes?: string[]
   location?: string
   note?: string
 }
@@ -171,11 +188,45 @@ export function updateBlock(plan: WeekPlan, blockId: string, patch: BlockPatch):
   const note = patch.note?.trim().slice(0, 500)
   return mapBlocks(plan, (b) => {
     if (b.id !== blockId) return b
-    const { location: _l, note: _n, themeIds: _t, ...rest } = b
-    void [_l, _n, _t]
+    const { location: _l, note: _n, themeIds: _t, ownThemes: _o, ...rest } = b
+    void [_l, _n, _t, _o]
     const themeIds = patch.themeIds ?? b.themeIds
-    return { ...rest, groupIds: patch.groupIds, topicIds: patch.topicIds, ...(themeIds ? { themeIds } : {}), ...(location ? { location } : {}), ...(note ? { note } : {}) }
+    const ownThemes = cleanOwnThemes(patch.ownThemes ?? b.ownThemes ?? [])
+    return { ...rest, groupIds: patch.groupIds, topicIds: patch.topicIds, ...(themeIds ? { themeIds } : {}), ...(ownThemes.length > 0 ? { ownThemes } : {}), ...(location ? { location } : {}), ...(note ? { note } : {}) }
   })
+}
+
+/** Eigen thema's: getrimd, niet leeg, geen dubbele, hoogstens tien van elk MAX_TEXT tekens. */
+export function cleanOwnThemes(list: readonly string[]): string[] {
+  const out: string[] = []
+  for (const raw of list) {
+    const text = raw.trim().slice(0, MAX_TEXT)
+    if (text && !out.some((x) => x.toLowerCase() === text.toLowerCase())) out.push(text)
+  }
+  return out.slice(0, 10)
+}
+
+/**
+ * Een blok per groep: het blok wordt vervangen door één blok per gekozen groep (zelfde dag, dagdeel en inhoud), zodat
+ * elke groep apart te bewerken is. Met één groep verandert er niets.
+ */
+export function splitBlock(plan: WeekPlan, blockId: string, groupIds: readonly string[]): WeekPlan {
+  const found = findBlock(plan, blockId)
+  if (!found || groupIds.length < 2) return plan
+  const parts = groupIds.map((id, i) => ({ ...found.block, id: i === 0 ? found.block.id : newId(), groupIds: [id] }))
+  return { ...plan, days: plan.days.map((d) => (d.date === found.date ? { ...d, blocks: d.blocks.flatMap((b) => (b.id === blockId ? parts : [b])) } : d)) }
+}
+
+/**
+ * Een bewerkt blok toepassen (concept en opgeslagen planning op dezelfde manier): inhoud, dan dag en dagdeel, en bij "per
+ * groep" met meer dan één groep één blok per groep.
+ */
+export function applyBlockEdit(plan: WeekPlan, blockId: string, patch: BlockPatch, date: string, slot: DaySlot, perGroup: boolean): WeekPlan {
+  const found = findBlock(plan, blockId)
+  if (!found) return plan
+  let next = updateBlock(plan, blockId, patch)
+  if (date !== found.date || slot !== found.block.slot) next = moveBlock(next, blockId, date, slot)
+  return perGroup ? splitBlock(next, blockId, patch.groupIds) : next
 }
 
 /** Zet een blok op een andere dag en/of in een ander dagdeel (achteraan dat dagdeel). */
@@ -274,6 +325,12 @@ export interface PlanItem {
 }
 
 export function blockItems(b: PlanBlock, curricula: readonly Curriculum[], lang: Lang): PlanItem[] {
+  // Eigen thema's (tekst) achteraan, zonder onderwerpen om af te vinken.
+  const own = (b.ownThemes ?? []).map((title, i) => ({ id: `eigen:${i}`, title, topicIds: [] as string[], theme: true }))
+  return [...courseItems(b, curricula, lang), ...own]
+}
+
+function courseItems(b: PlanBlock, curricula: readonly Curriculum[], lang: Lang): PlanItem[] {
   if (b.themeIds && b.themeIds.length > 0) {
     const themes = new Map<string, { title: LocalizedText; topicIds: string[] }>()
     for (const c of curricula) for (const g of c.groups) themes.set(g.id, { title: g.title, topicIds: g.topics.map((t) => t.id) })

@@ -66,6 +66,15 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   await expect(page.getByText('Herhaling van de examenkritische onderwerpen').first()).toBeVisible()
   await expect(page.getByText('Examen', { exact: true }).first()).toBeVisible()
   await expectNoHorizontalOverflow(page)
+  // Het concept is vóór het opslaan al te bewerken: een eigen thema bij het examen.
+  const exam = page.locator('.plan-block', { hasText: 'Examen' }).first()
+  await exam.locator('.plan-block-open').click()
+  const conceptSheet = page.getByRole('dialog', { name: 'Blok bewerken' })
+  await conceptSheet.getByLabel('Eigen thema', { exact: true }).fill('Nep mooring ball oppikken')
+  await conceptSheet.getByRole('button', { name: 'Toevoegen', exact: true }).click()
+  await conceptSheet.getByRole('button', { name: 'Opslaan', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('.plan-block', { hasText: 'Examen' }).first()).toContainText('Nep mooring ball oppikken')
   await page.getByRole('button', { name: 'Planning opslaan' }).click()
   await expect(page.getByRole('heading', { name: 'Nepweek zeilschool' })).toBeVisible()
 

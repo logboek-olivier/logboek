@@ -44,7 +44,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-student-1', firstName: 'Nepanna', curriculumId: 'upg-course-1', level: 'beginner', progress: { t1: { status: 'geoefend', updatedAt: T } }, startedAt: '2026-10-18', weekId: 'upg-trip-1', updatedAt: T, deletedAt: null },
   ],
   'plans.json.enc': [
-    { id: 'upg-plan-1', title: 'Nepplanning', startDate: '2026-10-18', dayCount: 2, tripId: 'upg-trip-1', groups: [{ id: 'pg1', name: 'Groep A', curriculumId: 'upg-course-1', level: 'beginner', studentIds: ['upg-student-1'] }], days: [{ date: '2026-10-18', blocks: [{ id: 'b1', slot: 'ochtend', groupIds: ['pg1'], topicIds: ['t1'], themeIds: ['g1'] }] }], updatedAt: T, deletedAt: null },
+    { id: 'upg-plan-1', title: 'Nepplanning', startDate: '2026-10-18', dayCount: 2, tripId: 'upg-trip-1', groups: [{ id: 'pg1', name: 'Groep A', curriculumId: 'upg-course-1', level: 'beginner', studentIds: ['upg-student-1'] }], days: [{ date: '2026-10-18', blocks: [{ id: 'b1', slot: 'ochtend', groupIds: ['pg1'], topicIds: ['t1'], themeIds: ['g1'] }, { id: 'b2', slot: 'middag', groupIds: ['pg1'], topicIds: [], themeIds: [], ownThemes: ['Nep mooring ball oppikken'] }] }], updatedAt: T, deletedAt: null },
   ],
   'places.json.enc': [{ id: 'upg-place-1', name: 'Nephaven', lat: 52.1, lon: 4.3, country: 'NL', updatedAt: T, deletedAt: null }],
   'reminders.json.enc': [{ id: 'upg-rem-1', title: 'Nepdeadline', date: '2027-01-15', kind: 'deadline', doneAt: null, repeat: 'jaarlijks', updatedAt: T, deletedAt: null }],

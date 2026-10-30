@@ -1787,6 +1787,42 @@ a.btn {
   margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-2)) calc(-1 * var(--s-2)) 0;
 }
 
+/* Blok aantikken om te bewerken (dagdeel en groepen als één knop); een leeg dagdeel als gestippelde kaart. */
+.plan-block-open {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 40px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-empty {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  border-style: dashed;
+  border-width: 1px 1px 1px 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  min-height: 48px;
+  cursor: pointer;
+}
+
+.plan-empty .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
 .plan-slot {
   font-weight: var(--fw-bold);
 }
