@@ -3,8 +3,12 @@ import { ROLES } from './types'
 
 // Afgeleide getallen uit legs en trips. Alleen niet-verwijderde records tellen mee.
 
+/**
+ * Totaal van een dag, exact (op twee decimalen, zoals de invoer): nooit per dag afronden op één decimaal, anders klopt het
+ * totaal van veel dagen niet met de som per watertype. Afronden gebeurt bij de totalen en het tonen.
+ */
 export function totalNm(leg: Pick<Leg, 'nmInland' | 'nmSea' | 'nmTidal'>): number {
-  return round1(leg.nmInland + leg.nmSea + leg.nmTidal)
+  return Math.round((leg.nmInland + leg.nmSea + leg.nmTidal) * 100) / 100
 }
 
 export interface WaterTotals {

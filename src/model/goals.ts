@@ -1,7 +1,8 @@
+import { getLang } from '../i18n'
 import type { Store } from '../storage/store'
 import { tripOrganisation } from './counters'
 import { active, totalNm } from './derive'
-import { addDays, isEarned, isIncome, mondayOf } from './money'
+import { addDays, isEarned, isIncome, mondayOf, parseStand } from './money'
 import { eurValue, type RatesFile } from './rates'
 import { ryaYachtmasterOffshore } from './stats'
 import { newId, type Goal, type GoalMetric, type Leg, type Milestone, type Organisation, type Session, type Skill, type Transaction, type Trip } from './types'
@@ -165,12 +166,14 @@ export function defaultTarget(metric: GoalMetric): number {
 
 // ---------- Opslaan ----------
 
-/** "78,4", "78.4", "1.500" → getal; leeg of ongeldig → null. Nul mag (een sessie zonder vangst). */
+/**
+ * "78,4", "78.4", "1.500" (en in het Engels "2,500") → getal, met het decimaalteken van de taal, net als bedragen
+ * (`parseStand`); leeg, ongeldig of negatief → null. Nul mag (een sessie zonder vangst).
+ */
 export function parseValue(text: string): number | null {
-  const cleaned = text.replace(/[^\d,.]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')
-  if (cleaned === '') return null
-  const n = Number(cleaned)
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null
+  if (text.trim() === '') return null
+  const n = parseStand(text, getLang())
+  return n !== null && n >= 0 ? n : null
 }
 
 export function cleanText(value: string, max = 80): string {
