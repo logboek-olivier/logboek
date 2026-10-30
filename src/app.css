@@ -4526,3 +4526,28 @@ textarea.note {
 .forecast-items .row {
   gap: var(--s-2);
 }
+
+/* ---------- Kosten ---------- */
+
+.costs h3 {
+  margin: var(--s-3) 0 0;
+  font-size: var(--fs-md);
+}
+
+.cost-row {
+  width: 100%;
+  min-height: 44px;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cost-day {
+  gap: var(--s-2);
+}

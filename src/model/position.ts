@@ -1,10 +1,12 @@
 import { balanceOn, toEur, type EurAmount } from './accounts'
+import type { CalendarIndex } from './calendar'
+import { expectedCosts, type DayAverage } from './costs'
 import { active } from './derive'
 import { eurOf, round2 } from './money'
 import { payoutRule } from './money-path'
 import { rateFor, type RatesFile } from './rates'
 import { salaryEur, tipAverages, tripEnd } from './salary'
-import type { Account, AccountKind, Balance, Currency, Leg, Organisation, Settings, Transaction, Trip } from './types'
+import type { Account, AccountKind, Balance, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 
 // Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. Op de bank (betaal- en
 // spaarrekeningen), contant (contante fooien die nog niet gestort zijn, plus de stand van een kasrekening), te ontvangen
@@ -178,9 +180,10 @@ export function payoutMoment(trip: Trip, legs: readonly Leg[], settings: Setting
 }
 
 export interface ForecastItem {
-  /** jjjj-mm-dd: het uitbetaalmoment (salaris) of het einde van de trip (fooi). */
+  /** jjjj-mm-dd: het uitbetaalmoment (salaris), het einde van de trip (fooi) of het einde van de maand (kosten). */
   date: string
-  kind: 'salaris' | 'fooi'
+  /** Kosten (vaste lasten, variabele kosten) staan als negatief bedrag. */
+  kind: 'salaris' | 'fooi' | 'vaste-lasten' | 'kosten'
   org?: Organisation
   trips: Trip[]
   eur: number
@@ -206,6 +209,10 @@ export interface Forecast {
   addsEur: number
   /** Daarvan geschatte fooi. */
   tipEstimateEur: number
+  /** Daarvan kosten (vaste lasten en variabele kosten, negatief). */
+  costsEur: number
+  /** Een dagsoort zonder eigen gemiddelde of standaardbedrag: de variabele kosten zijn dan te laag. */
+  costsUnknown: boolean
   /** Verwacht salaris zonder koers, per valuta (niet meegeteld). */
   other: Partial<Record<Currency, number>>
   months: ForecastMonth[]
@@ -232,7 +239,13 @@ function monthLast(month: string): string {
  * komende trip (eigen gemiddelde van de organisatie, min wat er die trip al binnenkwam). Salaris van voorbije trips staat
  * al in "te ontvangen" en telt dus niet nog eens. De laatste zes maanden gemeten, daarna verwacht.
  */
-export function forecast(input: PositionInput, settings: Settings, today: string, planningEnd: string | null = null, history = 6): Forecast {
+export interface CostInput {
+  fixed: readonly FixedCost[]
+  averages: Record<CostDayType, DayAverage>
+  index: CalendarIndex
+}
+
+export function forecast(input: PositionInput, settings: Settings, today: string, planningEnd: string | null = null, history = 6, costs: CostInput | null = null): Forecast {
   const { trips, legs, transactions, rates } = input
   const now = positionAt(input, today).totals.net
   const items: ForecastItem[] = []
@@ -267,9 +280,21 @@ export function forecast(input: PositionInput, settings: Settings, today: string
       if (estimate > 0) items.push({ date: end, kind: 'fooi', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], eur: estimate })
     }
   }
-  items.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === 'salaris' ? -1 : 1))
+  // Kosten tot het einde van de planning: per maand de vaste lasten en de variabele kosten (negatief).
+  let costsUnknown = false
+  if (costs) {
+    for (const m of expectedCosts(costs.fixed, costs.averages, costs.index, today, until, rates)) {
+      const last = monthLast(m.month)
+      if (m.fixedEur > 0) items.push({ date: last, kind: 'vaste-lasten', trips: [], eur: -m.fixedEur })
+      if (m.variableEur > 0) items.push({ date: last, kind: 'kosten', trips: [], eur: -m.variableEur })
+      costsUnknown ||= m.unknown
+    }
+  }
+  const order = { salaris: 0, fooi: 1, 'vaste-lasten': 2, kosten: 3 }
+  items.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind])
   const addsEur = round2(items.reduce((n, i) => n + i.eur, 0))
   const tipEstimateEur = round2(items.filter((i) => i.kind === 'fooi').reduce((n, i) => n + i.eur, 0))
+  const costsEur = round2(items.filter((i) => i.kind === 'vaste-lasten' || i.kind === 'kosten').reduce((n, i) => n + i.eur, 0))
   const nowKnown = Object.keys(now.other).length === 0
   const months: ForecastMonth[] = []
   const current = monthOf(today)
@@ -286,7 +311,7 @@ export function forecast(input: PositionInput, settings: Settings, today: string
     months.push({ month, eur: nowKnown ? round2(now.eur + added) : null, future: true })
   }
   // De lopende maand: wat er nog deze maand binnenkomt, telt pas in de verwachte lijn; het punt van nu is gemeten.
-  return { now, items, until, endEur: nowKnown ? round2(now.eur + addsEur) : null, addsEur, tipEstimateEur, other, months }
+  return { now, items, until, endEur: nowKnown ? round2(now.eur + addsEur) : null, addsEur, tipEstimateEur, costsEur, costsUnknown, other, months }
 }
 
 /** Een stand in euro met de koers van vandaag, voor de snelle invoer (null zonder koers). */

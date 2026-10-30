@@ -34,7 +34,7 @@ export const SCREEN_FILES: Record<ScreenId, readonly CollectionPath[]> = {
   logboek: ['trips.json.enc', 'legs.json.enc'],
   meer: [],
   statistieken: ['legs.json.enc', 'trips.json.enc', 'calendar.json.enc', 'transactions.json.enc', 'students.json.enc', 'curricula.json.enc', 'settings.json.enc'],
-  geld: ['transactions.json.enc', 'calendar.json.enc'],
+  geld: ['transactions.json.enc', 'calendar.json.enc', 'fixedcosts.json.enc', 'accounts.json.enc', 'balances.json.enc'],
   termijnen: ['reminders.json.enc', 'documents/index.json.enc', 'career.json.enc'],
   boten: ['trips.json.enc'],
   plaatsen: ['places.json.enc', 'legs.json.enc'],

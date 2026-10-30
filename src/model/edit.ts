@@ -5,7 +5,7 @@ import { scrubbedDocument } from './documents'
 import { followDays } from './trip-dates'
 import { round2 } from './money'
 import { finalRateFields } from './rates'
-import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, TipVia, Transaction, Trip, VaultDocument, WeekClosing } from './types'
+import type { CareerRecord, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, TipFrom, TipVia, CostCategory, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 
 // Bewerken en verwijderen. Verwijderen is een tombstone en geeft een functie terug die het ongedaan maakt
 // (de melding "Verwijderd · Ongedaan maken"); ongedaan maken zet de vorige versie terug met een nieuwe updatedAt.
@@ -63,6 +63,8 @@ function putOne(store: Store, item: Removal): Promise<void> {
     case 'accounts.json.enc':
       return store.put(item.path, item.record)
     case 'balances.json.enc':
+      return store.put(item.path, item.record)
+    case 'fixedcosts.json.enc':
       return store.put(item.path, item.record)
   }
 }
@@ -185,11 +187,13 @@ export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'c
   tipVia?: TipVia | null
   /** Contante fooi gestort op (jjjj-mm-dd); null = nog niet gestort; ontbreekt het, dan blijft het zoals het was. */
   depositedAt?: string | null
+  /** Soort losse uitgave; null = weg; ontbreekt het, dan blijft het zoals het was. */
+  category?: CostCategory | null
 }
 
 /** Werkt een transactie bij; amountEur volgt uit valuta en datum, de trip uit de keuze of anders de datum. */
 export async function updateTransaction(store: Store, tx: Transaction, patch: TransactionPatch): Promise<void> {
-  const { tripId: chosenTrip, tipFrom, tipVia, depositedAt, ...fields } = patch
+  const { tripId: chosenTrip, tipFrom, tipVia, depositedAt, category, ...fields } = patch
   const next: Transaction = { ...tx, ...fields, amount: round2(patch.amount), updatedAt: new Date().toISOString() }
   if (tipFrom) next.tipFrom = tipFrom
   if (tipVia) next.tipVia = tipVia
@@ -199,6 +203,8 @@ export async function updateTransaction(store: Store, tx: Transaction, patch: Tr
   // Contant of bank en gestort horen alleen bij een fooi; gestort alleen bij contant.
   if (next.kind !== 'fooi') delete next.tipVia
   if (next.tipVia !== 'contant') delete next.depositedAt
+  if (category) next.category = category
+  if (category === null || next.kind !== 'kosten') delete next.category
   // Geen fooi meer, van onbekend, of een andere trip zonder nieuwe keuze: geen personen bewaren.
   if (tipFrom === null || next.kind !== 'fooi') delete next.tipFrom
   const trip = chosenTrip !== undefined ? (chosenTrip ? { id: chosenTrip } : null) : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), next.date)

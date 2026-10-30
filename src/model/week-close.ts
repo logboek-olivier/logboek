@@ -1,8 +1,8 @@
 import type { Store } from '../storage/store'
 import { dayInfo, type CalendarIndex } from './calendar'
 import { totalNm } from './derive'
-import { addDays } from './money'
-import type { Student, WeekClosing } from './types'
+import { addDays, round2 } from './money'
+import type { Currency, Student, WeekClosing } from './types'
 import { isoWeek } from './weeks'
 
 // Weekafsluiting (Vandaag op zondag, terug te lezen in de agenda op de dagkaart van de zondag): een automatische
@@ -120,7 +120,7 @@ export function cleanClosing(input: { rating: number | null; lesson: string }): 
 }
 
 /** Cijfer en zin opslaan voor de week van een datum (bestaat de afsluiting al, dan wordt hij bijgewerkt). */
-export async function saveClosing(store: Store, date: string, input: { rating: number | null; lesson: string }): Promise<void> {
+export async function saveClosing(store: Store, date: string, input: { rating: number | null; lesson: string; spent?: { amount: number; currency: Currency } | null }): Promise<void> {
   const id = weekClosingId(date)
   const now = new Date().toISOString()
   const { rating, lesson } = cleanClosing(input)
@@ -135,5 +135,8 @@ export async function saveClosing(store: Store, date: string, input: { rating: n
   }
   delete record.rating
   delete record.lesson
-  await store.put('weekreviews.json.enc', { ...record, ...(rating !== undefined ? { rating } : {}), ...(lesson !== undefined ? { lesson } : {}) })
+  // "Ongeveer los uitgegeven": ontbreekt het in de invoer, dan blijft wat er stond; null of 0 = weg.
+  if (input.spent !== undefined) delete record.spent
+  const spent = input.spent && input.spent.amount > 0 ? { amount: round2(input.spent.amount), currency: input.spent.currency } : undefined
+  await store.put('weekreviews.json.enc', { ...record, ...(rating !== undefined ? { rating } : {}), ...(lesson !== undefined ? { lesson } : {}), ...(spent ? { spent } : {}) })
 }

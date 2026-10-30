@@ -35,6 +35,8 @@ import {
   type Currency,
   type Settings,
   type TipVia,
+  type CostCategory,
+  COST_CATEGORIES,
   type Water,
   type Leg,
   type Role,
@@ -134,7 +136,7 @@ function useDefaults(store: Store) {
 async function saveTransaction(
   store: Store,
   tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>,
-  remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind' | 'lastTipVia'>>,
+  remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind' | 'lastTipVia' | 'lastCostCategory'>>,
   tripId?: string,
 ) {
   const trip = tripId ? { id: tripId } : tripForDate(store.get('trips.json.enc'), store.get('legs.json.enc'), tx.date)
@@ -309,6 +311,8 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [kind, setKind] = useState<TransactionKind>(settings.lastCostKind ?? 'kosten')
+  // Soort losse uitgave (vervoer, eten en drinken, overig), laatst gekozen; leert de kosten per dagsoort.
+  const [category, setCategory] = useState<CostCategory>(settings.lastCostCategory ?? 'overig')
   const [more, setMore] = useState(false)
   const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
@@ -324,8 +328,8 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
     try {
       await saveTransaction(
         store,
-        { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}) },
-        { lastCostKind: kind === 'investering' ? 'investering' : 'kosten' },
+        { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}), ...(kind === 'kosten' ? { category } : {}) },
+        { lastCostKind: kind === 'investering' ? 'investering' : 'kosten', ...(kind === 'kosten' ? { lastCostCategory: category } : {}) },
         tripId || undefined,
       )
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
@@ -367,6 +371,15 @@ function CostForm({ store, onDone }: { store: Store; onDone: (message: string) =
           </button>
         ))}
       </div>
+      {kind === 'kosten' && (
+        <div className="type-buttons" role="radiogroup" aria-label={t('costs.category')}>
+          {COST_CATEGORIES.map((c) => (
+            <button key={c} type="button" role="radio" aria-checked={category === c} className={`chip${category === c ? ' active' : ''}`} onClick={() => setCategory(c)}>
+              {t(`costCategory.${c}`)}
+            </button>
+          ))}
+        </div>
+      )}
       {!more && (
         <p className="muted">
           {sourceLabel(source)} · {currency} · {t('quick.today')}{' '}
