@@ -111,6 +111,8 @@ export async function migratePeriods(store: Store): Promise<boolean> {
     },
     now,
   )
+  // Niets om te zetten (een nieuw logboek, of alles al omgezet): niets schrijven; de volgende sessie kijkt opnieuw.
+  if (changes.length === 0) return false
   await applyChanges(store, changes, false)
   await saveSettings(store, { periodsMigratedAt: now })
   void store.sync()

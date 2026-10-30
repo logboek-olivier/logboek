@@ -43,7 +43,8 @@ met de reden.
 
 ## 2. Migratie van bestaande gegevens
 
-Draait vanzelf na de eerste geslaagde sync van deze versie, één keer per logboek (`settings.periodsMigratedAt`, gesynct),
+Draait vanzelf na de eerste geslaagde sync van deze versie, één keer per logboek (`settings.periodsMigratedAt`, gesynct;
+zonder iets om te zetten schrijft hij niets en kijkt de volgende sessie opnieuw),
 alleen als `trips`, `legs`, `calendar`, `transactions`, `periods` en `settings` leesbaar zijn, en nooit in de demo.
 Alles met vaste id's en `justAfter`-tijden, zodat twee apparaten hetzelfde maken en een echte wijziging op een ander
 apparaat altijd wint. Niets wordt gewist: een tombstone houdt zijn inhoud, en de oude versie blijft in de geschiedenis
