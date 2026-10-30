@@ -58,6 +58,24 @@ export function decodeRecords<T extends SyncRecord>(path: string, plain: Bytes):
   return records as T[]
 }
 
+/**
+ * Waarom een ontsleuteld bestand geen geldig logboekbestand is (voor het bewijs; nooit inhoud): geen JSON, geen
+ * logboekbestand, een onbekende versie, of een record zonder id of updatedAt.
+ */
+export function invalidReason(plain: Bytes): 'json' | 'soort' | 'versie' | 'record' | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(decoder.decode(plain))
+  } catch {
+    return 'json'
+  }
+  if (!isRecord(raw) || raw.format !== 'logboek-collection' || !Array.isArray(raw.records)) return 'soort'
+  const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
+  if (!Number.isInteger(found) || found < 1) return 'versie'
+  const records = raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r))
+  return records.every(isSyncRecord) ? null : 'record'
+}
+
 export async function encryptRecords(masterKey: CryptoKey, path: string, records: readonly SyncRecord[]): Promise<Bytes> {
   return encryptObject(masterKey, path, encodeRecords(records))
 }

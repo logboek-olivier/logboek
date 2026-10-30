@@ -31,6 +31,20 @@ export async function mockGithub(page: Page, initial?: E2eGithub): Promise<E2eGi
   const github: E2eGithub = initial ?? newGithub()
   let counter = github.files.size
   const stale = new Map<string, { file: { sha: string; content: string }; remaining: number }>()
+  // Elke geschreven versie per pad (voor de commits-API, ?ref= en de blob-API), nieuwste laatst.
+  const history = new Map<string, { commit: string; sha: string; content: string; message: string }[]>()
+  const blobOf = (sha: string) => {
+    for (const versions of history.values()) for (const v of versions) if (v.sha === sha) return v.content
+    for (const f of github.files.values()) if (f.sha === sha) return f.content
+    return undefined
+  }
+  /** De versies van een pad, met de huidige erbij als die buiten de app is gezet (een test die files.set gebruikt). */
+  const versionsOf = (path: string) => {
+    const versions = [...(history.get(path) ?? [])]
+    const file = github.files.get(path)
+    if (file && versions.at(-1)?.sha !== file.sha) versions.push({ commit: `c-${file.sha}`, sha: file.sha, content: file.content, message: file.message ?? 'sync 2026-01-01T00:00:00.000Z' })
+    return versions
+  }
   await page.route('https://api.github.com/**', async (route) => {
     const request = route.request()
     const url = request.url()
@@ -50,14 +64,23 @@ export async function mockGithub(page: Page, initial?: E2eGithub): Promise<E2eGi
     if (!url.startsWith(prefix)) return json(404, {})
     const rest = url.slice(prefix.length)
     if (rest === '') return json(200, { full_name: REPO })
-    const commits = /^\/commits\?path=([^&]+)/.exec(rest)
+    const commits = /^\/commits\?path=([^&]+)(?:&per_page=(\d+))?/.exec(rest)
     if (commits && method === 'GET') {
-      const last = github.files.get(decodeURIComponent(commits[1] ?? ''))
-      return json(200, last ? [{ sha: `c-${last.sha}`, commit: { message: last.message ?? 'sync 2026-01-01T00:00:00.000Z' } }] : [])
+      const versions = versionsOf(decodeURIComponent(commits[1] ?? '')).reverse().slice(0, Number(commits[2] ?? 30))
+      return json(200, versions.map((v) => ({ sha: v.commit, commit: { message: v.message, committer: { date: '2026-10-29T12:00:00Z' } } })))
     }
-    const m = /^\/contents\/(.+)$/.exec(rest)
+    const blob = /^\/git\/blobs\/(.+)$/.exec(rest)
+    if (blob && method === 'GET') {
+      const content = blobOf(blob[1] ?? '')
+      return content !== undefined ? json(200, { sha: blob[1], content, encoding: 'base64' }) : json(404, {})
+    }
+    const m = /^\/contents\/([^?]+)(?:\?ref=(.+))?$/.exec(rest)
     if (!m) return json(404, {})
     const path = decodeURIComponent(m[1] ?? '')
+    if (m[2] !== undefined && method === 'GET') {
+      const version = versionsOf(path).find((v) => v.commit === decodeURIComponent(m[2]!))
+      return version ? json(200, { sha: version.sha, content: version.content, encoding: 'base64' }) : json(404, {})
+    }
     const file = github.files.get(path)
     if (method === 'GET') {
       if (github.emptyRepo && github.files.size === 0) return json(409, { message: 'Git Repository is empty.' })
@@ -74,7 +97,9 @@ export async function mockGithub(page: Page, initial?: E2eGithub): Promise<E2eGi
       if (!file && req.sha) return json(422, {})
       const sha = `sha-${++counter}`
       if (file && github.staleReadsAfterPut > 0) stale.set(path, { file, remaining: github.staleReadsAfterPut })
+      const previous = versionsOf(path)
       github.files.set(path, { sha, content: req.content ?? '', ...(req.message ? { message: req.message } : {}) })
+      history.set(path, [...previous, { commit: `c-${sha}`, sha, content: req.content ?? '', message: req.message ?? '' }])
       return json(file ? 200 : 201, { content: { sha, path } })
     }
     if (method === 'DELETE') {

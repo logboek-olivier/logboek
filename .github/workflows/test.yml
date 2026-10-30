@@ -47,3 +47,46 @@ jobs:
           retention-days: 14
       - name: Build
         run: npm run build
+
+  # Integratietest tegen de echte GitHub-API (tests/integratie): met de token van deze workflow, alleen in een tijdelijke
+  # branch van deze repo (integratie/<run>-node en -browser) met nepdata en een testsleutel; nooit logboek-data
+  # (regel 6). Alleen deze job mag schrijven; de token staat alleen in de teststappen (niet bij npm ci, niet in de
+  # git-configuratie) en de branches gaan na afloop weg. Alleen bij een PR uit deze repo (de token mag ongeveer 1000
+  # verzoeken per uur per repo doen; één run gebruikt er een paar honderd).
+  integratie:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      LOGBOEK_IT_REPO: ${{ github.repository }}
+      LOGBOEK_IT_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Playwright-browsers installeren
+        run: npx playwright install --with-deps chromium
+      - name: Integratietest in Node (echte API)
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx vitest run tests/integratie
+      - name: Integratietest in de browser (echte API)
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx playwright test -c playwright.integratie.config.ts
+      - name: Tijdelijke branches opruimen
+        if: always()
+        env:
+          LOGBOEK_IT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for name in node browser; do
+            curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $LOGBOEK_IT_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$LOGBOEK_IT_REPO/git/refs/heads/integratie/$LOGBOEK_IT_RUN-$name" || true
+          done

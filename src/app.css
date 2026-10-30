@@ -4334,3 +4334,19 @@ textarea.note {
   display: block;
   text-align: end;
 }
+
+/* Opslag: het bewijs per onleesbaar bestand (versies en commits, zonder inhoud). */
+.storage-evidence {
+  display: block;
+  margin-top: var(--s-2);
+  overflow-wrap: anywhere;
+}
+
+.storage-evidence ul {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-4);
+}
+
+.storage-evidence li + li {
+  margin-top: 2px;
+}

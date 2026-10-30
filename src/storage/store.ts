@@ -1,5 +1,5 @@
 import { decryptObject, DecryptError, encryptObject, utf8, type Bytes } from '../crypto/encrypt'
-import { recordError } from '../errors'
+import { clearDiagnostics, recordError, setDiagnostics } from '../errors'
 import { looksLikeMeta, META_PATH, parseMeta, serializeMeta, verifyMetaCheck, type Meta } from '../crypto/keys'
 import { t } from '../i18n'
 import { NewerSchemaError } from '../model/schema'
@@ -12,6 +12,10 @@ import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasRe
 import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, sameRecords, sealForUpload, syncCollection } from './sync'
 import { encodeBackup } from './backup'
 import { exclusive } from './writer'
+import { evidenceLines, gatherEvidence, type FileEvidence } from './evidence'
+import { onIntegrity } from './integrity'
+import { newerBuildStarted } from './versions'
+import { deviceId } from './device'
 import { checkHasProblem, readStorageLog, writeStorageLog, type FileCheck, type StorageCheck } from './storage-log'
 
 /**
@@ -192,6 +196,11 @@ export class Store {
   /** De lopende controle synct eerst ("Controleer nu"); anders is het de weekcontrole na een net geslaagde sync. */
   private checkingSyncs = false
 
+  /** Luistert naar antwoorden die niet bij hun sha hoorden (src/storage/integrity.ts). */
+  private offIntegrity: (() => void) | null = null
+  /** De bron van het bewijs in "Kopieer foutdetails" (src/errors.ts). */
+  private readonly diagnostics = (): string[] => this.diagnosticLines()
+
   private constructor(
     private readonly db: Db,
     private readonly masterKey: CryptoKey,
@@ -249,7 +258,32 @@ export class Store {
     store.outbox = await loadOutbox(db, masterKey)
     store.status = store.outdated ? store.updateStatus() : store.idleStatus()
     store.listen()
+    if (!store.demo) store.watchDiagnostics()
     return store
+  }
+
+  /** Antwoorden die niet bij hun sha hoorden bewaren (alleen pad, tijd, soort) en het bewijs in de foutdetails zetten. */
+  private watchDiagnostics(): void {
+    this.offIntegrity = onIntegrity((event) => {
+      const log = readStorageLog(this.db.name)
+      writeStorageLog(this.db.name, { ...log, integrity: [...(log.integrity ?? []), event].slice(-20) })
+    })
+    setDiagnostics(this.diagnostics)
+  }
+
+  /** Regels voor "Kopieer foutdetails": welke bestanden nu onleesbaar zijn, integriteit en het bewijs; nooit inhoud. */
+  diagnosticLines(): string[] {
+    const log = readStorageLog(this.db.name)
+    const lines = [`Dit apparaat: ${deviceId()}`, `Onleesbaar nu: ${this.unreadableFiles().map((f) => `${f.path} (${f.reason})`).join(', ') || 'geen'}`]
+    if (newerBuildStarted()) lines.push('Een nieuwere versie is gestart: dit venster schrijft niet')
+    for (const e of log.integrity ?? []) lines.push(`Integriteit ${e.at} ${e.path} ${e.phase}${e.repaired ? ' (blob-API klopte)' : ''}`)
+    lines.push(...evidenceLines(log.evidence ?? [], deviceId()))
+    return lines
+  }
+
+  /** De bestanden die bij de laatste sync op GitHub onleesbaar waren, met de soort defect. */
+  unreadableFiles(): { path: CollectionPath; reason: string }[] {
+    return [...this.unreadable.entries()].map(([path, reason]) => ({ path, reason: this.unreadableKinds.has(path) ? `${reason}/${this.unreadableKinds.get(path)}` : reason }))
   }
 
   /** Slaat meta.json.enc lokaal op, zodat ontgrendelen zonder verbinding kan. */
@@ -373,6 +407,9 @@ export class Store {
   /** Wist alle ontsleutelde data uit het geheugen. De Store is daarna onbruikbaar. */
   lock(): void {
     this.locked = true
+    this.offIntegrity?.()
+    this.offIntegrity = null
+    clearDiagnostics(this.diagnostics)
     this.collections.clear()
     this.outbox = {}
     this.unsaved = {}
@@ -410,6 +447,13 @@ export class Store {
       return
     }
     if (this.outdated) {
+      this.setStatus(this.updateStatus())
+      return
+    }
+    // Eén schrijver over versies heen (src/storage/versions.ts): is er na dit venster een nieuwere versie gestart (dit
+    // venster bleef bevroren op de achtergrond, of werd na een update nog niet herladen), dan schrijft het niets meer.
+    if (newerBuildStarted()) {
+      this.outdated = true
       this.setStatus(this.updateStatus())
       return
     }
@@ -590,6 +634,8 @@ export class Store {
     if (failure === null && unreadable.size > 0) {
       const reasons = [...unreadable].map(([path, name]) => (kinds.has(path) ? `${name}/${kinds.get(path)}` : name))
       failure = new UnreadableFileError([...unreadable.keys()], [...new Set(reasons)].join(', '))
+      // Het bewijs uit de echte omgeving (wie schreef wat, met welke versie): op de achtergrond, alleen lezen.
+      void this.autoEvidence([...unreadable.keys()]).catch(recordError)
     }
     if (failure === null) {
       await this.cleanupDocumentFiles().catch(recordError)
@@ -841,8 +887,8 @@ export class Store {
    * leesbaar (een ander apparaat herstelde het al), dan blijft het staan. Alleen een geslaagde schrijfactie telt als
    * herstelpoging.
    */
-  private async replaceRemote(path: CollectionPath, records: readonly SyncRecord[], knownSha: string | null): Promise<void> {
-    if (this.metaVerdict !== 'match' || this.outdated) return
+  private async replaceRemote(path: CollectionPath, records: readonly SyncRecord[], knownSha: string | null): Promise<string | 'leesbaar' | null> {
+    if (this.metaVerdict !== 'match' || this.outdated || newerBuildStarted()) return null
     await this.assertVault()
     if (this.vaultCheck !== null) {
       const meta = await this.checkMeta()
@@ -855,11 +901,11 @@ export class Store {
       if (sha === null || attempt > 0) {
         const remote = await this.client.getFile(path)
         // Er staat (nu) niets: niets te vervangen. Een nieuw bestand maakt alleen de sync aan.
-        if (!remote) return
+        if (!remote) return null
         else {
           try {
             await decryptRecords(this.masterKey, path, remote.content)
-            return
+            return 'leesbaar'
           } catch (error) {
             if (error instanceof NewerSchemaError) {
               this.outdated = true
@@ -871,14 +917,99 @@ export class Store {
         }
       }
       try {
-        await this.client.putFile(path, await sealForUpload(this.masterKey, path, records), sha)
+        const written = await this.client.putFile(path, await sealForUpload(this.masterKey, path, records), sha)
         if (sha) rememberReplaced(this.db.name, path, sha)
         setRepairAttempts(this.db.name, path, repairAttempts(this.db.name, path) + 1)
-        return
+        return written
       } catch (error) {
         if (!(error instanceof ConflictError) || attempt === 1) throw error
       }
     }
+    return null
+  }
+
+  /**
+   * "Alles herstellen" (Meer → Opslag), na een tik: eerst een sync, zodat de lijst actueel is, dan het bewijs van elk
+   * onleesbaar bestand (vóór het overschrijven), dan per bestand de leesbare kopie van dit apparaat terugzetten, of een
+   * lege versie als dit apparaat er niets van heeft. Elk bestand wordt daarna teruggelezen via de blob-sha van wat net
+   * geschreven is (onveranderlijk) en ontsleuteld: pas dan telt het als hersteld. De oude versie blijft in de
+   * geschiedenis van logboek-data. Alleen met meta.json.enc op GitHub bij deze sleutel en de nieuwste versie van de app.
+   */
+  async repairAll(): Promise<{ path: CollectionPath; ok: boolean }[]> {
+    this.assertUnlocked()
+    if (this.demo) return []
+    await this.sync()
+    if (this.locked || this.outdated || newerBuildStarted() || this.metaVerdict !== 'match') return []
+    const targets = [...this.unreadable].filter(([, reason]) => REPLACEABLE.has(reason)).map(([path]) => path)
+    if (targets.length === 0) return []
+    await this.gatherEvidence(targets).catch(recordError)
+    const results: { path: CollectionPath; ok: boolean }[] = []
+    await exclusive(this.db.name, 'sync', async () => {
+      for (const path of targets) {
+        if (this.locked) return
+        try {
+          const written = await this.replaceRemote(path, this.collections.get(path) ?? [], null)
+          const ok = written === 'leesbaar' || (typeof written === 'string' && (await this.readsBack(path, written)))
+          if (ok) setRepairAttempts(this.db.name, path, 0)
+          results.push({ path, ok })
+        } catch (error) {
+          if (this.locked || error instanceof KeyMismatchError || error instanceof NetworkError || error instanceof AuthError) throw error
+          recordError(error)
+          results.push({ path, ok: false })
+        }
+      }
+    })
+    for (const r of results) if (r.ok) this.unreadable.delete(r.path)
+    await this.sync()
+    this.recheckIfProblem()
+    return results
+  }
+
+  /** Wat net geschreven is, teruglezen via zijn blob-sha (onveranderlijk, gecontroleerd tegen die sha) en ontsleutelen. */
+  private async readsBack(path: CollectionPath, sha: string): Promise<boolean> {
+    try {
+      await decryptRecords(this.masterKey, path, await this.client.getBlobAt(sha))
+      return true
+    } catch (error) {
+      if (error instanceof NetworkError || error instanceof AuthError) throw error
+      recordError(error)
+      return false
+    }
+  }
+
+  /**
+   * Het bewijs voor deze bestanden (standaard de bestanden die nu onleesbaar zijn): de versie op GitHub en de laatste
+   * vijf commits, met versie, apparaat, blob-sha, grootte, eerste byte en soort uitkomst (src/storage/evidence.ts).
+   * Alleen lezen. Bewaard in het opslaglogboek (een week) en opgenomen in "Kopieer foutdetails".
+   */
+  async gatherEvidence(paths: readonly CollectionPath[] = [...this.unreadable.keys()]): Promise<FileEvidence[]> {
+    this.assertUnlocked()
+    if (this.demo || paths.length === 0) return []
+    const out: FileEvidence[] = []
+    for (const path of paths) {
+      if (this.locked) return out
+      try {
+        out.push(await gatherEvidence(this.client, this.masterKey, path))
+      } catch (error) {
+        if (error instanceof NetworkError || error instanceof GithubError) break
+        throw error
+      }
+    }
+    if (this.locked) return out
+    const log = readStorageLog(this.db.name)
+    const weekAgo = Date.now() - 7 * 24 * 3_600_000
+    const kept = (log.evidence ?? []).filter((e) => !out.some((o) => o.path === e.path) && Date.parse(e.at) > weekAgo)
+    writeStorageLog(this.db.name, { ...log, evidence: [...out, ...kept].slice(0, COLLECTION_PATHS.length) })
+    this.notify()
+    return out
+  }
+
+  /** Na een sync met onleesbare bestanden: het bewijs ophalen voor bestanden zonder bewijs van het laatste uur. */
+  private async autoEvidence(paths: readonly CollectionPath[]): Promise<void> {
+    const hourAgo = Date.now() - 3_600_000
+    const fresh = new Set((readStorageLog(this.db.name).evidence ?? []).filter((e) => Date.parse(e.at) > hourAgo).map((e) => e.path))
+    const todo = paths.filter((p) => !fresh.has(p))
+    if (todo.length > 0 && !this.locked) await this.gatherEvidence(todo)
   }
 
   private reportFailure(failure: unknown): void {

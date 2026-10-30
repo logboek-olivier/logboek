@@ -5,6 +5,20 @@ import { APP_VERSION, BUILD_DATE, COMMIT } from './build-info'
 // getallen met decimalen vallen weg, en de stack bevat alleen bestandsnamen en regelnummers van de app.
 
 let currentScreen = 'Laden'
+let diagnostics: (() => string[]) | null = null
+
+/**
+ * Extra regels voor de foutdetails: het bewijs per onleesbaar bestand en antwoorden die niet bij hun sha hoorden
+ * (src/storage/evidence.ts). Alleen sha's, tijden, versies, apparaat-id's, groottes en de soort uitkomst; nooit inhoud.
+ */
+export function setDiagnostics(provider: (() => string[]) | null): void {
+  diagnostics = provider
+}
+
+/** Alleen weghalen als dit nog de geldende bron is (een nieuwe Store kan al een eigen bron hebben gezet). */
+export function clearDiagnostics(provider: () => string[]): void {
+  if (diagnostics === provider) diagnostics = null
+}
 let last: { error: unknown; screen: string; at: string } | null = null
 const listeners = new Set<() => void>()
 
@@ -81,6 +95,13 @@ export function errorReport(error: unknown, screen: string, at: string, userAgen
   lines.push(`Browser: ${browser(userAgent)}`)
   const frames = stackFrames(error)
   if (frames.length > 0) lines.push('Stack:', ...frames)
+  let extra: string[] = []
+  try {
+    extra = diagnostics?.() ?? []
+  } catch {
+    // Het bewijs is een hulpmiddel; de foutdetails zelf gaan altijd mee.
+  }
+  if (extra.length > 0) lines.push(...extra)
   return lines.join('\n')
 }
 
