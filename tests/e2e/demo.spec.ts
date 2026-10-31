@@ -8,7 +8,19 @@ import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, fil
 test.use({ viewport: { width: 360, height: 800 } })
 
 test('demomodus: voorbeelddata in het Engels, nooit een verzoek naar GitHub, stoppen brengt de eigen data en taal terug', async ({ page }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
+  const shots = async (name: string) => {
+    for (const width of [360, 412]) {
+      for (const scheme of ['light', 'dark'] as const) {
+        await page.setViewportSize({ width, height: 800 })
+        await page.emulateMedia({ colorScheme: scheme })
+        await expectNoHorizontalOverflow(page)
+        await page.screenshot({ path: `screenshots/demo/${name}-${width}-${scheme}-en.png` })
+      }
+    }
+    await page.setViewportSize({ width: 360, height: 800 })
+    await page.emulateMedia({ colorScheme: 'light' })
+  }
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
@@ -44,10 +56,32 @@ test('demomodus: voorbeelddata in het Engels, nooit een verzoek naar GitHub, sto
   await expect(page.locator('.student').first()).toBeVisible()
   await page.screenshot({ path: 'screenshots/demo/this-trip.png', fullPage: true })
   await openMore(page, 'Logbook', 'More')
-  await expect(page.locator('.trip-card')).toHaveCount(3)
+  await expect(page.locator('.trip-card')).toHaveCount(4)
   await page.screenshot({ path: 'screenshots/demo/logbook.png', fullPage: true })
   await openMore(page, 'Statistics', 'More')
   await expect(page.getByRole('heading', { name: 'Statistics' })).toBeVisible()
+  // Periodemodel: periodes van elke soort, met geld per periode (bedragen pas na een tik).
+  await openMore(page, 'Periods', 'More')
+  const list = page.locator('main')
+  // Afgelopen maanden staan ingeklapt: de namen staan er wel.
+  for (const name of ['BVI', 'Croatia', 'Day Skipper course', 'Sailing with friends', 'Tortola', 'Home']) await expect(list).toContainText(name)
+  await expect(list).not.toContainText('€')
+  await list.getByRole('button', { name: 'Show amounts' }).click()
+  await expect(list).toContainText('€')
+  await shots('periods')
+  // Zoeken klapt alles open.
+  await list.getByRole('searchbox').fill('Croatia')
+  await list.getByRole('button', { name: /Croatia/ }).first().click()
+  const croatia = page.getByRole('dialog')
+  await expect(croatia).toContainText('Croatia')
+  await expect(croatia).toContainText('Vis')
+  await croatia.getByRole('button', { name: 'Show amounts' }).first().click()
+  await expect(croatia).toContainText('1,400')
+  await shots('period-croatia')
+  await croatia.getByRole('button', { name: 'Close' }).first().click()
+  // Nakijken staat niet onder Meer in de demo (en de voorbeelddata heeft niets na te kijken).
+  await page.getByRole('navigation').getByRole('button', { name: 'More', exact: true }).click()
+  await expect(page.getByRole('button', { name: /^To check/ })).toHaveCount(0)
   await page.getByRole('navigation').getByRole('button', { name: 'More', exact: true }).click()
   // Onder Meer geen Opslag in de demo; Instellingen zonder de eigen sleutels en token.
   await expect(page.getByRole('button', { name: /^Storage/ })).toHaveCount(0)

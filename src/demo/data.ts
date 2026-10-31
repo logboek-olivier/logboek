@@ -1,12 +1,13 @@
 import { addDays } from '../model/money'
 import { draftPlan, newGroup } from '../model/plans'
 import { SEED_CURRICULA } from '../model/seed-curricula'
-import type { CalendarDay, CollectionPath, Collections, Leg, Participant, Place, Reminder, Settings, StayPeriod, Student, Trip, WeekPlan } from '../model/types'
+import type { CalendarDay, CollectionPath, Collections, Leg, Participant, Place, Reminder, Settings, StayPeriod, Student, Transaction, Trip, WeekPlan } from '../model/types'
 import { DEFAULT_SETTINGS } from '../model/settings'
 
 // Demomodus: verzonnen voorbeelddata om de app te laten zien. Routes langs openbare plaatsen in de BVI en Kroatië
-// (namen en coördinaten zoals op elke kaart), verzonnen boten, alleen verzonnen voornamen, geen bedragen (geen
-// transacties). De datums schuiven mee met vandaag, zodat er altijd een lopende trip is.
+// (namen en coördinaten zoals op elke kaart), verzonnen boten, alleen verzonnen voornamen en verzonnen bedragen per
+// periode (salaris, fooi, uitgaven). Periodes van elke soort: werk, training, plezier, reis, thuis en vrij. De datums
+// schuiven mee met vandaag, zodat er altijd een lopende trip is.
 
 const T = '2026-01-01T00:00:00.000Z'
 const base = { updatedAt: T, deletedAt: null }
@@ -72,6 +73,7 @@ export function demoData(today: string): DemoData {
   const croStart = addDays(today, -60)
   const pastBvi = addDays(today, -120)
   const nextStart = addDays(today, 14)
+  const friendsStart = addDays(today, -14)
 
   const participants: Participant[] = FIRST_NAMES.slice(0, 6).map((firstName, i) => ({
     id: `demo-p-${i}`,
@@ -85,6 +87,7 @@ export function demoData(today: string): DemoData {
     {
       id: 'demo-trip-bvi',
       name: 'BVI',
+      kind: 'werk',
       type: 'training-geven',
       startDate: bviStart,
       endDate: addDays(bviStart, 6),
@@ -97,12 +100,14 @@ export function demoData(today: string): DemoData {
       area: 'BVI',
       organisation: 'sailing-virgins',
       participants,
+      salary: { amount: 1600, currency: 'USD', status: 'verwacht', source: 'eigen' },
       checks: { 'seed-veiligheid': ['seed-veiligheid-1', 'seed-veiligheid-2', 'seed-veiligheid-3'], 'seed-check-in': ['seed-check-in-1'] },
       ...base,
     },
     {
       id: 'demo-trip-cro',
       name: 'Croatia',
+      kind: 'werk',
       type: 'skipper-charter',
       startDate: croStart,
       endDate: addDays(croStart, 6),
@@ -114,13 +119,15 @@ export function demoData(today: string): DemoData {
       charter: 'Demo Yachting',
       area: 'Dalmatia',
       organisation: 'yacht-week',
+      salary: { amount: 1400, currency: 'EUR', status: 'ontvangen', source: 'eigen', transactionId: 'salaris:demo-trip-cro' },
       review: { quotes: ['Best week of the summer', 'Calm, clear and fun'], score: 9.4, rating: 9, lesson: 'Reef early before the afternoon breeze.' },
       closedAt: addDays(croStart, 7),
       ...base,
     },
     {
       id: 'demo-trip-bvi-old',
-      name: 'BVI',
+      name: 'Day Skipper course',
+      kind: 'training',
       type: 'zelf-trainen',
       startDate: pastBvi,
       endDate: addDays(pastBvi, 4),
@@ -137,6 +144,7 @@ export function demoData(today: string): DemoData {
     {
       id: 'demo-trip-next',
       name: 'BVI',
+      kind: 'werk',
       type: 'training-geven',
       startDate: nextStart,
       endDate: addDays(nextStart, 6),
@@ -147,6 +155,23 @@ export function demoData(today: string): DemoData {
       base: BVI.nanny!.name,
       area: 'BVI',
       organisation: 'sailing-virgins',
+      salary: { amount: 1600, currency: 'USD', status: 'verwacht', source: 'eigen' },
+      ...base,
+    },
+    {
+      id: 'demo-trip-friends',
+      name: 'Sailing with friends',
+      kind: 'plezier',
+      type: 'zelf-cruisen',
+      startDate: friendsStart,
+      endDate: addDays(friendsStart, 2),
+      boat: 'Sea Breeze',
+      boatModel: 'Dufour 390',
+      boatLengthFt: 39,
+      boatKind: 'eenromp',
+      base: BVI.nanny!.name,
+      charter: 'Demo Charters',
+      area: 'BVI',
       ...base,
     },
   ]
@@ -167,6 +192,11 @@ export function demoData(today: string): DemoData {
       [c.komiza!, c.stari!, 31, '4-5'],
       [c.stari!, c.maslinica!, 24, '3'],
       [c.maslinica!, c.split!, 13, '2'],
+    ]),
+    ...legsOf('demo-trip-friends', 'Sea Breeze', 'schipper', friendsStart, [
+      [b.nanny!, b.cane!, 9, '3'],
+      [b.cane!, b.jost!, 6, '3-4'],
+      [b.jost!, b.nanny!, 8, '4'],
     ]),
     ...legsOf('demo-trip-bvi-old', 'Sandpiper', 'trainee', pastBvi, [
       [b.nanny!, b.jost!, 9, '4'],
@@ -200,8 +230,46 @@ export function demoData(today: string): DemoData {
 
   // Periodemodel: reis, thuis en vrij zijn periodes aan land (docs/PERIODEMODEL.md).
   const stays: StayPeriod[] = [
-    { id: 'demo-stay-reis', kind: 'reis', startDate: addDays(nextStart, -2), endDate: addDays(nextStart, -2), travel: { from: 'Amsterdam', to: 'Tortola', by: 'vliegtuig' }, ...base },
+    { id: 'demo-stay-thuis-1', kind: 'thuis', startDate: addDays(pastBvi, 5), endDate: addDays(croStart, -2), ...base },
+    { id: 'demo-stay-reis-cro', kind: 'reis', startDate: addDays(croStart, -1), endDate: addDays(croStart, -1), travel: { from: 'Amsterdam', to: 'Split', by: 'vliegtuig' }, ...base },
+    { id: 'demo-stay-reis-cro-terug', kind: 'reis', startDate: addDays(croStart, 7), endDate: addDays(croStart, 7), travel: { from: 'Split', to: 'Amsterdam', by: 'vliegtuig' }, ...base },
+    { id: 'demo-stay-thuis-2', kind: 'thuis', startDate: addDays(croStart, 8), endDate: addDays(friendsStart, -2), ...base },
+    { id: 'demo-stay-reis-bvi', kind: 'reis', startDate: addDays(friendsStart, -1), endDate: addDays(friendsStart, -1), travel: { from: 'Amsterdam', to: 'Tortola', by: 'vliegtuig' }, ...base },
+    { id: 'demo-stay-vrij-bvi', kind: 'vrij', name: 'Tortola', startDate: addDays(friendsStart, 3), endDate: addDays(bviStart, -1), ...base },
     { id: 'demo-stay-vrij', kind: 'vrij', startDate: addDays(today, 8), endDate: addDays(today, 8), ...base },
+    { id: 'demo-stay-reis', kind: 'reis', startDate: addDays(nextStart, -2), endDate: addDays(nextStart, -2), travel: { from: 'Amsterdam', to: 'Tortola', by: 'vliegtuig' }, ...base },
+  ]
+
+  // Geld per periode (verzonnen bedragen): salaris en fooi bij werk, cursusgeld bij de training, uitgaven bij plezier,
+  // reis, thuis en vrij. Vandaag toont nooit bedragen; elders pas na "Toon bedragen".
+  const money = (id: string, date: string, tripId: string, kind: Transaction['kind'], amount: number, currency: Transaction['currency'], extra: Partial<Transaction> = {}): Transaction => ({
+    id: `demo-tx-${id}`,
+    date,
+    kind,
+    amount,
+    currency,
+    source: 'overig',
+    tripId,
+    ...extra,
+    ...base,
+  })
+  const transactions: Transaction[] = [
+    money('cursus', pastBvi, 'demo-trip-bvi-old', 'investering', 1450, 'EUR', { category: 'opleiding', note: 'Day Skipper course' }),
+    money('cursus-eten', addDays(pastBvi, 2), 'demo-trip-bvi-old', 'kosten', 85, 'USD', { category: 'eten', note: 'Groceries' }),
+    money('thuis-1', addDays(pastBvi, 20), 'demo-stay-thuis-1', 'kosten', 64, 'EUR', { category: 'eten', note: 'Groceries' }),
+    money('vlucht-cro', addDays(croStart, -1), 'demo-trip-cro', 'kosten', 180, 'EUR', { category: 'vervoer', note: 'Flight to Split' }),
+    { ...money('salaris-cro', addDays(croStart, 10), 'demo-trip-cro', 'loon', 1400, 'EUR', { source: 'yacht-week' }), id: 'salaris:demo-trip-cro' },
+    money('fooi-cro', addDays(croStart, 6), 'demo-trip-cro', 'fooi', 650, 'EUR', { source: 'yacht-week', tipFrom: { kind: 'groep' }, tipVia: 'contant' }),
+    money('cro-eten', addDays(croStart, 3), 'demo-trip-cro', 'kosten', 42, 'EUR', { category: 'eten', note: 'Lunch ashore' }),
+    money('vlucht-terug', addDays(croStart, 7), 'demo-stay-reis-cro-terug', 'kosten', 160, 'EUR', { category: 'vervoer', note: 'Flight home' }),
+    money('thuis-2', addDays(croStart, 20), 'demo-stay-thuis-2', 'kosten', 55, 'EUR', { category: 'eten', note: 'Groceries' }),
+    money('uitrusting', addDays(croStart, 25), 'demo-stay-thuis-2', 'investering', 240, 'EUR', { category: 'uitrusting', note: 'Foul-weather jacket' }),
+    money('vlucht-bvi', addDays(friendsStart, -1), 'demo-trip-friends', 'kosten', 690, 'EUR', { category: 'vervoer', note: 'Flight to Tortola' }),
+    money('vrienden-eten', friendsStart, 'demo-trip-friends', 'kosten', 120, 'USD', { category: 'eten', note: 'Provisioning' }),
+    money('vrienden-boei', addDays(friendsStart, 1), 'demo-trip-friends', 'kosten', 35, 'USD', { category: 'verblijf', note: 'Mooring ball' }),
+    money('vrij-bvi', addDays(friendsStart, 4), 'demo-stay-vrij-bvi', 'kosten', 75, 'USD', { category: 'verblijf', note: 'Guesthouse' }),
+    money('fooi-bvi', addDays(bviStart, 2), 'demo-trip-bvi', 'fooi', 120, 'USD', { source: 'sailing-virgins', tipFrom: { kind: 'personen', participantIds: ['demo-p-0', 'demo-p-3'] }, tipVia: 'contant' }),
+    money('bvi-eten', addDays(bviStart, 1), 'demo-trip-bvi', 'kosten', 28, 'USD', { category: 'eten', note: 'Ice and snacks' }),
   ]
   const calendar: CalendarDay[] = []
 
@@ -220,6 +288,7 @@ export function demoData(today: string): DemoData {
     'plans.json.enc': [plan],
     'calendar.json.enc': calendar,
     'periods.json.enc': stays,
+    'transactions.json.enc': transactions,
     'reminders.json.enc': reminders,
     'settings.json.enc': [settings],
   }
