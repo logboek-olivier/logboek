@@ -1,5 +1,6 @@
 import { CircleCheck, CloudOff, Download, FileSearch, FileWarning, ShieldCheck, TriangleAlert, Upload, Wrench } from 'lucide-react'
-import { useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useCollection } from '../components/useCollection'
 import type { Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
@@ -18,6 +19,8 @@ import type { FileEvidence, Verdict, VersionEvidence } from '../storage/evidence
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
 import { deviceId } from '../storage/device'
 import { describeStatus, type RepairResult, type Store } from '../storage/store'
+import { violations, type Rule, type Violation } from '../domain/invariants'
+import { canFix, gezondheidHerstellen } from '../domain/gezondheid'
 import { ErrorLine } from './Setup'
 import { backupTerugzetten } from '../domain/importeren'
 import { todayIso } from '../basis/datum'
@@ -219,6 +222,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
       </div>
 
       <Backup store={store} notify={notify} />
+      <HealthSection store={store} notify={notify} />
       <ExportSection store={store} />
     </section>
   )
@@ -452,5 +456,65 @@ function RestoreBackup({ store, text, notify, onClose }: { store: Store; text: s
         {t('common.cancel')}
       </button>
     </form>
+  )
+}
+
+/** Gezondheid: wat de invarianten in de data zien (src/domain/invariants.ts), met een fix van één tik waar dat kan. */
+function HealthSection({ store, notify }: { store: Store; notify: Notify }) {
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const money = useCollection(store, 'transactions.json.enc')
+  const stays = useCollection(store, 'periods.json.enc')
+  const settings = useCollection(store, 'settings.json.enc')
+  const students = useCollection(store, 'students.json.enc')
+  const found = useMemo(() => violations(store), [store, trips, legs, money, stays, settings, students])
+  const [busy, setBusy] = useState(false)
+  const groups = new Map<Rule, Violation[]>()
+  for (const x of found) groups.set(x.rule, [...(groups.get(x.rule) ?? []), x])
+
+  async function fix(list: readonly Violation[]) {
+    if (busy) return
+    setBusy(true)
+    try {
+      let undo = async () => {}
+      for (const x of list) {
+        const one = await gezondheidHerstellen(store, x)
+        const previous = undo
+        undo = async () => {
+          await one()
+          await previous()
+        }
+      }
+      notify(t('health.fixed'), undo)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="section stack health">
+      <h2>{t('health.title')}</h2>
+      {found.length === 0 ? (
+        <p className="notice storage-ok" role="status">
+          {t('health.ok')}
+        </p>
+      ) : (
+        <ul className="rows">
+          {[...groups.entries()].map(([rule, list]) => (
+            <li key={rule} className="row-item">
+              <span className="row-main">
+                <span>{t(`health.rule.${rule}`, { n: list.length })}</span>
+                <span className="muted small">{t(list[0]!.severity === 'fout' ? 'health.error' : canFix(list[0]!) ? 'health.fixable' : 'health.review')}</span>
+              </span>
+              {canFix(list[0]!) && (
+                <button type="button" className="btn small" disabled={busy} onClick={() => void fix(list)}>
+                  {t('health.fix')}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

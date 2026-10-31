@@ -1,3 +1,4 @@
+import { sameValue } from '../basis/gelijk'
 import { deviceId } from '../storage/device'
 import { newId, type CollectionPath, type HistoryChange, type HistoryEntry, type SyncRecord } from '../model/types'
 
@@ -45,7 +46,7 @@ const ONLY_LINKS: ReadonlySet<string> = new Set(['students.json.enc', 'career.js
 const LINK_FIELDS: ReadonlySet<string> = new Set(['deletedAt', 'archivedAt', 'weekId', 'tripId', 'accountId'])
 const SKIPPED: ReadonlySet<string> = new Set(['settings.json.enc', HISTORY_PATH])
 
-const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const equal = sameValue
 
 /** Eén gewijzigd record als regel: alleen de velden die veranderden (zonder updatedAt). */
 export function historyChange(path: CollectionPath, before: SyncRecord | null, after: SyncRecord): HistoryChange | null {

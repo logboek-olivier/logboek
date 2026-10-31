@@ -60,3 +60,8 @@ export function daysInMonth(month: string): number {
 export function monthEnd(month: string): string {
   return `${month}-${String(daysInMonth(month)).padStart(2, '0')}`
 }
+
+/** Is dit een datum als jjjj-mm-dd? */
+export function isDate(value: string | undefined | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}

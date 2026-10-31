@@ -10,7 +10,7 @@ import { placeKey } from './places'
 import { ROLES, type BoatKind, type CalendarDay, type Curriculum, type Leg, type Organisation, type Role, type Settings, type Student, type Transaction, type Trip } from './types'
 import { dayCountOf, weekView } from './weeks'
 import { round2 } from '../basis/bedrag'
-import { addDays, mondayOf, monthOf } from '../basis/datum'
+import { addDays, isDate, mondayOf, monthOf } from '../basis/datum'
 import { tripOrganisation } from '../basis/organisatie'
 
 // Statistieken (Meer → Statistieken): zeilen, werk, geld en instructeur over een periode, plus de voortgang naar RYA
@@ -27,7 +27,6 @@ export interface Period {
 /** Een pauze van minstens vier weken zonder trip begint een nieuw seizoen. */
 export const SEASON_GAP_DAYS = 28
 
-const isDate = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s)
 
 /** Dit seizoen begint bij de eerste trip na de laatste pauze van minstens vier weken zonder trip (tot vandaag). */
 export function seasonStart(trips: readonly Trip[], legs: readonly Leg[], today: string): string | null {
