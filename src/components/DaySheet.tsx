@@ -1,6 +1,6 @@
 import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Plus, Route } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
-import { formatDateRange, formatDateShort, formatHours, formatMoney, formatNm, formatWeekday } from '../format'
+import { formatDate, formatDateRange, formatDateShort, formatHours, formatMoney, formatNm, formatWeekday } from '../format'
 import { t, useLang } from '../i18n'
 import { nameWithCounter } from '../model/counters'
 import { effectiveCurricula } from '../model/curricula'
@@ -28,6 +28,7 @@ import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { WeekClosingSection } from './WeekClose'
+import { HistoryButton } from '../screens/History'
 import { isSundayDate } from '../model/week-close'
 import { dagAutomatisch, dagOpslaan, dagsoortKiezen, periodeDatumsWijzigen } from '../domain/agenda'
 import { dagZoalsGepland } from '../domain/dagen'
@@ -458,6 +459,7 @@ export function DayView({
         )}
         <DayMoney store={store} date={date} />
         {isSundayDate(date) && <WeekClosingSection store={store} index={index} date={date} today={today} notify={notify} />}
+        <HistoryButton store={store} notify={notify} filter={{ date }} title={t('history.dayTitle', { date: formatDate(date) })} />
         {info.type === 'werk' && (planned && trip ? (
           <button type="button" className="btn primary" onClick={() => void logAsPlanned()}>
             <Icon icon={Route} />

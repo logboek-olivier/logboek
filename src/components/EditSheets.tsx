@@ -62,7 +62,7 @@ export function TransactionSheet({
   const [tipVia, setTipVia] = useState<TipVia | null>(tx.tipVia ?? null)
   // Een oude investering zonder soort: geen gok, Olivier kiest zelf (anders blijft hij zonder soort, in Nakijken).
   const [category, setCategory] = useState<CostCategory | null>(expenseCategory(tx))
-  const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId)
+  const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId, true)
   const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
@@ -273,6 +273,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   // Een dag ligt altijd binnen de datums van zijn trip: valt de datum erbuiten, dan de trip van die datum (of de
   // gekozen trip een paar dagen langer, of een nieuwe trip).
   const placement = placeLeg(trips, legs, tripId === NEW_TRIP ? null : tripId, date || leg.date)
+  const movedTo = placement.moved && placement.tripId ? trips.find((x) => x.id === placement.tripId) : undefined
   const target = (): { id: string } | { newName: string } => {
     if (tripId !== NEW_TRIP && placement.tripId) return { id: placement.tripId }
     return { newName: newTripName.trim() || defaultTripName(boat.trim() || t('field.trip'), date || leg.date) }
@@ -420,7 +421,8 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
         <NoteField label={t('field.notes')} value={notes} onChange={setNotes} maxLength={2000} />
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!ok || busy}>
-            {t('common.save')}
+            {/* Naar een andere trip gaat een dag alleen met deze knop: de knop zegt waar hij heen gaat. */}
+            {placement.moved && tripId !== NEW_TRIP ? (movedTo ? t('day.saveIn', { name: movedTo.name }) : t('day.saveInNew')) : t('common.save')}
           </button>
           <button className="btn danger" type="button" onClick={() => void remove()}>
             <Icon icon={Trash2} />

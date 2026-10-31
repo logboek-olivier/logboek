@@ -10,6 +10,7 @@ import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { HistoryButton } from '../screens/History'
 
 // "⋯" bij een periode: hier, en alleen hier, staat "Periode verwijderen" (nooit naast de dagen of onderaan een
 // bewerkscherm). Eerst wat er aan de periode hangt, dan de keuze: geld en dagen behouden zonder periode, of alles naar de
@@ -63,6 +64,7 @@ export function PeriodMenu({ store, notify, onDeleted, ...target }: Target & { s
         >
           {!asking ? (
             <div className="stack">
+              <HistoryButton store={store} notify={notify} filter={{ periodId: target.trip ? target.trip.id : target.stay!.id }} title={t('history.periodTitle', { name })} />
               <button type="button" className="btn danger" onClick={() => setAsking(true)}>
                 <Icon icon={Trash2} />
                 {t('periodMenu.delete')}

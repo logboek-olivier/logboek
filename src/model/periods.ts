@@ -88,8 +88,6 @@ export interface StayPlan {
   changes: { before: StayPeriod | null; after: StayPeriod }[]
   /** Na de wijziging: per datum in het bekeken stuk de periode aan land (id), of null. */
   owner: Map<string, string | null>
-  /** Datums die vóór de wijziging bij een periode aan land hoorden: datum → oude id's (meer dan één bij overlap). */
-  previous: Map<string, Set<string>>
 }
 
 /**
@@ -109,7 +107,7 @@ export function planStayDays(
 ): StayPlan {
   const live = active(stays).filter((s) => isDate(s.startDate) && isDate(s.endDate) && s.startDate <= s.endDate)
   const targets = [...new Set(dates.filter(isDate))].sort().filter((d) => kind === null || !isWater(d))
-  const empty: StayPlan = { changes: [], owner: new Map(), previous: new Map() }
+  const empty: StayPlan = { changes: [], owner: new Map() }
   if (targets.length === 0) return empty
   let lo = addDays(targets[0]!, -1)
   let hi = addDays(targets.at(-1)!, 1)
@@ -121,10 +119,8 @@ export function planStayDays(
   // Per dag in het stuk: soort en eigenaar (bij overlap de eerst begonnen periode).
   const ordered = [...affected].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.updatedAt < b.updatedAt ? -1 : 1))
   const day = new Map<string, { kind: StayKind; id: string | null }>()
-  const previous = new Map<string, Set<string>>()
   for (const s of ordered) {
     for (let d = s.startDate; d <= s.endDate; d = addDays(d, 1)) {
-      previous.set(d, (previous.get(d) ?? new Set()).add(s.id))
       if (!day.has(d)) day.set(d, { kind: s.kind, id: s.id })
     }
   }
@@ -176,7 +172,7 @@ export function planStayDays(
   }
   for (const s of affected) if (!used.has(s.id)) changes.push({ before: s, after: { ...s, updatedAt: now, deletedAt: now } })
   for (let d = lo; d <= hi; d = addDays(d, 1)) if (!owner.has(d)) owner.set(d, null)
-  return { changes, owner, previous }
+  return { changes, owner }
 }
 
 function withDetails(record: StayPeriod, details: StayDetails): StayPeriod {
@@ -201,9 +197,8 @@ function hasDetails(day: CalendarDay): boolean {
 }
 
 /**
- * Dagen een soort aan land geven (reis, thuis, vrij) of (null) uit hun periode aan land halen, met ongedaan maken.
- * Dagen in een trip slaan we over. Geld dat op datum aan de oude periode hing (de datum lag erin en nu niet meer),
- * gaat mee naar de periode van die datum. Een zelf ingestelde agendadag zonder gegevens op een dag die een soort aan
+ * Dagen een soort aan land geven (reis, thuis, vrij) of (null) uit hun periode aan land halen. Dagen in een trip slaan
+ * we over. Geld blijft bij zijn periode (nooit stil verhuizen). Een zelf ingestelde agendadag zonder gegevens op een dag die een soort aan
  * land krijgt, vervalt (de periode zegt het nu); met een notitie, plaats of reis blijft hij als gegevens van die dag.
  */
 export async function setStayDays(store: Tx, dates: readonly string[], kind: StayKind | null, details: StayDetails = {}): Promise<void> {
@@ -219,20 +214,8 @@ export function stayDayChanges(store: Reader, dates: readonly string[], kind: St
   const plan = planStayDays(store.list('periods.json.enc'), dates, kind, (d) => inWater(d) !== null, now, () => crypto.randomUUID(), details)
   const changes: Change[] = plan.changes.map((c) => ({ path: 'periods.json.enc', before: c.before, after: c.after }))
   if (changes.length === 0 && kind === null) return changes
-  // Geld op datum mee. Naar een trip alleen uitgaven: een inkomen (loon, fooi) aan een trip koppelen betekent iets
-  // (salaris ontvangen), dat beslist Olivier zelf in Nakijken.
-  const touched = new Set(plan.changes.map((c) => c.after.id))
-  for (const tx of active(store.list('transactions.json.enc'))) {
-    if (!tx.tripId || !touched.has(tx.tripId) || tx.claimId) continue
-    if (!plan.previous.get(tx.date)?.has(tx.tripId)) continue
-    const water = tx.kind === 'kosten' || tx.kind === 'investering' ? inWater(tx.date) : null
-    const next = plan.owner.get(tx.date) ?? water
-    if (next === tx.tripId) continue
-    const { tripId: _old, ...rest } = tx
-    void _old
-    const after: Transaction = { ...rest, ...(next ? { tripId: next } : {}), updatedAt: now }
-    changes.push({ path: 'transactions.json.enc', before: tx, after })
-  }
+  // Geld verhuist nooit vanzelf (docs/FUNDERING.md): het blijft bij zijn periode, ook als die korter wordt of weggaat.
+  // Hoort het daarna bij geen periode meer, dan staat het in Nakijken met een voorstel.
   if (kind !== null) {
     const own = new Map(active(store.list('calendar.json.enc')).map((d) => [d.date, d]))
     for (const date of dates) {

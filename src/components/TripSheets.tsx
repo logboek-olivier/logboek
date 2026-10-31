@@ -5,7 +5,7 @@ import { t, useLang } from '../i18n'
 import { tripRange } from '../model/calendar'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { MAX_COUNTRY, MAX_TAG, participantName } from '../model/guests'
-import { type Overlap } from '../model/trip-ops'
+import { tripDependents, type Overlap } from '../model/trip-ops'
 import { STUDENT_LEVELS, type Participant, type StudentLevel, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -62,6 +62,17 @@ export function OverlapSheet({ store, overlap, notify, onClose, onEditTrip }: { 
   const [busy, setBusy] = useState(false)
   const keep = keepId === overlap.a.id ? overlap.a : overlap.b
   const other = keep === overlap.a ? overlap.b : overlap.a
+  // Vooraf zichtbaar wat er verhuist (nooit dagen of geld van een andere periode opslokken zonder dat te zien).
+  const deps = tripDependents(store, other)
+  const moving = [
+    deps.legs.length > 0 && t('trip.part.legs', { n: deps.legs.length }),
+    deps.transactions.length > 0 && t('trip.part.transactions', { n: deps.transactions.length }),
+    deps.participants.length > 0 && t('trip.part.participants', { n: deps.participants.length }),
+  ].filter((x): x is string => !!x)
+  const keepRange = tripRange(keep, legs)
+  const otherRange = tripRange(other, legs)
+  const merged = keepRange && otherRange ? { start: keepRange.start < otherRange.start ? keepRange.start : otherRange.start, end: keepRange.end > otherRange.end ? keepRange.end : otherRange.end } : (keepRange ?? otherRange)
+  const outside = keepRange ? deps.legs.filter((l) => l.date < keepRange.start || l.date > keepRange.end).length : 0
 
   async function run(kind: 'merge' | 'replace') {
     if (busy) return
@@ -93,11 +104,16 @@ export function OverlapSheet({ store, overlap, notify, onClose, onEditTrip }: { 
           {t('overlap.merge')}
         </button>
         <p className="muted small">{t('overlap.mergeHint', { keep: keep.name, other: other.name })}</p>
+        <p className="small overlap-preview">
+          {moving.length > 0 ? t('overlap.moves', { parts: moving.join(', '), other: other.name, keep: keep.name }) : t('overlap.movesNothing', { other: other.name })}
+          {merged ? ` ${t('overlap.mergedRange', { keep: keep.name, range: formatDateRange(merged.start, merged.end) })}` : ''}
+        </p>
         <button type="button" className="btn" disabled={busy} onClick={() => void run('replace')}>
           <Icon icon={Replace} />
           {t('overlap.replace')}
         </button>
         <p className="muted small">{t('overlap.replaceHint', { keep: keep.name, other: other.name })}</p>
+        {outside > 0 && <p className="small overlap-preview">{t('overlap.outside', { n: outside, keep: keep.name })}</p>}
         <button type="button" className="btn" disabled={busy} onClick={() => onEditTrip(other)}>
           <Icon icon={CalendarRange} />
           {t('overlap.dates', { name: other.name })}

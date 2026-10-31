@@ -23,9 +23,14 @@ export function expenseCategory(tx: Pick<Transaction, 'kind' | 'category'>): Cos
 }
 
 /** Waar een uitgave bij kan horen: een bestaande periode, of een nieuwe periode thuis of vrij op die dag. */
-export type ExpenseTarget = { kind: 'periode'; period: Period } | { kind: 'nieuw'; stayKind: StayKind }
+/**
+ * Waar een uitgave bij hoort: een bestaande periode, een nieuwe periode thuis of vrij op die dag, of (alleen bij
+ * bewerken) "Zonder periode": de koppeling blijft zoals hij is, ook als de periode in de prullenbak ligt.
+ */
+export type ExpenseTarget = { kind: 'periode'; period: Period } | { kind: 'nieuw'; stayKind: StayKind } | { kind: 'zonder'; keep: string | null }
 
 export function targetKey(target: ExpenseTarget): string {
+  if (target.kind === 'zonder') return 'zonder'
   return target.kind === 'periode' ? target.period.id : `nieuw:${target.stayKind}`
 }
 
@@ -100,6 +105,7 @@ export function careerInvestment(transactions: readonly Transaction[], eurOf: (t
  * dag. Een aangrenzende periode van dezelfde soort wordt dan langer.
  */
 export async function resolveTarget(store: Tx, target: ExpenseTarget, date: string): Promise<string | undefined> {
+  if (target.kind === 'zonder') return target.keep ?? undefined
   if (target.kind === 'periode') return target.period.id
   await setStayDays(store, [date], target.stayKind)
   return active(store.list('periods.json.enc')).find((s) => s.startDate <= date && date <= s.endDate)?.id
