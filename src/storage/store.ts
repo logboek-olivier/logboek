@@ -138,6 +138,8 @@ export function describeStatus(status: SyncStatus): string {
 type Listener = () => void
 /** Zo lang na de laatste opslag start de sync vanzelf. */
 const AUTO_SYNC_MS = 800
+/** Vangnet: zolang er een wijziging wacht, zo vaak opnieuw proberen (zie retryPending). */
+export const RETRY_PENDING_MS = 30_000
 /** Zo vaak controleert de app vanzelf of GitHub en dit apparaat gelijk zijn (Meer → Opslag). */
 export const CHECK_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 /** Zo lang wacht de controle voor hij een gevonden probleem nog één keer bekijkt. */
@@ -486,6 +488,13 @@ export class Store {
     this.listeners.clear()
     if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer)
     this.autoSyncTimer = null
+    if (this.retryTimer) clearInterval(this.retryTimer)
+    this.retryTimer = null
+    if (this.onReturn) {
+      ;(globalThis as { document?: EventTarget }).document?.removeEventListener('visibilitychange', this.onReturn)
+      ;(globalThis as { removeEventListener?: EventTarget['removeEventListener'] }).removeEventListener?.('online', this.onReturn)
+      this.onReturn = null
+    }
     this.channel?.close()
   }
 
@@ -493,6 +502,33 @@ export class Store {
   enableAutoSync(): void {
     if (this.demo) return
     this.autoSync = true
+    // Vangnet: zolang er iets wacht en er verbinding is, elke 30 seconden opnieuw, en direct bij terugkomen in de app of
+    // als de verbinding terug is. Een wijziging blijft zo nooit staan tot de volgende handeling.
+    this.retryTimer ??= setInterval(() => this.retryPending(), RETRY_PENDING_MS)
+    if (!this.onReturn) {
+      const doc = (globalThis as { document?: EventTarget & { visibilityState?: string } }).document
+      this.onReturn = () => {
+        if (doc?.visibilityState !== 'hidden') this.retryPending()
+      }
+      doc?.addEventListener('visibilitychange', this.onReturn)
+      ;(globalThis as { addEventListener?: EventTarget['addEventListener'] }).addEventListener?.('online', this.onReturn)
+    }
+  }
+
+  private retryTimer: ReturnType<typeof setInterval> | null = null
+  private onReturn: (() => void) | null = null
+
+  /**
+   * Opnieuw synchroniseren als er iets wacht, er verbinding is en er geen ronde loopt. Niet bij een fout die vanzelf niet
+   * overgaat (token, andere sleutel, nieuwere versie, onleesbaar bestand) of bij de limiet van GitHub (dan maakt
+   * aandringen het erger); die lost de app of Olivier op, en een eigen handeling synct dan gewoon weer.
+   */
+  retryPending(): void {
+    if (this.locked || this.demo || !this.autoSync || this.syncing || this.pendingCount() === 0) return
+    if ((globalThis.navigator as { onLine?: boolean } | undefined)?.onLine === false) return
+    const s = this.status
+    const retry = s.kind === 'pending' || s.kind === 'offline' || s.kind === 'synced' || (s.kind === 'error' && (s.code === 'failed' || (s.code === 'github' && s.github !== 'rateLimit')))
+    if (retry) void this.sync({ changedOnly: true })
   }
 
   /** Volgnummer van de laatste lokale opslag en van de laatste opslag die gesynct is; saved > synced = "Opgeslagen". */
@@ -1186,7 +1222,10 @@ export class Store {
       if (this.locked) return
       await this.putGuarded({ path, blob, sha: result.sha }, outbox)
       if (this.locked) return
-      this.collections.set(path, merged)
+      // Samenvoegen met wat nu in het geheugen staat, niet overschrijven: een opslag tijdens het wegschrijven hierboven
+      // (de awaits) staat al in het geheugen en in de outbox, maar niet in `merged`. Overschrijven gooide hem weg en liet
+      // hem voor altijd wachten ("1 wijziging wacht"). Bij gelijke tijd wint de versie van de sync (GitHub).
+      this.collections.set(path, mergeRecords(this.collections.get(path) ?? [], merged))
       this.outbox = mergeOutbox(outbox, this.unsaved)
     })
     if (this.locked) return
