@@ -329,10 +329,14 @@ export function dayCountOf(week: Pick<WeekView, 'startDate' | 'endDate'>): numbe
  * Dagen van een trip voor de tripkop ("6 dagen · 5 gelogd"): dagen = van de startdatum tot en met de einddatum (null
  * zonder datums); gelogd = de verschillende datums met een gelogde dag, tot en met `until` als die er is.
  */
-export function tripDayCounts(week: Pick<WeekView, 'startDate' | 'endDate' | 'legs'>, until?: string): { days: number | null; logged: number } {
+/**
+ * Dagen van de trip (begin tot en met eind), gelogd (datums binnen de trip met minstens één etappe) en etappes (gelogde
+ * regels binnen de trip; op een dag kunnen er meer zijn). Dagen buiten de datums tellen niet mee: die staan apart.
+ */
+export function tripDayCounts(week: Pick<WeekView, 'startDate' | 'endDate' | 'legs'>, until?: string): { days: number | null; logged: number; legs: number } {
   const days = week.startDate && week.endDate ? dayCountOf(week) : null
-  const logged = new Set(week.legs.filter((l) => !until || l.date <= until).map((l) => l.date)).size
-  return { days, logged }
+  const inside = week.legs.filter((l) => (!until || l.date <= until) && (!week.startDate || !week.endDate || (week.startDate <= l.date && l.date <= week.endDate)))
+  return { days, logged: new Set(inside.map((l) => l.date)).size, legs: inside.length }
 }
 
 /** Week afronden: review opslaan, afgerond, en niet meer de lopende week. */

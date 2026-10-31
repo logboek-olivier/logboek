@@ -112,6 +112,12 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
           <dt>{t('trip.logged')}</dt>
           <dd>{formatNumber(tripDayCounts(view).logged)}</dd>
         </div>
+        {tripDayCounts(view).legs > tripDayCounts(view).logged && (
+          <div className="stat">
+            <dt>{t('trip.legs')}</dt>
+            <dd>{formatNumber(tripDayCounts(view).legs)}</dd>
+          </div>
+        )}
         {route.nightHours > 0 && (
           <div className="stat">
             <dt>{t('stat.nightHours')}</dt>
