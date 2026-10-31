@@ -187,7 +187,7 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
     if (value === null || busy) return
     setBusy(true)
     try {
-      const written = await standOpslaan(store, account, todayIso(), value)
+      const { result: written } = await standOpslaan(store, account, todayIso(), value)
       onClose()
       notify(written ? t('accounts.standSaved') : t('accounts.standNewer'))
     } finally {

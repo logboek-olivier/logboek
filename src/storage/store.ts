@@ -165,6 +165,8 @@ export type WriteEntries = ReadonlyArray<{ path: CollectionPath; records: readon
 export interface WriteHandle {
   read<P extends CollectionPath>(path: P): readonly Collections[P][]
   write(entries: WriteEntries): Promise<Array<{ path: CollectionPath; records: SyncRecord[] }>>
+  /** De opdracht is klaar (ook na een fout). */
+  release(): void
 }
 
 export class Store {
@@ -351,18 +353,38 @@ export class Store {
   }
 
   /**
-   * Een schrijfhandvat voor één opdracht (alleen voor `src/domain/tx.ts`: elke wijziging gaat via een opdracht). Alleen
-   * te krijgen zolang de app ontgrendeld is. Een opdracht die zo begon, wordt afgemaakt, ook als er intussen vergrendeld
-   * wordt: lezen gaat dan verder op de toestand van het begin, en het schrijven komt nog op het apparaat (en telt daarna
-   * als wachtende wijziging).
+   * Een schrijfhandvat voor één opdracht (alleen voor `src/domain/commit.ts`: elke wijziging gaat via een opdracht).
+   * Alleen te krijgen zolang de app ontgrendeld is, op het moment van de tik. Een opdracht die zo begon (ook een die nog
+   * achter een andere wacht), wordt afgemaakt als er intussen vergrendeld wordt: lezen en schrijven gaan dan verder op
+   * een eigen kopie van het begin, die weg is zodra de laatste opdracht klaar is. Wat zo nog op het apparaat komt, telt
+   * daarna als wachtende wijziging; het geheugen van de vergrendelde Store blijft leeg (regel 10).
    */
   beginWrite(): WriteHandle {
     this.assertUnlocked()
-    const snapshot = new Map(this.collections)
+    this.openWrites++
+    let released = false
     return {
-      read: <P extends CollectionPath>(path: P) => ((this.locked ? snapshot.get(path) : this.collections.get(path)) ?? []) as Collections[P][],
+      read: <P extends CollectionPath>(path: P) => (this.live().get(path) ?? []) as Collections[P][],
       write: (entries) => this.commitWrites(entries),
+      release: () => {
+        if (released) return
+        released = true
+        this.openWrites--
+        if (this.openWrites === 0) this.afterLock = null
+      },
     }
+  }
+
+  /** Opdrachten die begonnen zijn en nog niet klaar. */
+  private openWrites = 0
+  /** Na vergrendelen: de kopie waarop begonnen opdrachten verder werken (zie beginWrite). */
+  private afterLock: Map<CollectionPath, SyncRecord[]> | null = null
+
+  /** De records waarop gelezen en geschreven wordt: na vergrendelen alleen nog door begonnen opdrachten. */
+  private live(): Map<CollectionPath, SyncRecord[]> {
+    if (!this.locked) return this.collections
+    if (!this.afterLock) throw new Error('Vergrendeld')
+    return this.afterLock
   }
 
   /**
@@ -379,14 +401,15 @@ export class Store {
     const stored: Array<{ path: CollectionPath; records: SyncRecord[] }> = []
     for (const { path, records: given } of entries) {
       if (given.length === 0) continue
-      const here = new Map((this.collections.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
+      const live = this.live()
+      const here = new Map((live.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
       const records = given.map((r) => {
         const before = here.get(r.id)
         return before !== undefined && r.updatedAt <= before ? { ...r, updatedAt: justAfter(before) } : r
       })
       const ids = new Set(records.map((r) => r.id))
-      const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
-      this.collections.set(path, [...kept, ...records])
+      const kept = (live.get(path) ?? []).filter((r) => !ids.has(r.id))
+      live.set(path, [...kept, ...records])
       for (const r of records) {
         this.outbox = markPending(this.outbox, path, r.id, r.updatedAt)
         this.unsaved = markPending(this.unsaved, path, r.id, r.updatedAt)
@@ -451,6 +474,8 @@ export class Store {
 
   /** Wist alle ontsleutelde data uit het geheugen. De Store is daarna onbruikbaar. */
   lock(): void {
+    // Begonnen opdrachten werken verder op een eigen kopie; het geheugen van de Store gaat hieronder leeg.
+    if (this.openWrites > 0 && !this.locked) this.afterLock = new Map(this.collections)
     this.locked = true
     this.offIntegrity?.()
     this.offIntegrity = null
@@ -1214,7 +1239,7 @@ export class Store {
       const merged = new Map<CollectionPath, SyncRecord[]>()
       const objects: StoredObject[] = []
       for (const path of paths) {
-        const records = await this.mergeWithDisk(path, this.collections.get(path) ?? [])
+        const records = await this.mergeWithDisk(path, this.live().get(path) ?? [])
         merged.set(path, records)
         const stored = await getObject(this.db, path)
         objects.push({ path, blob: await encryptRecords(this.masterKey, path, records), sha: stored?.sha ?? null })

@@ -19,6 +19,8 @@ export interface Written {
 export interface Committed<T> {
   result: T
   undo: Undo
+  /** Ongedaan maken voor een deel van de bestanden (bijvoorbeeld alleen de geldstap van een weekafsluiting). */
+  undoOnly: (keep: (path: CollectionPath) => boolean) => Undo
   written: Written[]
 }
 
@@ -47,28 +49,45 @@ function same(a: SyncRecord | undefined, b: SyncRecord): boolean {
   return JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' })
 }
 
-/** De opdracht `name` uitvoeren en in één keer vastleggen. */
-export function commit<T>(store: Store, name: string, work: (tx: Tx) => Promise<T> | T): Promise<Committed<T>> {
+/**
+ * De opdracht `name` uitvoeren en in één keer vastleggen. Het schrijfhandvat wordt bij de tik gevraagd (vergrendeld:
+ * meteen een fout), zodat ook een opdracht die nog achter een andere wacht, wordt afgemaakt.
+ */
+export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Promise<T> | T): Promise<Committed<T>> {
   void name
-  return serial(store, async () => {
-    const tx = new Tx(store, new Date().toISOString())
-    const result = await work(tx)
-    const written: Written[] = []
-    const entries: Array<{ path: CollectionPath; records: SyncRecord[] }> = []
-    for (const { path, records } of tx.entries()) {
-      const current = new Map(tx.base(path).map((r) => [r.id, r as SyncRecord]))
-      const changed = records.filter((r) => !same(current.get(r.id), r))
-      if (changed.length === 0) continue
-      for (const r of changed) written.push({ path, before: current.get(r.id) ?? null, after: r })
-      entries.push({ path, records: changed })
+  const handle = store.beginWrite()
+  const done = await serial(store, async () => {
+    try {
+      const tx = new Tx(store, handle, new Date().toISOString())
+      const result = await work(tx)
+      const written: Written[] = []
+      const entries: Array<{ path: CollectionPath; records: SyncRecord[] }> = []
+      for (const { path, records } of tx.entries()) {
+        const current = new Map(tx.base(path).map((r) => [r.id, r as SyncRecord]))
+        const changed = records.filter((r) => !same(current.get(r.id), r))
+        if (changed.length === 0) continue
+        for (const r of changed) written.push({ path, before: current.get(r.id) ?? null, after: r })
+        entries.push({ path, records: changed })
+      }
+      // De vastgelegde versies (de Store kan updatedAt net later zetten dan een versie met een tijd in de toekomst).
+      const final = new Map<string, SyncRecord>()
+      if (entries.length > 0) for (const { path, records } of await tx.write(entries)) for (const r of records) final.set(`${path}\n${r.id}`, r)
+      const stored = written.map((w) => ({ ...w, after: final.get(`${w.path}\n${w.after.id}`) ?? w.after }))
+      return { result, stored, followUps: tx.followUps() }
+    } finally {
+      handle.release()
     }
-    // De vastgelegde versies (de Store kan updatedAt net later zetten dan een versie met een tijd in de toekomst).
-    const final = new Map<string, SyncRecord>()
-    if (entries.length > 0) for (const { path, records } of await tx.write(entries)) for (const r of records) final.set(`${path}\n${r.id}`, r)
-    const stored = written.map((w) => ({ ...w, after: final.get(`${w.path}\n${w.after.id}`) ?? w.after }))
-    for (const followUp of tx.followUps()) await followUp().catch(() => undefined)
-    return { result, undo: undoFor(store, stored), written: stored }
   })
+  // Wat na het vastleggen nog moet (bijvoorbeeld een document offline ophalen): buiten de wachtrij, zodat een trage
+  // verbinding geen andere opslag ophoudt.
+  for (const followUp of done.followUps) await followUp().catch(() => undefined)
+  const stored = done.stored
+  return {
+    result: done.result,
+    undo: undoFor(store, stored),
+    undoOnly: (keep) => undoFor(store, stored.filter((w) => keep(w.path))),
+    written: stored,
+  }
 }
 
 /** Een opdracht uitvoeren; geeft ongedaan maken terug. */
@@ -94,10 +113,16 @@ const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b
 /**
  * Ongedaan maken per veld: alleen wat de opdracht veranderde, en alleen waar het nog staat zoals de opdracht het
  * achterliet. Een latere wijziging (hier of op een ander apparaat) aan hetzelfde of een ander veld blijft staan. Een
- * record dat de opdracht nieuw maakte, gaat weer weg. Null: niets terug te zetten.
+ * record dat de opdracht nieuw maakte, gaat weer weg, tenzij het sindsdien veranderde. Null: niets terug te zetten.
  */
 function reverted(current: SyncRecord, w: Written, now: string): SyncRecord | null {
-  if (!w.before) return current.deletedAt === null ? tombstone(w.path, current, now) : null
+  if (!w.before) {
+    // Nieuw door de opdracht. Sindsdien veranderd: die wijziging blijft staan.
+    if (!same(current, w.after)) return null
+    // Een nieuwe tombstone (bijvoorbeeld een meegeleverde cursus die nooit bewaard was): weer zichtbaar.
+    if (w.after.deletedAt !== null) return { ...current, deletedAt: null, updatedAt: now }
+    return tombstone(w.path, current, now)
+  }
   const before = w.before as unknown as Record<string, unknown>
   const after = w.after as unknown as Record<string, unknown>
   const next: Record<string, unknown> = { ...current }

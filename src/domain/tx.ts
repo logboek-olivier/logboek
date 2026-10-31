@@ -16,16 +16,13 @@ export interface Reader {
 export class Tx implements Reader {
   private readonly writes = new Map<CollectionPath, Map<string, SyncRecord>>()
   private readonly afterwards: Array<() => Promise<void>> = []
-  private readonly handle: WriteHandle
-
   constructor(
     private readonly store: Store,
+    /** Het schrijfhandvat van de opdracht (Store.beginWrite, gevraagd bij de tik). */
+    private readonly handle: WriteHandle,
     /** Eén tijd voor de hele opdracht. */
     readonly now: string,
-  ) {
-    // Alleen zolang de app ontgrendeld is; een begonnen opdracht wordt afgemaakt (Store.beginWrite).
-    this.handle = store.beginWrite()
-  }
+  ) {}
 
   /** Wat er nu vastligt, zonder de wijzigingen van deze transactie. */
   base<P extends CollectionPath>(path: P): readonly Collections[P][] {

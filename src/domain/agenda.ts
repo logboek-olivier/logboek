@@ -12,8 +12,13 @@ export async function chooseDayType(tx: Tx, date: string, next: DayType, details
   if (shrink) await resizeTrip(tx, shrink)
   if (land) return setStayDays(tx, [date], land, stay)
   // Een dagtoestand (beschikbaar, optie, onbeschikbaar) hoort bij een dag zonder periode.
-  await setStayDays(tx, [date], null)
+  if (inStay(tx, date)) await setStayDays(tx, [date], null)
   await setDay(tx, date, next, details)
+}
+
+/** Ligt de dag in een periode aan land? Alleen dan gaat hij eruit (anders blijven de periodes ernaast ongemoeid). */
+function inStay(tx: Tx, date: string): boolean {
+  return tx.list('periods.json.enc').some((s) => s.startDate <= date && date <= s.endDate)
 }
 
 /** Een dagtoestand voor meerdere dagen (Periode markeren): eerst uit een periode aan land. */
@@ -24,7 +29,7 @@ export async function chooseDaysType(tx: Tx, dates: readonly string[], type: Day
 
 /** Terug naar automatisch: de eigen instelling vervalt en de dag gaat uit zijn periode aan land. */
 export async function automaticDay(tx: Tx, date: string): Promise<void> {
-  await setStayDays(tx, [date], null)
+  if (inStay(tx, date)) await setStayDays(tx, [date], null)
   await clearDay(tx, date)
 }
 

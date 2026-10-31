@@ -1,6 +1,6 @@
 // Opdrachten voor geld: inkomsten en uitgaven, salaris en uitbetalingen, declaraties, vaste lasten, rekeningen en standen. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
-import { deleteAccount, deleteBalance, saveAccount, setBalance, writeBalances } from '../model/accounts'
+import { deleteAccount, deleteBalance, saveAccount, setBalance, signedAmount, writeBalances } from '../model/accounts'
 import { addClaim, deleteClaim, markRepaid, markSubmitted, updateClaim } from '../model/claims'
 import { addFixedCost, changeFixedCost, deleteFixedCost } from '../model/costs'
 import { deleteTransaction, updateTransaction, type TransactionPatch } from '../model/edit'
@@ -56,7 +56,9 @@ export async function editExpense(tx: Tx, record: Transaction, target: ExpenseTa
 
 /** Een stand met de hand wijzigen. */
 export async function changeBalance(tx: Tx, account: Account, balance: Balance, amount: number): Promise<void> {
-  await setBalance(tx, account, balance.date, amount, balance.date)
+  // Het record zoals het nu is, met alleen bedrag en bron gewijzigd: velden van een nieuwere versie blijven staan.
+  const current = tx.get('balances.json.enc').find((b) => b.id === balance.id) ?? balance
+  await tx.put('balances.json.enc', { ...current, amount: signedAmount(account, amount), source: 'handmatig', updatedAt: tx.now })
 }
 
 export const contantGestort = opdracht('contantGestort', depositCash)

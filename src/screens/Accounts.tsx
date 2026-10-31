@@ -216,7 +216,7 @@ function BalanceForm({ store, account, notify }: { store: Store; account: Accoun
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!ok) return
-    const written = await standOpslaan(store, account, date, value)
+    const { result: written } = await standOpslaan(store, account, date, value)
     setAmount('')
     notify(written ? t('accounts.standSaved') : t('accounts.standNewer'))
   }

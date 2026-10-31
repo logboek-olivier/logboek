@@ -6,6 +6,8 @@ import { saveReminder, setDone } from '../model/reminders'
 import type { Currency, Organisation } from '../model/types'
 import { saveClosing } from '../model/week-close'
 import { applyMoneyStep, type MoneyStep } from '../model/week-money'
+import type { Store } from '../storage/store'
+import { commit, type Undo } from './commit'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
 
@@ -27,5 +29,13 @@ export const termijnAfronden = opdracht('termijnAfronden', setDone)
 export const termijnOpslaan = opdrachtMet('termijnOpslaan', saveReminder)
 export const termijnVerwijderen = opdracht('termijnVerwijderen', deleteReminder)
 export const weekAfsluiten = opdracht('weekAfsluiten', saveClosing)
-export const weekAfsluitenMetGeld = opdrachtMet('weekAfsluitenMetGeld', closeWeekWithMoney)
+
+/**
+ * De week afsluiten met de geldstap, in één keer. Ongedaan maken geldt alleen voor de geldstap (CLAUDE.md, WeekClosing):
+ * het cijfer en de zin blijven staan.
+ */
+export async function weekAfsluitenMetGeld(store: Store, ...args: Parameters<typeof closeWeekWithMoney> extends [Tx, ...infer A] ? A : never): Promise<{ result: { skipped: Organisation[] }; undo: Undo }> {
+  const done = await commit(store, 'weekAfsluitenMetGeld', (tx) => closeWeekWithMoney(tx, ...args))
+  return { result: done.result, undo: done.undoOnly((path) => path !== 'weekreviews.json.enc') }
+}
 export const weekafsluitingVerwijderen = opdracht('weekafsluitingVerwijderen', deleteWeekClosing)

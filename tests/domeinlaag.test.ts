@@ -23,8 +23,8 @@ function using(pattern: RegExp): string[] {
 }
 
 describe('domeinlaag', () => {
-  it('alleen de transactie vraagt een schrijfhandvat aan de Store', () => {
-    expect(using(/\.beginWrite\(/)).toEqual(['src/domain/tx.ts'])
+  it('alleen commit vraagt een schrijfhandvat aan de Store', () => {
+    expect(using(/\.beginWrite\(/)).toEqual(['src/domain/commit.ts'])
   })
 
   it('alleen commit maakt een transactie', () => {
