@@ -2,14 +2,15 @@ import { SkipForward } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatNumber } from '../format'
 import { t } from '../i18n'
-import { fillGap, type Gap } from '../model/gaps'
-import { parseAmount } from '../model/money'
-import { todayIso } from '../model/types'
+import { type Gap } from '../model/gaps'
 import { feetToMetres } from '../model/weeks'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { aanvullen } from '../domain/dagen'
+import { parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // "N dingen aanvullen": de lege velden één voor één, met een voorstel uit de dagen waar dat kan. Opslaan of
 // overslaan gaat naar het volgende veld; sluiten mag altijd.
@@ -61,7 +62,7 @@ function GapForm({ store, gap, onNext }: { store: Store; gap: Gap; onNext: (save
     if (!ok || busy || parsed === null) return
     setBusy(true)
     try {
-      await fillGap(store, gap, numeric ? Math.round((parsed as number) * 10) / 10 : (parsed as string).slice(0, 120))
+      await aanvullen(store, gap, numeric ? Math.round((parsed as number) * 10) / 10 : (parsed as string).slice(0, 120))
       onNext(true)
     } finally {
       setBusy(false)

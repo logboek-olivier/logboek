@@ -1,6 +1,5 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { applyImport } from '../src/import/apply'
 import type { ImportResult } from '../src/import/mileage-csv'
 import { tripForDate } from '../src/model/derive'
 import { currentSettings } from '../src/model/settings'
@@ -8,7 +7,6 @@ import type { Leg, Trip } from '../src/model/types'
 import {
   activeWeek,
   cleanParticipants,
-  closeWeek,
   dayCountOf,
   defaultWeekName,
   isoWeek,
@@ -16,7 +14,6 @@ import {
   roleForType,
   startWeek,
   suggestType,
-  updateWeek,
   weekView,
   type WeekInput,
   boatProfile,
@@ -28,6 +25,9 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put, putMany } from './helpers/schrijf'
+import { mijlenImporteren } from '../src/domain/importeren'
+import { periodeAfronden, periodeBewerken } from '../src/domain/trips'
 
 const TOKEN = 'github_pat_WEEKS_0123456789abcdefghijklmnopqrstuvwxyz'
 const NOW = '2026-10-26T10:00:00.000Z'
@@ -120,19 +120,19 @@ describe('weken afleiden', () => {
 describe('week starten, bewerken en afronden', () => {
   it('starten maakt de week actief; einde = start + 6; afronden met review maakt hem weer leeg, met ongedaan maken', async () => {
     const { store, github } = await device()
-    const trip = await startWeek(store, input, 'nl', '2026-10-28')
+    const trip = await inTx(store, startWeek, input, 'nl', '2026-10-28')
     expect(trip).toMatchObject({ name: 'Nepbasis okt 2026', boatModel: 'Nepmodel 40', boatLengthFt: 40, boatKind: 'catamaran', base: 'Nepbasis', type: 'training-geven', startDate: '2026-10-26', endDate: '2026-11-01', boat: 'Nepboot', area: 'Nepgebied', organisation: 'sailing-virgins' })
     expect(trip.participants).toHaveLength(2)
     expect(activeWeek(store.get('trips.json.enc'), currentSettings(store.get('settings.json.enc')))?.id).toBe(trip.id)
     expect(needsClosing(weekView(trip, []), '2026-11-01')).toBe(false)
     expect(needsClosing(weekView(trip, []), '2026-11-02')).toBe(true)
 
-    await updateWeek(store, trip, { ...input, name: 'Nepweek', dayCount: 5, boat: '' }, 'nl')
+    await periodeBewerken(store, trip, { ...input, name: 'Nepweek', dayCount: 5, boat: '' }, 'nl')
     const updated = store.list('trips.json.enc').find((t) => t.id === trip.id)!
     expect(updated).toMatchObject({ name: 'Nepweek', endDate: '2026-10-30' })
     expect(updated.boat).toBeUndefined()
 
-    const undo = await closeWeek(store, updated, { score: 9.4, quotes: ['Best skipper ever', ' ', 'Great week'] }, '2026-11-02', currentSettings(store.get('settings.json.enc')))
+    const undo = await periodeAfronden(store, updated, { score: 9.4, quotes: ['Best skipper ever', ' ', 'Great week'] }, '2026-11-02', currentSettings(store.get('settings.json.enc')))
     const closed = store.list('trips.json.enc').find((t) => t.id === trip.id)!
     expect(closed).toMatchObject({ closedAt: '2026-11-02', review: { score: 9.4, quotes: ['Best skipper ever', 'Great week'] } })
     expect(activeWeek(store.get('trips.json.enc'), currentSettings(store.get('settings.json.enc')))).toBeNull()
@@ -150,17 +150,17 @@ describe('achterwaarts compatibel', () => {
   it('oude tochten en instellingen zonder weekvelden blijven werken; een nieuwe import behoudt weekgegevens', async () => {
     const { store } = await device()
     // Data zoals de huidige versie die schrijft: tocht met alleen een naam, geïmporteerde dagen, instellingen zonder activeWeekId.
-    await store.putMany('trips.json.enc', [oldTrip('t1', 'Yacht week 7'), oldTrip('t2', 'Nepboot mei 2025')])
-    await store.putMany('legs.json.enc', [leg('a', 't1', '2025-07-05'), leg('b', 't1', '2025-07-06'), leg('c', 't2', '2025-05-01'), leg('m', 't2', '2025-05-02', 5, 'manual')])
+    await putMany(store, 'trips.json.enc', [oldTrip('t1', 'Yacht week 7'), oldTrip('t2', 'Nepboot mei 2025')])
+    await putMany(store, 'legs.json.enc', [leg('a', 't1', '2025-07-05'), leg('b', 't1', '2025-07-06'), leg('c', 't2', '2025-05-01'), leg('m', 't2', '2025-05-02', 5, 'manual')])
     expect(activeWeek(store.get('trips.json.enc'), currentSettings(store.get('settings.json.enc')))).toBeNull()
     expect(weekView(store.list('trips.json.enc')[0]!, store.get('legs.json.enc')).type).toBe('skipper-charter')
 
     // Een net gestarte week zonder dagen overleeft een import ook.
-    const fresh = await startWeek(store, input, 'nl')
+    const fresh = await inTx(store, startWeek, input, 'nl')
 
     // Olivier legt de week vast met deelnemers en review.
     const t1 = store.list('trips.json.enc').find((t) => t.id === 't1')!
-    await store.put('trips.json.enc', { ...t1, type: 'skipper-charter', participants: [{ id: 'p1', firstName: 'Nepcees' }], review: { score: 9, quotes: [] } })
+    await put(store, 'trips.json.enc', { ...t1, type: 'skipper-charter', participants: [{ id: 'p1', firstName: 'Nepcees' }], review: { score: 9, quotes: [] } })
 
     // Opnieuw importeren: zelfde tocht (naam + eerste dag) krijgt het bestaande id; nieuwe tochten een nieuw id.
     const reimport: ImportResult = {
@@ -170,7 +170,7 @@ describe('achterwaarts compatibel', () => {
       warnings: [],
       kind: 'csv',
     }
-    await applyImport(store, reimport)
+    await mijlenImporteren(store, reimport)
     const trips = store.list('trips.json.enc')
     const kept = trips.find((t) => t.id === 't1')!
     expect(kept.participants?.[0]?.firstName).toBe('Nepcees')
@@ -186,15 +186,15 @@ describe('opnieuw importeren ruimt nooit een tocht op waar iets aan hangt', () =
   it('een geïmporteerde tocht met een fooi, review of organisatie blijft als de naam in Excel veranderde', async () => {
     const { store } = await device()
     const empty = { nm: 0, days: 0, trips: 0, nightHours: 0, nmByRole: { schipper: 0, 'co-schipper': 0, bemanningslid: 0, trainee: 0, instructeur: 0 }, nmByWater: { inland: 0, sea: 0, tidal: 0 } }
-    await applyImport(store, { trips: [oldTrip('a', 'Nepweek fooi'), oldTrip('b', 'Nepweek review'), oldTrip('c', 'Nepweek SV'), oldTrip('d', 'Nepweek leeg')], legs: [leg('a1', 'a', '2025-07-05'), leg('b1', 'b', '2025-08-05'), leg('c1', 'c', '2025-09-05'), leg('d1', 'd', '2025-10-05')], summary: empty, warnings: [], kind: 'csv' })
+    await mijlenImporteren(store, { trips: [oldTrip('a', 'Nepweek fooi'), oldTrip('b', 'Nepweek review'), oldTrip('c', 'Nepweek SV'), oldTrip('d', 'Nepweek leeg')], legs: [leg('a1', 'a', '2025-07-05'), leg('b1', 'b', '2025-08-05'), leg('c1', 'c', '2025-09-05'), leg('d1', 'd', '2025-10-05')], summary: empty, warnings: [], kind: 'csv' })
     const now = new Date().toISOString()
-    await store.put('transactions.json.enc', { id: 'tip', date: '2025-07-05', kind: 'fooi', amount: 40, currency: 'EUR', amountEur: 40, source: 'overig', tripId: 'a', updatedAt: now, deletedAt: null })
+    await put(store, 'transactions.json.enc', { id: 'tip', date: '2025-07-05', kind: 'fooi', amount: 40, currency: 'EUR', amountEur: 40, source: 'overig', tripId: 'a', updatedAt: now, deletedAt: null })
     const b = store.list('trips.json.enc').find((t) => t.id === 'b')!
-    await store.put('trips.json.enc', { ...b, review: { quotes: [], rating: 8, lesson: 'Nepzin' }, closedAt: '2025-08-10', updatedAt: now })
+    await put(store, 'trips.json.enc', { ...b, review: { quotes: [], rating: 8, lesson: 'Nepzin' }, closedAt: '2025-08-10', updatedAt: now })
     const c = store.list('trips.json.enc').find((t) => t.id === 'c')!
-    await store.put('trips.json.enc', { ...c, organisation: 'sailing-virgins', updatedAt: now })
+    await put(store, 'trips.json.enc', { ...c, organisation: 'sailing-virgins', updatedAt: now })
     // In Excel kregen alle tochten een andere naam: de import herkent ze niet meer.
-    await applyImport(store, { trips: [oldTrip('n1', 'Andere naam 1')], legs: [leg('n1a', 'n1', '2025-07-05'), leg('n1b', 'n1', '2025-08-05'), leg('n1c', 'n1', '2025-09-05'), leg('n1d', 'n1', '2025-10-05')], summary: empty, warnings: [], kind: 'csv' })
+    await mijlenImporteren(store, { trips: [oldTrip('n1', 'Andere naam 1')], legs: [leg('n1a', 'n1', '2025-07-05'), leg('n1b', 'n1', '2025-08-05'), leg('n1c', 'n1', '2025-09-05'), leg('n1d', 'n1', '2025-10-05')], summary: empty, warnings: [], kind: 'csv' })
     const ids = store.list('trips.json.enc').map((t) => t.id)
     expect(ids).toEqual(expect.arrayContaining(['a', 'b', 'c', 'n1']))
     // Een tocht waar niets aan hangt, gaat wel weg (zoals altijd).
@@ -206,8 +206,8 @@ describe('opnieuw importeren ruimt nooit een tocht op waar iets aan hangt', () =
 describe('trips van elke lengte, eerdere en komende trips, bootgegevens', () => {
   it('een eerdere of komende trip maakt de lopende trip niet anders; een trip waarin vandaag valt is vanzelf lopend', async () => {
     const { store } = await device()
-    const past = await startWeek(store, { ...input, startDate: '2026-09-01', dayCount: 10 }, 'nl', '2026-10-28')
-    const future = await startWeek(store, { ...input, startDate: '2026-12-01', dayCount: 21 }, 'nl', '2026-10-28')
+    const past = await inTx(store, startWeek, { ...input, startDate: '2026-09-01', dayCount: 10 }, 'nl', '2026-10-28')
+    const future = await inTx(store, startWeek, { ...input, startDate: '2026-12-01', dayCount: 21 }, 'nl', '2026-10-28')
     const settings = currentSettings(store.get('settings.json.enc'))
     expect(settings.activeWeekId ?? null).toBeNull()
     expect(future.endDate).toBe('2026-12-21')

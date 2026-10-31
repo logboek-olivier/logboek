@@ -1,15 +1,14 @@
 import { translate, type Lang } from '../i18n'
 import { endedFor } from './trip-dates'
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
 import { followTrip, tripRange } from './calendar'
 import { MAX_COUNTRY, MAX_TAG } from './guests'
-import type { Undo } from './edit'
-import { addDays } from './money'
 import { currentSettings, saveSettings } from './settings'
 import { cleanSalary, withSalaryDefault } from './salary'
 import { kindForType, tripKind } from './trip-kind'
-import { firstNameOnly, newId, todayIso, type WaterKind, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { firstNameOnly, newId, type WaterKind, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { addDays, todayIso } from '../basis/datum'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
 // charterbedrijf), gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een naam; dan worden type
@@ -282,7 +281,7 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
 }
 
 /** Nieuwe trip: opslaan maakt hem lopend als vandaag erin valt; eerdere en komende trips laten de lopende staan. */
-export async function startWeek(store: Store, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
+export async function startWeek(store: Tx, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
   const fields: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
   const settings = currentSettings(store.list('settings.json.enc'))
   const trip = input.salary ? { ...fields, salary: cleanSalary(input.salary) } : input.salary === null ? fields : withSalaryDefault(fields, settings, undefined, store.list('legs.json.enc'), today)
@@ -292,12 +291,11 @@ export async function startWeek(store: Store, input: WeekInput, lang: Lang, toda
   await syncParticipants(store, trip)
   const current = !!trip.startDate && !!trip.endDate && trip.startDate <= today && today <= trip.endDate
   await saveSettings(store, { ...(current ? { activeWeekId: trip.id } : {}), ...(trip.boat ? { lastBoat: trip.boat } : {}) })
-  void store.sync()
   return trip
 }
 
 /** Bestaande week bijwerken; review en afronding blijven staan. */
-export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lang: Lang): Promise<void> {
+export async function updateWeek(store: Tx, trip: Trip, input: WeekInput, lang: Lang): Promise<void> {
   const { startDate: _s, endDate: _e, boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, route, ...rest } = trip
   void [_s, _e, _b, _m, _l, _k, _ba, _c, _a, _o, _n]
   // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
@@ -319,7 +317,6 @@ export async function updateWeek(store: Store, trip: Trip, input: WeekInput, lan
   // Verlengen of verplaatsen: de agenda volgt direct.
   await followTrip(store, trip.id, tripRange(trip, legs), tripRange(next, legs))
   await syncParticipants(store, next)
-  void store.sync()
 }
 
 export function dayCountOf(week: Pick<WeekView, 'startDate' | 'endDate'>): number {
@@ -339,8 +336,7 @@ export function tripDayCounts(week: Pick<WeekView, 'startDate' | 'endDate' | 'le
 }
 
 /** Week afronden: review opslaan, afgerond, en niet meer de lopende week. */
-export async function closeWeek(store: Store, trip: Trip, review: WeekReview, today: string, settings: Settings): Promise<Undo> {
-  const before = trip
+export async function closeWeek(store: Tx, trip: Trip, review: WeekReview, today: string, settings: Settings): Promise<void> {
   const quotes = review.quotes.map((q) => q.trim()).filter(Boolean).slice(0, 50)
   const rating = review.rating !== undefined && Number.isInteger(review.rating) && review.rating >= 1 && review.rating <= 10 ? review.rating : undefined
   const lesson = review.lesson?.trim().slice(0, 300)
@@ -353,12 +349,6 @@ export async function closeWeek(store: Store, trip: Trip, review: WeekReview, to
   await store.put('trips.json.enc', { ...trip, review: cleanReview, closedAt: today, updatedAt: new Date().toISOString() })
   const wasActive = settings.activeWeekId === trip.id
   if (wasActive) await saveSettings(store, { activeWeekId: null })
-  void store.sync()
-  return async () => {
-    await store.put('trips.json.enc', { ...before, updatedAt: new Date().toISOString() })
-    if (wasActive) await saveSettings(store, { activeWeekId: trip.id })
-    void store.sync()
-  }
 }
 
 // ---------- Studenten en planningen bij een week ----------
@@ -381,7 +371,7 @@ export function planWeek(plan: WeekPlan, trips: readonly Trip[], legs: readonly 
  * Deelnemers met een cursus krijgen een student (zelfde id) voor hun checklist; een bestaande student krijgt de
  * nieuwe voornaam, cursus en niveau. Een deelnemer die van de week verdwijnt, houdt zijn student (en voortgang).
  */
-export async function syncParticipants(store: Store, trip: Trip): Promise<void> {
+export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
   const students = store.get('students.json.enc')
   const now = new Date().toISOString()
   const changed: Student[] = []
@@ -410,7 +400,7 @@ export async function syncParticipants(store: Store, trip: Trip): Promise<void> 
 }
 
 /** Een student die in Deze week wordt toegevoegd, komt ook bij de deelnemers van de week. */
-export async function addParticipant(store: Store, trip: Trip, student: Student): Promise<void> {
+export async function addParticipant(store: Tx, trip: Trip, student: Student): Promise<void> {
   const participants = trip.participants ?? []
   if (participants.some((p) => p.id === student.id)) return
   const participant: Participant = { id: student.id, firstName: student.firstName, level: student.level, curriculumId: student.curriculumId }

@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { formatNumber } from '../format'
 import { t } from '../i18n'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
-import { findPlace, nearestPlace, pinQuestion, savePlace, type PinQuestion } from '../model/places'
+import { findPlace, nearestPlace, pinQuestion, type PinQuestion } from '../model/places'
 import type { Place } from '../model/types'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
@@ -11,6 +11,7 @@ import { PinQuestionBox } from './PinQuestion'
 import { SeaMap } from './LazyMap'
 import type { LatLon, MapPlace } from './SeaMap'
 import { Sheet } from './Sheet'
+import { plaatsOpslaan } from '../domain/plaatsen'
 
 // Plaats kiezen op de offline kaart: tik op een bekende plaats (direct gekozen) of zet een nieuw punt, geef het een
 // naam en kies. "Huidige locatie" gebruikt de GPS van de telefoon (geen internet nodig). Met een vertrek- of
@@ -101,8 +102,7 @@ export function MapSheet({
     if (!point || busy) return
     setBusy(true)
     try {
-      const saved = await savePlace(store, name, point)
-      void store.sync()
+      const { result: saved } = await plaatsOpslaan(store, name, point)
       onChoose(saved.name)
     } finally {
       setBusy(false)

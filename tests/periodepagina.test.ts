@@ -1,7 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { placeLeg, splitLegs } from '../src/model/leg-trip'
-import { setStayDays, updateStay } from '../src/model/periods'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
 import { activeWeek, weekFields } from '../src/model/weeks'
 import type { Leg, Settings, Trip } from '../src/model/types'
@@ -9,6 +8,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { landperiodeBewerken, landperiodeZetten } from '../src/domain/agenda'
 
 // PR 1 van het periodemodel: een dag ligt altijd binnen de datums van zijn trip (de oorzaak van SV #1 met een dag op
 // 28 oktober), de lopende trip, de periodepagina en periodes aan land bewerken. Alle gegevens verzonnen.
@@ -68,9 +68,9 @@ describe('een dag hoort bij de trip van zijn datum', () => {
 describe('periode aan land bewerken', () => {
   it('soort, datums, naam, notitie en reis; leegmaken mag; ongedaan maken zet alles terug', async () => {
     const s = await store()
-    await setStayDays(s, ['2027-01-10', '2027-01-11', '2027-01-12'], 'thuis', { note: 'Nepnotitie' })
+    await landperiodeZetten(s, ['2027-01-10', '2027-01-11', '2027-01-12'], 'thuis', { note: 'Nepnotitie' })
     const stay = s.list('periods.json.enc')[0]!
-    const undo = await updateStay(s, stay, { kind: 'reis', name: 'Nepreis', startDate: '2027-01-11', endDate: '2027-01-13', note: '', travel: { from: 'Nepstad', to: 'Nephaven', by: 'vliegtuig' } })
+    const undo = await landperiodeBewerken(s, stay, { kind: 'reis', name: 'Nepreis', startDate: '2027-01-11', endDate: '2027-01-13', note: '', travel: { from: 'Nepstad', to: 'Nephaven', by: 'vliegtuig' } })
     // De periode staat nu op 11–13 januari; 10 januari hoort bij geen periode meer.
     const live = s.list('periods.json.enc')
     expect(live).toHaveLength(1)

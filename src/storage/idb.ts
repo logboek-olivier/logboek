@@ -112,14 +112,16 @@ export async function putObjectAndLocal(
   db: Db,
   metaPath: string,
   expectedCheck: string | null,
-  object: StoredObject,
+  object: StoredObject | readonly StoredObject[],
   local: { name: string; blob: Bytes },
 ): Promise<boolean> {
+  // Meerdere bestanden plus de outbox in één transactie: alles of niets (een handeling over bestanden heen).
+  const all = Array.isArray(object) ? object : [object as StoredObject]
   const tx = db.transaction(['objects', 'local'], 'readwrite')
   const objects = tx.objectStore('objects')
   const ok = expectedCheck === null || storedCheck(await objects.get(metaPath)) === expectedCheck
   if (ok) {
-    await objects.put(object)
+    for (const o of all) await objects.put(o)
     await tx.objectStore('local').put(local)
   }
   await tx.done

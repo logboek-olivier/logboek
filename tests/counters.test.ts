@@ -1,12 +1,15 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { answerDoubt, counterName, doubtfulTrips, nameAfterCounter, nameWithCounter, newTripName, nextNumber, orgFromName, saveFirstNumbers, tripCounters } from '../src/model/counters'
+import { counterName, doubtfulTrips, nameWithCounter, newTripName, nextNumber, tripCounters } from '../src/model/counters'
 import { currentSettings, DEFAULT_SETTINGS } from '../src/model/settings'
 import type { Leg, Settings, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { put } from './helpers/schrijf'
+import { organisatieBeantwoorden, tellerBeginnummersOpslaan } from '../src/domain/trips'
+import { orgFromName } from '../src/basis/organisatie'
 
 // PR E: teller per organisatie. Elke trip van Sailing Virgins of Yacht Week krijgt zijn volgnummer op datum, ook
 // geïmporteerde trips (uit de naam); een afkorting is twijfel en telt pas na "ja". Verzonnen trips.
@@ -106,10 +109,6 @@ describe('Volgnummer per organisatie', () => {
     // Een andere organisatie of een woord dat met de letters begint, blijft staan.
     expect(nameWithCounter(trip('a', 'YW #2 BVI'), counter)).toBe('SV #5 · YW #2 BVI')
     expect(nameWithCounter(trip('a', 'SVEN'), counter)).toBe('SV #5 · SVEN')
-    // In de kop staat de teller als label ervoor: de naam zonder eigen teller.
-    expect(nameAfterCounter(trip('a', 'SV #4 · BVI'), counter)).toBe('BVI')
-    expect(nameAfterCounter(trip('a', 'BVI winter'), counter)).toBe('BVI winter')
-    expect(nameAfterCounter(trip('a', 'SV #4'), counter)).toBe('')
   })
 })
 
@@ -126,16 +125,16 @@ describe('Twijfel bevestigen', () => {
 
   it('een afkorting telt pas na ja; nee wordt onthouden en niet meer gevraagd', async () => {
     const s = await store()
-    await s.put('trips.json.enc', trip('sv1', 'SV BVI', '2026-03-01'))
-    await s.put('trips.json.enc', trip('sv2', 'SV Nepweek', '2026-04-01'))
-    await s.put('trips.json.enc', trip('zeker', 'Sailing Virgins Nep', '2026-05-01'))
+    await put(s, 'trips.json.enc', trip('sv1', 'SV BVI', '2026-03-01'))
+    await put(s, 'trips.json.enc', trip('sv2', 'SV Nepweek', '2026-04-01'))
+    await put(s, 'trips.json.enc', trip('zeker', 'Sailing Virgins Nep', '2026-05-01'))
     const now = () => currentSettings(s.get('settings.json.enc'))
     expect(doubtfulTrips(s.list('trips.json.enc'), now()).map((d) => d.trip.id)).toEqual(['sv1', 'sv2'])
     expect(tripCounters(s.list('trips.json.enc'), [], now()).get('zeker')?.label).toBe('SV #1')
 
-    await answerDoubt(s, s.list('trips.json.enc').find((t) => t.id === 'sv1')!, 'sailing-virgins', true)
+    await organisatieBeantwoorden(s, s.list('trips.json.enc').find((t) => t.id === 'sv1')!, 'sailing-virgins', true)
     expect(s.list('trips.json.enc').find((t) => t.id === 'sv1')?.organisation).toBe('sailing-virgins')
-    await answerDoubt(s, s.list('trips.json.enc').find((t) => t.id === 'sv2')!, 'sailing-virgins', false)
+    await organisatieBeantwoorden(s, s.list('trips.json.enc').find((t) => t.id === 'sv2')!, 'sailing-virgins', false)
     expect(doubtfulTrips(s.list('trips.json.enc'), now())).toEqual([])
     expect(now().orgAnswered).toEqual(['sv2'])
     const counters = tripCounters(s.list('trips.json.enc'), [], now())
@@ -146,7 +145,7 @@ describe('Twijfel bevestigen', () => {
 
   it('beginnummers: alleen hele getallen vanaf 1; onleesbare antwoorden in de instellingen breken niets', async () => {
     const s = await store()
-    await saveFirstNumbers(s, { 'sailing-virgins': 4, 'yacht-week': 0 })
+    await tellerBeginnummersOpslaan(s, { 'sailing-virgins': 4, 'yacht-week': 0 })
     expect(currentSettings(s.get('settings.json.enc')).orgFirst).toEqual({ 'sailing-virgins': 4 })
     const odd = settings({ orgAnswered: 5 as unknown as string[] })
     expect(doubtfulTrips([trip('a', 'YW Nep', '2026-01-01')], odd).map((d) => d.trip.id)).toEqual(['a'])

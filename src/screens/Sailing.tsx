@@ -13,11 +13,10 @@ import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDateRangeShort, formatHours, formatMonth, formatMonthShort, formatNm, formatNumber } from '../format'
 import { recordError } from '../errors'
-import { applyImport } from '../import/apply'
 import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
 import { nmPerMonth, summarize, summarizeTrips, type SailingSummary, type TripSummary } from '../model/derive'
 import { roleLabel } from '../i18n/labels'
-import { ROLES, todayIso, type Place, type Trip } from '../model/types'
+import { ROLES, type Place, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
@@ -29,6 +28,8 @@ import { boatList, uncheckedBoats } from '../model/boats'
 import { currentSettings } from '../model/settings'
 import { t } from '../i18n'
 import { useBack } from '../back'
+import { mijlenImporteren } from '../domain/importeren'
+import { todayIso } from '../basis/datum'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
 
@@ -79,10 +80,9 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
     if (!pending) return
     setBusy(true)
     try {
-      await applyImport(store, pending)
+      await mijlenImporteren(store, pending)
       setPending(null)
       setChecking(true)
-      void store.sync()
     } finally {
       setBusy(false)
     }

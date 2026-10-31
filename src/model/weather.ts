@@ -1,7 +1,7 @@
 import { compareLegs } from './derive'
-import { addDays } from './money'
 import { findPlace, greatCircleNm } from './places'
 import type { Leg, Place, Trip } from './types'
+import { addDays } from '../basis/datum'
 
 // Wind en weer (Vandaag): de verwachting voor vandaag en morgen bij de lopende trip. Alleen uit public/weather.json op
 // dezelfde origin, een paar keer per dag gebouwd door deploy.yml (scripts/build-weather.mjs, Open-Meteo); de app haalt

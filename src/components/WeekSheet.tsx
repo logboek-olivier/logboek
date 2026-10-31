@@ -5,22 +5,19 @@ import { getLang, t, useLang } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { MAX_COUNTRY, MAX_TAG, needsDistinction, norm, participantName, usedCountries } from '../model/guests'
-import { addDays, parseAmount, totals } from '../model/money'
+import { totals } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { newTripName } from '../model/counters'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
-import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, todayIso, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
+import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
   boatProfile,
-  closeWeek,
   feetToMetres,
   dayCountOf,
   DEFAULT_WEEK_DAYS,
   defaultWeekName,
   MAX_WEEK_DAYS,
-  startWeek,
   suggestions,
-  updateWeek,
   weekView,
   type ParticipantInput,
 } from '../model/weeks'
@@ -36,6 +33,9 @@ import { TripIncomeFields } from './TripMoney'
 import { PeriodDays } from './PeriodPage'
 import { kindForType, typeForKind } from '../model/trip-kind'
 import { parseShip } from '../model/boats'
+import { periodeAfronden, periodeBewerken, periodeMaken } from '../domain/trips'
+import { parseAmount } from '../basis/bedrag'
+import { addDays, todayIso } from '../basis/datum'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -165,10 +165,10 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route, salary: salaryInput }
     try {
       if (trip) {
-        await updateWeek(store, trip, input, getLang())
+        await periodeBewerken(store, trip, input, getLang())
         notify(t('toast.saved'))
       } else {
-        await startWeek(store, input, getLang())
+        await periodeMaken(store, input, getLang())
         notify(t('week.started'))
       }
       onClose()
@@ -441,7 +441,7 @@ export function CloseWeekSheet({ store, trip, notify, onClose }: { store: Store;
     e.preventDefault()
     if (!ok) return
     const settings = currentSettings(store.get('settings.json.enc'))
-    const undo = await closeWeek(store, trip, { score: parsedScore ?? undefined, quotes: quotes.split('\n'), rating, lesson }, todayIso(), settings)
+    const undo = await periodeAfronden(store, trip, { score: parsedScore ?? undefined, quotes: quotes.split('\n'), rating, lesson }, todayIso(), settings)
     onClose()
     notify(t('week.closed'), undo)
   }

@@ -9,16 +9,18 @@ import { loadWordlist } from '../crypto/recovery'
 import { recordError } from '../errors'
 import { formatMoment, formatNumber } from '../format'
 import { t, type MessageKey } from '../i18n'
-import { COLLECTION_PATHS, todayIso, type CollectionPath } from '../model/types'
+import { COLLECTION_PATHS, type CollectionPath } from '../model/types'
 import { describeError } from '../session'
 import { shareOrDownload } from '../share'
 import { ExportSection } from '../components/ExportSection'
-import { applyRestore, backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
+import { backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
 import type { FileEvidence, Verdict, VersionEvidence } from '../storage/evidence'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
 import { deviceId } from '../storage/device'
 import { describeStatus, type RepairResult, type Store } from '../storage/store'
 import { ErrorLine } from './Setup'
+import { backupTerugzetten } from '../domain/importeren'
+import { todayIso } from '../basis/datum'
 
 // Meer → Opslag: per bestand de laatste sync, het aantal records hier en op GitHub en of het leesbaar is; "Controleer
 // nu" haalt alles opnieuw van GitHub, ontsleutelt het en vergelijkt het met deze telefoon (vanzelf één keer per week).
@@ -380,7 +382,7 @@ function RestoreBackup({ store, text, notify, onClose }: { store: Store; text: s
     setBusy(true)
     setError(null)
     try {
-      const undo = await applyRestore(store, plan)
+      const undo = await backupTerugzetten(store, plan)
       notify(t('backup.done'), undo)
       onClose()
     } catch (err) {

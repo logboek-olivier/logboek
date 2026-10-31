@@ -2,12 +2,14 @@ import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyPlan, hasOverlap, parsePlanning, planImport, PlanningError } from '../src/import/planning'
-import { availabilityRuns, buildIndex, dayInfo, planningRuns, seasonWeeks, setDays } from '../src/model/calendar'
+import { availabilityRuns, buildIndex, dayInfo, planningRuns, seasonWeeks } from '../src/model/calendar'
 import type { CalendarDay, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put } from './helpers/schrijf'
+import { dagsoortenZetten } from '../src/domain/agenda'
 
 // Planning importeren (CSV), periode markeren, seizoensoverzicht en delen. Alle gegevens verzonnen.
 
@@ -64,8 +66,8 @@ describe('planning lezen', () => {
 describe('voorbeeld en importeren', () => {
   it('overlappingen met bestaande trips en eigen dagen; niets overschrijven zonder aanzetten', async () => {
     const s = await store()
-    await s.put('trips.json.enc', trip('bestaand', { startDate: '2027-03-12', endDate: '2027-03-14' }))
-    await setDays(s, ['2027-03-25'], 'reis')
+    await put(s, 'trips.json.enc', trip('bestaand', { startDate: '2027-03-12', endDate: '2027-03-14' }))
+    await dagsoortenZetten(s, ['2027-03-25'], 'reis')
     const rows = parsePlanning(fixture())
     const items = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc')))
     expect(items.map((i) => [i.row.row, i.creates, hasOverlap(i)])).toEqual([
@@ -78,7 +80,7 @@ describe('voorbeeld en importeren', () => {
     ])
     expect(items[0]!.overlapTrips).toEqual(['Nep bestaand'])
 
-    const result = await applyPlan(s, items, new Set([6]), 'nl')
+    const result = await inTx(s, applyPlan, items, new Set([6]), 'nl')
     // Rij 2 en 3 overlappen en zijn niet aangezet; rij 6 wel (thuis, ook over de eigen reisdag).
     expect(result).toEqual({ trips: 1, days: 2 + 7 + 8 })
     expect(s.list('trips.json.enc').map((t) => t.name).sort()).toEqual(['Nep bestaand', 'Nepcursus Twee'])
@@ -96,7 +98,7 @@ describe('voorbeeld en importeren', () => {
     const again = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc')))
     expect(again.find((i) => i.row.row === 4)!.duplicate).toBe(true)
     expect(again.every(hasOverlap)).toBe(true)
-    expect(await applyPlan(s, again, new Set(), 'nl')).toEqual({ trips: 0, days: 0 })
+    expect(await inTx(s, applyPlan, again, new Set(), 'nl')).toEqual({ trips: 0, days: 0 })
   })
 })
 
@@ -110,7 +112,7 @@ describe('onbeschikbaar importeren', () => {
     ])
     const s = await store()
     const items = planImport(rows, buildIndex([], [], []))
-    expect(await applyPlan(s, items, new Set(), 'nl')).toEqual({ trips: 0, days: 4 })
+    expect(await inTx(s, applyPlan, items, new Set(), 'nl')).toEqual({ trips: 0, days: 4 })
     const days = s.list('calendar.json.enc').sort((a, b) => a.date.localeCompare(b.date))
     expect(days.map((d) => [d.date, d.type, d.reason ?? null, d.note ?? null])).toEqual([
       ['2027-05-01', 'onbeschikbaar', 'Nepreden', null],

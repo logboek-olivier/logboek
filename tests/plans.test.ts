@@ -13,10 +13,8 @@ import {
   planText,
   removeBlock,
   reschedule,
-  savePlan,
   splitPlans,
   studentsFor,
-  tickForGroup,
   tickItemForGroup,
   itemDone,
   blockItems,
@@ -34,6 +32,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { planningOpslaan } from '../src/domain/training'
 
 const TOKEN = 'github_pat_PLANS_0123456789abcdefghijklmnopqrstuvwxyz'
 const NOW = '2026-10-26T10:00:00.000Z'
@@ -174,7 +173,7 @@ describe('vandaag en afvinken', () => {
     const group1 = studentsFor(plan, b, asa101.id, students)
     expect(group1.map((s) => s.id)).toEqual(['s1', 's2'])
     expect(topicDone(group1, topicId)).toBe(false)
-    const changed = tickForGroup(group1, topicId, NOW)
+    const changed = tickItemForGroup(group1, [topicId], NOW)
     expect(changed.map((s) => s.id)).toEqual(['s1'])
     expect(statusOf(changed[0]!, topicId)).toBe('geoefend')
     expect(topicDone([changed[0]!, group1[1]!], topicId)).toBe(true)
@@ -205,7 +204,7 @@ describe('opslag', () => {
     const github = new FakeGithub()
     const a = await device(github)
     expect(a.store.get('plans.json.enc')).toEqual([])
-    await savePlan(a.store, draft([group({ name: 'Nepgroep' })]))
+    await planningOpslaan(a.store, draft([group({ name: 'Nepgroep' })]))
     await a.store.sync()
     expect(github.files.has('plans.json.enc')).toBe(true)
     const wire = github.requests.map((r) => r.body ?? '').join('\n')

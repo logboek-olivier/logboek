@@ -1,6 +1,6 @@
 import { cleanTipFrom, splitTotal } from './guests'
-import { parseAmount } from './money'
 import type { Participant, TipFrom } from './types'
+import { parseAmount } from '../basis/bedrag'
 
 // Invoer van "Van wie" bij een fooi (Toevoegen en het bewerkblad): wat er getypt is, en wat er wordt opgeslagen.
 

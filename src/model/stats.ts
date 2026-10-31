@@ -1,14 +1,17 @@
 import type { Lang } from '../i18n'
 import { boatKey, parseShip, suggestKind, tripShip } from './boats'
-import { dayInfo, monthOf, tripRange, type CalendarIndex } from './calendar'
-import { tripCounters, tripOrganisation } from './counters'
+import { dayInfo, tripRange, type CalendarIndex } from './calendar'
+import { tripCounters } from './counters'
 import { courseLabel, localized } from './curricula'
 import { active, compareLegs, round1, totalNm, type WaterTotals } from './derive'
 import { tipsPerCountry, tipsPerGuest, tipsPerTrip, tipsPerTripType, type GroupTips, type GuestTips } from './guests'
-import { addDays, eurOf, isEarned, mondayOf, round2, tipsPerWeek, type WeekTips } from './money'
+import { eurOf, isEarned, tipsPerWeek, type WeekTips } from './money'
 import { placeKey } from './places'
 import { ROLES, type BoatKind, type CalendarDay, type Curriculum, type Leg, type Organisation, type Role, type Settings, type Student, type Transaction, type Trip } from './types'
 import { dayCountOf, weekView } from './weeks'
+import { round2 } from '../basis/bedrag'
+import { addDays, mondayOf, monthOf } from '../basis/datum'
+import { tripOrganisation } from '../basis/organisatie'
 
 // Statistieken (Meer → Statistieken): zeilen, werk, geld en instructeur over een periode, plus de voortgang naar RYA
 // Yachtmaster Offshore. Alles afgeleid, niets opgeslagen; zonder netwerk.

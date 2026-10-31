@@ -1,6 +1,6 @@
 import type { Bytes } from '../crypto/encrypt'
 import { MAX_DOCUMENT_BYTES } from '../storage/documents'
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import type { DueItem } from './reminders'
 import { keepUnknownFields, newId, type DocumentCategory, type VaultDocument } from './types'
 
@@ -109,7 +109,7 @@ function clean(input: DocumentInput): Pick<VaultDocument, 'title' | 'category' |
 }
 
 /** Een nieuw document: eerst het bestand versleuteld op het apparaat, dan de index; de sync zet beide op GitHub. */
-export async function addDocument(store: Store, input: DocumentInput, file: { bytes: Bytes; mime: string }): Promise<VaultDocument> {
+export async function addDocument(store: Tx, input: DocumentInput, file: { bytes: Bytes; mime: string }): Promise<VaultDocument> {
   const fileId = newId()
   await store.putDocumentFile(fileId, file.bytes)
   const record: VaultDocument = { id: newId(), ...clean(input), mime: file.mime, size: file.bytes.length, fileId, updatedAt: new Date().toISOString(), deletedAt: null }
@@ -121,11 +121,11 @@ export async function addDocument(store: Store, input: DocumentInput, file: { by
 const DOCUMENT_FIELDS = ['id', 'title', 'category', 'issuedAt', 'expiresAt', 'notes', 'mime', 'size', 'offline', 'fileId', 'updatedAt', 'deletedAt'] as const
 
 /** Titel, categorie, datums, notitie en offline wijzigen (het bestand blijft hetzelfde). */
-export async function updateDocument(store: Store, document: VaultDocument, input: DocumentInput): Promise<VaultDocument> {
+export async function updateDocument(store: Tx, document: VaultDocument, input: DocumentInput): Promise<VaultDocument> {
   const rebuilt: VaultDocument = { id: document.id, mime: document.mime, size: document.size, fileId: document.fileId, ...clean(input), updatedAt: new Date().toISOString(), deletedAt: null }
   const next = keepUnknownFields(document, rebuilt, DOCUMENT_FIELDS)
   await store.put('documents/index.json.enc', next)
-  if (next.offline !== document.offline) await store.setDocumentOffline(document.fileId, next.offline).catch(() => undefined)
+  if (next.offline !== document.offline) store.setDocumentOffline(document.fileId, next.offline)
   return next
 }
 

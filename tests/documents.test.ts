@@ -3,7 +3,6 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { decryptObject, DecryptError, encryptObject, fromBase64, toBase64, utf8, type Bytes } from '../src/crypto/encrypt'
 import { META_PATH, serializeMeta } from '../src/crypto/keys'
 import { documentDueItems, scaledSize } from '../src/model/documents'
-import { deleteDocument } from '../src/model/edit'
 import type { VaultDocument } from '../src/model/types'
 import { documentPath, DocumentTooLargeError, DocumentUnavailableError, fileIdOf, isFileId, MAX_DOCUMENT_BYTES } from '../src/storage/documents'
 import { GithubClient } from '../src/storage/github'
@@ -11,6 +10,8 @@ import { getObject, openLogboekDb, putObject } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
+import { documentVerwijderen } from '../src/domain/kluis'
 
 // Kluis: documentbestanden versleuteld op het apparaat en op GitHub, met een willekeurige naam; alleen te lezen met de
 // hoofdsleutel en het eigen pad. Alle bestanden zijn verzonnen bytes.
@@ -60,7 +61,7 @@ const blobDeletes = () => github.requests.filter((r) => r.method === 'DELETE' &&
 /** Een document zoals addDocument het maakt: eerst het bestand, dan de index. */
 async function add(store: Store, fileId: string, content: Bytes, extra: Partial<VaultDocument> = {}): Promise<void> {
   await store.putDocumentFile(fileId, content)
-  await store.put('documents/index.json.enc', doc(fileId, extra))
+  await put(store, 'documents/index.json.enc', doc(fileId, extra))
 }
 
 describe('paden', () => {
@@ -173,14 +174,14 @@ describe('documentbestanden', () => {
     const phone = await device()
     await add(phone, FILE_A, bytes('A'), { offline: true })
     await phone.sync()
-    const undo = await deleteDocument(phone, phone.list('documents/index.json.enc')[0]!)
+    const undo = await documentVerwijderen(phone, phone.list('documents/index.json.enc')[0]!)
     await phone.sync()
     expect(await phone.documentFileState(FILE_A)).toBe('local')
     await undo()
     expect(phone.list('documents/index.json.enc')).toHaveLength(1)
     // Twee dagen geleden verwijderd: de volgende ronde haalt de kopie weg.
     const old = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString()
-    await phone.put('documents/index.json.enc', { ...phone.list('documents/index.json.enc')[0]!, updatedAt: new Date().toISOString(), deletedAt: old })
+    await put(phone, 'documents/index.json.enc', { ...phone.list('documents/index.json.enc')[0]!, updatedAt: new Date().toISOString(), deletedAt: old })
     await phone.sync()
     await phone.sync()
     expect(await phone.documentFileState(FILE_A)).toBe('none')
@@ -201,7 +202,7 @@ describe('na de beveiligingsreview', () => {
     const phone = await device()
     await add(phone, FILE_A, bytes('A'), { title: 'Nep paspoort', notes: 'nepnummer 123', expiresAt: '2030-01-01', category: 'identiteit' })
     await phone.sync()
-    const undo = await deleteDocument(phone, phone.list('documents/index.json.enc')[0]!)
+    const undo = await documentVerwijderen(phone, phone.list('documents/index.json.enc')[0]!)
     const tombstone = phone.get('documents/index.json.enc')[0]!
     expect(tombstone).toEqual({ id: tombstone.id, title: '', category: 'overig', mime: '', size: 0, offline: false, fileId: FILE_A, updatedAt: tombstone.updatedAt, deletedAt: tombstone.deletedAt })
     await phone.sync()
@@ -243,7 +244,7 @@ describe('na de beveiligingsreview', () => {
     await phone.sync({ changedOnly: true })
     expect(github.requests.length).toBe(before)
     // Met een andere wijziging gaat die wel, het document nog niet.
-    await phone.put('reminders.json.enc', { id: 'nep-termijn', title: 'Nep', date: '2030-01-01', kind: 'deadline', doneAt: null, updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(phone, 'reminders.json.enc', { id: 'nep-termijn', title: 'Nep', date: '2030-01-01', kind: 'deadline', doneAt: null, updatedAt: new Date().toISOString(), deletedAt: null })
     await phone.sync({ changedOnly: true })
     expect(github.files.has('reminders.json.enc')).toBe(true)
     expect(blobPuts()).toHaveLength(1)

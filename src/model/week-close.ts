@@ -1,9 +1,10 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { dayInfo, type CalendarIndex } from './calendar'
 import { totalNm } from './derive'
-import { addDays, round2 } from './money'
 import type { Currency, Student, WeekClosing } from './types'
 import { isoWeek } from './weeks'
+import { round2 } from '../basis/bedrag'
+import { addDays, mondayOf } from '../basis/datum'
 
 // Weekafsluiting (Vandaag op zondag, terug te lezen in de agenda op de dagkaart van de zondag): een automatische
 // samenvatting van de week (maandag tot en met zondag), een cijfer 1–10 en één zin. De samenvatting wordt elke keer
@@ -12,15 +13,6 @@ import { isoWeek } from './weeks'
 // samenvoegen). Geen bedragen en geen namen van studenten: Vandaag staat ook open als studenten meekijken.
 
 export const LESSON_MAX = 200
-
-export function mondayOf(date: string): string {
-  const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7
-  return addDays(date, -weekday)
-}
-
-export function sundayOf(date: string): string {
-  return addDays(mondayOf(date), 6)
-}
 
 export function isSundayDate(date: string): boolean {
   return new Date(`${date}T00:00:00Z`).getUTCDay() === 0
@@ -123,7 +115,7 @@ export function cleanClosing(input: { rating: number | null; lesson: string }): 
 }
 
 /** Cijfer en zin opslaan voor de week van een datum (bestaat de afsluiting al, dan wordt hij bijgewerkt). */
-export async function saveClosing(store: Store, date: string, input: { rating: number | null; lesson: string; spent?: { amount: number; currency: Currency } | null }): Promise<void> {
+export async function saveClosing(store: Tx, date: string, input: { rating: number | null; lesson: string; spent?: { amount: number; currency: Currency } | null }): Promise<void> {
   const id = weekClosingId(date)
   const now = new Date().toISOString()
   const { rating, lesson } = cleanClosing(input)

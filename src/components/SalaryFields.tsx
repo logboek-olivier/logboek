@@ -2,11 +2,12 @@ import { ChevronDown, ChevronUp, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { formatMoney } from '../format'
 import { t } from '../i18n'
-import { amountInput, parseAmount } from '../model/money'
 import { noSalary, salaryDefault, withSalaryDefault } from '../model/salary'
-import { CURRENCIES, todayIso, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
+import { CURRENCIES, type Currency, type Organisation, type SalaryStatus, type Settings, type Trip, type TripSalary } from '../model/types'
 import { Icon } from './Icon'
 import { organisationLabel } from '../i18n/labels'
+import { amountInput, parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Salaris in het tripscherm, standaard ingeklapt (geen bedragen in beeld zolang Olivier er niet om vraagt). Zolang
 // Olivier niets aanpast, geldt het standaardbedrag van de organisatie; een getypt bedrag is "eigen" en wordt nooit

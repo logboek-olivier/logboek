@@ -1,12 +1,15 @@
 import { deleteDB } from 'idb'
 import { demoData, type DemoData } from './demo/data'
 import { getLang, setLang, type Lang } from './i18n'
-import { COLLECTION_PATHS, todayIso, type CollectionPath } from './model/types'
+import { COLLECTION_PATHS, type CollectionPath } from './model/types'
 import { blockNetwork, GithubClient } from './storage/github'
 import { openLogboekDb, type Db } from './storage/idb'
 import { forgetStorageLog } from './storage/storage-log'
 import { Store } from './storage/store'
 import { exclusive } from './storage/writer'
+import { commit } from './domain/commit'
+import type { Tx } from './domain/tx'
+import { todayIso } from './basis/datum'
 
 // Demomodus (Instellingen → Demomodus): de app draait op verzonnen voorbeelddata, standaard in het Engels, om hem te
 // laten zien. Harde regels:
@@ -28,9 +31,16 @@ async function deleteDemoDb(): Promise<void> {
   forgetStorageLog(DEMO_DB)
 }
 
-async function seed<P extends CollectionPath>(store: Store, data: DemoData, path: P): Promise<void> {
+/** De voorbeelddata in één keer in de demo-database (een opdracht, zoals elke wijziging). */
+function seed(store: Store, data: DemoData): Promise<unknown> {
+  return commit(store, 'demoVullen', async (tx) => {
+    for (const path of COLLECTION_PATHS) await fill(tx, data, path)
+  })
+}
+
+async function fill<P extends CollectionPath>(tx: Tx, data: DemoData, path: P): Promise<void> {
   const records = data[path]
-  if (records && records.length > 0) await store.putMany(path, records)
+  if (records && records.length > 0) await tx.putMany(path, records)
 }
 
 let networkAttempts = 0
@@ -120,7 +130,7 @@ export function startDemo(today: string = todayIso()): Promise<void> {
       const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
       store = await Store.open(db, key, offlineClient(), null, { demo: true })
       const data = demoData(today)
-      for (const path of COLLECTION_PATHS) await seed(store, data, path)
+      await seed(store, data)
       // Intussen gestopt (vergrendeld): niet alsnog beginnen.
       if (!demoWanted()) throw new Error('demo gestopt')
       state = { store, db, previousLang: getLang() }

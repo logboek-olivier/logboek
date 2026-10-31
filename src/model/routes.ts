@@ -1,10 +1,11 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { followDays } from './trip-dates'
 import { active, compareLegs, totalNm } from './derive'
 import { placeCountry, placeKey, suggestDistance } from './places'
 import { saveSettings } from './settings'
-import { newId, nowIso, type Leg, type PlannedLeg, type Settings, type Trip } from './types'
+import { newId, type Leg, type PlannedLeg, type Settings, type Trip } from './types'
 import { roleForType, weekView } from './weeks'
+import { nowIso } from '../basis/datum'
 
 // Route-sjablonen: terugkerende reeksen etappes uit de historie (bijvoorbeeld dezelfde Yacht Week-route), en
 // "Herhaal vorige trip". Een trip die zo start, krijgt boot, gebied, organisatie en de geplande etappes mee; op
@@ -112,7 +113,7 @@ export function plannedNm(legs: readonly Leg[], planned: PlannedLeg): number | n
  * datum (een tweede tik, of al gelogd), dan niets nog eens. Het land komt van de plaats, anders van de vorige dag in
  * dezelfde trip; nooit van een andere trip.
  */
-export async function logPlanned(store: Store, trip: Trip, planned: PlannedLeg, date: string, settings: Settings): Promise<Leg> {
+export async function logPlanned(store: Tx, trip: Trip, planned: PlannedLeg, date: string, settings: Settings): Promise<Leg> {
   const legs = store.get('legs.json.enc')
   const existing = active(legs).find((l) => l.tripId === trip.id && l.date === date)
   if (existing) return existing
@@ -146,7 +147,6 @@ export async function logPlanned(store: Store, trip: Trip, planned: PlannedLeg, 
   await store.put('legs.json.enc', leg)
   await followDays(store, [trip.id])
   await saveSettings(store, { lastTripId: trip.id, ...(leg.boat ? { lastBoat: leg.boat } : {}), lastRole: leg.role })
-  void store.sync()
   return leg
 }
 

@@ -10,16 +10,15 @@ import { RouteMap } from './LazyMap'
 import { boatLine } from './boat-line'
 import { useCounters } from './useCounters'
 import { ViewRows } from './Views'
-import { clearDay, dayInfo, dayLabelKey, extendOptions, resizeTrip, setDay, shrinkFor, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
-import { setStayDays, stayName } from '../model/periods'
-import { bothUndo, type Undo } from '../model/changes'
+import { dayInfo, dayLabelKey, extendOptions, shrinkFor, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
+import { stayName } from '../model/periods'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { kindLabel } from '../i18n/labels'
 import { isEarned, isIncome } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
-import { logPlanned, plannedFor, plannedNm } from '../model/routes'
+import { plannedFor, plannedNm } from '../model/routes'
 import { currentSettings } from '../model/settings'
-import { DAY_TYPES, todayIso, type DayType, type Reminder, type StayPeriod, type Trip } from '../model/types'
+import { DAY_TYPES, type DayType, type Reminder, type StayPeriod, type Trip } from '../model/types'
 import { useDueItems } from '../screens/Deadlines'
 import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
@@ -30,6 +29,9 @@ import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { WeekClosingSection } from './WeekClose'
 import { isSundayDate } from '../model/week-close'
+import { dagAutomatisch, dagOpslaan, dagsoortKiezen, periodeDatumsWijzigen } from '../domain/agenda'
+import { dagZoalsGepland } from '../domain/dagen'
+import { todayIso } from '../basis/datum'
 
 // Dagblad: dagsoort als knoppen (één tik slaat op; "Automatisch" volgt weer de trips en dagen). Bij werk de trip, de
 // boot (van de trip, per dag te overschrijven), "Zoals gepland" of "Dag loggen", nm en inkomsten (bedragen pas na
@@ -98,54 +100,39 @@ export function DaySheet({
       notify(t('day.inTrip', { name: info.trips.at(-1)!.trip.name }))
       return
     }
-    const undos: Undo[] = []
-    // De eerste of laatste dag van een trip is altijd werk: een andere dagsoort maakt de trip een dag korter.
-    if (shrink) undos.push(await resizeTrip(store, shrink))
-    const land = STAY_FROM_DAY[next]
-    if (land) {
-      // Reis, thuis of vrij: de dag komt in een periode van die soort (een aangrenzende wordt langer).
-      undos.push(await setStayDays(store, [date], land, next === 'reis' ? { travel: { from, to } } : {}))
-    } else {
-      // Een dagtoestand (beschikbaar, optie, onbeschikbaar) hoort bij een dag zonder periode.
-      if (info.stay) undos.push(await setStayDays(store, [date], null))
-      const before = own
-      await setDay(store, date, next, details(next))
-      undos.push(async () => {
-        if (before) await store.put('calendar.json.enc', { ...before, updatedAt: new Date().toISOString() })
-        else await clearDay(store, date)
-      })
-    }
-    notify(shrink ? resized(shrink) : t('day.kindSaved', { kind: t(`dayType.${next}`) }), bothUndo(...undos))
+    // De eerste of laatste dag van een trip is altijd werk: een andere dagsoort maakt de trip een dag korter. Reis,
+    // thuis of vrij: de dag komt in een periode van die soort (een aangrenzende wordt langer); een dagtoestand
+    // (beschikbaar, optie, onbeschikbaar) hoort bij een dag zonder periode.
+    const undo = await dagsoortKiezen(store, date, next, details(next), next === 'reis' ? { travel: { from, to } } : {}, shrink, STAY_FROM_DAY[next] ?? null)
+    notify(shrink ? resized(shrink) : t('day.kindSaved', { kind: t(`dayType.${next}`) }), undo)
   }
 
   async function extendTrip(option: TripResize) {
-    const undo = await resizeTrip(store, option)
+    const undo = await periodeDatumsWijzigen(store, option)
     notify(resized(option), undo)
     onClose()
   }
 
   /** Terug naar automatisch: de eigen instelling vervalt en de dag gaat uit zijn periode aan land. */
   async function automatic() {
-    if (info.stay) await setStayDays(store, [date], null)
-    await clearDay(store, date)
+    await dagAutomatisch(store, date)
   }
 
   async function save(e: FormEvent) {
     e.preventDefault()
     if (!type) return
     // Reis, thuis of vrij zonder periode (vrij tussen twee trips): eerst de periode, dan de gegevens van de dag.
-    const land = STAY_FROM_DAY[type]
-    if (land && !info.stay && info.trips.length === 0) await setStayDays(store, [date], land)
+    const land = STAY_FROM_DAY[type] ?? null
     const d = details(type)
     const hasDetails = !!(d.location?.trim() || d.boat?.trim() || d.note?.trim() || d.reason?.trim() || d.travel.from.trim() || d.travel.to.trim() || d.travel.flight.trim())
-    if (!land || hasDetails || own) await setDay(store, date, type, d)
+    await dagOpslaan(store, date, type, d, land && !info.stay && info.trips.length === 0 ? land : null, !land || hasDetails || !!own)
     notify(t('toast.daySaved'))
     onClose()
   }
 
   async function logAsPlanned() {
     if (!trip || !planned) return
-    await logPlanned(store, trip.trip, planned, date, settings)
+    await dagZoalsGepland(store, trip.trip, planned, date, settings)
     notify(t('toast.daySaved'))
     onClose()
   }
@@ -413,7 +400,7 @@ export function DayView({
 
   async function logAsPlanned() {
     if (!trip || !planned) return
-    await logPlanned(store, trip.trip, planned, date, settings)
+    await dagZoalsGepland(store, trip.trip, planned, date, settings)
     notify(t('toast.daySaved'))
     onClose()
   }

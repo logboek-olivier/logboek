@@ -1,23 +1,10 @@
 import { formatDateRange, formatWeekday } from '../format'
 import { LANGS, translate, type Lang } from '../i18n'
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { allTopics, localized } from './curricula'
-import type { Undo } from './edit'
-import { addDays } from './money'
 import { raiseStatus, statusOf } from './students'
-import {
-  DAY_SLOTS,
-  newId,
-  type Curriculum,
-  type DaySlot,
-  type LocalizedText,
-  type PlanBlock,
-  type PlanGroup,
-  type StudentLevel,
-  type Student,
-  type Topic,
-  type WeekPlan,
-} from './types'
+import { DAY_SLOTS, newId, type Curriculum, type DaySlot, type LocalizedText, type PlanBlock, type PlanGroup, type StudentLevel, type Student, type Topic, type WeekPlan } from './types'
+import { addDays } from '../basis/datum'
 
 // Planning: dagen met blokken per dagdeel, met grote thema's (de onderdelen van een cursus) in plaats van losse
 // onderwerpen. Een concept wordt zonder netwerk gemaakt uit de cursussen van de groepen: theorie-thema's 's ochtends,
@@ -383,29 +370,15 @@ export function tickItemForGroup(group: readonly Student[], topicIds: readonly s
   })
 }
 
-/** Vinkt een onderwerp af (minstens geoefend) voor de hele groep. Geeft alleen gewijzigde studenten terug. */
-export function tickForGroup(group: readonly Student[], topicId: string, now: string): Student[] {
-  return group.flatMap((s) => {
-    const raised = raiseStatus(s, topicId, 'geoefend', now)
-    return raised === s ? [] : [raised]
-  })
-}
-
 // ---------- Opslaan ----------
 
-export async function savePlan(store: Store, plan: WeekPlan): Promise<void> {
+export async function savePlan(store: Tx, plan: WeekPlan): Promise<void> {
   await store.put('plans.json.enc', { ...plan, updatedAt: new Date().toISOString(), deletedAt: null })
-  void store.sync()
 }
 
-export async function deletePlan(store: Store, plan: WeekPlan): Promise<Undo> {
+export async function deletePlan(store: Tx, plan: WeekPlan): Promise<void> {
   const now = new Date().toISOString()
   await store.put('plans.json.enc', { ...plan, updatedAt: now, deletedAt: now })
-  void store.sync()
-  return async () => {
-    await store.put('plans.json.enc', { ...plan, updatedAt: new Date().toISOString(), deletedAt: null })
-    void store.sync()
-  }
 }
 
 // ---------- Delen ----------

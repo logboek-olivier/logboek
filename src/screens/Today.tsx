@@ -1,9 +1,7 @@
 import { ReviewNotice, useReviewItems } from '../components/ReviewNotice'
 import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane, Plus } from 'lucide-react'
-import { logPlanned, plannedFor, plannedNm } from '../model/routes'
+import { plannedFor, plannedNm } from '../model/routes'
 import { activeWeek, dayCountOf, missingDays, weekView } from '../model/weeks'
-import { addDays } from '../model/money'
-import { daysBetween } from '../model/calendar'
 import { routeOf } from '../model/trip-route'
 import { totalNm } from '../model/derive'
 import { nameWithCounter } from '../model/counters'
@@ -28,11 +26,13 @@ import { DueList, useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
 import { PayoutQuestions } from '../components/MoneyPath'
 import { currentSettings, yearGoal } from '../model/settings'
-import { todayIso, type Reminder, type Trip } from '../model/types'
+import { type Reminder, type Trip } from '../model/types'
 import { daysUntil, useSession } from '../session'
 import { describeStatus, type Store } from '../storage/store'
 import { t } from '../i18n'
 import { lazyComponent } from '../lazy'
+import { dagZoalsGepland } from '../domain/dagen'
+import { addDays, daysBetween, todayIso } from '../basis/datum'
 
 // Vandaag volgt de dagsoort uit de agenda (tik = dagblad): bij werk de planning van vandaag, "Zoals gepland" en "Dag van
 // vandaag loggen"; bij reis de reisgegevens; bij rust en thuis niets om te loggen. Verder nm dit jaar met voortgang
@@ -111,7 +111,7 @@ export function Today({
   const plannedDistance = planned ? plannedNm(legs, planned) : null
   async function logAsPlanned() {
     if (!running || !planned) return
-    await logPlanned(store, running, planned, today, settings)
+    await dagZoalsGepland(store, running, planned, today, settings)
     try {
       navigator.vibrate?.(30)
     } catch {

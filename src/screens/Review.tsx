@@ -9,28 +9,16 @@ import { formatDate, formatDateRange } from '../format'
 import { t, useLang, type Lang } from '../i18n'
 import { kindLabel } from '../i18n/labels'
 import type { Undo } from '../model/changes'
-import { mergePlaceInto } from '../model/places'
 import { LegSheet } from '../components/EditSheets'
 import { stayName } from '../model/periods'
 import {
-  acceptAllKinds,
-  fixDayInStay,
-  setInvestmentCategory,
-  fixLegStart,
   legOutsideCanExtend,
-  dismissReview,
-  fixDayInTrip,
-  fixLandOverlap,
-  fixLegOutside,
-  fixMoneyWithoutPeriod,
-  makeStayFor,
-  makeTripFor,
-  setTripKind,
-  setTripOrganisation,
   type ReviewItem,
 } from '../model/review'
 import { ORGANISATIONS, WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
+import { plaatsenSamenvoegen } from '../domain/plaatsen'
+import { agendadagBijTrip, dagBeginAansluiten, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 
 // Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): twijfelgevallen en tegenstrijdigheden, elk met één knop die het
 // oplost (met ongedaan maken) en "Klopt zo". Zonder punten staat het scherm niet in Meer.
@@ -80,7 +68,7 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
         <p className="muted">{t('review.intro', { n: items.length })}</p>
       )}
       {kinds.length > 1 && (
-        <button type="button" className="btn" disabled={busy} onClick={() => void run(() => acceptAllKinds(store, kinds))}>
+        <button type="button" className="btn" disabled={busy} onClick={() => void run(() => soortenOvernemen(store, kinds))}>
           {t('review.acceptAllKinds', { n: kinds.length })}
         </button>
       )}
@@ -95,7 +83,7 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
                   {fix.label}
                 </button>
               ))}
-              <button type="button" className="btn small link" disabled={busy} onClick={() => void run(() => dismissReview(store, item), t('review.dismissed'))}>
+              <button type="button" className="btn small link" disabled={busy} onClick={() => void run(() => nakijkenKloptZo(store, item), t('review.dismissed'))}>
                 {item.kind === 'aansluiting' || item.kind === 'plaatsen' ? t('review.notSame') : t('review.ok')}
               </button>
             </div>
@@ -149,13 +137,13 @@ type Fix = { label: string; primary?: boolean } & ({ run: () => Promise<Undo>; e
 function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
   switch (item.kind) {
     case 'soort':
-      return [item.suggestion, ...KIND_CHOICES.filter((k) => k !== item.suggestion)].map((type, i) => ({ label: kindChoiceLabel(type), primary: i === 0, run: () => setTripKind(store, item.trip, type) }))
+      return [item.suggestion, ...KIND_CHOICES.filter((k) => k !== item.suggestion)].map((type, i) => ({ label: kindChoiceLabel(type), primary: i === 0, run: () => periodeSoortZetten(store, item.trip, type) }))
     case 'organisatie': {
       const order: Organisation[] = item.suggestion ? [item.suggestion, ...ORGANISATIONS.filter((o) => o !== item.suggestion)] : [...ORGANISATIONS]
-      return order.map((org, i) => ({ label: organisationLabel(org), primary: i === 0 && !!item.suggestion, run: () => setTripOrganisation(store, item.trip, org) }))
+      return order.map((org, i) => ({ label: organisationLabel(org), primary: i === 0 && !!item.suggestion, run: () => periodeOrganisatieZetten(store, item.trip, org) }))
     }
     case 'overlap-land':
-      return [{ label: t('review.otherWins', { name: item.other.name }), primary: true, run: () => fixLandOverlap(store, item.from, item.to, item.other) }]
+      return [{ label: t('review.otherWins', { name: item.other.name }), primary: true, run: () => landperiodeInkorten(store, item.from, item.to, item.other) }]
     case 'dag-buiten':
       // Ver buiten de trip is de datum vast fout: dan de dag bewerken, nooit weken verlengen met één tik.
       if (!item.target && !legOutsideCanExtend(item.leg, item.trip)) return [{ label: t('review.editDay'), primary: true, edit: item.leg }]
@@ -163,30 +151,30 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
         {
           label: item.target ? t('review.moveTo', { name: item.target.name }) : t('review.extendTo', { name: item.trip.name, date: formatDate(item.leg.date) }),
           primary: true,
-          run: () => fixLegOutside(store, item.leg, item.trip, item.target),
+          run: () => dagBuitenPeriodeOplossen(store, item.leg, item.trip, item.target),
         },
         { label: t('review.editDay'), edit: item.leg },
       ]
     case 'agendadag-in-trip':
-      return [{ label: t('review.belongsTo', { name: item.trip.name }), primary: true, run: () => fixDayInTrip(store, item.day) }]
+      return [{ label: t('review.belongsTo', { name: item.trip.name }), primary: true, run: () => agendadagBijTrip(store, item.day) }]
     case 'werkdag-zonder-trip':
-      return [{ label: t('review.makeTrip'), primary: true, run: () => makeTripFor(store, item.from, item.to, lang) }]
+      return [{ label: t('review.makeTrip'), primary: true, run: () => periodeMakenOverDagen(store, item.from, item.to, lang) }]
     case 'dag-zonder-periode':
-      return [{ label: t('review.makePeriod'), primary: true, run: () => makeStayFor(store, item.stayKind, item.from, item.to) }]
+      return [{ label: t('review.makePeriod'), primary: true, run: () => landperiodeMaken(store, item.stayKind, item.from, item.to) }]
     case 'geld-zonder-periode':
-      return [{ label: item.target ? t('review.linkTo', { name: item.target.name }) : t('review.makeHome'), primary: true, run: () => fixMoneyWithoutPeriod(store, item.tx, item.target) }]
+      return [{ label: item.target ? t('review.linkTo', { name: item.target.name }) : t('review.makeHome'), primary: true, run: () => geldKoppelen(store, item.tx, item.target) }]
     case 'plaatsen':
-      return [{ label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), primary: true, run: () => mergePlaceInto(store, item.from, item.into) }]
+      return [{ label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), primary: true, run: () => plaatsenSamenvoegen(store, item.from, item.into) }]
     case 'aansluiting':
       // Eerst alleen deze dag; overal samenvoegen raakt ook andere trips en staat er daarom met het aantal dagen bij.
       return [
-        { label: t('review.startAt', { name: item.previous.toPlace }), primary: true, run: () => fixLegStart(store, item.leg, item.previous) },
-        { label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), run: () => mergePlaceInto(store, item.from, item.into) },
+        { label: t('review.startAt', { name: item.previous.toPlace }), primary: true, run: () => dagBeginAansluiten(store, item.leg, item.previous) },
+        { label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), run: () => plaatsenSamenvoegen(store, item.from, item.into) },
       ]
     case 'investering-soort':
-      return (['opleiding', 'uitrusting'] as const).map((c) => ({ label: t(`costCategory.${c}`), run: () => setInvestmentCategory(store, item.tx, c) }))
+      return (['opleiding', 'uitrusting'] as const).map((c) => ({ label: t(`costCategory.${c}`), run: () => investeringssoortZetten(store, item.tx, c) }))
     case 'agendadag-in-periode':
-      return [{ label: t('review.dayWins', { type: t(`dayType.${item.day.type}`) }), primary: true, run: () => fixDayInStay(store, item.day) }]
+      return [{ label: t('review.dayWins', { type: t(`dayType.${item.day.type}`) }), primary: true, run: () => dagtoestandUitLandperiode(store, item.day) }]
     case 'overlap-trips':
       return []
   }

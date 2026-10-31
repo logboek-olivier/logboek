@@ -1,20 +1,15 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { amountInput, parseAmount } from '../src/model/money'
-import { deleteTransaction, updateTransaction } from '../src/model/edit'
-import { receiveSalary } from '../src/model/salary'
 import { taxYear } from '../src/model/tax-year'
 import {
   asksPerTrip,
   cashOnHand,
-  depositCash,
   expectedPayout,
   hasSalaryIncome,
   minimumPayout,
   payoutQuestions,
   payoutRule,
   payoutSuggestion,
-  recordPayout,
   salaryState,
   splitPayout,
   tripMoney,
@@ -26,6 +21,9 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { put, putMany } from './helpers/schrijf'
+import { contantGestort, geldBewerken, geldVerwijderen, salarisOntvangen, uitbetalingInvoeren } from '../src/domain/geld'
+import { amountInput, parseAmount } from '../src/basis/bedrag'
 
 // Ronde 3 · PR 3: het geldpad per trip. Salaris verwacht, te ontvangen of ontvangen; een uitbetaling per organisatie
 // vinkt de trips in één keer af (per trip een eigen inkomen); contante fooien staan in Contant tot ze gestort zijn.
@@ -117,8 +115,8 @@ describe('uitbetaling per organisatie', () => {
     const s = await store()
     const a = trip('a', '2026-10-01', '2026-10-07', { salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'eigen', askAfter: '2026-11-01' } })
     const b = trip('b', '2026-10-15', '2026-10-21')
-    await s.putMany('trips.json.enc', [a, b])
-    const undo = await recordPayout(s, { org: 'sailing-virgins', amount: 1950, currency: 'EUR', date: '2026-11-05' }, [a, b], null)
+    await putMany(s, 'trips.json.enc', [a, b])
+    const undo = await uitbetalingInvoeren(s, { org: 'sailing-virgins', amount: 1950, currency: 'EUR', date: '2026-11-05' }, [a, b], null)
     const txs = s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)
     expect(txs.map((tx) => [tx.tripId, tx.amount, tx.kind, tx.date])).toEqual(expect.arrayContaining([['a', 975, 'loon', '2026-11-05'], ['b', 975, 'loon', '2026-11-05']]))
     expect(new Set(txs.map((tx) => tx.payoutId)).size).toBe(1)
@@ -130,12 +128,12 @@ describe('uitbetaling per organisatie', () => {
     // Het eigen bedrag blijft staan, ook na ontvangen.
     expect(s.list('trips.json.enc').find((t) => t.id === 'a')!.salary).toMatchObject({ amount: 1000, source: 'eigen' })
     // Een tweede tik op dezelfde trips boekt niets nog eens.
-    await recordPayout(s, { org: 'sailing-virgins', amount: 1950, currency: 'EUR', date: '2026-11-05' }, [a, b], null)
+    await uitbetalingInvoeren(s, { org: 'sailing-virgins', amount: 1950, currency: 'EUR', date: '2026-11-05' }, [a, b], null)
     expect(s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)).toHaveLength(2)
     // In het jaaroverzicht telt de uitbetaling precies één keer.
     expect(taxYear(s.list('transactions.json.enc'), s.list('trips.json.enc'), 2026, null).totalEur).toBe(1950)
     // Ongedaan maken zet alleen het salaris terug: een naamwijziging intussen blijft.
-    await s.put('trips.json.enc', { ...s.list('trips.json.enc').find((t) => t.id === 'b')!, name: 'Nep b nieuw', updatedAt: new Date().toISOString() })
+    await put(s, 'trips.json.enc', { ...s.list('trips.json.enc').find((t) => t.id === 'b')!, name: 'Nep b nieuw', updatedAt: new Date().toISOString() })
     await undo()
     expect(s.list('transactions.json.enc').every((tx) => tx.deletedAt !== null)).toBe(true)
     expect(s.list('trips.json.enc').map((t) => t.salary!.status)).toEqual(['verwacht', 'verwacht'])
@@ -145,22 +143,22 @@ describe('uitbetaling per organisatie', () => {
   it('een uitbetaling in dollars krijgt de koers van de datum; te klein voor de trips wordt geweigerd', async () => {
     const s = await store()
     const a = trip('a', '2026-10-01', '2026-10-07', { salary: { amount: 1100, currency: 'USD', status: 'verwacht', source: 'eigen' } })
-    await s.putMany('trips.json.enc', [a])
-    await expect(recordPayout(s, { org: 'sailing-virgins', amount: 0.001, currency: 'USD', date: '2026-11-05' }, [a], RATES)).rejects.toThrow()
+    await putMany(s, 'trips.json.enc', [a])
+    await expect(uitbetalingInvoeren(s, { org: 'sailing-virgins', amount: 0.001, currency: 'USD', date: '2026-11-05' }, [a], RATES)).rejects.toThrow()
     // Een definitieve koers (de datum staat in het koersbestand) wordt opgeslagen; een voorlopige nooit.
-    await recordPayout(s, { org: 'sailing-virgins', amount: 1100, currency: 'USD', date: '2026-10-01' }, [a], RATES)
+    await uitbetalingInvoeren(s, { org: 'sailing-virgins', amount: 1100, currency: 'USD', date: '2026-10-01' }, [a], RATES)
     expect(s.list('transactions.json.enc')[0]).toMatchObject({ amount: 1100, currency: 'USD', rate: 1.1, amountEur: 1000 })
   })
 
   it('salaris ontvangen twee keer achter elkaar boekt één inkomen; het inkomen verwijderen zet het salaris weer op te ontvangen', async () => {
     const s = await store()
     const a = trip('a', '2026-10-01', '2026-10-07')
-    await s.putMany('trips.json.enc', [a])
-    await receiveSalary(s, a, '2026-10-30')
-    await receiveSalary(s, a, '2026-10-30')
+    await putMany(s, 'trips.json.enc', [a])
+    await salarisOntvangen(s, a, '2026-10-30')
+    await salarisOntvangen(s, a, '2026-10-30')
     const incomes = s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)
     expect(incomes).toHaveLength(1)
-    const undo = await deleteTransaction(s, incomes[0]!)
+    const undo = await geldVerwijderen(s, incomes[0]!)
     expect(s.list('trips.json.enc')[0]!.salary).toMatchObject({ status: 'verwacht' })
     expect(s.list('trips.json.enc')[0]!.salary!.transactionId).toBeUndefined()
     await undo()
@@ -191,30 +189,30 @@ describe('uitbetaling per organisatie', () => {
 describe('contant', () => {
   it('contante fooien per valuta tot ze gestort zijn; gestort haalt ze uit Contant, met ongedaan maken', async () => {
     const s = await store()
-    await s.putMany('transactions.json.enc', [tip('c1', { tipVia: 'contant' }), tip('c2', { tipVia: 'contant', currency: 'USD', amount: 20 }), tip('b1', { tipVia: 'bank' }), tip('u1')])
+    await putMany(s, 'transactions.json.enc', [tip('c1', { tipVia: 'contant' }), tip('c2', { tipVia: 'contant', currency: 'USD', amount: 20 }), tip('b1', { tipVia: 'bank' }), tip('u1')])
     expect(cashOnHand(s.list('transactions.json.enc'))).toEqual({ EUR: 50, USD: 20 })
-    const undo = await depositCash(s, 'EUR', '2026-10-30')
+    const undo = await contantGestort(s, 'EUR', '2026-10-30')
     expect(cashOnHand(s.list('transactions.json.enc'))).toEqual({ USD: 20 })
     expect(s.list('transactions.json.enc').find((tx) => tx.id === 'c1')!.depositedAt).toBe('2026-10-30')
     await undo()
     expect(cashOnHand(s.list('transactions.json.enc'))).toEqual({ EUR: 50, USD: 20 })
     // Gestort op een eerdere datum: een fooi van daarna kan er niet bij zitten.
-    await depositCash(s, 'EUR', '2026-10-05')
+    await contantGestort(s, 'EUR', '2026-10-05')
     expect(cashOnHand(s.list('transactions.json.enc'))).toEqual({ EUR: 50, USD: 20 })
   })
 
   it('contant of bank in het bewerkblad: onbekend, een andere soort en van contant naar bank ruimen gestort op', async () => {
     const s = await store()
     const c = tip('c', { tipVia: 'contant', depositedAt: '2026-10-12' })
-    await s.putMany('transactions.json.enc', [c])
+    await putMany(s, 'transactions.json.enc', [c])
     const base = { date: c.date, kind: c.kind, amount: c.amount, currency: c.currency, source: c.source }
-    await updateTransaction(s, c, { ...base, tipVia: 'bank' })
+    await geldBewerken(s, c, { ...base, tipVia: 'bank' })
     expect(s.list('transactions.json.enc')[0]).toMatchObject({ tipVia: 'bank' })
     expect(s.list('transactions.json.enc')[0]!.depositedAt).toBeUndefined()
-    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { ...base, tipVia: null })
+    await geldBewerken(s, s.list('transactions.json.enc')[0]!, { ...base, tipVia: null })
     expect(s.list('transactions.json.enc')[0]!.tipVia).toBeUndefined()
-    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { ...base, tipVia: 'contant', depositedAt: '2026-10-12' })
-    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { ...base, kind: 'kosten' })
+    await geldBewerken(s, s.list('transactions.json.enc')[0]!, { ...base, tipVia: 'contant', depositedAt: '2026-10-12' })
+    await geldBewerken(s, s.list('transactions.json.enc')[0]!, { ...base, kind: 'kosten' })
     expect(s.list('transactions.json.enc')[0]!.tipVia).toBeUndefined()
     expect(s.list('transactions.json.enc')[0]!.depositedAt).toBeUndefined()
   })

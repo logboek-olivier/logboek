@@ -8,7 +8,7 @@ import { WeekSheet } from '../components/WeekSheet'
 import { formatDateRange } from '../format'
 import { t } from '../i18n'
 import { currentSettings } from '../model/settings'
-import { todayIso, type Trip } from '../model/types'
+import { type Trip } from '../model/types'
 import { daysUntil } from '../session'
 import { tripIncomplete } from '../model/gaps'
 import { IncompleteBadge } from '../components/Incomplete'
@@ -19,6 +19,7 @@ import { useCounters } from '../components/useCounters'
 import { boatLine, TripOverviewSheet } from '../components/TripOverview'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
+import { todayIso } from '../basis/datum'
 
 // Deze trip: de lopende trip op de periodepagina (src/components/PeriodPage.tsx, overal dezelfde), met daaronder de
 // komende trips.

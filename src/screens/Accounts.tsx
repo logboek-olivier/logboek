@@ -13,29 +13,13 @@ import { formatDate, formatMoney, formatMonth } from '../format'
 import { getLang, t, type MessageKey } from '../i18n'
 import { columnChoices, detectPreset, guessMapping, MappingIncompleteError, monthlyPoints, readBalances, type ColumnMapping, type ImportMode, type ImportResult, type PresetId } from '../import/accounts'
 import { FileFormatError, readRowSources, type SheetRow } from '../import/rows'
-import {
-  accountBalances,
-  balanceOn,
-  cleanAccount,
-  DEFAULT_KIND,
-  deleteAccount,
-  deleteBalance,
-  isDebt,
-  liveAccounts,
-  parseStand,
-  netWorth,
-  netWorthSeries,
-  pace,
-  saveAccount,
-  setBalance,
-  signedAmount,
-  toEur,
-  writeBalances,
-  type AccountInput,
-} from '../model/accounts'
+import { accountBalances, balanceOn, cleanAccount, DEFAULT_KIND, isDebt, liveAccounts, netWorth, netWorthSeries, pace, toEur, type AccountInput } from '../model/accounts'
 import { getRates, subscribeRates } from '../model/rates'
-import { ACCOUNT_KINDS, ACCOUNT_PROVIDERS, CURRENCIES, todayIso, type Account, type AccountProvider, type Balance, type Currency } from '../model/types'
+import { ACCOUNT_KINDS, ACCOUNT_PROVIDERS, CURRENCIES, type Account, type AccountProvider, type Balance, type Currency } from '../model/types'
 import type { Store } from '../storage/store'
+import { rekeningOpslaan, rekeningVerwijderen, standenImporteren, standOpslaan, standVerwijderen, standWijzigen } from '../domain/geld'
+import { parseStand } from '../basis/bedrag'
+import { addDays, todayIso } from '../basis/datum'
 
 // Meer → Rekeningen: de netto waarde (laatste stand per rekening, in euro, schulden negatief), het tempo ("nog N maanden
 // tot netto waarde positief") en per rekening de standen per maand. Een stand komt met de hand of uit een export van de
@@ -64,7 +48,7 @@ export function Accounts({ store, notify }: { store: Store; notify: Notify }) {
   const oldest = accounts
     .filter((a) => !a.closedAt || a.closedAt > today)
     .map((a) => ({ name: a.name, date: balanceOn(balances, a.id, today)?.date }))
-    .filter((a): a is { name: string; date: string } => !!a.date && a.date < addDaysIso(today, -45))
+    .filter((a): a is { name: string; date: string } => !!a.date && a.date < addDays(today, -45))
     .sort((a, b) => a.date.localeCompare(b.date))[0]
 
   return (
@@ -156,12 +140,6 @@ export function Accounts({ store, notify }: { store: Store; notify: Notify }) {
   )
 }
 
-function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
 function paceText(p: ReturnType<typeof pace>): string {
   if (p.state === 'te-weinig') return t('accounts.pace.tooLittle')
   if (p.state === 'geen-koers') return t('accounts.pace.noRate')
@@ -238,7 +216,7 @@ function BalanceForm({ store, account, notify }: { store: Store; account: Accoun
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!ok) return
-    const written = await setBalance(store, account, date, value)
+    const written = await standOpslaan(store, account, date, value)
     setAmount('')
     notify(written ? t('accounts.standSaved') : t('accounts.standNewer'))
   }
@@ -272,13 +250,13 @@ function BalanceView({ store, account, balance, notify, onClose }: { store: Stor
   async function save(e: FormEvent) {
     e.preventDefault()
     if (value === null) return
-    await store.put('balances.json.enc', { ...balance, amount: signedAmount(account, value), source: 'handmatig', updatedAt: new Date().toISOString() })
+    await standWijzigen(store, account, balance, value)
     onClose()
     notify(t('accounts.standSaved'))
   }
 
   async function remove() {
-    const undo = await deleteBalance(store, balance)
+    const undo = await standVerwijderen(store, balance)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -339,14 +317,14 @@ function AccountSheet({ store, account, notify, onClose }: { store: Store; accou
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    await saveAccount(store, account?.id ?? null, cleanAccount({ ...input, name }))
+    await rekeningOpslaan(store, account?.id ?? null, cleanAccount({ ...input, name }))
     onClose()
     notify(t('accounts.saved'))
   }
 
   async function remove() {
     if (!account) return
-    const undo = await deleteAccount(store, account)
+    const undo = await rekeningVerwijderen(store, account)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -482,7 +460,7 @@ function ImportSheet({ store, account, notify, onClose }: { store: Store; accoun
   async function save() {
     if (points.length === 0) return
     setBusy(true)
-    const written = await writeBalances(store, account, points, 'import')
+    const { result: written } = await standenImporteren(store, account, points, 'import')
     onClose()
     notify(t('accounts.imported', { n: written.length }))
   }

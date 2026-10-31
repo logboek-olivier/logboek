@@ -1,4 +1,4 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { deviceId } from '../storage/device'
 import type { Settings } from './types'
 
@@ -48,7 +48,7 @@ export function currentSettings(records: readonly Settings[]): Settings {
 }
 
 /** Instellingen opslaan; "laatst gebruikt" gaat naar het record van dit apparaat, de rest naar de instellingen. */
-export async function saveSettings(store: Store, patch: Partial<Omit<Settings, 'id' | 'updatedAt' | 'deletedAt'>>): Promise<void> {
+export async function saveSettings(store: Tx, patch: Partial<Omit<Settings, 'id' | 'updatedAt' | 'deletedAt'>>): Promise<void> {
   const records = store.get('settings.json.enc')
   const lastPatch: Record<string, unknown> = {}
   const rest: Record<string, unknown> = {}

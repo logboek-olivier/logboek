@@ -1,12 +1,14 @@
 import { getLang } from '../i18n'
-import type { Store } from '../storage/store'
-import { tripOrganisation } from './counters'
+import type { Tx } from '../domain/tx'
 import { active, totalNm } from './derive'
-import { addDays, isEarned, isIncome, mondayOf, parseStand } from './money'
+import { isEarned, isIncome } from './money'
 import { eurValue, type RatesFile } from './rates'
 import { ryaYachtmasterOffshore } from './stats'
 import { newId, type Goal, type GoalMetric, type Leg, type Milestone, type Organisation, type Session, type Skill, type Transaction, type Trip } from './types'
 import { weekView } from './weeks'
+import { parseStand } from '../basis/bedrag'
+import { addDays, mondayOf } from '../basis/datum'
+import { tripOrganisation } from '../basis/organisatie'
 
 // Doelen en skills (Meer → Doelen, snel loggen via + → Skill). Jaardoelen vullen zichzelf uit de app: nm in het jaar,
 // trips bij een organisatie, de Yachtmaster-voortgang (eisen gehaald van de zeven) en de inkomsten in euro. Losse
@@ -180,13 +182,13 @@ export function cleanText(value: string, max = 80): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-export async function saveGoal(store: Store, goal: Omit<Goal, 'id' | 'updatedAt' | 'deletedAt'> & { id?: string | undefined }): Promise<Goal> {
+export async function saveGoal(store: Tx, goal: Omit<Goal, 'id' | 'updatedAt' | 'deletedAt'> & { id?: string | undefined }): Promise<Goal> {
   const record: Goal = { ...goal, id: goal.id ?? newId(), title: cleanText(goal.title), updatedAt: new Date().toISOString(), deletedAt: null }
   await store.put('goals.json.enc', record)
   return record
 }
 
-export async function saveSkill(store: Store, skill: Omit<Skill, 'id' | 'updatedAt' | 'deletedAt'> & { id?: string | undefined }): Promise<Skill> {
+export async function saveSkill(store: Tx, skill: Omit<Skill, 'id' | 'updatedAt' | 'deletedAt'> & { id?: string | undefined }): Promise<Skill> {
   const record: Skill = {
     ...skill,
     id: skill.id ?? newId(),
@@ -204,13 +206,13 @@ export function newMilestone(title: string): Milestone {
 }
 
 /** Een mijlpaal afvinken of weer openzetten (de skill krijgt een nieuwe updatedAt). */
-export async function toggleMilestone(store: Store, skill: Skill, milestoneId: string, today: string): Promise<void> {
+export async function toggleMilestone(store: Tx, skill: Skill, milestoneId: string, today: string): Promise<void> {
   const milestones = skill.milestones.map((m) => (m.id === milestoneId ? { ...m, doneAt: m.doneAt ? null : today } : m))
   await store.put('skills.json.enc', { ...skill, milestones, updatedAt: new Date().toISOString() })
 }
 
 /** Eén sessie bij een skill of één meting bij een doel. Lege of negatieve getallen vallen weg. */
-export async function logSession(store: Store, input: { date: string; skillId?: string; goalId?: string; minutes?: number | null; value?: number | null; note?: string }): Promise<Session> {
+export async function logSession(store: Tx, input: { date: string; skillId?: string; goalId?: string; minutes?: number | null; value?: number | null; note?: string }): Promise<Session> {
   const ok = (n: number | null | undefined): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0
   const note = cleanText(input.note ?? '', 300)
   const record: Session = {

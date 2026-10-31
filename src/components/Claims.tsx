@@ -4,13 +4,12 @@ import { DecryptError, type Bytes } from '../crypto/encrypt'
 import { recordError } from '../errors'
 import { formatDate, formatMoney } from '../format'
 import { t } from '../i18n'
-import { addClaim, claimsToShow, deleteClaim, markRepaid, markSubmitted, receiptFileName, tripClaims, updateClaim, type ClaimInput } from '../model/claims'
+import { claimsToShow, receiptFileName, tripClaims, type ClaimInput } from '../model/claims'
 import { nameWithCounter } from '../model/counters'
 import { active, tripForDate } from '../model/derive'
 import { isImage, prepareFile } from '../model/documents'
-import { amountInput, parseAmount } from '../model/money'
-import { currentSettings, saveSettings } from '../model/settings'
-import { CURRENCIES, todayIso, type Claim, type Currency, type Trip } from '../model/types'
+import { currentSettings } from '../model/settings'
+import { CURRENCIES, type Claim, type Currency, type Trip } from '../model/types'
 import { activeWeek } from '../model/weeks'
 import { shareOrDownload } from '../share'
 import type { Store } from '../storage/store'
@@ -22,6 +21,10 @@ import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
+import { declaratieBewerken, declaratieIngediend, declaratieTerugbetaald, declaratieToevoegen, declaratieVerwijderen } from '../domain/geld'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { amountInput, parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Declaraties (src/model/claims.ts): + → Declaratie met een foto van het bonnetje, per trip een lijst met de status,
 // Geld → Declaraties (wat openstaat en wat geen trip heeft), en per declaratie "Bonnetje delen" (naar de app van de
@@ -157,8 +160,8 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
     if (f.invalid || busy || empty) return
     setBusy(true)
     try {
-      await addClaim(store, f.input(), file)
-      if (f.amount.trim() !== '') await saveSettings(store, { lastCurrency: f.currency })
+      await declaratieToevoegen(store, f.input(), file)
+      if (f.amount.trim() !== '') await instellingenOpslaan(store, { lastCurrency: f.currency })
       try {
         navigator.vibrate?.(20)
       } catch {
@@ -325,7 +328,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
     if (busy) return
     setBusy(true)
     try {
-      const undo = await markSubmitted(store, current, todayIso())
+      const undo = await declaratieIngediend(store, current, todayIso())
       setAskSubmitted(false)
       notify(t('claims.submittedToast'), undo)
     } finally {
@@ -410,7 +413,7 @@ function RepaySheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
     if (parsed === null || !date || busy) return
     setBusy(true)
     try {
-      const undo = await markRepaid(store, claim, { date, amount: parsed, currency })
+      const undo = await declaratieTerugbetaald(store, claim, { date, amount: parsed, currency })
       onClose()
       notify(t('claims.repaidToast'), undo)
     } finally {
@@ -452,7 +455,7 @@ function ClaimSheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
     if (f.invalid || busy) return
     setBusy(true)
     try {
-      await updateClaim(store, claim, f.input())
+      await declaratieBewerken(store, claim, f.input())
       onClose()
       notify(t('toast.saved'))
     } finally {
@@ -464,7 +467,7 @@ function ClaimSheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
     if (busy) return
     setBusy(true)
     try {
-      const undo = await deleteClaim(store, claim)
+      const undo = await declaratieVerwijderen(store, claim)
       onClose()
       notify(t('toast.deleted'), undo)
     } finally {

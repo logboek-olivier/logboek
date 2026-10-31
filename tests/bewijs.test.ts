@@ -14,6 +14,7 @@ import { encryptRecords, LocalInvalidError, sealForUpload } from '../src/storage
 import { newerBuildStarted, noteStartedBuild, ownBuildForTests } from '../src/storage/versions'
 import { FakeGithub, gitSha } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // Onleesbare bestanden: het bewijs uit de echte omgeving (wie schreef wat, met welke versie, en wat de app ermee kan),
 // de controle van elk antwoord op zijn git-sha, "Alles herstellen" met teruglezen via de blob-sha, en één schrijver over
@@ -72,7 +73,7 @@ describe('elk antwoord tegen zijn git-sha', () => {
 
   it('een beschadigd antwoord van de contents-API: opnieuw via de blob-API, gemeld, geen onleesbaar bestand', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
     expect(phone.getStatus()).toEqual({ kind: 'synced' })
     github.corruptReads = 3
@@ -84,9 +85,9 @@ describe('elk antwoord tegen zijn git-sha', () => {
 
   it('klopt ook de blob-API niet, dan stopt de sync en wordt er niets geschreven', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
-    await phone.put('trips.json.enc', trip('t2'))
+    await put(phone, 'trips.json.enc', trip('t2'))
     github.corruptReads = 50
     github.corruptBlobs = true
     const puts = github.requests.filter((r) => r.method === 'PUT').length
@@ -97,10 +98,10 @@ describe('elk antwoord tegen zijn git-sha', () => {
 
   it('klopt het antwoord voor één databestand niet: dat bestand wordt niet geschreven, de andere wel', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
-    await phone.put('trips.json.enc', trip('t2'))
-    await phone.put('places.json.enc', { id: 'p1', name: 'Nephaven', lat: 18.4, lon: -64.6, updatedAt: T, deletedAt: null })
+    await put(phone, 'trips.json.enc', trip('t2'))
+    await put(phone, 'places.json.enc', { id: 'p1', name: 'Nephaven', lat: 18.4, lon: -64.6, updatedAt: T, deletedAt: null })
     github.corruptOnly = 'trips.json.enc'
     github.corruptReads = 50
     github.corruptBlobs = true
@@ -150,7 +151,7 @@ describe('elk antwoord tegen zijn git-sha', () => {
 
   it('elk verzoek naar GitHub buiten de browsercache (no-store)', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
     await phone.check(false, -1)
     expect(github.requests.length).toBeGreaterThan(5)
@@ -172,7 +173,7 @@ describe('bewijs per onleesbaar bestand', () => {
 
   it('na een sync met een onleesbaar bestand: de versie nu en de commits, met apparaat en versie uit het commitbericht', async () => {
     const phone = await device()
-    await phone.put('settings.json.enc', { id: 'settings', updatedAt: T, deletedAt: null } as never)
+    await put(phone, 'settings.json.enc', { id: 'settings', updatedAt: T, deletedAt: null } as never)
     await phone.sync()
     // Een tweede schrijver met een andere sleutel (apparaat abcdef12, oudere versie) zet er een onleesbare versie neer.
     github.write('settings.json.enc', toBase64(await encryptRecords(k2.masterKey, 'settings.json.enc', [])), 'sync 2026-10-29T23:44:00.000Z v1.0.0+0ld0000 dabcdef12')
@@ -198,7 +199,7 @@ describe('bewijs per onleesbaar bestand', () => {
 describe('Alles herstellen', () => {
   it('een bestand dat wel ontsleutelt maar één kapot record heeft: de goede records van een ander apparaat blijven', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
     // Een ander apparaat schreef twee goede trips; één record mist zijn id (wel deze sleutel, dus wel te ontsleutelen).
     const file = { format: 'logboek-collection', schemaVersion: 1, records: [trip('elders-1'), trip('elders-2'), { name: 'kapot', updatedAt: T }] }
@@ -215,7 +216,7 @@ describe('Alles herstellen', () => {
 
   it('meteen na het herstel schrijft een ander apparaat er weer iets onleesbaars overheen: niet hersteld, met dat apparaat', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
     const foreign = toBase64(await encryptRecords(k2.masterKey, 'trips.json.enc', []))
     const message = 'sync 2026-10-30T01:00:00.000Z v1.0.0+0ld0000 dabcdef12'
@@ -236,7 +237,7 @@ describe('Alles herstellen', () => {
   })
   it('de leesbare kopie terug, een leeg bestand waar dit apparaat niets heeft; teruggelezen via de blob-sha', async () => {
     const phone = await device()
-    await phone.put('trips.json.enc', trip('t1'))
+    await put(phone, 'trips.json.enc', trip('t1'))
     await phone.sync()
     // Twee bestanden onleesbaar op GitHub: trips (dit apparaat heeft een kopie) en students (geen records hier).
     github.write('trips.json.enc', toBase64(await encryptRecords(k2.masterKey, 'trips.json.enc', [])), 'sync 2026-10-29T23:44:00.000Z v1.0.0+0ld0000 dabcdef12')
@@ -275,7 +276,7 @@ describe('één schrijver over versies heen', () => {
     ownBuildForTests('1.0.0+oud0000', '2026-10-29T18:00:00-04:00')
     try {
       const phone = await device()
-      await phone.put('trips.json.enc', trip('t1'))
+      await put(phone, 'trips.json.enc', trip('t1'))
       // Na de eerste schrijfactie start in een ander venster een nieuwere versie.
       github.afterPut = () => noteStartedBuild('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
       await phone.sync()

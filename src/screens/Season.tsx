@@ -7,13 +7,12 @@ import { useCounters } from '../components/useCounters'
 import { weekTypeLabel } from '../components/WeekSheet'
 import { formatDateRange } from '../format'
 import { t } from '../i18n'
-import { buildIndex, planningEnd, seasonWeeks, weekStart, type SeasonItem } from '../model/calendar'
+import { buildIndex, planningEnd, seasonWeeks, type SeasonItem } from '../model/calendar'
 import { nameWithCounter, type TripCounter } from '../model/counters'
-import { addDays } from '../model/money'
 import { salaryState } from '../model/money-path'
-import { todayIso } from '../model/types'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
+import { addDays, mondayOf, todayIso } from '../basis/datum'
 
 // Seizoensoverzicht: één regel per week van vandaag tot het einde van de planning (naam, datums, type, boot, gebied),
 // met gaten als "Beschikbaar: …". "Eerdere weken tonen" gaat een half jaar per tik terug.
@@ -38,11 +37,11 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
   const stays = useCollection(store, 'periods.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs, [], stays), [calendar, trips, legs, stays])
   const counters = useCounters(store)
-  const [start, setStart] = useState(weekStart(today))
+  const [start, setStart] = useState(mondayOf(today))
   const lastPlanned = planningEnd(index)
-  const end = lastPlanned && lastPlanned > addDays(weekStart(today), 6) ? lastPlanned : addDays(weekStart(today), 6)
+  const end = lastPlanned && lastPlanned > addDays(mondayOf(today), 6) ? lastPlanned : addDays(mondayOf(today), 6)
   const weeks = seasonWeeks(index, start, end, today)
-  const current = weekStart(today)
+  const current = mondayOf(today)
   // Bedragen pas na een tik (het seizoensoverzicht staat soms open als anderen meekijken).
   const [showAmounts, setShowAmounts] = useState(false)
 

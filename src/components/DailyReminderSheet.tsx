@@ -4,13 +4,14 @@ import { formatDate } from '../format'
 import { t } from '../i18n'
 import { buildIndex, dayInfo, planningEnd } from '../model/calendar'
 import { DEFAULT_REMINDER_TIME, dailyIcs, isTime } from '../model/daily'
-import { currentSettings, saveSettings } from '../model/settings'
-import { todayIso } from '../model/types'
+import { currentSettings } from '../model/settings'
 import { shareOrDownload } from '../share'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { todayIso } from '../basis/datum'
 
 // Instellingen → Herinnering: een dagelijkse herinnering in de eigen agenda-app ("Logboek: log je dag"), elke dag of
 // alleen op de werkdagen uit de agenda tot het einde van de planning. De app maakt een .ics-bestand en deelt het; hij
@@ -50,8 +51,7 @@ export function DailyReminderSheet({ store, onClose, notify }: { store: Store; o
     e.preventDefault()
     if (!valid) return
     const ics = dailyIcs({ title: t('reminderDaily.title'), description: t('reminderDaily.description'), time, start: today, ...(workdaysOnly ? { dates } : {}) })
-    await saveSettings(store, { dailyReminder: { time, workdaysOnly } })
-    void store.sync()
+    await instellingenOpslaan(store, { dailyReminder: { time, workdaysOnly } })
     await shareOrDownload(new File([ics], 'logboek-herinnering.ics', { type: 'text/calendar' }), t('reminderDaily.title'))
     onClose()
     notify(t('reminderDaily.done'))

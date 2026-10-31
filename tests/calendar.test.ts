@@ -1,11 +1,14 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { buildIndex, clearDay, dayInfo, monthSummary, monthWeeks, setDay, shiftMonth, tripBars } from '../src/model/calendar'
+import { buildIndex, dayInfo, monthSummary, monthWeeks, setDay, tripBars } from '../src/model/calendar'
 import type { CalendarDay, Leg, Reminder, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx } from './helpers/schrijf'
+import { dagsoortAutomatisch } from '../src/domain/agenda'
+import { shiftMonth } from '../src/basis/datum'
 
 // Agenda: dagsoort per dag met de voorrang eigen instelling > binnen een trip > gelogde etappe > rust tussen twee
 // trips > toekomst beschikbaar > verleden leeg. Alle gegevens verzonnen.
@@ -138,15 +141,15 @@ describe('dag zelf instellen', () => {
   it('opslaan en terug naar automatisch; één record per dag (zelfde id op elk apparaat)', async () => {
     const db = await openLogboekDb(`logboek-agenda-${++counter}`)
     const store = await Store.open(db, masterKey, new GithubClient('github_pat_AGENDA_0123456789abcdefghijklmnopqrstu', new FakeGithub().fetch))
-    await setDay(store, '2026-11-20', 'reis', { travel: { from: ' Nepstad ', to: 'Nepeiland', flight: 'NP 123' }, note: '  ' })
-    await setDay(store, '2026-11-20', 'reis', { travel: { from: 'Nepstad', to: 'Nepeiland' } })
+    await inTx(store, setDay, '2026-11-20', 'reis', { travel: { from: ' Nepstad ', to: 'Nepeiland', flight: 'NP 123' }, note: '  ' })
+    await inTx(store, setDay, '2026-11-20', 'reis', { travel: { from: 'Nepstad', to: 'Nepeiland' } })
     expect(store.list('calendar.json.enc')).toEqual([expect.objectContaining({ id: 'dag:2026-11-20', type: 'reis', travel: { from: 'Nepstad', to: 'Nepeiland' } })])
-    await clearDay(store, '2026-11-20')
+    await dagsoortAutomatisch(store, '2026-11-20')
     expect(store.list('calendar.json.enc')).toEqual([])
     // De reden hoort alleen bij onbeschikbaar, wordt ingekort en lege tekst valt weg.
-    await setDay(store, '2026-11-21', 'onbeschikbaar', { reason: `  ${'x'.repeat(300)} ` })
+    await inTx(store, setDay, '2026-11-21', 'onbeschikbaar', { reason: `  ${'x'.repeat(300)} ` })
     expect(store.list('calendar.json.enc')[0]!.reason).toHaveLength(200)
-    await setDay(store, '2026-11-21', 'onbeschikbaar', { reason: '  ' })
+    await inTx(store, setDay, '2026-11-21', 'onbeschikbaar', { reason: '  ' })
     expect(store.list('calendar.json.enc')[0]).not.toHaveProperty('reason')
     expect(dayInfo(buildIndex(store.get('calendar.json.enc'), [], []), '2026-11-20', TODAY).source).toBe('toekomst')
   })

@@ -1,13 +1,13 @@
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
-import { deleteStay, updateStay } from '../model/periods'
 import { STAY_KINDS, TRAVEL_MODES, type StayKind, type StayPeriod, type TravelMode } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
+import { landperiodeBewerken, landperiodeVerwijderen } from '../domain/agenda'
 
 // Een periode aan land bewerken: soort (reis, thuis, vrij), naam, datums, notitie en bij reis van, naar en vervoer.
 // Verwijderen onderaan, zonder vraag, met ongedaan maken; de dagen worden dan weer automatisch.
@@ -29,7 +29,7 @@ export function StaySheet({ store, stay, notify, onClose }: { store: Store; stay
     if (!valid || busy) return
     setBusy(true)
     try {
-      const undo = await updateStay(store, stay, { kind, name, startDate, endDate, note, travel: { from, to, ...(by ? { by } : {}) } })
+      const undo = await landperiodeBewerken(store, stay, { kind, name, startDate, endDate, note, travel: { from, to, ...(by ? { by } : {}) } })
       notify(t('toast.saved'), undo)
       onClose()
     } finally {
@@ -38,7 +38,7 @@ export function StaySheet({ store, stay, notify, onClose }: { store: Store; stay
   }
 
   async function remove() {
-    const undo = await deleteStay(store, stay)
+    const undo = await landperiodeVerwijderen(store, stay)
     onClose()
     notify(t('toast.deleted'), undo)
   }

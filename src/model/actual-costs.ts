@@ -1,7 +1,9 @@
 import { active } from './derive'
-import { addDays, eurOf, round2 } from './money'
+import { eurOf } from './money'
 import { rateFor, type RatesFile } from './rates'
 import type { Transaction, WeekClosing } from './types'
+import { round2 } from '../basis/bedrag'
+import { addDays, shiftMonth } from '../basis/datum'
 
 // Geld → Werkelijk: wat er per maand echt uitgegeven is. Vaste lasten (geboekt per voorbije maand, src/model/fixed-
 // bookings.ts), losse kosten (ingevoerde uitgaven van soort kosten, zonder declaraties) en de weekschatting "ongeveer los
@@ -17,12 +19,6 @@ export interface ActualMonth {
   totalEur: number
   /** Bedragen zonder koers, per valuta. */
   other: Record<string, number>
-}
-
-function shiftMonth(m: string, n: number): string {
-  const [y, mm] = m.split('-').map(Number) as [number, number]
-  const d = new Date(Date.UTC(y, mm - 1 + n, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
 /** De laatste `count` maanden tot en met deze maand, nieuwste eerst; maanden zonder iets vallen weg. */

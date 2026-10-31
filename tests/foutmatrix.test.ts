@@ -15,6 +15,7 @@ import { WRITER_VERSION, writerVersionForTests } from '../src/model/schema'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 import { UPGRADE_SAMPLES } from './upgrade/upgrade-samples'
+import { put } from './helpers/schrijf'
 
 // Foutmatrix: voor elk databestand elk soort defect, op GitHub, op dit apparaat of allebei. Na elke combinatie:
 // - de app is open (het herstelscherm over de hele app alleen bij een lokaal bestand onder een andere sleutel, en
@@ -422,7 +423,7 @@ describe('Foutmatrix: documentbestanden in de kluis', () => {
       await expect(store(s).documentFile(FILE)).rejects.toThrow()
       // Geen herstelscherm, geen syncfout: het bestand hoort bij geen enkel databestand.
       await store(s).putDocumentFile(OTHER, utf8('%PDF-ander nepdocument'))
-      await store(s).put('documents/index.json.enc', { id: 'nep-ander-document', title: 'Nepdocument', category: 'overig', mime: 'application/pdf', size: 22, offline: false, fileId: OTHER, updatedAt: new Date().toISOString(), deletedAt: null })
+      await put(store(s), 'documents/index.json.enc', { id: 'nep-ander-document', title: 'Nepdocument', category: 'overig', mime: 'application/pdf', size: 22, offline: false, fileId: OTHER, updatedAt: new Date().toISOString(), deletedAt: null })
       await store(s).sync()
       expect(store(s).getStatus()).toEqual({ kind: 'synced' })
       expect(putsTo(path)).toBe(0)
@@ -437,7 +438,7 @@ describe('Foutmatrix: documentbestanden in de kluis', () => {
     const { name } = await phone()
     const s = await openApp(name, false)
     await store(s).putDocumentFile(OTHER, utf8('%PDF-ander nepdocument'))
-    await store(s).put('documents/index.json.enc', { id: 'nep-ander-document', title: 'Nepdocument', category: 'overig', mime: 'application/pdf', size: 22, offline: false, fileId: OTHER, updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(store(s), 'documents/index.json.enc', { id: 'nep-ander-document', title: 'Nepdocument', category: 'overig', mime: 'application/pdf', size: 22, offline: false, fileId: OTHER, updatedAt: new Date().toISOString(), deletedAt: null })
     github.beforePut = (p) => {
       if (p.endsWith('.bin')) throw new TypeError('Failed to fetch')
     }
@@ -475,7 +476,7 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     github.realShas = true
     const { name } = await phone()
     const s = await openApp(name, false)
-    await store(s).put('trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-integriteit', updatedAt: new Date().toISOString() })
+    await put(store(s), 'trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-integriteit', updatedAt: new Date().toISOString() })
     github.corruptReads = 1000
     github.corruptBlobs = true
     const puts = github.requests.filter((r) => r.method === 'PUT').length
@@ -495,7 +496,7 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     github.realShas = true
     const { name } = await phone()
     const s = await openApp(name, false)
-    await store(s).put('trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-bewaard', updatedAt: new Date().toISOString() })
+    await put(store(s), 'trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-bewaard', updatedAt: new Date().toISOString() })
     github.storeDifferently = true
     await store(s).sync()
     expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'github', github: 'integrity' })
@@ -517,7 +518,7 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     expect(store(s).getStatus()).toEqual({ kind: 'synced' })
     // In een ander venster start een nieuwere versie.
     noteStartedBuild('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
-    await store(s).put('trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-oud-venster', updatedAt: new Date().toISOString() })
+    await put(store(s), 'trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-oud-venster', updatedAt: new Date().toISOString() })
     const puts = github.requests.filter((r) => r.method === 'PUT').length
     await store(s).sync()
     expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
@@ -546,19 +547,19 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     // De laptop met een nieuwere build (hogere schrijfversie) slaat een trip op en synct.
     writerVersionForTests(WRITER_VERSION + 1)
     const laptop = await cleanDevice()
-    await store(laptop).put('trips.json.enc', { ...trip, id: 'nep-trip-nieuwe-build', updatedAt: now() })
+    await put(store(laptop), 'trips.json.enc', { ...trip, id: 'nep-trip-nieuwe-build', updatedAt: now() })
     await store(laptop).sync()
     expect(store(laptop).getStatus()).toEqual({ kind: 'synced' })
     const written = github.files.get('trips.json.enc')!.sha
     laptop.lock()
     // De oudere build slaat ook iets op in dat bestand en synct: niets naar GitHub, "Werk de app bij".
     writerVersionForTests(WRITER_VERSION)
-    await store(old).put('trips.json.enc', { ...trip, id: 'nep-trip-oude-build', updatedAt: now() })
+    await put(store(old), 'trips.json.enc', { ...trip, id: 'nep-trip-oude-build', updatedAt: now() })
     const puts = PUTS()
     await store(old).sync()
     expect(store(old).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
     // Ook een volgende ronde, met een wijziging in een ander bestand, schrijft niets.
-    await store(old).put('places.json.enc', { ...(samples('places.json.enc')[0] as Place), id: 'nep-plaats-oude-build', updatedAt: now() })
+    await put(store(old), 'places.json.enc', { ...(samples('places.json.enc')[0] as Place), id: 'nep-plaats-oude-build', updatedAt: now() })
     await store(old).sync()
     expect(store(old).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
     expect(PUTS()).toBe(puts)
@@ -583,8 +584,8 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     const { name } = await phone()
     ownBuildForTests('1.0.0+oud0000', '2026-10-29T18:00:00-04:00')
     const s = await openApp(name, false)
-    await store(s).put('trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-bevroren', updatedAt: new Date().toISOString() })
-    await store(s).put('places.json.enc', { ...(samples('places.json.enc')[0] as Place), updatedAt: new Date().toISOString() })
+    await put(store(s), 'trips.json.enc', { ...(samples('trips.json.enc')[0] as Trip), id: 'nep-trip-bevroren', updatedAt: new Date().toISOString() })
+    await put(store(s), 'places.json.enc', { ...(samples('places.json.enc')[0] as Place), updatedAt: new Date().toISOString() })
     const puts = github.requests.filter((r) => r.method === 'PUT').length
     github.afterPut = () => noteStartedBuild('1.0.0+nieuw00', '2026-10-30T10:00:00-04:00')
     await store(s).sync()
@@ -666,8 +667,8 @@ describe('Foutmatrix: twee vensters en een nieuw bestand', () => {
       await Promise.all([store(a).sync(), store(b).sync()])
       github.offline = true
       const record = (id: string) => ({ ...(samples(path)[0] as unknown as Record<string, unknown>), id, updatedAt: new Date().toISOString(), deletedAt: null }) as never
-      await store(a).put(path, record(`${path}-venster-a`))
-      await store(b).put(path, record(`${path}-venster-b`))
+      await put(store(a), path, record(`${path}-venster-a`))
+      await put(store(b), path, record(`${path}-venster-b`))
       a.lock()
       b.lock()
       github.offline = false
@@ -741,9 +742,9 @@ describe('Foutmatrix: randgevallen uit de review', () => {
     await putObject(db, { path: 'legs.json.enc', blob: await broken('nieuwere versie', 'legs.json.enc'), sha: 'lokaal' })
     const s = await openApp(name, false)
     expect(store(s).getStatus()).toMatchObject({ kind: 'error', code: 'update', paths: ['legs.json.enc'] })
-    await expect(store(s).put('legs.json.enc', { ...(samples('legs.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuw' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
+    await expect(put(store(s), 'legs.json.enc', { ...(samples('legs.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuw' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
     // Tot bijwerken nergens wijzigen (ook niet in andere bestanden), zodat niets half wordt opgeslagen; kijken kan wel.
-    await expect(store(s).put('reminders.json.enc', { ...(samples('reminders.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuwe-termijn' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
+    await expect(put(store(s), 'reminders.json.enc', { ...(samples('reminders.json.enc')[0] as unknown as Record<string, unknown>), id: 'nieuwe-termijn' } as never)).rejects.toMatchObject({ name: 'NewerSchemaError' })
     expect(store(s).list('reminders.json.enc').map((r) => r.id)).not.toContain('nieuwe-termijn')
     expect(store(s).list('trips.json.enc').map((t) => t.id)).toContain(TRIP_ID)
   }, 60_000)

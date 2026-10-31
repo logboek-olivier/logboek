@@ -159,6 +159,14 @@ function isProblem(file: FileCheck): boolean {
 }
 type MetaCheck = 'match' | 'mismatch' | 'missing' | 'unknown'
 
+export type WriteEntries = ReadonlyArray<{ path: CollectionPath; records: readonly SyncRecord[] }>
+
+/** Zie `Store.beginWrite`. */
+export interface WriteHandle {
+  read<P extends CollectionPath>(path: P): readonly Collections[P][]
+  write(entries: WriteEntries): Promise<Array<{ path: CollectionPath; records: SyncRecord[] }>>
+}
+
 export class Store {
   private readonly collections = new Map<CollectionPath, SyncRecord[]>()
   private readonly listeners = new Set<Listener>()
@@ -342,42 +350,55 @@ export class Store {
     return this.get(path).filter((r) => r.deletedAt === null)
   }
 
-  put<P extends CollectionPath>(path: P, record: Collections[P]): Promise<void> {
-    return this.putMany(path, [record])
+  /**
+   * Een schrijfhandvat voor één opdracht (alleen voor `src/domain/tx.ts`: elke wijziging gaat via een opdracht). Alleen
+   * te krijgen zolang de app ontgrendeld is. Een opdracht die zo begon, wordt afgemaakt, ook als er intussen vergrendeld
+   * wordt: lezen gaat dan verder op de toestand van het begin, en het schrijven komt nog op het apparaat (en telt daarna
+   * als wachtende wijziging).
+   */
+  beginWrite(): WriteHandle {
+    this.assertUnlocked()
+    const snapshot = new Map(this.collections)
+    return {
+      read: <P extends CollectionPath>(path: P) => ((this.locked ? snapshot.get(path) : this.collections.get(path)) ?? []) as Collections[P][],
+      write: (entries) => this.commitWrites(entries),
+    }
   }
 
   /**
-   * Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). Een wijziging is altijd nieuwer dan
-   * de versie die hier al staat: heeft die een tijd in de toekomst (een ander apparaat met een klok die voorloopt, of de
-   * eigen klok sprong terug), dan krijgt de wijziging een tijd net daarna. Zo gaat een bewerking of verwijdering nooit
-   * stil verloren.
+   * Records over meerdere bestanden in één keer opslaan: alle bestanden en de outbox in één IndexedDB-transactie, dus
+   * alles of niets. Een wijziging is altijd nieuwer dan de versie die hier al staat: heeft die een tijd in de toekomst (een
+   * ander apparaat met een klok die voorloopt, of de eigen klok sprong terug), dan krijgt de wijziging een tijd net daarna.
+   * Zo gaat een bewerking of verwijdering nooit stil verloren.
    */
-  async putMany<P extends CollectionPath>(path: P, given: readonly Collections[P][]): Promise<void> {
-    this.assertUnlocked()
+  private async commitWrites(entries: WriteEntries): Promise<Array<{ path: CollectionPath; records: SyncRecord[] }>> {
     // Een lokaal bestand van een nieuwere app: tot bijwerken alleen kijken, nergens wijzigen. Vóór elke wijziging
     // weigeren (ook in andere bestanden), zodat een handeling die meerdere bestanden raakt nooit half wordt opgeslagen.
     if (this.frozen.size > 0) throw new NewerSchemaError(0)
-    const here = new Map((this.collections.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
-    const records = given.map((r) => {
-      const before = here.get(r.id)
-      return before !== undefined && r.updatedAt <= before ? { ...r, updatedAt: justAfter(before) } : r
-    })
-    const ids = new Set(records.map((r) => r.id))
-    const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
-    this.collections.set(path, [...kept, ...records])
-    for (const r of records) {
-      this.outbox = markPending(this.outbox, path, r.id, r.updatedAt)
-      this.unsaved = markPending(this.unsaved, path, r.id, r.updatedAt)
+    const paths: CollectionPath[] = []
+    const stored: Array<{ path: CollectionPath; records: SyncRecord[] }> = []
+    for (const { path, records: given } of entries) {
+      if (given.length === 0) continue
+      const here = new Map((this.collections.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
+      const records = given.map((r) => {
+        const before = here.get(r.id)
+        return before !== undefined && r.updatedAt <= before ? { ...r, updatedAt: justAfter(before) } : r
+      })
+      const ids = new Set(records.map((r) => r.id))
+      const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
+      this.collections.set(path, [...kept, ...records])
+      for (const r of records) {
+        this.outbox = markPending(this.outbox, path, r.id, r.updatedAt)
+        this.unsaved = markPending(this.unsaved, path, r.id, r.updatedAt)
+      }
+      if (!paths.includes(path)) paths.push(path)
+      stored.push({ path, records })
     }
+    if (paths.length === 0) return stored
     if (this.syncing) this.syncAgain = true
-    await this.persist(path)
-  }
-
-  async remove<P extends CollectionPath>(path: P, id: string): Promise<void> {
-    const current = this.get(path).find((r) => r.id === id)
-    if (!current || current.deletedAt !== null) return
-    const now = new Date().toISOString()
-    await this.put(path, { ...current, updatedAt: now, deletedAt: now })
+    // Wat hier staat, is de vastgelegde versie (een begonnen opslag wordt afgemaakt, ook na vergrendelen).
+    await this.persist(paths)
+    return stored
   }
 
   /** Wachtende wijzigingen: de outbox plus de documentbestanden die nog niet op GitHub staan. */
@@ -1184,27 +1205,33 @@ export class Store {
    * opslaan vergrendeld wordt (de app sluit), wordt deze opslag afgemaakt. Wat een ander venster intussen opsloeg, wordt
    * samengevoegd (laatste updatedAt wint), nooit overschreven. Bestand en outbox gaan in één transactie.
    */
-  private async persist(path: CollectionPath): Promise<void> {
-    if (this.frozen.has(path)) return
-    const mine = this.collections.get(path) ?? []
-    const added = { ...(this.unsaved[path] ?? {}) }
+  /** De bestanden in `paths` op het apparaat zetten, samen met de outbox, in één IndexedDB-transactie. */
+  private async persist(given: readonly CollectionPath[]): Promise<void> {
+    const paths = given.filter((p) => !this.frozen.has(p))
+    if (paths.length === 0) return
+    const added = Object.fromEntries(paths.map((p) => [p, { ...(this.unsaved[p] ?? {}) }])) as Outbox
     await exclusive(this.db.name, 'lokaal', async () => {
-      const merged = await this.mergeWithDisk(path, mine)
+      const merged = new Map<CollectionPath, SyncRecord[]>()
+      const objects: StoredObject[] = []
+      for (const path of paths) {
+        const records = await this.mergeWithDisk(path, this.collections.get(path) ?? [])
+        merged.set(path, records)
+        const stored = await getObject(this.db, path)
+        objects.push({ path, blob: await encryptRecords(this.masterKey, path, records), sha: stored?.sha ?? null })
+      }
       // De outbox op het apparaat is leidend (een ander venster kan regels al gesynct en weggehaald hebben); alleen wat
       // dit venster nu opslaat komt erbij.
-      const nextOutbox = mergeOutbox(await this.diskOutbox(), { [path]: added })
-      const blob = await encryptRecords(this.masterKey, path, merged)
-      const stored = await getObject(this.db, path)
-      await this.putGuarded({ path, blob, sha: stored?.sha ?? null }, nextOutbox)
-      this.forgetUnsaved(path, added)
+      const nextOutbox = mergeOutbox(await this.diskOutbox(), added)
+      await this.putGuarded(objects, nextOutbox)
+      for (const path of paths) this.forgetUnsaved(path, added[path] ?? {})
       if (this.locked) return
       // Andere vensters en wijzigingen die tijdens het opslaan in het geheugen kwamen, allebei behouden.
-      this.collections.set(path, mergeRecords(merged, this.collections.get(path) ?? []))
+      for (const [path, records] of merged) this.collections.set(path, mergeRecords(records, this.collections.get(path) ?? []))
       this.outbox = mergeOutbox(nextOutbox, this.unsaved)
     })
     if (this.locked) return
     this.savedSeq = ++this.seq
-    this.broadcast(path)
+    for (const path of paths) this.broadcast(path)
     if (this.status.kind !== 'syncing') this.setStatus(this.idleStatus())
     else this.notify()
     this.scheduleSync()
@@ -1311,7 +1338,7 @@ export class Store {
    * transactie, zodat een ander tabblad er niet tussen een ander logboek kan neerzetten. Na vergrendelen hoort een
    * ander logboek op dit apparaat niet meer bij deze opslag: dan stil niets schrijven.
    */
-  private async putGuarded(object: StoredObject, outbox: Outbox): Promise<void> {
+  private async putGuarded(object: StoredObject | readonly StoredObject[], outbox: Outbox): Promise<void> {
     if (this.mismatch) throw new KeyMismatchError('local')
     const local = { name: OUTBOX_NAME, blob: await encryptOutbox(this.masterKey, outbox) }
     if (this.vaultCheck === null) {

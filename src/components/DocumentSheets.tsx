@@ -4,8 +4,7 @@ import { DecryptError, type Bytes } from '../crypto/encrypt'
 import { recordError } from '../errors'
 import { formatDate, formatNumber } from '../format'
 import { t, type MessageKey } from '../i18n'
-import { addDocument, isImage, OFFLINE_BY_DEFAULT, prepareFile, sizeLabel, UnsupportedFileError, updateDocument, type DocumentInput } from '../model/documents'
-import { deleteDocument } from '../model/edit'
+import { isImage, OFFLINE_BY_DEFAULT, prepareFile, sizeLabel, UnsupportedFileError, type DocumentInput } from '../model/documents'
 import { DOCUMENT_CATEGORIES, type DocumentCategory, type VaultDocument } from '../model/types'
 import { shareOrDownload } from '../share'
 import { DocumentTooLargeError, DocumentUnavailableError } from '../storage/documents'
@@ -18,6 +17,7 @@ import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
+import { documentBewerken, documentToevoegen, documentVerwijderen } from '../domain/kluis'
 
 // Kluis: een document toevoegen (foto maken of bestand kiezen), bekijken (foto in beeld, PDF openen via delen of
 // downloaden) en bewerken of verwijderen (met ongedaan maken). Het bestand wordt pas in het geheugen ontsleuteld als
@@ -129,7 +129,7 @@ export function AddDocumentSheet({ store, notify, onClose }: { store: Store; not
     setBusy(true)
     setError(null)
     try {
-      await addDocument(store, input, file)
+      await documentToevoegen(store, input, file)
       onClose()
       notify(t('vault.saved'))
     } catch (err) {
@@ -281,13 +281,13 @@ export function DocumentSheet({ store, document, notify, onClose }: { store: Sto
     e.preventDefault()
     if (!input.title.trim()) return
     setBusy(true)
-    await updateDocument(store, document, input)
+    await documentBewerken(store, document, input)
     onClose()
     notify(t('vault.saved'))
   }
 
   async function remove() {
-    const undo = await deleteDocument(store, document)
+    const undo = await documentVerwijderen(store, document)
     onClose()
     notify(t('toast.deleted'), undo)
   }
