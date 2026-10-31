@@ -1,14 +1,17 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { careerInvestment, expenseCategory, expenseTargets, kindForCategory, resolveTarget, sourceOnSave, targetKey } from '../src/model/expenses'
-import { allPeriods, setStayDays } from '../src/model/periods'
-import { reviewInput, reviewItems, setInvestmentCategory } from '../src/model/review'
-import { updateTransaction } from '../src/model/edit'
+import { allPeriods } from '../src/model/periods'
+import { reviewInput, reviewItems } from '../src/model/review'
 import type { StayPeriod, Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put } from './helpers/schrijf'
+import { landperiodeZetten } from '../src/domain/agenda'
+import { geldBewerken } from '../src/domain/geld'
+import { investeringssoortZetten } from '../src/domain/trips'
 
 // PR 2 van het periodemodel: uitgaven hangen logisch aan een periode ("Hoort bij"), met een soort (reizen, eten en
 // drinken, verblijf, opleiding, uitrusting, overig); opleiding en uitrusting zijn een investering in de zeilcarrière.
@@ -59,8 +62,8 @@ describe('Hoort bij', () => {
 
   it('opslaan op een dag zonder periode maakt eerst de periode (een aangrenzende thuisperiode wordt langer)', async () => {
     const s = await store()
-    await setStayDays(s, ['2026-12-01', '2026-12-02'], 'thuis')
-    const id = await resolveTarget(s, { kind: 'nieuw', stayKind: 'thuis' }, '2026-12-03')
+    await landperiodeZetten(s, ['2026-12-01', '2026-12-02'], 'thuis')
+    const id = await inTx(s, resolveTarget, { kind: 'nieuw', stayKind: 'thuis' }, '2026-12-03')
     const live = s.list('periods.json.enc')
     expect(live).toHaveLength(1)
     expect(live[0]).toMatchObject({ id, startDate: '2026-12-01', endDate: '2026-12-03' })
@@ -92,18 +95,18 @@ describe('soort en bron', () => {
 
   it('bewerken: de soort blijft bij een investering (eerst rood: werd gewist)', async () => {
     const s = await store()
-    await s.put('transactions.json.enc', tx('i', { kind: 'investering', category: 'opleiding' }))
-    await updateTransaction(s, s.list('transactions.json.enc')[0]!, { date: '2026-11-01', kind: 'investering', amount: 12, currency: 'EUR', source: 'overig', category: 'uitrusting' })
+    await put(s, 'transactions.json.enc', tx('i', { kind: 'investering', category: 'opleiding' }))
+    await geldBewerken(s, s.list('transactions.json.enc')[0]!, { date: '2026-11-01', kind: 'investering', amount: 12, currency: 'EUR', source: 'overig', category: 'uitrusting' })
     expect(s.list('transactions.json.enc')[0]).toMatchObject({ kind: 'investering', category: 'uitrusting', amount: 12 })
   })
 
   it('een investering van vóór het periodemodel staat in Nakijken: opleiding of uitrusting met één tik', async () => {
     const s = await store()
-    await s.put('transactions.json.enc', tx('oud', { kind: 'investering', note: 'Nepcursus' }))
+    await put(s, 'transactions.json.enc', tx('oud', { kind: 'investering', note: 'Nepcursus' }))
     const item = reviewItems(reviewInput(s)).find((i) => i.kind === 'investering-soort')
     expect(item).toBeDefined()
     if (item?.kind !== 'investering-soort') throw new Error('verwacht')
-    await setInvestmentCategory(s, item.tx, 'opleiding')
+    await investeringssoortZetten(s, item.tx, 'opleiding')
     expect(s.list('transactions.json.enc')[0]!.category).toBe('opleiding')
     expect(reviewItems(reviewInput(s)).some((i) => i.kind === 'investering-soort')).toBe(false)
   })
@@ -111,7 +114,7 @@ describe('soort en bron', () => {
 
 describe('punten uit de review', () => {
   it('een nieuw inkomen krijgt nooit een eerder gekozen bron: de organisatie uit de naam, anders overig', async () => {
-    const { sourceForPeriod } = await import('../src/model/expenses')
+    const { sourceForPeriod } = await import('../src/basis/organisatie')
     expect(sourceForPeriod(trip('y', { name: 'Yacht week 7' }))).toBe('yacht-week')
     expect(sourceForPeriod(trip('e', { name: 'Nep eigen charter', type: 'skipper-charter' }))).toBe('overig')
     expect(sourceForPeriod(undefined)).toBe('overig')

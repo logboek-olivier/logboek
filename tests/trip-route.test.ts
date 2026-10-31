@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bestCandidate, type PinCandidate } from '../src/model/pin-suggest'
-import { pinnedPoints, routeOf } from '../src/model/trip-route'
+import { routeOf } from '../src/model/trip-route'
 import type { Leg, Place } from '../src/model/types'
 
 // PR B: de route van een trip op de kaart (genummerde stops, start en eind, plaatsen zonder pin apart) en het
@@ -42,7 +42,6 @@ describe('Route van een trip', () => {
     ])
     expect(route.unpinned).toEqual(['Nepeiland'])
     expect(route).toMatchObject({ nm: 32, days: 3, nightHours: 2 })
-    expect(pinnedPoints(route)).toHaveLength(3)
   })
 
   it('een dag die niet aansluit (andere Van) krijgt zijn eigen stop; zelfde plaats in andere spelling één keer', () => {

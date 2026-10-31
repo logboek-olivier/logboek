@@ -1,12 +1,13 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { active } from './derive'
-import { eurOf, round2 } from './money'
+import { eurOf } from './money'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
 import { currentSettings, saveSettings } from './settings'
-import { type Currency, type Leg, type Organisation, type SalaryDefault, type Settings, type Transaction, type TransactionSource, type Trip, type TripSalary } from './types'
+import { type Currency, type Leg, type Organisation, type SalaryDefault, type Settings, type Transaction, type Trip, type TripSalary } from './types'
 import { weekView } from './weeks'
-import type { Undo } from './edit'
 import { endedFor } from './trip-dates'
+import { round2 } from '../basis/bedrag'
+import { sourceForPeriod } from '../basis/organisatie'
 
 // Salaris per trip (Olivier wordt per trip betaald): bedrag en valuta, verwacht of ontvangen, en of het bedrag het
 // standaardbedrag van de organisatie is of een eigen bedrag. Harde regel: een eigen bedrag (zelf ingevuld of aangepast)
@@ -126,7 +127,7 @@ export function defaultChanges(trips: readonly Trip[], legs: readonly Leg[], set
  * Nieuwe standaardbedragen opslaan. Trips zonder salaris die nog niet voorbij zijn krijgen het nieuwe bedrag; trips
  * met het oude standaardbedrag alleen als `alsoStale` (het antwoord op de vraag). Eigen en ontvangen nooit.
  */
-export async function saveSalaryDefaults(store: Store, next: Partial<Record<Organisation, SalaryDefault>>, alsoStale: boolean, today: string): Promise<number> {
+export async function saveSalaryDefaults(store: Tx, next: Partial<Record<Organisation, SalaryDefault>>, alsoStale: boolean, today: string): Promise<number> {
   const settings = currentSettings(store.list('settings.json.enc'))
   const trips = store.list('trips.json.enc')
   const legs = store.list('legs.json.enc')
@@ -142,7 +143,6 @@ export async function saveSalaryDefaults(store: Store, next: Partial<Record<Orga
   for (const [org, d] of Object.entries(next) as [Organisation, SalaryDefault | undefined][]) if (d && d.amount > 0) clean[org] = { amount: round2(d.amount), currency: d.currency }
   await saveSettings(store, { salaryDefaults: clean })
   if (changed.length > 0) await store.putMany('trips.json.enc', changed)
-  void store.sync()
   return changed.length
 }
 
@@ -173,24 +173,17 @@ export function salaryQuestions(trips: readonly Trip[], legs: readonly Leg[], to
     .sort((a, b) => tripEnd(a, legs).localeCompare(tripEnd(b, legs)))
 }
 
-/** Bron van een salaristransactie: de organisatie (of delivery), anders overig. */
-export function salarySource(trip: Trip): TransactionSource {
-  if (trip.organisation === 'sailing-virgins' || trip.organisation === 'yacht-week') return trip.organisation
-  return trip.type === 'delivery' ? 'delivery' : 'overig'
-}
-
 /**
  * Salaris ontvangen: één inkomen (loon) bij de trip, met het werkelijke bedrag als dat anders is, en de status op
  * ontvangen. De trip zoals hij nu op het apparaat staat (een tweede tik of een ander apparaat dat het al ontving: dan
  * niets); `trip.salary` mag een nieuw salaris zijn (salaris zetten en meteen ontvangen). Ongedaan maken haalt het inkomen
  * weg en zet alleen het salaris terug.
  */
-export async function receiveSalary(store: Store, trip: Trip, today: string, actual?: { amount: number; currency: Currency }): Promise<Undo> {
+export async function receiveSalary(store: Tx, trip: Trip, today: string, actual?: { amount: number; currency: Currency }): Promise<void> {
   const s = trip.salary
   if (!s) throw new Error('salaris ontbreekt')
   const latest = store.list('trips.json.enc').find((x) => x.id === trip.id) ?? trip
-  if (latest.salary?.status === 'ontvangen') return async () => {}
-  const before = latest.salary
+  if (latest.salary?.status === 'ontvangen') return
   const now = new Date().toISOString()
   const { askAfter: _ask, ...current } = s
   void _ask
@@ -199,18 +192,8 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
   const existing = salaryIncomeOf(trip.id, store.list('transactions.json.enc'))
   if (existing) {
     await store.put('trips.json.enc', { ...latest, salary: { ...current, status: 'ontvangen', transactionId: existing.id }, updatedAt: now })
-    void store.sync()
-    return async () => {
-      const later = new Date().toISOString()
-      const now2 = store.list('trips.json.enc').find((x) => x.id === trip.id)
-      if (now2) {
-        const restored: Trip = { ...now2, updatedAt: later }
-        if (before) restored.salary = before
-        else delete restored.salary
-        await store.put('trips.json.enc', restored)
-      }
-      void store.sync()
-    }
+
+    return
   }
   const amount = round2(actual?.amount ?? s.amount)
   const currency = actual?.currency ?? s.currency
@@ -219,7 +202,7 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
     id: salaryIncomeId(trip.id),
     ...base,
     kind: 'loon',
-    source: salarySource(latest),
+    source: sourceForPeriod(latest),
     tripId: trip.id,
     ...(finalRateFields(base) ?? {}),
     updatedAt: now,
@@ -227,54 +210,25 @@ export async function receiveSalary(store: Store, trip: Trip, today: string, act
   }
   await store.put('transactions.json.enc', tx)
   await store.put('trips.json.enc', { ...latest, salary: { ...current, status: 'ontvangen', transactionId: tx.id }, updatedAt: now })
-  void store.sync()
-  return async () => {
-    const later = new Date().toISOString()
-    await store.put('transactions.json.enc', { ...tx, deletedAt: later, updatedAt: later })
-    const current = store.list('trips.json.enc').find((x) => x.id === trip.id)
-    if (current) {
-      const restored: Trip = { ...current, updatedAt: later }
-      if (before) restored.salary = before
-      else delete restored.salary
-      await store.put('trips.json.enc', restored)
-    }
-    void store.sync()
-  }
 }
 
 /**
  * "Geen salaris" voor deze trip (zelf gekozen): telt nergens meer als verwacht of te ontvangen, en Vandaag vraagt er niet
  * meer naar. Niet bij een salaris dat al ontvangen is (dat inkomen staat bij Geld). Met ongedaan maken.
  */
-export async function setNoSalary(store: Store, trip: Trip): Promise<Undo> {
+export async function setNoSalary(store: Tx, trip: Trip): Promise<void> {
   const latest = store.list('trips.json.enc').find((x) => x.id === trip.id) ?? trip
-  if (latest.salary?.status === 'ontvangen' || latest.salary?.status === 'geen') return async () => {}
+  if (latest.salary?.status === 'ontvangen' || latest.salary?.status === 'geen') return
   const before = latest.salary
   await store.put('trips.json.enc', { ...latest, salary: noSalary(before?.currency ?? 'EUR'), updatedAt: new Date().toISOString() })
-  void store.sync()
-  return async () => {
-    const current = store.list('trips.json.enc').find((x) => x.id === trip.id)
-    if (current) {
-      const restored: Trip = { ...current, updatedAt: new Date().toISOString() }
-      if (before) restored.salary = before
-      else delete restored.salary
-      await store.put('trips.json.enc', restored)
-    }
-    void store.sync()
-  }
 }
 
 /** "Nog niet": een week later opnieuw vragen. */
-export async function askSalaryLater(store: Store, trip: Trip, today: string, days = 7): Promise<Undo> {
+export async function askSalaryLater(store: Tx, trip: Trip, today: string, days = 7): Promise<void> {
   if (!trip.salary) throw new Error('salaris ontbreekt')
   const d = new Date(`${today}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + days)
   await store.put('trips.json.enc', { ...trip, salary: { ...trip.salary, askAfter: d.toISOString().slice(0, 10) }, updatedAt: new Date().toISOString() })
-  void store.sync()
-  return async () => {
-    await store.put('trips.json.enc', { ...trip, updatedAt: new Date().toISOString() })
-    void store.sync()
-  }
 }
 
 /** Salaris in euro op een datum (de koers van die datum of de laatst bekende); null zonder koers. */

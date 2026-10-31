@@ -1,7 +1,6 @@
 import { BookOpen, Check } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { formatDate, formatHours, formatMoney, formatNm } from '../format'
-import { todayIso } from '../model/types'
 import { t, useLang } from '../i18n'
 import { kindLabel, roleLabel } from '../i18n/labels'
 import { expenseCategory } from '../model/expenses'
@@ -10,7 +9,7 @@ import { nameWithCounter } from '../model/counters'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { totalNm } from '../model/derive'
 import { guestLabel, participantName } from '../model/guests'
-import { nextOccurrence, setDone } from '../model/reminders'
+import { nextOccurrence } from '../model/reminders'
 import { eurValue } from '../model/rates'
 import { routeOf } from '../model/trip-route'
 import type { Leg, Participant, Reminder, Transaction, Trip } from '../model/types'
@@ -23,6 +22,8 @@ import { Sheet } from './Sheet'
 import { ParticipantSheet } from './TripSheets'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
+import { termijnAfronden } from '../domain/termijnen'
+import { todayIso } from '../basis/datum'
 
 // Leesweergaven: tikken op iets opent eerst wat er staat; bewerken gaat via het potlood rechtsboven en verwijderen zit
 // pas in het bewerkscherm (met 10 seconden ongedaan maken). Zo verandert er nooit iets per ongeluk.
@@ -156,7 +157,7 @@ export function ReminderView({ store, reminder, notify, onClose }: { store: Stor
             type="button"
             className="btn primary"
             onClick={async () => {
-              const undo = await setDone(store, current, true, todayIso())
+              const undo = await termijnAfronden(store, current, true, todayIso())
               onClose()
               notify(current.repeat ? t('reminder.nextTime', { date: formatDate(nextOccurrence(current)) }) : t('reminder.doneToast'), undo)
             }}

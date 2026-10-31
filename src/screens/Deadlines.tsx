@@ -11,10 +11,11 @@ import { formatDate } from '../format'
 import { t } from '../i18n'
 import { doneReminders, dueItems, type DueItem } from '../model/reminders'
 import { currentSettings } from '../model/settings'
-import { todayIso, type Reminder } from '../model/types'
+import { type Reminder } from '../model/types'
 import { activeWeek, upcomingTrips } from '../model/weeks'
 import { daysUntil, useSession } from '../session'
 import type { Store } from '../storage/store'
+import { todayIso } from '../basis/datum'
 
 // De bladen laden pas bij een tik (src/lazy.ts): de lijst staat ook op Vandaag.
 const ReminderSheet = lazyComponent(() => import('../components/ReminderSheet').then((m) => m.ReminderSheet))

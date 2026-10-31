@@ -1,9 +1,9 @@
 import type { Lang } from '../i18n'
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { localized } from './curricula'
-import type { Undo } from './edit'
 import { SEED_CHECKLISTS } from './seed-checklists'
-import { newId, nowIso, type Checklist, type Trip, type WeekType } from './types'
+import { newId, type Checklist, type Trip, type WeekType } from './types'
+import { nowIso } from '../basis/datum'
 
 // Vaste checklists (checklists.json.enc): meegeleverde lijsten plus eigen of bewerkte. Per trip af te vinken (de
 // vinkjes staan op de trip, `checks`); als sjabloon te bewerken (zelfde id, geldt voor alle trips).
@@ -34,13 +34,12 @@ export function checkedItems(trip: Trip, list: Checklist): Set<string> {
 }
 
 /** Een punt aan- of uitvinken op de trip. */
-export async function toggleCheck(store: Store, trip: Trip, listId: string, itemId: string): Promise<void> {
+export async function toggleCheck(store: Tx, trip: Trip, listId: string, itemId: string): Promise<void> {
   const current = store.get('trips.json.enc').find((t) => t.id === trip.id) ?? trip
   const ticked = new Set(current.checks?.[listId] ?? [])
   if (ticked.has(itemId)) ticked.delete(itemId)
   else ticked.add(itemId)
   await store.put('trips.json.enc', { ...current, checks: { ...(current.checks ?? {}), [listId]: [...ticked] }, updatedAt: nowIso() })
-  void store.sync()
 }
 
 export interface ChecklistEdit {
@@ -53,7 +52,7 @@ export interface ChecklistEdit {
  * Sjabloon opslaan: de tekst in de huidige taal wordt bijgewerkt; nieuwe punten krijgen de tekst in beide talen.
  * Lege punten vallen weg.
  */
-export async function saveChecklist(store: Store, list: Checklist, edit: ChecklistEdit, lang: Lang): Promise<void> {
+export async function saveChecklist(store: Tx, list: Checklist, edit: ChecklistEdit, lang: Lang): Promise<void> {
   const other: Lang = lang === 'nl' ? 'en' : 'nl'
   const items = edit.items
     .map((i) => ({ ...i, text: i.text.trim().slice(0, 200) }))
@@ -72,24 +71,17 @@ export async function saveChecklist(store: Store, list: Checklist, edit: Checkli
     updatedAt: nowIso(),
   }
   await store.put('checklists.json.enc', next)
-  void store.sync()
 }
 
 /** Nieuwe eigen lijst voor deze soort trip. */
-export async function addChecklist(store: Store, title: string, type: WeekType): Promise<Checklist> {
+export async function addChecklist(store: Tx, title: string, type: WeekType): Promise<Checklist> {
   const list: Checklist = { id: newId(), title: { nl: title.trim(), en: title.trim() }, items: [], tripTypes: [type], source: 'eigen', updatedAt: nowIso(), deletedAt: null }
   await store.put('checklists.json.enc', list)
-  void store.sync()
   return list
 }
 
 /** Lijst verwijderen (een meegeleverde lijst wordt verborgen), met ongedaan maken. */
-export async function deleteChecklist(store: Store, list: Checklist): Promise<Undo> {
+export async function deleteChecklist(store: Tx, list: Checklist): Promise<void> {
   const now = nowIso()
   await store.put('checklists.json.enc', { ...list, updatedAt: now, deletedAt: now })
-  void store.sync()
-  return async () => {
-    await store.put('checklists.json.enc', { ...list, updatedAt: nowIso(), deletedAt: null })
-    void store.sync()
-  }
 }

@@ -1,7 +1,7 @@
 import { Check, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
-import { answerDoubt, doubtfulTrips, firstNumber, ORG_CODE, saveFirstNumbers, tripCounters } from '../model/counters'
+import { doubtfulTrips, firstNumber, ORG_CODE, tripCounters } from '../model/counters'
 import { currentSettings } from '../model/settings'
 import { COUNTED_ORGANISATIONS, type CountedOrganisation } from '../model/types'
 import type { Store } from '../storage/store'
@@ -10,6 +10,7 @@ import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { organisationLabel } from './WeekSheet'
+import { organisatieBeantwoorden, tellerBeginnummersOpslaan } from '../domain/trips'
 
 /** Twijfel bij de teller: een naam met alleen "SV" of "YW". Eén vraag tegelijk, ja of nee, nooit stil meegeteld. */
 export function CounterDoubtNotice({ store, notify }: { store: Store; notify: Notify }) {
@@ -24,7 +25,7 @@ export function CounterDoubtNotice({ store, notify }: { store: Store; notify: No
     if (!first || busy) return
     setBusy(true)
     try {
-      await answerDoubt(store, first.trip, first.org, yes)
+      await organisatieBeantwoorden(store, first.trip, first.org, yes)
       const label = tripCounters(store.list('trips.json.enc'), store.list('legs.json.enc'), currentSettings(store.get('settings.json.enc'))).get(first.trip.id)?.label
       notify(yes && label ? t('counter.counted', { name: first.trip.name, label }) : t('counter.notCounted', { name: first.trip.name }))
     } finally {
@@ -69,7 +70,7 @@ export function FirstNumbersSheet({ store, onClose, notify }: { store: Store; on
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!valid) return
-    await saveFirstNumbers(store, { 'sailing-virgins': parse(values['sailing-virgins']) ?? 1, 'yacht-week': parse(values['yacht-week']) ?? 1 })
+    await tellerBeginnummersOpslaan(store, { 'sailing-virgins': parse(values['sailing-virgins']) ?? 1, 'yacht-week': parse(values['yacht-week']) ?? 1 })
     onClose()
     notify(t('counter.saved'))
   }

@@ -21,6 +21,7 @@ import { decodeRecords, encodeRecords, encryptRecords, mergeRecords, SyncFailedE
 import { loadToken, storeToken } from '../src/storage/token'
 import type { Trip } from '../src/model/types'
 import { FakeGithub } from './helpers/fake-github'
+import { put, remove } from './helpers/schrijf'
 
 // Twee apparaten delen één hoofdsleutel en één nagebootste logboek-data. Alle data hieronder is verzonnen.
 
@@ -90,7 +91,7 @@ describe('GithubClient', () => {
     expect(await client.getFile('meta.json.enc')).not.toBeNull()
     // Daarna werkt de gewone sync: eerste schrijf zonder SHA, tweede met.
     const a = await device(empty)
-    await a.store.put('trips.json.enc', trip('t1', 'eerste'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'eerste'))
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'synced' })
     // meta plus elk databestand
@@ -196,7 +197,7 @@ describe('sync tussen twee apparaten', () => {
     const github = new FakeGithub()
     const a = await device(github)
     const b = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', `Tocht ${MARKER}`))
+    await put(a.store, 'trips.json.enc', trip('t1', `Tocht ${MARKER}`))
     expect(a.store.getStatus()).toEqual({ kind: 'pending', count: 1 })
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'synced' })
@@ -205,7 +206,7 @@ describe('sync tussen twee apparaten', () => {
     expect(b.store.list('trips.json.enc').map((t) => t.name)).toEqual([`Tocht ${MARKER}`])
 
     const changed = { ...b.store.list('trips.json.enc')[0]!, name: 'Hernoemd', updatedAt: new Date(Date.now() + 1000).toISOString() }
-    await b.store.put('trips.json.enc', changed)
+    await put(b.store, 'trips.json.enc', changed)
     await b.store.sync()
     await a.store.sync()
     expect(a.store.list('trips.json.enc').map((t) => t.name)).toEqual(['Hernoemd'])
@@ -218,7 +219,7 @@ describe('sync tussen twee apparaten', () => {
   it('probeert opnieuw na een conflict en voegt beide wijzigingen samen', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('a', 'van A'))
+    await put(a.store, 'trips.json.enc', trip('a', 'van A'))
     // Een ander apparaat schrijft precies tussen A's GET en A's PUT; alleen de eerste keer.
     let interrupted = false
     github.beforePut = (path) => {
@@ -241,7 +242,7 @@ describe('sync tussen twee apparaten', () => {
   it('doet maximaal drie pogingen bij blijvend conflict', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('a', 'van A'))
+    await put(a.store, 'trips.json.enc', trip('a', 'van A'))
     const other = toBase64(await encryptRecords(masterKey, 'trips.json.enc', [trip('z', 'iemand anders')]))
     github.write('trips.json.enc', other)
     github.beforePut = (path) => {
@@ -258,8 +259,8 @@ describe('sync tussen twee apparaten', () => {
     const github = new FakeGithub()
     const a = await device(github)
     const b = await device(github)
-    await a.store.put('trips.json.enc', trip('a', 'van A'))
-    await b.store.put('trips.json.enc', trip('b', 'van B'))
+    await put(a.store, 'trips.json.enc', trip('a', 'van A'))
+    await put(b.store, 'trips.json.enc', trip('b', 'van B'))
     await b.store.sync()
     // Bij A's eerste PUT verloopt de SHA (iemand schreef dezelfde inhoud opnieuw); A krijgt 409 en begint opnieuw.
     let once = true
@@ -281,14 +282,14 @@ describe('sync tussen twee apparaten', () => {
   it('doet na een sync nog een ronde als er ondertussen iets is gewijzigd of opnieuw om sync is gevraagd', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'eerste'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'eerste'))
     let release = () => {}
     github.gate = new Promise<void>((resolve) => {
       release = resolve
     })
     const first = a.store.sync()
     // Tijdens de lopende sync: een wijziging en een tweede sync-verzoek.
-    await a.store.put('trips.json.enc', trip('t2', 'tijdens sync'))
+    await put(a.store, 'trips.json.enc', trip('t2', 'tijdens sync'))
     const second = a.store.sync()
     expect(second).toBe(first)
     github.gate = null
@@ -305,7 +306,7 @@ describe('sync tussen twee apparaten', () => {
     const github = new FakeGithub()
     const a = await device(github)
     github.write('trips.json.enc', toBase64(utf8('geen geldige ciphertext maar wel base64')))
-    await a.store.put('legs.json.enc', {
+    await put(a.store, 'legs.json.enc', {
       id: 'l1',
       tripId: 't',
       date: '2026-01-01',
@@ -335,12 +336,12 @@ describe('sync tussen twee apparaten', () => {
   it('maakt een lopende opslag af als er intussen vergrendeld wordt, en schrijft daarna niets meer', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'x'))
-    const pending = a.store.put('trips.json.enc', trip('t2', 'y'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'x'))
+    const pending = put(a.store, 'trips.json.enc', trip('t2', 'y'))
     a.store.lock()
     await pending
     // Na vergrendelen komt er niets meer bij.
-    await expect(a.store.put('trips.json.enc', trip('t3', 'z'))).rejects.toThrow()
+    await expect(put(a.store, 'trips.json.enc', trip('t3', 'z'))).rejects.toThrow()
     const again = await Store.open(a.db, masterKey, new GithubClient(TOKEN, github.fetch))
     // t2 was al opgeslagen toen er vergrendeld werd: die opslag wordt afgemaakt, met de outbox in dezelfde transactie.
     expect(again.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['t1', 't2'])
@@ -351,17 +352,17 @@ describe('sync tussen twee apparaten', () => {
     const github = new FakeGithub()
     const a = await device(github)
     const b = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'Weg'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Weg'))
     await a.store.sync()
     await b.store.sync()
     expect(b.store.list('trips.json.enc')).toHaveLength(1)
-    await a.store.remove('trips.json.enc', 't1')
+    await remove(a.store, 'trips.json.enc', 't1')
     await a.store.sync()
     await b.store.sync()
     expect(b.store.list('trips.json.enc')).toHaveLength(0)
     expect(b.store.get('trips.json.enc')[0]?.deletedAt).not.toBeNull()
     // Nog eens verwijderen verandert niets.
-    await b.store.remove('trips.json.enc', 't1')
+    await remove(b.store, 'trips.json.enc', 't1')
     expect(b.store.pendingCount()).toBe(0)
   })
 
@@ -369,8 +370,8 @@ describe('sync tussen twee apparaten', () => {
     const github = new FakeGithub()
     const a = await device(github)
     github.offline = true
-    await a.store.put('trips.json.enc', trip('t1', 'Offline een'))
-    await a.store.put('trips.json.enc', trip('t2', 'Offline twee'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Offline een'))
+    await put(a.store, 'trips.json.enc', trip('t2', 'Offline twee'))
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'offline', count: 2 })
     expect(github.files.size).toBe(0)
@@ -390,7 +391,7 @@ describe('sync tussen twee apparaten', () => {
   it('meldt een verlopen of ingetrokken token (401) zonder te crashen en houdt de outbox', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'x'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'x'))
     github.forceStatus = 401
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'token', count: 1 })
@@ -405,8 +406,8 @@ describe('sync tussen twee apparaten', () => {
   it('schrijft niets naar GitHub als een bestand een hogere schemaVersion heeft en vraagt om een update', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'lokaal'))
-    await a.store.put('legs.json.enc', {
+    await put(a.store, 'trips.json.enc', trip('t1', 'lokaal'))
+    await put(a.store, 'legs.json.enc', {
       id: 'l1',
       tripId: 't1',
       date: '2026-01-01',
@@ -456,7 +457,7 @@ describe('sync tussen twee apparaten', () => {
     const github = new FakeGithub()
     const a = await device(github)
     await storeToken(a.db, masterKey, TOKEN, '2027-01-01')
-    await a.store.put('trips.json.enc', trip('t1', `Tocht ${MARKER}`))
+    await put(a.store, 'trips.json.enc', trip('t1', `Tocht ${MARKER}`))
     await a.store.sync()
     const b = await device(github)
     await b.store.sync()
@@ -480,10 +481,10 @@ describe('sync tussen twee apparaten', () => {
   it('wist het geheugen bij vergrendelen', async () => {
     const github = new FakeGithub()
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'x'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'x'))
     a.store.lock()
     expect(() => a.store.get('trips.json.enc')).toThrow('Vergrendeld')
-    await expect(a.store.put('trips.json.enc', trip('t2', 'y'))).rejects.toThrow('Vergrendeld')
+    await expect(put(a.store, 'trips.json.enc', trip('t2', 'y'))).rejects.toThrow('Vergrendeld')
   })
 })
 

@@ -3,14 +3,14 @@ import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
 import { getLang, t } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
-import { isDebt, parseStand, setBalance } from '../model/accounts'
+import { isDebt } from '../model/accounts'
 import { buildIndex, planningEnd, type CalendarIndex } from '../model/calendar'
 import { nameWithCounter } from '../model/counters'
 import { careerStart, difference, earliestDate, forecast, positionAt, resolvePeriod, type AccountRow, type Period, type PositionInput, type Sum } from '../model/position'
 import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
-import { currentSettings, saveSettings } from '../model/settings'
-import { todayIso, type Account, type Currency, type Settings } from '../model/types'
+import { currentSettings } from '../model/settings'
+import { type Account, type Currency, type Settings } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -19,6 +19,10 @@ import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
 import { PeriodPicker, usePeriodChoice } from './money-period'
+import { standOpslaan } from '../domain/geld'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { parseStand } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Geld → Mijn positie en de vooruitblik (src/model/position.ts). Een stand per rekening is hier in een paar seconden
 // in te tikken (tik op de rekening); de import onder Meer → Rekeningen blijft optioneel.
@@ -183,7 +187,7 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
     if (value === null || busy) return
     setBusy(true)
     try {
-      const written = await setBalance(store, account, todayIso(), value)
+      const { result: written } = await standOpslaan(store, account, todayIso(), value)
       onClose()
       notify(written ? t('accounts.standSaved') : t('accounts.standNewer'))
     } finally {
@@ -291,8 +295,7 @@ export function CareerStartSheet({ store, notify, onClose }: { store: Store; not
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!ok) return
-    await saveSettings(store, { careerStart: date })
-    void store.sync()
+    await instellingenOpslaan(store, { careerStart: date })
     onClose()
     notify(t('toast.saved'))
   }

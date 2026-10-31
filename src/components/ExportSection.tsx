@@ -4,13 +4,13 @@ import { formatNumber } from '../format'
 import { getLang, t } from '../i18n'
 import { exportFileName, exportFiles, exportZip, type ExportFile } from '../model/export'
 import { getRates } from '../model/rates'
-import { todayIso } from '../model/types'
 import { ErrorLine } from '../screens/Setup'
 import { describeError } from '../session'
 import { shareOrDownload } from '../share'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { todayIso } from '../basis/datum'
 
 // Meer → Opslag → Exporteren: trips, dagen, boten, plaatsen, inkomsten en uitgaven als leesbare CSV-bestanden in één
 // zip, om in Excel te openen. Het bestand is NIET versleuteld: eerst een duidelijke waarschuwing met wat erin staat en

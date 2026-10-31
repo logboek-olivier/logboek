@@ -1,7 +1,7 @@
 import { summarizeTrips } from '../model/derive'
 import { hasOtherData } from '../model/trip-dates'
 import type { Leg, Trip } from '../model/types'
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import type { ImportResult } from './mileage-csv'
 
 // Een import vervangt alle eerdere import-legs; handmatige legs blijven. Tochten die daardoor leeg raken
@@ -9,7 +9,7 @@ import type { ImportResult } from './mileage-csv'
 // naam en eerste dag als een bestaande tocht houdt het bestaande id, zodat weekgegevens (type, deelnemers, review)
 // een nieuwe import overleven.
 
-export async function applyImport(store: Store, input: ImportResult): Promise<void> {
+export async function applyImport(store: Tx, input: ImportResult): Promise<void> {
   const now = new Date().toISOString()
   const legs = store.get('legs.json.enc')
   const trips = store.get('trips.json.enc')

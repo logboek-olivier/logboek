@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import {
-  addDays,
-  mondayOf,
-  otherCurrencies,
-  parseAmount,
-  perMonth,
-  perSource,
-  recentTips,
-  tipsPerWeek,
-  totals,
-} from '../src/model/money'
+import { otherCurrencies, perMonth, perSource, tipsPerWeek, totals } from '../src/model/money'
 import type { Transaction } from '../src/model/types'
+import { parseAmount } from '../src/basis/bedrag'
+import { addDays, mondayOf } from '../src/basis/datum'
 
 // Verzonnen bedragen.
 
@@ -87,11 +79,6 @@ describe('zeilgeld', () => {
     expect(weeks[10]?.other).toEqual({ USD: 200 })
     expect(weeks[0]?.weekStart).toBe('2026-08-03')
     expect(weeks.reduce((s, w) => s + w.eur, 0)).toBe(200.5)
-  })
-
-  it('telt fooi van de afgelopen 30 dagen', () => {
-    expect(recentTips(sample, TODAY)).toEqual({ eur: 200.5, other: { USD: 200 } })
-    expect(recentTips(sample, '2026-11-30')).toEqual({ eur: 0, other: {} })
   })
 
   it('leest bedragen in Nederlandse en Engelse notatie', () => {

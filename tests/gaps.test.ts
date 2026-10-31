@@ -1,12 +1,14 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { collectGaps, fillGap, isSunday, legGaps, tripGaps } from '../src/model/gaps'
+import { collectGaps, isSunday, legGaps, tripGaps } from '../src/model/gaps'
 import type { Leg, Trip } from '../src/model/types'
 import { startWeek, type WeekInput } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, putMany } from './helpers/schrijf'
+import { aanvullen } from '../src/domain/dagen'
 
 const TOKEN = 'github_pat_GAPS_0123456789abcdefghijklmnopqrstuvwxyz'
 const NOW = '2026-10-26T10:00:00.000Z'
@@ -53,13 +55,13 @@ describe('niets verplicht: onvolledig en aanvullen', () => {
   it('aanvullen schrijft alleen lege velden; een trip zonder bootgegevens en een dag zonder plaats worden gewoon opgeslagen', async () => {
     const store = await device()
     const empty: WeekInput = { name: '', type: 'overig', startDate: '', dayCount: 0, boat: '', boatModel: '', boatLengthFt: null, base: '', charter: '', area: '', participants: [], note: '' }
-    const saved = await startWeek(store, empty, 'nl', '2026-10-28')
+    const saved = await inTx(store, startWeek, empty, 'nl', '2026-10-28')
     expect(saved.name).toMatch(/^Trip /)
     expect(saved.startDate).toBeUndefined()
-    await store.putMany('trips.json.enc', [trip('x', { boat: 'Nepboot' }), trip('y', { boat: 'Nepboot', boatLengthFt: 33 })])
+    await putMany(store, 'trips.json.enc', [trip('x', { boat: 'Nepboot' }), trip('y', { boat: 'Nepboot', boatLengthFt: 33 })])
     const gap = collectGaps(store.get('trips.json.enc'), []).find((g) => g.kind === 'boat' && g.field === 'boatLengthFt')!
     expect(gap.suggestion).toBe('33')
-    await fillGap(store, gap, 40)
+    await aanvullen(store, gap, 40)
     const after = store.get('trips.json.enc')
     expect(after.find((t) => t.id === 'x')?.boatLengthFt).toBe(40)
     expect(after.find((t) => t.id === 'y')?.boatLengthFt).toBe(33)

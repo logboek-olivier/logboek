@@ -1,9 +1,8 @@
-import type { Store } from '../storage/store'
-import { balanceId, scrubbedBalance, setBalance } from './accounts'
-import type { Undo } from './edit'
+import type { Tx } from '../domain/tx'
+import { setBalance } from './accounts'
 import { depositCash, expectedPayout, recordPayout } from './money-path'
 import type { RatesFile } from './rates'
-import type { Account, Balance, Currency, Organisation, Trip } from './types'
+import type { Account, Currency, Organisation, Trip } from './types'
 
 // De geldstap van de weekafsluiting (wekelijks 2 minuten): de stand per bankrekening, ontvangen uitbetalingen afvinken,
 // gestorte contanten afvinken; de schatting "los uitgegeven" hoort bij de afsluiting zelf. Alles overslaan mag: alleen
@@ -26,19 +25,9 @@ export function isEmptyStep(step: MoneyStep): boolean {
  * De geldstap opslaan. Een uitbetaling gaat met het verwachte bedrag (in de valuta van de trips als die gelijk is, anders
  * in euro); zonder koers slaat de app die organisatie over (geeft hem terug), dan via Geld → Uitbetaling invoeren.
  */
-export async function applyMoneyStep(store: Store, step: MoneyStep, today: string, rates: RatesFile | null): Promise<{ undo: Undo; skipped: Organisation[] }> {
-  const undos: Undo[] = []
+export async function applyMoneyStep(store: Tx, step: MoneyStep, today: string, rates: RatesFile | null): Promise<{ skipped: Organisation[] }> {
   const skipped: Organisation[] = []
-  for (const { account, amount } of step.balances) {
-    const id = balanceId(account.id, today)
-    const before: Balance | undefined = store.get('balances.json.enc').find((b) => b.id === id)
-    const written = await setBalance(store, account, today, amount, today)
-    if (!written) continue
-    undos.push(async () => {
-      const now = new Date().toISOString()
-      await store.put('balances.json.enc', before ? { ...before, updatedAt: now } : scrubbedBalance(written, now))
-    })
-  }
+  for (const { account, amount } of step.balances) await setBalance(store, account, today, amount, today)
   const byOrg = new Map<Organisation, Trip[]>()
   for (const trip of step.received) {
     if (!trip.organisation || !trip.salary) continue
@@ -53,15 +42,8 @@ export async function applyMoneyStep(store: Store, step: MoneyStep, today: strin
       skipped.push(org)
       continue
     }
-    undos.push(await recordPayout(store, { org, amount, currency, date: today }, trips, rates))
+    await recordPayout(store, { org, amount, currency, date: today }, trips, rates)
   }
-  for (const currency of step.deposited) undos.push(await depositCash(store, currency, today))
-  void store.sync()
-  return {
-    skipped,
-    undo: async () => {
-      for (const undo of [...undos].reverse()) await undo()
-      void store.sync()
-    },
-  }
+  for (const currency of step.deposited) await depositCash(store, currency, today)
+  return { skipped }
 }

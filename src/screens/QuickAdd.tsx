@@ -11,48 +11,31 @@ import { ClaimForm } from '../components/Claims'
 import { useIsDemo } from '../components/DemoBar'
 import { draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { formatNm, formatNumber } from '../format'
-import { defaultFromPlace, findPlace, knownPlaceNames, mergeCandidates, nearestKnownPlace, placeCountry, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
+import { defaultFromPlace, findPlace, knownPlaceNames, mergeCandidates, nearestKnownPlace, placeKey, placeUses, similarKnown, suggestDistance } from '../model/places'
 import { MergeProposal } from './Places'
 import { plannedFor } from '../model/routes'
-import { followDays } from '../model/trip-dates'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
 import { kindLabel, roleLabel } from '../i18n/labels'
 import { BelongsTo, useBelongsTo, usePeriods } from '../components/BelongsTo'
-import { kindForCategory, resolveTarget, sourceForPeriod } from '../model/expenses'
+import { kindForCategory } from '../model/expenses'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../model/trip-name'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
 import { parseNonNegative } from '../model/edit'
-import { addDays, parseAmount } from '../model/money'
-import { currentSettings, saveSettings } from '../model/settings'
-import { finalRateFields } from '../model/rates'
-import { activeWeek, roleForType, weekView } from '../model/weeks'
+import { currentSettings } from '../model/settings'
+import { activeWeek, roleForType } from '../model/weeks'
 import { placeLeg } from '../model/leg-trip'
 import { PlacementHint } from '../components/PlacementHint'
-import { resizeTrip } from '../model/calendar'
-import {
-  CURRENCIES,
-  INCOME_KIND_LIST,
-  newId,
-  nowIso,
-  ROLES,
-  todayIso,
-  type AddTab,
-  type Currency,
-  type Settings,
-  type TipVia,
-  type CostCategory,
-  COST_CATEGORIES,
-  type Water,
-  type Leg,
-  type Role,
-  type Transaction,
-  type IncomeKind,
-  type Trip,
-} from '../model/types'
+import { CURRENCIES, INCOME_KIND_LIST, ROLES, type AddTab, type Currency, type Settings, type TipVia, type CostCategory, COST_CATEGORIES, type Water, type Leg, type Role, type IncomeKind, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from '../components/EditSheets'
 import { t } from '../i18n'
+import { dagLoggen } from '../domain/dagen'
+import { geldToevoegen, uitgaveToevoegen } from '../domain/geld'
+import type { NewMoney } from '../domain/geld'
+import { parseAmount } from '../basis/bedrag'
+import { addDays, todayIso } from '../basis/datum'
+import { sourceForPeriod } from '../basis/organisatie'
 
 // Snel toevoegen: Dag · Inkomsten · Uitgave, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
 // bestemming en de laatst gebruikte boot, rol en week; niets is verplicht. Opslaan = één tik.
@@ -143,19 +126,13 @@ function useDefaults(store: Store) {
 
 async function saveTransaction(
   store: Store,
-  tx: Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>,
+  fields: NewMoney,
   remember: Partial<Pick<Settings, 'lastIncomeKind' | 'lastCostKind' | 'lastTipVia' | 'lastCostCategory'>>,
   /** De gekozen trip; leeg = geen trip (ook als Olivier zelf "Geen trip" koos). */
   tripId: string,
 ) {
-  const record: Transaction = { ...tx, id: newId(), updatedAt: nowIso(), deletedAt: null }
-  if (tripId) record.tripId = tripId
-  if (tx.currency === 'EUR') record.amountEur = tx.amount
-  else Object.assign(record, finalRateFields(tx) ?? {})
-  await store.put('transactions.json.enc', record)
-  await saveSettings(store, { lastCurrency: tx.currency, ...remember })
+  await geldToevoegen(store, fields, tripId || null, remember)
   confirmVibration()
-  void store.sync()
 }
 
 /**
@@ -341,15 +318,14 @@ export function CostForm({ store, onDone, tripId: preset }: { store: Store; onDo
     setBusy(true)
     try {
       // Een uitgave zonder periode bestaat niet: zo nodig eerst de periode thuis of vrij op die dag.
-      const tripId = (await resolveTarget(store, belongs.current, date)) ?? ''
-      const trip = store.list('trips.json.enc').find((x) => x.id === tripId)
       const kind = kindForCategory(category)
-      await saveTransaction(
+      await uitgaveToevoegen(
         store,
-        { date, kind, amount: parsed, currency, source: sourceForPeriod(trip), ...(note.trim() ? { note: note.trim() } : {}), category },
+        belongs.current,
+        { date, kind, amount: parsed, currency, ...(note.trim() ? { note: note.trim() } : {}), category },
         { lastCostKind: kind === 'investering' ? 'investering' : 'kosten', lastCostCategory: category },
-        tripId,
       )
+      confirmVibration()
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
     } finally {
       setBusy(false)
@@ -552,60 +528,22 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
     if (!ok || busy) return
     setBusy(true)
     try {
-      const now = nowIso()
       const day = date || today
-      // De dag komt altijd binnen de datums van zijn trip: de trip van de datum, of de gekozen trip een paar dagen langer.
-      const place = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, day)
-      let id = place.tripId ?? undefined
-      if (id && place.extend) {
-        const trip = trips.find((x) => x.id === id)
-        if (trip) await resizeTrip(store, { view: weekView(trip, legs), start: place.extend.start, end: place.extend.end })
-      }
-      if (!id) {
-        // Een trip vanuit Dag: begin en eind volgen de dagen (src/model/trip-dates.ts).
-        const trip: Trip = {
-          id: newId(),
-          name: tripName.trim() || defaultTripName(boat.trim() || t('field.trip'), day),
-          startDate: day,
-          endDate: day,
-          datesFromDays: true,
-          updatedAt: now,
-          deletedAt: null,
-        }
-        await store.put('trips.json.enc', trip)
-        id = trip.id
-      }
-      // Landen: niet in beeld. Van de plaats zelf (punt of eerdere dagen), anders het land van de vorige dag in deze
-      // trip; nooit van een dag uit een andere trip (anders krijgt een dag in de BVI het land van een dag in Engeland).
-      const previous = id ? [...active(legs)].filter((l) => l.tripId === id && l.date <= day).sort(compareLegs).at(-1) : undefined
-      const fromCountry = placeCountry(legs, places, fromPlace) || previous?.toCountry || ''
-      const toCountry = placeCountry(legs, places, toPlace) || (previous ? previous.toCountry : '')
-      const leg: Leg = {
-        id: newId(),
-        tripId: id,
+      await dagLoggen(store, {
         date: day,
-        fromPlace: fromPlace.trim(),
-        fromCountry,
-        toPlace: toPlace.trim(),
-        toCountry,
+        tripId: tripId === NEW_WEEK ? null : tripId,
+        newTripName: tripName.trim() || defaultTripName(boat.trim() || t('field.trip'), day),
+        fromPlace,
+        toPlace,
         role,
-        boat: boat.trim(),
-        nmInland: water === 'binnen' ? nmValue : 0,
-        nmSea: water === 'zee' ? nmValue : 0,
-        nmTidal: water === 'getij' ? nmValue : 0,
-        nightHours: night,
-        dateEstimated: false,
-        source: 'manual',
-        updatedAt: now,
-        deletedAt: null,
-      }
-      if (wind.trim()) leg.windBft = wind.trim()
-      if (notes.trim()) leg.notes = notes.trim()
-      await store.put('legs.json.enc', leg)
-      await followDays(store, [id])
-      await saveSettings(store, { ...(boat.trim() ? { lastBoat: boat.trim() } : {}), lastRole: role, lastTripId: id, lastWater: water })
+        boat,
+        water,
+        nm: nmValue!,
+        nightHours: night!,
+        wind,
+        notes,
+      })
       confirmVibration()
-      void store.sync()
       onDone(t('toast.daySaved'))
     } finally {
       setBusy(false)

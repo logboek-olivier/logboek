@@ -2,8 +2,8 @@ import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex, dayInfo, setDay } from '../src/model/calendar'
 import { migratePeriods, migrationChanges, stayId } from '../src/model/migrate-periods'
-import { allPeriods, periodAt, planStayDays, setStayDays } from '../src/model/periods'
-import { fixLegOutside, fixLegStart, fixMoneyWithoutPeriod, legOutsideCanExtend, reviewInput, reviewItems, setTripKind } from '../src/model/review'
+import { allPeriods, periodAt, planStayDays } from '../src/model/periods'
+import { legOutsideCanExtend, reviewInput, reviewItems } from '../src/model/review'
 import { tripKind } from '../src/model/trip-kind'
 import { startWeek, type WeekInput } from '../src/model/weeks'
 import type { CalendarDay, Leg, StayPeriod, Transaction, Trip } from '../src/model/types'
@@ -11,6 +11,9 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put, putMany } from './helpers/schrijf'
+import { landperiodeZetten, periodeDatumsWijzigen } from '../src/domain/agenda'
+import { dagBeginAansluiten, dagBuitenPeriodeOplossen, geldKoppelen, periodeSoortZetten } from '../src/domain/trips'
 
 // Het periodemodel (docs/PERIODEMODEL.md): soort per trip, periodes aan land (maken, verlengen, korter, splitsen,
 // samenvoegen), de eenmalige migratie van agenda en geld, en Nakijken. Alle gegevens verzonnen.
@@ -107,12 +110,12 @@ describe('periodes aan land', () => {
 
   it('een trip over een thuisperiode maakt die korter; geld op die dagen gaat mee naar de trip', async () => {
     const s = await store()
-    await setStayDays(s, ['2027-03-01', '2027-03-02', '2027-03-03', '2027-03-04', '2027-03-05'], 'thuis')
+    await landperiodeZetten(s, ['2027-03-01', '2027-03-02', '2027-03-03', '2027-03-04', '2027-03-05'], 'thuis')
     const home = s.list('periods.json.enc')[0]!
-    await s.put('transactions.json.enc', tx('t1', '2027-03-04', { tripId: home.id }))
-    await s.put('transactions.json.enc', tx('t2', '2027-03-01', { tripId: home.id }))
+    await put(s, 'transactions.json.enc', tx('t1', '2027-03-04', { tripId: home.id }))
+    await put(s, 'transactions.json.enc', tx('t2', '2027-03-01', { tripId: home.id }))
     const input: WeekInput = { name: 'Nepweek', type: 'skipper-charter', startDate: '2027-03-04', dayCount: 3, boat: '', boatModel: '', boatLengthFt: null, base: '', charter: '', area: '', participants: [], note: '' }
-    const created = await startWeek(s, input, 'nl', '2027-01-01')
+    const created = await inTx(s, startWeek, input, 'nl', '2027-01-01')
     expect(s.list('periods.json.enc').map((p) => [p.startDate, p.endDate])).toEqual([['2027-03-01', '2027-03-03']])
     expect(s.list('transactions.json.enc').find((x) => x.id === 't1')?.tripId).toBe(created.id)
     expect(s.list('transactions.json.enc').find((x) => x.id === 't2')?.tripId).toBe(home.id)
@@ -124,8 +127,8 @@ describe('periodes aan land', () => {
 
   it('ongedaan maken zet periodes en geld terug', async () => {
     const s = await store()
-    await setStayDays(s, ['2027-04-01', '2027-04-02'], 'vrij')
-    const undo = await setStayDays(s, ['2027-04-03'], 'vrij')
+    await landperiodeZetten(s, ['2027-04-01', '2027-04-02'], 'vrij')
+    const undo = await landperiodeZetten(s, ['2027-04-03'], 'vrij')
     expect(s.list('periods.json.enc').map((p) => p.endDate)).toEqual(['2027-04-03'])
     await undo()
     expect(s.list('periods.json.enc').map((p) => p.endDate)).toEqual(['2027-04-02'])
@@ -188,33 +191,33 @@ describe('migratie naar het periodemodel', () => {
 
   it('draait pas na een geslaagde sync, één keer, en de agenda toont daarna hetzelfde als ervoor', async () => {
     const s = await store()
-    await s.putMany('calendar.json.enc', input.calendar)
-    await s.putMany('trips.json.enc', input.trips)
-    await s.putMany('legs.json.enc', input.legs)
-    await s.putMany('transactions.json.enc', input.transactions)
+    await putMany(s, 'calendar.json.enc', input.calendar)
+    await putMany(s, 'trips.json.enc', input.trips)
+    await putMany(s, 'legs.json.enc', input.legs)
+    await putMany(s, 'transactions.json.enc', input.transactions)
     const index = () => buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc'))
     const types = (dates: string[]) => dates.map((d) => dayInfo(index(), d, '2026-10-25').type)
     const dates = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-20', '2026-10-22']
     const before = types(dates)
-    expect(await migratePeriods(s)).toBe(false)
+    expect(await inTx(s, migratePeriods)).toBe(false)
     await s.sync()
-    expect(await migratePeriods(s)).toBe(true)
+    expect(await inTx(s, migratePeriods)).toBe(true)
     expect(types(dates)).toEqual(before)
     expect(s.list('periods.json.enc')).toHaveLength(3)
-    expect(await migratePeriods(s)).toBe(false)
+    expect(await inTx(s, migratePeriods)).toBe(false)
   })
 })
 
 describe('Nakijken', () => {
   it('dag buiten zijn trip (oorzaak van SV #1 met een dag op 28 oktober): naar de trip van die datum', async () => {
     const s = await store()
-    await s.putMany('trips.json.enc', [trip('sv1', { startDate: '2026-10-18', endDate: '2026-10-24', type: 'training-geven', organisation: 'sailing-virgins' }), trip('sv2', { startDate: '2026-10-26', endDate: '2026-10-31', type: 'training-geven', organisation: 'sailing-virgins' })])
-    await s.putMany('legs.json.enc', [leg('in', 'sv1', '2026-10-19'), leg('uit', 'sv1', '2026-10-28')])
+    await putMany(s, 'trips.json.enc', [trip('sv1', { startDate: '2026-10-18', endDate: '2026-10-24', type: 'training-geven', organisation: 'sailing-virgins' }), trip('sv2', { startDate: '2026-10-26', endDate: '2026-10-31', type: 'training-geven', organisation: 'sailing-virgins' })])
+    await putMany(s, 'legs.json.enc', [leg('in', 'sv1', '2026-10-19'), leg('uit', 'sv1', '2026-10-28')])
     const items = reviewItems(reviewInput(s))
     const outside = items.find((i) => i.kind === 'dag-buiten')
     expect(outside).toMatchObject({ leg: { id: 'uit' }, trip: { id: 'sv1' }, target: { id: 'sv2' } })
     if (outside?.kind !== 'dag-buiten') throw new Error('verwacht')
-    const undo = await fixLegOutside(s, outside.leg, outside.trip, outside.target)
+    const undo = await dagBuitenPeriodeOplossen(s, outside.leg, outside.trip, outside.target)
     expect(s.list('legs.json.enc').find((l) => l.id === 'uit')?.tripId).toBe('sv2')
     expect(reviewItems(reviewInput(s)).some((i) => i.kind === 'dag-buiten')).toBe(false)
     await undo()
@@ -223,13 +226,13 @@ describe('Nakijken', () => {
 
   it('soort onzeker, werk zonder organisatie (voorstel uit de source), geld zonder periode, plaatsen die niet aansluiten', async () => {
     const s = await store()
-    await s.putMany('trips.json.enc', [trip('oud', { name: 'Nepboot mei 2024', startDate: '2024-05-01', endDate: '2024-05-03' }), trip('werk', { name: 'Nepcharter', type: 'skipper-charter', startDate: '2026-09-01', endDate: '2026-09-03' })])
-    await s.putMany('legs.json.enc', [
+    await putMany(s, 'trips.json.enc', [trip('oud', { name: 'Nepboot mei 2024', startDate: '2024-05-01', endDate: '2024-05-03' }), trip('werk', { name: 'Nepcharter', type: 'skipper-charter', startDate: '2026-09-01', endDate: '2026-09-03' })])
+    await putMany(s, 'legs.json.enc', [
       leg('a', 'werk', '2026-09-01', { fromPlace: 'Nephaven', toPlace: 'Nepstadje' }),
       leg('b', 'werk', '2026-09-02', { fromPlace: 'Nep Eiland', toPlace: 'Nepbaai' }),
     ])
-    await s.put('places.json.enc', { id: 'p', name: 'Nepstadje', lat: 17.9, lon: -62.85, updatedAt: T, deletedAt: null })
-    await s.putMany('transactions.json.enc', [tx('fooi', '2026-09-02', { kind: 'fooi', source: 'yacht-week', tripId: 'werk' }), tx('los', '2026-08-15')])
+    await put(s, 'places.json.enc', { id: 'p', name: 'Nepstadje', lat: 17.9, lon: -62.85, updatedAt: T, deletedAt: null })
+    await putMany(s, 'transactions.json.enc', [tx('fooi', '2026-09-02', { kind: 'fooi', source: 'yacht-week', tripId: 'werk' }), tx('los', '2026-08-15')])
     const items = reviewItems(reviewInput(s))
     expect(items.find((i) => i.kind === 'soort')).toMatchObject({ trip: { id: 'oud' } })
     expect(items.find((i) => i.kind === 'organisatie')).toMatchObject({ trip: { id: 'werk' }, suggestion: 'yacht-week' })
@@ -238,15 +241,15 @@ describe('Nakijken', () => {
     expect(join).toMatchObject({ leg: { id: 'b' }, from: { name: 'Nep Eiland' }, into: { name: 'Nepstadje' } })
     // De eerste fix verandert alleen de van van die ene dag.
     if (join?.kind !== 'aansluiting') throw new Error('verwacht')
-    await fixLegStart(s, join.leg, join.previous)
+    await dagBeginAansluiten(s, join.leg, join.previous)
     expect(s.list('legs.json.enc').find((l) => l.id === 'b')?.fromPlace).toBe('Nepstadje')
     const soort = items.find((i) => i.kind === 'soort')!
     if (soort.kind !== 'soort') throw new Error('verwacht')
-    await setTripKind(s, soort.trip, 'zelf-cruisen')
+    await periodeSoortZetten(s, soort.trip, 'zelf-cruisen')
     expect(s.list('trips.json.enc').find((x) => x.id === 'oud')).toMatchObject({ kind: 'plezier', type: 'zelf-cruisen' })
     const geld = items.find((i) => i.kind === 'geld-zonder-periode')!
     if (geld.kind !== 'geld-zonder-periode') throw new Error('verwacht')
-    await fixMoneyWithoutPeriod(s, geld.tx, geld.target)
+    await geldKoppelen(s, geld.tx, geld.target)
     const home = s.list('periods.json.enc')[0]!
     expect(home).toMatchObject({ kind: 'thuis', startDate: '2026-08-15', endDate: '2026-08-15' })
     expect(s.list('transactions.json.enc').find((x) => x.id === 'los')?.tripId).toBe(home.id)
@@ -263,8 +266,8 @@ describe('Nakijken', () => {
 
   it('een agendadag binnen een trip staat in Nakijken; de trip gaat voor in de agenda', async () => {
     const s = await store()
-    await s.put('trips.json.enc', trip('w', { type: 'skipper-charter', organisation: 'yacht-week', startDate: '2027-02-01', endDate: '2027-02-05' }))
-    await setDay(s, '2027-02-03', 'rust')
+    await put(s, 'trips.json.enc', trip('w', { type: 'skipper-charter', organisation: 'yacht-week', startDate: '2027-02-01', endDate: '2027-02-05' }))
+    await inTx(s, setDay, '2027-02-03', 'rust')
     const index = buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'))
     expect(dayInfo(index, '2027-02-03', '2027-01-01').type).toBe('werk')
     expect(reviewItems(reviewInput(s)).find((i) => i.kind === 'agendadag-in-trip')).toMatchObject({ day: { date: '2027-02-03' } })
@@ -278,23 +281,23 @@ describe('Nakijken', () => {
 
   it('een dagtoestand binnen een periode aan land staat in Nakijken', async () => {
     const s = await store()
-    await setStayDays(s, ['2027-05-01', '2027-05-02', '2027-05-03'], 'thuis')
-    await s.put('calendar.json.enc', day('2027-05-02', 'onbeschikbaar', { reason: 'Nepreden' }))
+    await landperiodeZetten(s, ['2027-05-01', '2027-05-02', '2027-05-03'], 'thuis')
+    await put(s, 'calendar.json.enc', day('2027-05-02', 'onbeschikbaar', { reason: 'Nepreden' }))
     expect(reviewItems(reviewInput(s)).find((i) => i.kind === 'agendadag-in-periode')).toMatchObject({ day: { date: '2027-05-02' } })
   })
 })
 
 describe('reviewpunten periodes', () => {
   it('verlengen ongedaan maken zet ook de periode aan land en het geld terug', async () => {
-    const { resizeTrip, tripRange } = await import('../src/model/calendar')
+    const { tripRange } = await import('../src/model/calendar')
     const { weekView } = await import('../src/model/weeks')
     const s = await store()
-    await s.put('trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-06-01', endDate: '2027-06-05' }))
-    await setStayDays(s, ['2027-06-06', '2027-06-07', '2027-06-08', '2027-06-09', '2027-06-10'], 'thuis')
+    await put(s, 'trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-06-01', endDate: '2027-06-05' }))
+    await landperiodeZetten(s, ['2027-06-06', '2027-06-07', '2027-06-08', '2027-06-09', '2027-06-10'], 'thuis')
     const home = s.list('periods.json.enc')[0]!
-    await s.put('transactions.json.enc', tx('t', '2027-06-06', { tripId: home.id }))
+    await put(s, 'transactions.json.enc', tx('t', '2027-06-06', { tripId: home.id }))
     const view = weekView(s.list('trips.json.enc')[0]!, [])
-    const undo = await resizeTrip(s, { view, start: '2027-06-01', end: '2027-06-06' })
+    const undo = await periodeDatumsWijzigen(s, { view, start: '2027-06-01', end: '2027-06-06' })
     expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-07' })
     expect(s.list('transactions.json.enc')[0]!.tripId).toBe('w')
     await undo()
@@ -305,11 +308,11 @@ describe('reviewpunten periodes', () => {
 
   it('een inkomen gaat niet vanzelf naar een trip als die over de thuisperiode komt', async () => {
     const s = await store()
-    await setStayDays(s, ['2027-07-01', '2027-07-02'], 'thuis')
+    await landperiodeZetten(s, ['2027-07-01', '2027-07-02'], 'thuis')
     const home = s.list('periods.json.enc')[0]!
-    await s.put('transactions.json.enc', tx('loon', '2027-07-02', { kind: 'loon', tripId: home.id }))
-    await s.put('trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-07-02', endDate: '2027-07-04' }))
-    await setStayDays(s, ['2027-07-02'], null)
+    await put(s, 'transactions.json.enc', tx('loon', '2027-07-02', { kind: 'loon', tripId: home.id }))
+    await put(s, 'trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-07-02', endDate: '2027-07-04' }))
+    await landperiodeZetten(s, ['2027-07-02'], null)
     expect(s.list('transactions.json.enc')[0]!.tripId).toBeUndefined()
   })
 

@@ -2,11 +2,13 @@ import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { addStudent } from '../src/model/students'
 import type { Leg, Student, Trip, WeekPlan } from '../src/model/types'
-import { addParticipant, planWeek, startWeek, studentWeek, syncParticipants, updateWeek, type WeekInput } from '../src/model/weeks'
+import { planWeek, startWeek, studentWeek, syncParticipants, type WeekInput } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put } from './helpers/schrijf'
+import { deelnemerToevoegen, periodeBewerken } from '../src/domain/trips'
 
 // Studenten en planningen horen bij een week. Oudere data (zonder weekId/tripId) wordt gekoppeld aan de week waarin
 // de datum valt, zonder te schrijven; anders "zonder week". Alle gegevens zijn verzonnen.
@@ -78,27 +80,27 @@ describe('deelnemers en studenten', () => {
 
   it('een deelnemer met cursus krijgt een student met hetzelfde id; bijwerken past naam en niveau aan en houdt de voortgang', async () => {
     const store = await device()
-    const trip = await startWeek(store, input, 'nl')
+    const trip = await inTx(store, startWeek, input, 'nl')
     const anna = trip.participants!.find((p) => p.firstName === 'Nepanna')!
     const student = store.list('students.json.enc').find((s) => s.id === anna.id)!
     expect(student).toMatchObject({ firstName: 'Nepanna', level: 'gemiddeld', curriculumId: 'seed-asa-101', weekId: trip.id, startedAt: '2026-10-26' })
     expect(store.list('students.json.enc')).toHaveLength(1)
 
-    await store.put('students.json.enc', { ...student, progress: { t1: { status: 'beheerst', updatedAt: NOW } } })
-    await updateWeek(store, store.list('trips.json.enc')[0]!, { ...input, participants: [{ id: anna.id, firstName: 'Anna-Nep', level: 'gevorderd', curriculumId: 'seed-asa-101' }] }, 'nl')
+    await put(store, 'students.json.enc', { ...student, progress: { t1: { status: 'beheerst', updatedAt: NOW } } })
+    await periodeBewerken(store, store.list('trips.json.enc')[0]!, { ...input, participants: [{ id: anna.id, firstName: 'Anna-Nep', level: 'gevorderd', curriculumId: 'seed-asa-101' }] }, 'nl')
     const after = store.list('students.json.enc').find((s) => s.id === anna.id)!
     expect(after).toMatchObject({ firstName: 'Anna-Nep', level: 'gevorderd', progress: { t1: { status: 'beheerst' } } })
     // Nogmaals synchroniseren zonder wijziging schrijft niets nieuws.
     const updatedAt = after.updatedAt
-    await syncParticipants(store, store.list('trips.json.enc')[0]!)
+    await inTx(store, syncParticipants, store.list('trips.json.enc')[0]!)
     expect(store.list('students.json.enc').find((s) => s.id === anna.id)!.updatedAt).toBe(updatedAt)
   })
 
   it('een student toegevoegd in Deze week komt bij de deelnemers', async () => {
     const store = await device()
-    const trip = await startWeek(store, { ...input, participants: [] }, 'nl')
-    const student = await addStudent(store, { firstName: 'Nepcees', curriculumId: 'seed-asa-101', level: 'beginner', startedAt: '2026-10-26' }, trip.id)
-    await addParticipant(store, trip, student)
+    const trip = await inTx(store, startWeek, { ...input, participants: [] }, 'nl')
+    const student = await inTx(store, addStudent, { firstName: 'Nepcees', curriculumId: 'seed-asa-101', level: 'beginner', startedAt: '2026-10-26' }, trip.id)
+    await deelnemerToevoegen(store, trip, student)
     const saved = store.list('trips.json.enc')[0]!
     expect(saved.participants).toEqual([{ id: student.id, firstName: 'Nepcees', level: 'beginner', curriculumId: 'seed-asa-101' }])
     expect(student.weekId).toBe(trip.id)

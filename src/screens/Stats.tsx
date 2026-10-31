@@ -18,10 +18,11 @@ import { currentSettings } from '../model/settings'
 import { careerInvestment } from '../model/expenses'
 import { eurOf } from '../model/money'
 import { instructorStats, moneyStats, periodFor, ryaYachtmasterOffshore, sailingStats, seasonStart, workStats, type PeriodKind, type Row } from '../model/stats'
-import { ROLES, todayIso, type BoatKind, type WeekType } from '../model/types'
+import { ROLES, type BoatKind, type WeekType } from '../model/types'
 import { nameWithCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import type { Store } from '../storage/store'
+import { todayIso } from '../basis/datum'
 
 // Meer → Statistieken: zeilen, RYA Yachtmaster Offshore, werk, geld (pas na "Toon bedragen") en instructeur, over dit
 // jaar, dit seizoen, alles of een eigen periode. Alles afgeleid uit het logboek (src/model/stats.ts), grafieken in eigen

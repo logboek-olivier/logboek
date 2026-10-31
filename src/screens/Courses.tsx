@@ -13,7 +13,6 @@ import {
   addTopic,
   byBody,
   courseLabel,
-  deleteCurriculum,
   effectiveCurricula,
   exportCurriculum,
   exportFileName,
@@ -25,7 +24,6 @@ import {
   removeGroup,
   removeTopic,
   renameCourse,
-  saveCurriculum,
   topicCount,
   updateGroup,
   updateTopic,
@@ -34,6 +32,8 @@ import type { Curriculum } from '../model/types'
 import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 import { useBack } from '../back'
+import { cursusOpslaan, cursusVerwijderen } from '../domain/training'
+
 // Cursussen (onder Meer): per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
 // te delen als JSON en te importeren.
 
@@ -56,7 +56,7 @@ export function Courses({ store, notify }: { store: Store; notify: Notify }) {
     setError(null)
     try {
       const course = importCurriculum(await file.text())
-      await saveCurriculum(store, course)
+      await cursusOpslaan(store, course)
       notify(t('curriculum.imported'))
       setOpenId(course.id)
     } catch (e) {
@@ -111,7 +111,7 @@ export function Courses({ store, notify }: { store: Store; notify: Notify }) {
           onClose={() => setCreating(false)}
           onSave={(patch) => {
             const course = newCurriculum(patch.body, patch.courseCode, patch.name)
-            void saveCurriculum(store, course).then(() => {
+            void cursusOpslaan(store, course).then(() => {
               setCreating(false)
               setOpenId(course.id)
             })
@@ -132,7 +132,7 @@ function CourseView({ store, course, notify, onBack }: { store: Store; course: C
   const lang = useLang()
   const [editMode, setEditMode] = useState(false)
   const [editing, setEditing] = useState<Editing>(null)
-  const save = (next: Curriculum) => saveCurriculum(store, next)
+  const save = (next: Curriculum) => cursusOpslaan(store, next)
   const close = () => setEditing(null)
 
   async function share() {
@@ -261,7 +261,7 @@ function CourseView({ store, course, notify, onBack }: { store: Store; course: C
           onClose={close}
           onSave={(patch) => void save(renameCourse(course, patch)).then(close)}
           onDelete={() =>
-            void deleteCurriculum(store, course).then((undo) => {
+            void cursusVerwijderen(store, course).then((undo) => {
               close()
               onBack()
               notify(t('toast.deleted'), undo)

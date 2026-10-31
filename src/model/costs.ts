@@ -1,10 +1,11 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { dayInfo, type CalendarIndex } from './calendar'
 import { active } from './derive'
-import type { Undo } from './edit'
-import { addDays, eurOf, mondayOf, round2 } from './money'
+import { eurOf } from './money'
 import { rateFor, type RatesFile } from './rates'
 import { COST_DAY_TYPES, newId, type CostDayType, type Currency, type DayType, type FixedCost, type Settings, type Transaction, type WeekClosing } from './types'
+import { round2 } from '../basis/bedrag'
+import { addDays, daysInMonth, mondayOf, shiftMonth } from '../basis/datum'
 
 // Kosten, met zo weinig werk mogelijk. Vaste lasten: een lijst met per last het bedrag per maand, waarbij een wijziging
 // geldt vanaf een maand (oude maanden blijven kloppen). Variabele kosten: losse uitgaven (Toevoegen → Uitgave, ook
@@ -13,17 +14,6 @@ import { COST_DAY_TYPES, newId, type CostDayType, type Currency, type DayType, t
 // weinig is, het standaardbedrag per dagsoort uit Instellingen (en zonder standaard: nog onbekend, nooit verzonnen).
 
 const month = (date: string) => date.slice(0, 7)
-
-function shiftMonth(m: string, n: number): string {
-  const [y, mm] = m.split('-').map(Number) as [number, number]
-  const d = new Date(Date.UTC(y, mm - 1 + n, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-}
-
-function daysInMonth(m: string): number {
-  const [y, mm] = m.split('-').map(Number) as [number, number]
-  return new Date(Date.UTC(y, mm, 0)).getUTCDate()
-}
 
 /** Het bedrag van een vaste last in een maand: het laatste bedrag vanaf die maand of eerder (0 vóór het begin). */
 export function fixedAmount(cost: FixedCost, m: string): number {
@@ -52,7 +42,7 @@ export function fixedInMonth(costs: readonly FixedCost[], m: string, rates: Rate
 }
 
 /** Een nieuwe vaste last vanaf een maand. */
-export async function addFixedCost(store: Store, input: { name: string; amount: number; currency: Currency; from: string }): Promise<FixedCost> {
+export async function addFixedCost(store: Tx, input: { name: string; amount: number; currency: Currency; from: string }): Promise<FixedCost> {
   const record: FixedCost = {
     id: newId(),
     name: input.name.trim().slice(0, 80),
@@ -62,7 +52,6 @@ export async function addFixedCost(store: Store, input: { name: string; amount: 
     deletedAt: null,
   }
   await store.put('fixedcosts.json.enc', record)
-  void store.sync()
   return record
 }
 
@@ -70,28 +59,17 @@ export async function addFixedCost(store: Store, input: { name: string; amount: 
  * Een vaste last wijzigen vanaf een maand (0 = stoppen): het nieuwe bedrag geldt vanaf die maand; een eerdere wijziging
  * voor die maand of later vervalt. Oude maanden blijven zoals ze waren. Met ongedaan maken.
  */
-export async function changeFixedCost(store: Store, cost: FixedCost, change: { name?: string; amount: number; from: string }): Promise<Undo> {
+export async function changeFixedCost(store: Tx, cost: FixedCost, change: { name?: string; amount: number; from: string }): Promise<void> {
   const before = store.list('fixedcosts.json.enc').find((c) => c.id === cost.id) ?? cost
   const amounts = [...before.amounts.filter((a) => a.from < change.from), { from: change.from, amount: round2(Math.max(0, change.amount)) }]
   const next: FixedCost = { ...before, ...(change.name !== undefined ? { name: change.name.trim().slice(0, 80) || before.name } : {}), amounts, updatedAt: new Date().toISOString() }
   await store.put('fixedcosts.json.enc', next)
-  void store.sync()
-  return async () => {
-    await store.put('fixedcosts.json.enc', { ...before, updatedAt: new Date().toISOString() })
-    void store.sync()
-  }
 }
 
 /** Een vaste last verwijderen (tombstone zonder naam of bedragen); ongedaan maken zet hem uit het geheugen terug. */
-export async function deleteFixedCost(store: Store, cost: FixedCost): Promise<Undo> {
-  const original = { ...cost }
+export async function deleteFixedCost(store: Tx, cost: FixedCost): Promise<void> {
   const now = new Date().toISOString()
   await store.put('fixedcosts.json.enc', { id: cost.id, name: '', currency: cost.currency, amounts: [], updatedAt: now, deletedAt: now })
-  void store.sync()
-  return async () => {
-    await store.put('fixedcosts.json.enc', { ...original, updatedAt: new Date().toISOString(), deletedAt: null })
-    void store.sync()
-  }
 }
 
 /** Dagsoort voor de kosten: werk, rust en reis zoals in de agenda; al het andere (thuis, onbeschikbaar, beschikbaar, optie, leeg) thuis. */

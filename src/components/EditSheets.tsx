@@ -1,7 +1,6 @@
 import { BelongsTo, useBelongsTo } from './BelongsTo'
-import { expenseCategory, kindForCategory, resolveTarget, sourceOnSave } from '../model/expenses'
+import { expenseCategory, kindForCategory, sourceOnSave } from '../model/expenses'
 import { placeLeg } from '../model/leg-trip'
-import { resizeTrip } from '../model/calendar'
 import { weekView } from '../model/weeks'
 import { PlacementHint } from './PlacementHint'
 import { Trash2 } from 'lucide-react'
@@ -9,30 +8,11 @@ import { useState, type FormEvent } from 'react'
 import { formatDate, formatNumber, formatRate } from '../format'
 import { active } from '../model/derive'
 import {
-  deleteLeg,
-  deleteTransaction,
   parseNonNegative,
-  updateLeg,
-  updateTransaction,
-  type Undo,
 } from '../model/edit'
-import { parseAmount } from '../model/money'
+import type { Undo } from '../domain/commit'
 import { eurValue } from '../model/rates'
-import { saveSettings } from '../model/settings'
-import {
-  CURRENCIES,
-  INCOME_KIND_LIST,
-  ROLES,
-  todayIso,
-  type Currency,
-  type Leg,
-  type Role,
-  type TipVia,
-  type CostCategory,
-  COST_CATEGORIES,
-  type Transaction,
-  type TransactionKind,
-} from '../model/types'
+import { CURRENCIES, INCOME_KIND_LIST, ROLES, type Currency, type Leg, type Role, type TipVia, type CostCategory, COST_CATEGORIES, type Transaction, type TransactionKind } from '../model/types'
 import type { Store } from '../storage/store'
 import { defaultTripName } from '../model/trip-name'
 import { Icon } from './Icon'
@@ -43,6 +23,11 @@ import { TipFromPicker } from './TipFromPicker'
 import { TipViaPicker } from './TipViaPicker'
 import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { t } from '../i18n'
+import { dagBewerkenMetTrip, dagVerwijderen } from '../domain/dagen'
+import { geldBewerken, geldVerwijderen, uitgaveBewerken } from '../domain/geld'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Onderbladen om een transactie, dag of tocht te bewerken. Verwijderen zonder bevestigingsvraag; de aanroeper toont
 // "Verwijderd · Ongedaan maken".
@@ -96,24 +81,25 @@ export function TransactionSheet({
     setBusy(true)
     try {
       // Een declaratie volgt zijn declaratie: daar wijzigt "Hoort bij" niets (de trip staat in de declaratie).
-      const chosenTrip = expense && !tx.claimId ? ((await resolveTarget(store, belongs.current, date)) ?? null) : tripId || null
-      const trip = chosenTrip ? store.list('trips.json.enc').find((x) => x.id === chosenTrip) : undefined
-      await updateTransaction(store, tx, {
+      const patch = {
         amount: parsed,
         // Een declaratie-uitgave blijft kosten (de declaratie zoekt haar uitgave en houdt haar bij).
         kind: expense && category && !tx.claimId ? kindForCategory(category) : kind,
-        source: sourceOnSave(trip, tx.source),
         currency,
         date,
         note: note.trim() || undefined,
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
-        tripId: chosenTrip,
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
         tipVia: kind === 'fooi' ? tipVia : null,
         category: expense ? (category ?? undefined) : null,
         // Gestort kan niet vóór de fooi zelf.
         depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? (depositedAt < date ? date : depositedAt) : null,
-      })
+      }
+      if (expense && !tx.claimId) await uitgaveBewerken(store, tx, belongs.current, patch)
+      else {
+        const trip = tripId ? store.list('trips.json.enc').find((x) => x.id === tripId) : undefined
+        await geldBewerken(store, tx, { ...patch, tripId: tripId || null, source: sourceOnSave(trip, tx.source) })
+      }
       onClose()
       notify(t('toast.saved'))
     } finally {
@@ -127,7 +113,7 @@ export function TransactionSheet({
     if (busy) return
     setBusy(true)
     try {
-      const undo = await deleteTransaction(store, tx)
+      const undo = await geldVerwijderen(store, tx)
       onClose()
       notify(t('toast.deleted'), undo)
     } finally {
@@ -299,8 +285,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
     setBusy(true)
     try {
       const extendTrip = placement.extend && placement.tripId ? trips.find((x) => x.id === placement.tripId) : undefined
-      if (extendTrip && placement.extend) await resizeTrip(store, { view: weekView(extendTrip, legs), start: placement.extend.start, end: placement.extend.end })
-      await updateLeg(
+      await dagBewerkenMetTrip(
         store,
         leg,
         {
@@ -321,6 +306,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
           notes: notes.trim(),
         },
         target(),
+        extendTrip && placement.extend ? { view: weekView(extendTrip, legs), start: placement.extend.start, end: placement.extend.end } : null,
       )
       onClose()
       notify(t('toast.saved'))
@@ -330,7 +316,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   }
 
   async function remove() {
-    const undo = await deleteLeg(store, leg)
+    const undo = await dagVerwijderen(store, leg)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -463,8 +449,7 @@ export function GoalSheet({
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (parsed === null) return
-    await saveSettings(store, { yearGoalNm: Math.round(parsed) })
-    void store.sync()
+    await instellingenOpslaan(store, { yearGoalNm: Math.round(parsed) })
     onClose()
     notify(t('toast.goalSaved'))
   }

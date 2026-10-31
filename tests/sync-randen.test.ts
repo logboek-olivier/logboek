@@ -7,6 +7,7 @@ import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { decryptRecords, salvageRecords } from '../src/storage/sync'
 import { FakeGithub } from './helpers/fake-github'
+import { put } from './helpers/schrijf'
 
 // Fundering: randgevallen van de sync. Eén bestand herstellen gooit nooit de goede records van een ander apparaat weg;
 // een opslag in een ander venster midden in een ronde verdwijnt nooit uit de outbox zonder naar GitHub te gaan; een
@@ -51,7 +52,7 @@ describe('één bestand herstellen', () => {
     const bad = utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 1, records: [rem('a'), rem('b'), { id: 'kapot', deletedAt: null }] }))
     await client.putFile(path, await encryptObject(masterKey, path, bad), null)
     const s = await Store.open(await openLogboekDb(`logboek-randen-${++counter}`), masterKey, client)
-    await s.put(path, rem('c'))
+    await put(s, path, rem('c'))
     await s.sync()
     // In de app is de meta-controle 'match'; deze opslagtest heeft geen meta.
     ;(s as unknown as { metaVerdict: string }).metaVerdict = 'match'
@@ -69,7 +70,7 @@ describe('twee vensters', () => {
     const client = new GithubClient(TOKEN, github.fetch)
     const w1 = await Store.open(db, masterKey, client)
     const w2 = await Store.open(db, masterKey, client)
-    await w1.put('legs.json.enc', leg('eerste'))
+    await put(w1, 'legs.json.enc', leg('eerste'))
     await w1.sync()
     // Venster 2 slaat precies op tussen het lezen van de bestanden en van de outbox door venster 1 (zonder bericht).
     const inner = w1 as unknown as { absorbOutbox: () => Promise<void>; channel: BroadcastChannel | null }
@@ -79,7 +80,7 @@ describe('twee vensters', () => {
     inner.absorbOutbox = async () => {
       if (once) {
         once = false
-        await w2.put('legs.json.enc', leg('tweede'))
+        await put(w2, 'legs.json.enc', leg('tweede'))
       }
       return original()
     }
@@ -102,8 +103,8 @@ describe('opslag tijdens een ronde die op een fout eindigt', () => {
     const s = await Store.open(await openLogboekDb(`logboek-randen-${++counter}`), masterKey, client)
     s.enableAutoSync()
     const trip = (id: string) => ({ id, name: `Neptrip ${id}`, updatedAt: new Date().toISOString(), deletedAt: null })
-    await s.put('trips.json.enc', trip('eerste'))
-    await s.put('legs.json.enc', leg('eerste'))
+    await put(s, 'trips.json.enc', trip('eerste'))
+    await put(s, 'legs.json.enc', leg('eerste'))
     await s.sync()
     expect(s.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable' })
     // Een ronde met een trip en een dag; terwijl de trip naar GitHub gaat, slaat Olivier nog een trip op, en de rest van
@@ -112,13 +113,13 @@ describe('opslag tijdens een ronde die op een fout eindigt', () => {
     github.beforePut = (path) => {
       if (saved || path !== 'trips.json.enc') return
       saved = true
-      void s.put('trips.json.enc', trip('tweede'))
+      void put(s, 'trips.json.enc', trip('tweede'))
       github.gate = new Promise<void>((r) => setTimeout(r, 1_200)).then(() => {
         github.gate = null
       })
     }
-    await s.put('trips.json.enc', trip('derde'))
-    await s.put('legs.json.enc', leg('derde'))
+    await put(s, 'trips.json.enc', trip('derde'))
+    await put(s, 'legs.json.enc', leg('derde'))
     await s.sync()
     expect(s.getStatus()).toMatchObject({ kind: 'error', code: 'unreadable' })
     await new Promise((r) => setTimeout(r, 2_500))

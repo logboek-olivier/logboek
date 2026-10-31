@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { labelBox, labelText, labelZoom, MAX_LABELS, placeLabels, rankLabels } from '../src/components/map-labels'
 import type { OsmLabel } from '../src/model/osm'
+
 // @ts-expect-error: Node-script zonder typen
 import { buildLabels, labelKind, labelZoom as buildZoom, sizeKm } from '../scripts/osm-lib.mjs'
 

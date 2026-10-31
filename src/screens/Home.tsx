@@ -3,20 +3,21 @@ import { BottomBar, type Tab } from '../components/BottomBar'
 import { useIsDemo } from '../components/DemoBar'
 import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
-import { backfillRates, getRates, loadRates, subscribeRates } from '../model/rates'
+import { getRates, loadRates, subscribeRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { recordError, setScreen } from '../errors'
 import { onBack } from '../back'
 import { onNavigate } from '../navigation'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
-import { todayIso, type AddTab } from '../model/types'
+import { type AddTab } from '../model/types'
 import { currentSettings } from '../model/settings'
 import { SCREEN_FILES } from '../screen-files'
 import { lazyComponent } from '../lazy'
 import { BackToMore, More, type MoreScreen } from './More'
 import type { AddInit } from './QuickAdd'
 import { Today } from './Today'
+import { todayIso } from '../basis/datum'
 
 // Vandaag laadt direct; de andere schermen pas als ze geopend worden (src/lazy.ts), zodat de app snel opent.
 const Money = lazyComponent(() => import('./Money').then((m) => m.Money))
@@ -146,18 +147,20 @@ export function Home({ store }: { store: Store }) {
   useEffect(() => {
     if (backfilled.current || !rates || !store.hasSynced()) return
     backfilled.current = true
-    void backfillRates(store, rates)
+    void import('../domain/geld').then((m) => m.koersenVastleggen(store, rates))
   }, [store, rates, status])
   // Periodemodel: de agenda en het geld één keer omzetten, na de eerste geslaagde sync (src/model/migrate-periods.ts).
   const migrating = useRef(false)
   useEffect(() => {
     if (migrating.current || demo || !store.hasSynced()) return
     migrating.current = true
-    void import('../model/migrate-periods')
-      .then((m) => m.migratePeriods(store))
-      // Vaste lasten: elke voorbije maand als echte uitgave (Geld → Werkelijk).
-      .then(() => import('../model/fixed-bookings'))
-      .then((m) => m.bookFixedCosts(store, todayIso()))
+    // De opdrachten pas laden als ze nodig zijn (snel openen: alleen Vandaag laadt direct).
+    void Promise.all([import('../domain/agenda'), import('../domain/geld')])
+      .then(async ([agenda, geld]) => {
+        await agenda.periodemodelMigreren(store)
+        // Vaste lasten: elke voorbije maand als echte uitgave (Geld → Werkelijk).
+        await geld.vasteLastenBoeken(store, todayIso())
+      })
       .catch((error: unknown) => {
         // Lukt het nu niet (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
         migrating.current = false

@@ -11,6 +11,7 @@ import { decryptRecords, encryptRecords } from '../src/storage/sync'
 import { storeToken } from '../src/storage/token'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // Storingstests: na elke reeks moet een schoon apparaat met alleen de wachtzin alles op GitHub kunnen lezen, en de app
 // moet open zijn (geen herstelscherm). Alle gegevens zijn verzonnen.
@@ -144,7 +145,7 @@ describe('Storingstests', () => {
     const { name } = await phone()
     const a = await open(name)
     const b = await open(name)
-    await Promise.all([store(a).put('legs.json.enc', day('a1', '2026-10-27T12:00:00.000Z')), store(b).put('legs.json.enc', day('b1', '2026-10-27T12:00:01.000Z'))])
+    await Promise.all([put(store(a), 'legs.json.enc', day('a1', '2026-10-27T12:00:00.000Z')), put(store(b), 'legs.json.enc', day('b1', '2026-10-27T12:00:01.000Z'))])
     await Promise.all([store(a).sync(), store(b).sync()])
     await store(a).sync()
     await store(b).sync()
@@ -185,8 +186,8 @@ describe('Storingstests', () => {
     const { name } = await phone()
     const s = await open(name)
     await store(s).sync()
-    await store(s).put('legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
-    await store(s).put('trips.json.enc', { ...week, name: 'Nepweek hernoemd', updatedAt: '2026-10-27T12:00:00.000Z' })
+    await put(store(s), 'legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
+    await put(store(s), 'trips.json.enc', { ...week, name: 'Nepweek hernoemd', updatedAt: '2026-10-27T12:00:00.000Z' })
     let puts = 0
     github.beforePut = () => {
       if (++puts === 1) github.offline = true
@@ -207,7 +208,7 @@ describe('Storingstests', () => {
     await store(s).sync()
     let release: () => void = () => undefined
     github.gate = new Promise((resolve) => (release = resolve))
-    const writing = store(s).put('legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
+    const writing = put(store(s), 'legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
     const syncing = store(s).sync()
     // Sluiten: het geheugen wordt gewist terwijl schrijven en sync nog lopen.
     s.lock()

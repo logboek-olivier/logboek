@@ -10,11 +10,12 @@ import { ViewRows } from '../components/Views'
 import { nameWithCounter } from '../model/counters'
 import { active, round1, totalNm } from '../model/derive'
 import { t } from '../i18n'
-import { boatList, confirmBoats, deleteBoat, mergeBoat, skipBoats, type BoatEntry, type BoatInput } from '../model/boats'
-import { parseAmount } from '../model/money'
+import { boatList, type BoatEntry, type BoatInput } from '../model/boats'
 import { type BoatKind } from '../model/types'
 import { feetToMetres, weekView } from '../model/weeks'
 import type { Store } from '../storage/store'
+import { bootVerwijderen, botenBevestigen, botenOverslaan, botenSamenvoegen } from '../domain/trips'
+import { parseAmount } from '../basis/bedrag'
 
 // Bootgegevens controleren: per boot naam, model, soort en lengte, met het voorstel uit het model zichtbaar
 // ingevuld. Eén tik bevestigt alles; overslaan mag (na een import). Onder Meer → Boten staat dezelfde lijst.
@@ -73,7 +74,7 @@ export function BoatCheck({
     setBusy(true)
     try {
       const inputs: BoatInput[] = open.map((r) => ({ key: r.key, name: r.name, model: r.model, lengthFt: parseAmount(r.length), kind: r.kind }))
-      await confirmBoats(store, frozen, inputs)
+      await botenBevestigen(store, frozen, inputs)
       notify(t('boats.saved', { n: open.length }))
       onDone()
     } finally {
@@ -82,7 +83,7 @@ export function BoatCheck({
   }
 
   async function skip() {
-    await skipBoats(store, frozen.filter((b) => !done.has(b.key)))
+    await botenOverslaan(store, frozen.filter((b) => !done.has(b.key)))
     onDone()
   }
 
@@ -91,8 +92,8 @@ export function BoatCheck({
     if (busy) return
     setBusy(true)
     try {
-      if (confirm) await confirmBoats(store, frozen, [{ key: r.key, name: r.name, model: r.model, lengthFt: parseAmount(r.length), kind: r.kind }])
-      else await skipBoats(store, frozen.filter((b) => b.key === r.key))
+      if (confirm) await botenBevestigen(store, frozen, [{ key: r.key, name: r.name, model: r.model, lengthFt: parseAmount(r.length), kind: r.kind }])
+      else await botenOverslaan(store, frozen.filter((b) => b.key === r.key))
       notify(t(confirm ? 'boats.savedOne' : 'boats.skippedOne', { name: r.name || r.model }))
       const next = new Set(done).add(r.key)
       setDone(next)
@@ -296,7 +297,7 @@ function BoatSheet({ store, boat, boats, notify, onClose }: { store: Store; boat
     if (busy) return
     setBusy(true)
     try {
-      await confirmBoats(store, [boat], [{ key: boat.key, name: row.name, model: row.model, lengthFt: ft, kind: row.kind }])
+      await botenBevestigen(store, [boat], [{ key: boat.key, name: row.name, model: row.model, lengthFt: ft, kind: row.kind }])
       onClose()
       notify(t('toast.saved'))
     } finally {
@@ -308,7 +309,7 @@ function BoatSheet({ store, boat, boats, notify, onClose }: { store: Store; boat
     const into = others.find((b) => b.key === target)
     if (!into || busy) return
     setBusy(true)
-    const undo = await mergeBoat(store, boat, into)
+    const undo = await botenSamenvoegen(store, boat, into)
     onClose()
     notify(t('boats.merged', { name: into.name || into.model }), undo)
   }
@@ -316,7 +317,7 @@ function BoatSheet({ store, boat, boats, notify, onClose }: { store: Store; boat
   async function remove() {
     if (busy) return
     setBusy(true)
-    const undo = await deleteBoat(store, boat)
+    const undo = await bootVerwijderen(store, boat)
     onClose()
     notify(t('boats.deleted', { name: boat.name || boat.model }), undo)
   }

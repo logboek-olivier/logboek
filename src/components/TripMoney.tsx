@@ -6,17 +6,21 @@ import { t } from '../i18n'
 import { kindLabel } from '../i18n/labels'
 import { claimCounts, tripClaims } from '../model/claims'
 import { active } from '../model/derive'
-import { parseAmount, totals } from '../model/money'
+import { totals } from '../model/money'
 import { tripMoney, tripResult, type MoneySum, type TripResult } from '../model/money-path'
-import { eurValue, finalRateFields, getRates, subscribeRates } from '../model/rates'
-import { salarySource, tripEnd } from '../model/salary'
-import { currentSettings, saveSettings } from '../model/settings'
-import { CURRENCIES, newId, todayIso, type Currency, type IncomeKind, type Transaction, type Trip } from '../model/types'
+import { eurValue, getRates, subscribeRates } from '../model/rates'
+import { tripEnd } from '../model/salary'
+import { currentSettings } from '../model/settings'
+import { CURRENCIES, type Currency, type IncomeKind, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { SalaryDot, salaryAmountText, salaryStateLabel } from './MoneyPath'
 import { useCollection } from './useCollection'
+import { geldToevoegen } from '../domain/geld'
+import { parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
+import { sourceForPeriod } from '../basis/organisatie'
 
 // Geld van één trip, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee): inkomsten en uitgaven, het
 // resultaat van de trip (salaris + fooi + overige inkomsten − uitgaven, kan negatief zijn; declaraties die nog niet
@@ -179,27 +183,9 @@ export function TripIncomeFields({ store, trip, notify }: { store: Store; trip: 
     setBusy(true)
     try {
       const date = dateForTrip(trip, tripEnd(trip, legs), todayIso())
-      const base = { date, amount: parsed!, currency }
-      const record: Transaction = {
-        id: newId(),
-        ...base,
-        kind,
-        source: salarySource(trip),
-        tripId: trip.id,
-        ...(kind === 'fooi' ? { tipVia: settings.lastTipVia ?? 'contant' } : {}),
-        ...(currency === 'EUR' ? { amountEur: parsed! } : (finalRateFields(base) ?? {})),
-        updatedAt: new Date().toISOString(),
-        deletedAt: null,
-      }
-      await store.put('transactions.json.enc', record)
-      await saveSettings(store, { lastCurrency: currency })
-      void store.sync()
+      const { undo } = await geldToevoegen(store, { date, amount: parsed!, currency, kind, source: sourceForPeriod(trip), ...(kind === 'fooi' ? { tipVia: settings.lastTipVia ?? 'contant' } : {}) }, trip.id)
       setAmount('')
-      notify(t('tripIncome.saved'), async () => {
-        const now = new Date().toISOString()
-        await store.put('transactions.json.enc', { ...record, deletedAt: now, updatedAt: now })
-        void store.sync()
-      })
+      notify(t('tripIncome.saved'), undo)
     } finally {
       setBusy(false)
     }

@@ -1,10 +1,10 @@
-import type { Store } from '../storage/store'
+import type { Tx, Reader } from '../domain/tx'
 import { t } from '../i18n'
-import { applyChanges, type Change, type Undo } from './changes'
+import { applyChanges, type Change } from './changes'
 import { active } from './derive'
-import { addDays } from './money'
 import { weekView, type WeekView } from './weeks'
 import type { CalendarDay, Leg, PeriodKind, StayKind, StayPeriod, Transaction, Trip, WeekType } from './types'
+import { addDays } from '../basis/datum'
 
 // Het periodemodel (docs/PERIODEMODEL.md): elke dag hoort bij hoogstens één periode. Werk, training en plezier zijn
 // trips (trips.json.enc); reis, thuis en vrij zijn periodes aan land (periods.json.enc). Schermen werken met `Period`,
@@ -74,15 +74,6 @@ export function allPeriods(trips: readonly Trip[], legs: readonly Leg[], stays: 
 export function periodAt(periods: readonly Period[], date: string): Period | null {
   const inside = periods.filter((p) => isDate(p.start) && isDate(p.end) && p.start <= date && date <= p.end)
   return inside.filter((p) => isWaterKind(p.kind)).at(-1) ?? inside[0] ?? null
-}
-
-/** Periodes rond een datum (de periode van die datum, de vorige en de volgende), voor "Hoort bij". */
-export function periodsAround(periods: readonly Period[], date: string, count = 1): Period[] {
-  const dated = periods.filter((p) => isDate(p.start) && isDate(p.end))
-  const before = dated.filter((p) => p.end < date).slice(-count)
-  const inside = dated.filter((p) => p.start <= date && date <= p.end)
-  const after = dated.filter((p) => p.start > date).slice(0, count)
-  return [...before, ...inside, ...after]
 }
 
 // ---------- Periodes aan land maken, verlengen, korter maken, splitsen ----------
@@ -215,11 +206,11 @@ function hasDetails(day: CalendarDay): boolean {
  * gaat mee naar de periode van die datum. Een zelf ingestelde agendadag zonder gegevens op een dag die een soort aan
  * land krijgt, vervalt (de periode zegt het nu); met een notitie, plaats of reis blijft hij als gegevens van die dag.
  */
-export async function setStayDays(store: Store, dates: readonly string[], kind: StayKind | null, details: StayDetails = {}, sync = true): Promise<Undo> {
-  return applyChanges(store, stayDayChanges(store, dates, kind, details), sync)
+export async function setStayDays(store: Tx, dates: readonly string[], kind: StayKind | null, details: StayDetails = {}): Promise<void> {
+  return applyChanges(store, stayDayChanges(store, dates, kind, details))
 }
 
-export function stayDayChanges(store: Store, dates: readonly string[], kind: StayKind | null, details: StayDetails = {}): Change[] {
+export function stayDayChanges(store: Reader, dates: readonly string[], kind: StayKind | null, details: StayDetails = {}): Change[] {
   const trips = store.list('trips.json.enc')
   const legs = store.list('legs.json.enc')
   const ranges = waterRanges(trips, legs)
@@ -259,8 +250,8 @@ export function rangeDates(from: string, to: string): string[] {
   return out
 }
 
-/** Een periode aan land verwijderen (zijn dagen worden weer automatisch), met ongedaan maken. */
-export function deleteStay(store: Store, stay: StayPeriod): Promise<Undo> {
+/** Een periode aan land verwijderen (zijn dagen worden weer automatisch). */
+export function deleteStay(store: Tx, stay: StayPeriod): Promise<void> {
   return setStayDays(store, rangeDates(stay.startDate, stay.endDate), null)
 }
 
@@ -273,16 +264,15 @@ export interface StayInput {
   travel?: StayPeriod['travel']
 }
 
-/** Een periode aan land bewerken (soort, naam, datums, notitie, reis), met ongedaan maken. Dagen in een trip blijven bij de trip. */
-export async function updateStay(store: Store, stay: StayPeriod, input: StayInput): Promise<Undo> {
+/** Een periode aan land bewerken (soort, naam, datums, notitie, reis). Dagen in een trip blijven bij de trip. */
+export async function updateStay(store: Tx, stay: StayPeriod, input: StayInput): Promise<void> {
   const [start, end] = input.startDate <= input.endDate ? [input.startDate, input.endDate] : [input.endDate, input.startDate]
   const next = rangeDates(start, end).slice(0, 400)
   const removed = rangeDates(stay.startDate, stay.endDate).filter((d) => !next.includes(d))
-  const undoRemoved = removed.length > 0 ? await setStayDays(store, removed, null, {}, false) : async () => {}
-  const undoDays = await setStayDays(store, next, input.kind, {}, false)
+  if (removed.length > 0) await setStayDays(store, removed, null, {})
+  await setStayDays(store, next, input.kind, {})
   // Naam, notitie en reis van de periode die nu op de begindag staat (ook leegmaken mag).
   const record = active(store.list('periods.json.enc')).find((s) => s.kind === input.kind && s.startDate <= next[0]! && next[0]! <= s.endDate)
-  let undoFields: Undo = async () => {}
   if (record) {
     const { name: _n, note: _o, travel: _t, ...rest } = record
     void [_n, _o, _t]
@@ -292,12 +282,6 @@ export async function updateStay(store: Store, stay: StayPeriod, input: StayInpu
     const to = input.travel?.to?.trim().slice(0, 80)
     const travel = input.kind === 'reis' && (from || to || input.travel?.by) ? { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(input.travel?.by ? { by: input.travel.by } : {}) } : undefined
     const after: StayPeriod = { ...rest, ...(name ? { name } : {}), ...(note ? { note } : {}), ...(travel ? { travel } : {}), updatedAt: new Date().toISOString() }
-    if (JSON.stringify({ ...after, updatedAt: '' }) !== JSON.stringify({ ...record, updatedAt: '' })) undoFields = await applyChanges(store, [{ path: 'periods.json.enc', before: record, after }], false)
-  }
-  void store.sync()
-  return async () => {
-    await undoFields()
-    await undoDays()
-    await undoRemoved()
+    await applyChanges(store, [{ path: 'periods.json.enc', before: record, after }])
   }
 }

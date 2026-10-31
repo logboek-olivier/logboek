@@ -9,6 +9,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, putMany } from './helpers/schrijf'
 
 const NOW = '2026-10-26T10:00:00.000Z'
 
@@ -113,17 +114,17 @@ describe('koers opslaan bij bestaande transacties', () => {
     const db = await openLogboekDb('logboek-rates-1')
     const store = await Store.open(db, masterKey, new GithubClient('github_pat_RATES_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
     // Zo slaat de huidige versie een fooi in USD op: zonder amountEur, rate of rateDate.
-    await store.putMany('transactions.json.enc', [
+    await putMany(store, 'transactions.json.enc', [
       tx({ id: 'oud-usd' }),
       tx({ id: 'nieuw-usd', date: '2026-10-25', amount: 108 }),
       tx({ id: 'eur', currency: 'EUR', amount: 50, amountEur: 50 }),
     ])
-    expect(await backfillRates(store, file)).toBe(1)
+    expect(await inTx(store, backfillRates, file)).toBe(1)
     const byId = new Map(store.list('transactions.json.enc').map((t) => [t.id, t]))
     expect(byId.get('oud-usd')).toMatchObject({ amountEur: 100, rate: 1.07, rateDate: '2026-10-22' })
     expect(byId.get('nieuw-usd')!.amountEur).toBeUndefined()
     expect(byId.get('eur')).toEqual(tx({ id: 'eur', currency: 'EUR', amount: 50, amountEur: 50 }))
     // Nog een keer: niets meer te doen.
-    expect(await backfillRates(store, file)).toBe(0)
+    expect(await inTx(store, backfillRates, file)).toBe(0)
   })
 })

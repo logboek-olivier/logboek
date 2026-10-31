@@ -1,13 +1,14 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { deleteGoal, deleteSkill } from '../src/model/edit'
-import { autoValue, goalProgress, logSession, measurements, parseValue, saveGoal, saveSkill, skillStats, toggleMilestone, type GoalData } from '../src/model/goals'
+import { autoValue, goalProgress, logSession, measurements, parseValue, saveGoal, saveSkill, skillStats, type GoalData } from '../src/model/goals'
 import type { RatesFile } from '../src/model/rates'
 import type { Goal, Leg, Session, Skill, Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx } from './helpers/schrijf'
+import { doelVerwijderen, mijlpaalAfvinken, skillVerwijderen } from '../src/domain/doelen'
 
 // Doelen en skills: zelfvullende jaardoelen uit de app, zelf gemeten doelen en skills met sessies, trend en
 // mijlpalen. Alle gegevens verzonnen.
@@ -124,14 +125,14 @@ describe('skills', () => {
 
   it('opslaan, sessie loggen, mijlpaal afvinken, en verwijderen met de sessies, met ongedaan maken', async () => {
     const store = await newStore()
-    const saved = await saveSkill(store, { name: '  Nep   kitesurfen ', milestones: [{ id: 'm', title: ' Eerste waterstart ', doneAt: null }, { id: 'leeg', title: '  ', doneAt: null }] })
+    const saved = await inTx(store, saveSkill, { name: '  Nep   kitesurfen ', milestones: [{ id: 'm', title: ' Eerste waterstart ', doneAt: null }, { id: 'leeg', title: '  ', doneAt: null }] })
     expect(saved).toMatchObject({ name: 'Nep kitesurfen', milestones: [{ id: 'm', title: 'Eerste waterstart', doneAt: null }] })
-    await logSession(store, { date: '2026-10-29', skillId: saved.id, minutes: 45.4, value: -3, note: 'Nepnotitie' })
+    await inTx(store, logSession, { date: '2026-10-29', skillId: saved.id, minutes: 45.4, value: -3, note: 'Nepnotitie' })
     expect(store.list('sessions.json.enc')).toEqual([expect.objectContaining({ skillId: saved.id, minutes: 45, note: 'Nepnotitie' })])
     expect(store.list('sessions.json.enc')[0]).not.toHaveProperty('value')
-    await toggleMilestone(store, store.list('skills.json.enc')[0]!, 'm', '2026-10-29')
+    await mijlpaalAfvinken(store, store.list('skills.json.enc')[0]!, 'm', '2026-10-29')
     expect(store.list('skills.json.enc')[0]!.milestones[0]!.doneAt).toBe('2026-10-29')
-    const undo = await deleteSkill(store, store.list('skills.json.enc')[0]!)
+    const undo = await skillVerwijderen(store, store.list('skills.json.enc')[0]!)
     // Verwijderen is een tombstone: niet meer in de lijst, wel in het bestand.
     expect(store.list('skills.json.enc')).toEqual([])
     expect(store.list('sessions.json.enc')).toEqual([])
@@ -140,9 +141,9 @@ describe('skills', () => {
     expect(store.list('skills.json.enc')[0]!.deletedAt).toBeNull()
     expect(store.list('sessions.json.enc')[0]!.deletedAt).toBeNull()
     // Een doel met zijn metingen.
-    const g = await saveGoal(store, { kind: 'meting', title: 'Nepdoel', target: 77, unit: 'kg', lower: true, doneAt: null })
-    await logSession(store, { date: '2026-10-29', goalId: g.id, value: 80 })
-    await deleteGoal(store, g)
+    const g = await inTx(store, saveGoal, { kind: 'meting', title: 'Nepdoel', target: 77, unit: 'kg', lower: true, doneAt: null })
+    await inTx(store, logSession, { date: '2026-10-29', goalId: g.id, value: 80 })
+    await doelVerwijderen(store, g)
     expect(store.list('sessions.json.enc').filter((s) => s.goalId === g.id)).toEqual([])
   })
 })

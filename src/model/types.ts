@@ -21,7 +21,6 @@ export const WEEK_TYPES: readonly WeekType[] = ['training-geven', 'skipper-chart
 // (op het water, trips.json.enc); reis, thuis en vrij zijn periodes aan land (periods.json.enc).
 
 export type PeriodKind = 'werk' | 'training' | 'plezier' | 'reis' | 'thuis' | 'vrij'
-export const PERIOD_KINDS: readonly PeriodKind[] = ['werk', 'training', 'plezier', 'reis', 'thuis', 'vrij']
 export type WaterKind = 'werk' | 'training' | 'plezier'
 export const WATER_KINDS: readonly WaterKind[] = ['werk', 'training', 'plezier']
 export type StayKind = 'reis' | 'thuis' | 'vrij'
@@ -254,8 +253,6 @@ export type TransactionSource = 'yacht-week' | 'sailing-virgins' | 'delivery' | 
 export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | 'NOK' | 'XCD'
 
 export const CURRENCIES: readonly Currency[] = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'DKK', 'NOK', 'XCD', 'HRK']
-export const TRANSACTION_SOURCES: readonly TransactionSource[] = ['yacht-week', 'sailing-virgins', 'delivery', 'overig']
-
 export interface Transaction extends SyncRecord {
   /** jjjj-mm-dd */
   date: string
@@ -755,10 +752,6 @@ export function newId(): string {
   return crypto.randomUUID()
 }
 
-export function nowIso(): string {
-  return new Date().toISOString()
-}
-
 /**
  * Eén milliseconde na een tijd: voor wat de app vanzelf vastlegt bij een bestaand record (een koers, archiveren). Zo wint
  * dat altijd van de vorige versie op dit apparaat, maar nooit van een echte wijziging die een ander apparaat intussen deed.
@@ -784,10 +777,3 @@ export function keepUnknownFields<T extends object>(previous: object | undefined
   return { ...extra, ...next }
 }
 
-/** Datum van vandaag als jjjj-mm-dd in lokale tijd. */
-export function todayIso(): string {
-  const d = new Date()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${day}`
-}

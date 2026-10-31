@@ -1,9 +1,9 @@
-import type { Store } from '../storage/store'
+import type { Tx, Reader } from '../domain/tx'
 import type { DateRange } from './calendar'
 import { active } from './derive'
-import { addDays } from './money'
 import type { Leg, Trip } from './types'
 import { setStayDays } from './periods'
+import { addDays } from '../basis/datum'
 
 // Datums van een trip die de dagen volgen (aangemaakt via Toevoegen → Dag, of een trip zonder datums): begin en eind
 // komen uit de gelogde dagen en schuiven mee als er dagen bijkomen of weggaan. Stelt Olivier de datums zelf in (Trip
@@ -37,9 +37,8 @@ export function endedFor(trip: Trip, endDate: string): string {
  * staan (eigen instelling gaat voor), zodat een verkeerd getypte datum nooit dagen in de agenda wist. Raakt een trip uit
  * Toevoegen → Dag zijn laatste dag kwijt en hangt er verder niets aan, dan verdwijnt hij, zoals bij een dag verwijderen.
  */
-export async function followDays(store: Store, tripIds: readonly (string | null | undefined)[]): Promise<void> {
+export async function followDays(store: Tx, tripIds: readonly (string | null | undefined)[]): Promise<void> {
   const ids = [...new Set(tripIds.filter((id): id is string => !!id))]
-  let changed = false
   for (const id of ids) {
     const legs = store.list('legs.json.enc')
     const trip = store.list('trips.json.enc').find((t) => t.id === id)
@@ -54,7 +53,6 @@ export async function followDays(store: Store, tripIds: readonly (string | null 
         await store.put('trips.json.enc', { ...trip, updatedAt: now, deletedAt: now })
         const settings = store.list('settings.json.enc').find((x) => x.id === 'settings')
         if (settings?.activeWeekId === id) await store.put('settings.json.enc', { ...settings, activeWeekId: null, updatedAt: now })
-        changed = true
       }
       continue
     }
@@ -63,17 +61,15 @@ export async function followDays(store: Store, tripIds: readonly (string | null 
     // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land.
     const added: string[] = []
     for (let d = range.start; d <= range.end && added.length <= 400; d = addDays(d, 1)) if (!(trip.startDate && trip.endDate && trip.startDate <= d && d <= trip.endDate)) added.push(d)
-    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= range.end && st.endDate >= range.start)) await setStayDays(store, added, null, {}, false)
-    changed = true
+    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= range.end && st.endDate >= range.start)) await setStayDays(store, added, null, {})
   }
-  if (changed) void store.sync()
 }
 
 /**
  * Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, declaraties, review, afgerond, afgevinkte
  * lijsten, of een salaris dat Olivier zelf invulde of ontving)? Dan verdwijnt de trip nooit vanzelf.
  */
-export function hasOtherData(store: Store, trip: Trip): boolean {
+export function hasOtherData(store: Reader, trip: Trip): boolean {
   return (
     (trip.participants?.length ?? 0) > 0 ||
     !!trip.review ||

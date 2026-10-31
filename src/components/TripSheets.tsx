@@ -6,12 +6,13 @@ import { tripRange } from '../model/calendar'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { active } from '../model/derive'
 import { MAX_COUNTRY, MAX_TAG, participantName } from '../model/guests'
-import { changeParticipant, deleteTripWith, hasDependents, mergeTrips, replaceTrip, tripDependents, type Overlap } from '../model/trip-ops'
+import { hasDependents, tripDependents, type Overlap } from '../model/trip-ops'
 import { STUDENT_LEVELS, type Participant, type StudentLevel, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { deelnemerWijzigen, periodeVervangen, periodeVerwijderen, samenvoegen } from '../domain/trips'
 
 // Vast patroon voor alles: tikken opent bewerken met alle velden; onderaan "Verwijderen", daarna 10 seconden
 // "Ongedaan maken". Hier de onderdelen voor trips: verwijderen met de keuze wat er met dagen, inkomsten en deelnemers
@@ -59,7 +60,7 @@ export function DeleteTrip({ store, trip, notify, onDone }: { store: Store; trip
     if (busy) return
     setBusy(true)
     try {
-      const undo = await deleteTripWith(store, trip, moveTo)
+      const undo = await periodeVerwijderen(store, trip, moveTo)
       onDone()
       notify(moveTo ? t('trip.deletedMoved', { name: moveTo.name }) : t('trip.deleted'), undo)
     } finally {
@@ -160,7 +161,7 @@ export function OverlapSheet({ store, overlap, notify, onClose, onEditTrip }: { 
     if (busy) return
     setBusy(true)
     try {
-      const undo = kind === 'merge' ? await mergeTrips(store, keep, other) : await replaceTrip(store, keep, other)
+      const undo = kind === 'merge' ? await samenvoegen(store, keep, other) : await periodeVervangen(store, keep, other)
       onClose()
       notify(t(kind === 'merge' ? 'overlap.merged' : 'overlap.replaced', { name: keep.name }), undo)
     } finally {
@@ -229,7 +230,7 @@ export function ParticipantSheet({ store, trip, participant, notify, onClose }: 
         // Andere naam of ander land: niet meer dezelfde gast (de vraag over een terugkerende gast komt dan opnieuw).
         ...(guestId && sameGuest ? { guestId } : {}),
       }
-      await changeParticipant(store, trip, participant.id, next)
+      await deelnemerWijzigen(store, trip, participant.id, next)
       onClose()
       notify(t('toast.saved'))
     } finally {
@@ -238,7 +239,7 @@ export function ParticipantSheet({ store, trip, participant, notify, onClose }: 
   }
 
   async function remove() {
-    const undo = await changeParticipant(store, trip, participant.id, null)
+    const undo = await deelnemerWijzigen(store, trip, participant.id, null)
     onClose()
     notify(t('participant.removed', { name: participantName(participant, trip.participants ?? []) }), undo)
   }

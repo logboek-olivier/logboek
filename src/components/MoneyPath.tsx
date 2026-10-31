@@ -5,11 +5,9 @@ import { t } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
 import { nameWithCounter } from '../model/counters'
 import { active } from '../model/derive'
-import type { Undo } from '../model/edit'
-import { amountInput, parseAmount, round2 } from '../model/money'
+import type { Undo } from '../domain/commit'
 import {
   cashOnHand,
-  depositCash,
   expectedPayout,
   hasSalaryIncome,
   minimumPayout,
@@ -17,22 +15,24 @@ import {
   payoutQuestions,
   payoutSuggestion,
   receivedSalary,
-  recordPayout,
   salaryState,
   type PayoutQuestion,
   type SalaryState,
 } from '../model/money-path'
 import { getRates, subscribeRates } from '../model/rates'
-import { askSalaryLater, cleanSalary, receiveSalary, salaryDefault, setNoSalary, tripEnd } from '../model/salary'
+import { cleanSalary, salaryDefault, tripEnd } from '../model/salary'
 import { weekView } from '../model/weeks'
 import { currentSettings } from '../model/settings'
-import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type SalarySource, type Transaction, type Trip } from '../model/types'
+import { CURRENCIES, ORGANISATIONS, type Currency, type Organisation, type SalarySource, type Transaction, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
+import { contantGestort, geenSalaris, salarisLaterVragen, salarisOntvangen, salarisZetten, uitbetalingInvoeren } from '../domain/geld'
+import { amountInput, parseAmount, round2 } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Geldpad per trip (src/model/money-path.ts): het salaris als bolletje (grijs verwacht, oranje te ontvangen, groen
 // ontvangen), een uitbetaling per organisatie die de trips in één keer afvinkt, en contante fooien tot ze gestort zijn.
@@ -137,7 +137,7 @@ function DepositSheet({ store, notify, currency, amount, onClose }: { store: Sto
     if (!date || busy) return
     setBusy(true)
     try {
-      const undo = await depositCash(store, currency, date)
+      const undo = await contantGestort(store, currency, date)
       onClose()
       notify(t('cash.deposited'), undo)
     } finally {
@@ -211,7 +211,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
     if (!valid || busy) return
     setBusy(true)
     try {
-      const undo = await recordPayout(store, { org, amount: parsed, currency, date }, selected, rates)
+      const undo = await uitbetalingInvoeren(store, { org, amount: parsed, currency, date }, selected, rates)
       onClose()
       notify(t('payout.saved', { n: selected.length }), undo)
     } finally {
@@ -326,7 +326,7 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
     if (busy) return
     setBusy(true)
     try {
-      const undo = await setNoSalary(store, current)
+      const undo = await geenSalaris(store, current)
       onClose()
       notify(t('salary.noneToast'), undo)
     } finally {
@@ -338,13 +338,9 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
     if (!valid || busy) return
     setBusy(true)
     try {
-      await store.put('trips.json.enc', { ...draft(), updatedAt: new Date().toISOString() })
-      void store.sync()
+      const undo = await salarisZetten(store, current.id, draft().salary)
       onClose()
-      notify(t('salary.tripSaved'), async () => {
-        await store.put('trips.json.enc', { ...current, updatedAt: new Date().toISOString() })
-        void store.sync()
-      })
+      notify(t('salary.tripSaved'), undo)
     } finally {
       setBusy(false)
     }
@@ -355,7 +351,7 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
     setBusy(true)
     try {
       // Het verwachte salaris blijft staan (behalve als er nog geen was); het ingevulde bedrag is wat er binnenkwam.
-      const undo = await receiveSalary(store, current.salary ? current : draft(), today, { amount: parsed!, currency })
+      const undo = await salarisOntvangen(store, current.salary ? current : draft(), today, { amount: parsed!, currency })
       onClose()
       notify(t('salary.receivedToast'), undo)
     } finally {
@@ -468,7 +464,7 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
     if (expected === null) return setOther(q)
     setBusy(true)
     try {
-      const undo = await recordPayout(store, { org: q.org, amount: expected, currency, date: today }, q.trips, getRates())
+      const undo = await uitbetalingInvoeren(store, { org: q.org, amount: expected, currency, date: today }, q.trips, getRates())
       notify(t('payout.saved', { n: q.trips.length }), undo)
     } finally {
       setBusy(false)
@@ -480,7 +476,7 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
     setBusy(true)
     try {
       const undos: Undo[] = []
-      for (const x of q.trips) undos.push(await askSalaryLater(store, x, today))
+      for (const x of q.trips) undos.push(await salarisLaterVragen(store, x, today))
       notify(t('salary.laterToast'), async () => {
         for (const undo of undos) await undo()
       })

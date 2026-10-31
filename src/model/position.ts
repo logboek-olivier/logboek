@@ -2,12 +2,14 @@ import { balanceOn, toEur, type EurAmount } from './accounts'
 import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
 import { active } from './derive'
-import { eurOf, round2 } from './money'
+import { eurOf } from './money'
 import { payoutRule } from './money-path'
 import { type RatesFile } from './rates'
 import { countedSalary, salaryEur, tipAverages, tripEnd } from './salary'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
+import { round2 } from '../basis/bedrag'
+import { monthOf, shiftMonth } from '../basis/datum'
 
 // Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. Op de bank (betaal- en
 // spaarrekeningen), contant (contante fooien die nog niet gestort zijn, plus de stand van een kasrekening), te ontvangen
@@ -288,16 +290,6 @@ export interface Forecast {
   /** Verwacht salaris zonder koers, per valuta (niet meegeteld). */
   other: Partial<Record<Currency, number>>
   months: ForecastMonth[]
-}
-
-function monthOf(date: string): string {
-  return date.slice(0, 7)
-}
-
-function shiftMonth(month: string, n: number): string {
-  const [y, m] = month.split('-').map(Number) as [number, number]
-  const d = new Date(Date.UTC(y, m - 1 + n, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
 function monthsBetween(from: string, to: string): number {

@@ -10,6 +10,7 @@ import { Store } from '../src/storage/store'
 import { encryptRecords } from '../src/storage/sync'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // Scenario uit de foutdetails (DecryptError bij sync): een apparaat met een andere hoofdsleutel (bijvoorbeeld nog
 // gekoppeld aan een eerder, opnieuw aangemaakt logboek-data) schrijft een bestand dat de andere apparaten niet
@@ -54,12 +55,12 @@ describe('onleesbaar bestand op GitHub', () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
     const a = await device(github)
-    await a.store.put('plans.json.enc', plan('p1'))
+    await put(a.store, 'plans.json.enc', plan('p1'))
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'synced' })
 
     const pollutedSha = await pollute(github, 'plans.json.enc')
-    await a.store.put('trips.json.enc', trip('t1', 'Nephaven'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Nephaven'))
     await a.store.sync()
 
     expect(a.store.getStatus()).toEqual({ kind: 'error', code: 'unreadable', count: 0, paths: ['plans.json.enc'] })
@@ -107,11 +108,11 @@ describe('herstellen is voorzichtig', () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
     const a = await device(github)
-    await a.store.put('plans.json.enc', plan('p1'))
+    await put(a.store, 'plans.json.enc', plan('p1'))
     await a.store.sync()
     const b = await device(github)
     await b.store.sync()
-    await b.store.put('plans.json.enc', plan('p2'))
+    await put(b.store, 'plans.json.enc', plan('p2'))
     await pollute(github, 'plans.json.enc')
     await a.store.sync()
     await b.store.sync()
@@ -130,7 +131,7 @@ describe('herstellen is voorzichtig', () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
     const a = await device(github)
-    await a.store.put('plans.json.enc', plan('p1'))
+    await put(a.store, 'plans.json.enc', plan('p1'))
     await a.store.sync()
     const { encryptObject } = await import('../src/crypto/encrypt')
     const sha = github.write('plans.json.enc', toBase64(await encryptObject(ours.masterKey, 'plans.json.enc', utf8('{"geen":"logboek"}'))))
@@ -145,8 +146,8 @@ describe('herstellen is voorzichtig', () => {
   it('geen herstel zonder bevestigde meta (geen meta-controle mogelijk)', async () => {
     const github = new FakeGithub()
     const a = await device(github, ours, false)
-    await a.store.put('plans.json.enc', plan('p1'))
-    await a.store.put('trips.json.enc', trip('t1', 'Echt'))
+    await put(a.store, 'plans.json.enc', plan('p1'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Echt'))
     await a.store.sync()
     await pollute(github, 'plans.json.enc')
     await a.store.sync()
@@ -159,7 +160,7 @@ describe('apparaat met een andere hoofdsleutel', () => {
   it('schrijft niets als meta.json.enc op GitHub ontbreekt terwijl dit apparaat een logboek heeft (repo opnieuw aangemaakt)', async () => {
     const github = new FakeGithub()
     const stale = await device(github)
-    await stale.store.put('trips.json.enc', trip('t1', 'Oud'))
+    await put(stale.store, 'trips.json.enc', trip('t1', 'Oud'))
     await stale.store.sync()
     expect(stale.store.getStatus()).toEqual({ kind: 'error', code: 'noMeta', count: 1 })
     expect(puts(github)).toEqual([])
@@ -169,14 +170,14 @@ describe('apparaat met een andere hoofdsleutel', () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'Echt'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Echt'))
     await a.store.sync()
     const before = puts(github).length
     const planSha = github.files.get('plans.json.enc')!.sha
 
     // Het oude apparaat (andere sleutel, eigen lokale meta) heeft een nieuwe planning en synct.
     const stale = await device(github, theirs)
-    await stale.store.put('plans.json.enc', plan('oud'))
+    await put(stale.store, 'plans.json.enc', plan('oud'))
     await stale.store.sync()
     expect(stale.store.getStatus()).toEqual({ kind: 'error', code: 'otherKey', count: 1 })
     expect(puts(github).length).toBe(before)
@@ -187,11 +188,11 @@ describe('apparaat met een andere hoofdsleutel', () => {
   it('zonder meta: geen enkel bestand leesbaar en meerdere niet te ontsleutelen telt ook als andere sleutel', async () => {
     const github = new FakeGithub()
     const a = await device(github, ours, false)
-    await a.store.put('trips.json.enc', trip('t1', 'Echt'))
-    await a.store.put('plans.json.enc', plan('p1'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Echt'))
+    await put(a.store, 'plans.json.enc', plan('p1'))
     await a.store.sync()
     const stale = await device(github, theirs, false)
-    await stale.store.put('students.json.enc', { id: 's1', firstName: 'Nep', curriculumId: 'c', level: 'beginner', progress: {}, archivedAt: null, updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(stale.store, 'students.json.enc', { id: 's1', firstName: 'Nep', curriculumId: 'c', level: 'beginner', progress: {}, archivedAt: null, updatedAt: new Date().toISOString(), deletedAt: null })
     const before = puts(github).length
     await stale.store.sync()
     expect(stale.store.getStatus()).toMatchObject({ kind: 'error', code: 'otherKey' })
@@ -204,7 +205,7 @@ describe('apparaat met een andere hoofdsleutel', () => {
     const changed = await changePassphrase(ours.meta, { passphrase: 'nep wachtzin een' }, 'nep wachtzin drie')
     github.write(META_PATH, toBase64(utf8(serializeMeta(changed))))
     const a = await device(github)
-    await a.store.put('trips.json.enc', trip('t1', 'Echt'))
+    await put(a.store, 'trips.json.enc', trip('t1', 'Echt'))
     await a.store.sync()
     expect(a.store.getStatus()).toEqual({ kind: 'synced' })
   }, 30_000)
