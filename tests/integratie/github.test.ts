@@ -147,7 +147,11 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
     const trip: Trip = { id: 'it-salaris', name: 'Neptrip salaris', organisation: 'sailing-virgins', startDate: '2026-09-01', endDate: '2026-09-07', salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' }, updatedAt: T(), deletedAt: null }
     await laptop.put('trips.json.enc', trip)
     await settle(laptop)
-    await settle(phone)
+    // GitHub kan vlak na schrijven nog de vorige versie teruggeven: wachten tot de telefoon de trip ziet.
+    await eventually(async () => {
+      await settle(phone)
+      return phone.list('trips.json.enc').some((x) => x.id === trip.id)
+    })
     // Laptop: een instelling en het salaris ontvangen. Telefoon (nog zonder die wijzigingen): een dag loggen onthoudt de
     // boot, en ook daar "salaris ontvangen".
     await saveSettings(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })

@@ -1,5 +1,5 @@
 import { decryptObject, encryptObject, FORMAT_VERSION, utf8, type Bytes } from '../crypto/encrypt'
-import { NewerSchemaError, SCHEMA_VERSION } from '../model/schema'
+import { NewerSchemaError, NewerWriterError, SCHEMA_VERSION, writerVersion } from '../model/schema'
 import type { SyncRecord } from '../model/types'
 import { ConflictError, type GithubClient, type RemoteFile } from './github'
 
@@ -37,16 +37,37 @@ export class LocalInvalidError extends Error {
 interface CollectionFile {
   format: 'logboek-collection'
   schemaVersion: number
+  /** De schrijfversie van de build die dit bestand schreef: een build met een lagere schrijft er niet overheen. */
+  minWriterVersion: number
   records: SyncRecord[]
 }
 
 export function encodeRecords(records: readonly SyncRecord[]): Bytes {
-  const file: CollectionFile = { format: 'logboek-collection', schemaVersion: SCHEMA_VERSION, records: [...records] }
+  const file: CollectionFile = { format: 'logboek-collection', schemaVersion: SCHEMA_VERSION, minWriterVersion: writerVersion(), records: [...records] }
   return utf8(JSON.stringify(file))
 }
 
-/** Leest een bestand; een hogere schemaVersion dan de app kent geeft NewerSchemaError (dan niets schrijven). */
+/**
+ * De minimale schrijfversie van een bestand (0 zonder het veld: geschreven door een build van vóór de schrijfversie), of
+ * NaN als het veld er wel staat maar geen geheel getal van 0 of hoger is.
+ */
+function minWriterOf(raw: Record<string, unknown>): number {
+  const value = raw.minWriterVersion
+  if (value === undefined) return 0
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : NaN
+}
+
+/** Leest een bestand (zie decodeCollection). */
 export function decodeRecords<T extends SyncRecord>(path: string, plain: Bytes): T[] {
+  return decodeCollection<T>(path, plain).records
+}
+
+/**
+ * Leest een bestand met zijn minimale schrijfversie; een hogere schemaVersion dan de app kent geeft NewerSchemaError, een
+ * hogere minimale schrijfversie dan die van deze build (of een die deze build niet begrijpt) NewerWriterError: in beide
+ * gevallen niets schrijven en "Werk de app bij".
+ */
+export function decodeCollection<T extends SyncRecord>(path: string, plain: Bytes): { records: T[]; minWriter: number } {
   let raw: unknown
   try {
     raw = JSON.parse(decoder.decode(plain))
@@ -60,13 +81,16 @@ export function decodeRecords<T extends SyncRecord>(path: string, plain: Bytes):
   const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
   if (!Number.isInteger(found) || found < 1) throw new InvalidDataError(path)
   if (found > SCHEMA_VERSION) throw new NewerSchemaError(found)
+  // Een schrijfversie die deze build niet begrijpt, telt als nieuwer: nooit overschrijven, ook niet na een tik.
+  const minWriter = minWriterOf(raw)
+  if (Number.isNaN(minWriter) || minWriter > writerVersion()) throw new NewerWriterError(Number.isNaN(minWriter) ? Infinity : minWriter)
   // Een record zonder deletedAt (JSON laat undefined weg) is gewoon niet verwijderd: aanvullen in plaats van het hele
   // bestand af te keuren. Zonder id of updatedAt is een record niet samen te voegen: dan is het bestand ongeldig.
   const records = raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r))
   for (const r of records) {
     if (!isSyncRecord(r)) throw new InvalidDataError(path)
   }
-  return records as T[]
+  return { records: records as T[], minWriter }
 }
 
 /**
@@ -124,6 +148,9 @@ export async function salvageRecords(masterKey: CryptoKey, path: string, blob: B
   if (!isRecord(raw) || raw.format !== 'logboek-collection' || !Array.isArray(raw.records)) return []
   const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
   if (!Number.isInteger(found) || found < 1 || found > SCHEMA_VERSION) return []
+  // Van een nieuwere schrijver neemt deze build niets over (hij schrijft er ook niet overheen).
+  const minWriter = minWriterOf(raw)
+  if (Number.isNaN(minWriter) || minWriter > writerVersion()) return []
   return raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r)).filter(isSyncRecord)
 }
 
@@ -138,10 +165,14 @@ export function decryptFailureKind(blob: Bytes): 'leeg' | 'formaat' | 'sleutel' 
 }
 
 export async function decryptRecords<T extends SyncRecord>(masterKey: CryptoKey, path: string, blob: Bytes): Promise<T[]> {
+  return (await decryptCollection<T>(masterKey, path, blob)).records
+}
+
+export async function decryptCollection<T extends SyncRecord>(masterKey: CryptoKey, path: string, blob: Bytes): Promise<{ records: T[]; minWriter: number }> {
   // Een objectformaat van een nieuwere app (versiebyte 2–15) is geen andere sleutel: niets schrijven en "Werk de app
   // bij". Andere eerste bytes zijn gewoon onleesbaar.
   if (blob.length > 0 && blob[0]! > FORMAT_VERSION && blob[0]! < 16) throw new NewerSchemaError(blob[0]!)
-  return decodeRecords<T>(path, await decryptObject(masterKey, path, blob))
+  return decodeCollection<T>(path, await decryptObject(masterKey, path, blob))
 }
 
 /** Samenvoegen per id; de laatste updatedAt wint. Bij gelijke tijd wint remote (deterministisch op elk apparaat). */
@@ -186,10 +217,13 @@ export async function syncCollection<T extends SyncRecord>(
 ): Promise<SyncResult<T>> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const remoteFile = attempt === 1 && prefetched !== undefined ? prefetched : await client.getFile(path)
-    const remote = remoteFile ? await decryptRecords<T>(masterKey, path, remoteFile.content) : []
+    const decoded = remoteFile ? await decryptCollection<T>(masterKey, path, remoteFile.content) : null
+    const remote = decoded?.records ?? []
     const merged = mergeRecords(local, remote)
     const pulled = !sameRecords(merged, local)
-    if (remoteFile && sameRecords(merged, remote)) {
+    // Een bestand met een lagere schrijfversie dan deze build wordt één keer opnieuw geschreven (dezelfde records), zodat
+    // een oudere build er daarna niet meer overheen schrijft, ook als dit apparaat er zelf niets in veranderde.
+    if (remoteFile && decoded && sameRecords(merged, remote) && decoded.minWriter >= writerVersion()) {
       return { records: merged, sha: remoteFile.sha, pushed: false, pulled }
     }
     try {

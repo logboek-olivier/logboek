@@ -611,6 +611,12 @@ export class Store {
             this.reportFailure(error)
             return
           }
+          // Intussen schreef een nieuwere build het bestand: deze ronde niets meer schrijven, "Werk de app bij".
+          if (error instanceof NewerSchemaError) {
+            this.outdated = true
+            this.setStatus({ kind: 'error', code: 'update', count: count() })
+            return
+          }
           recordError(error)
         }
       }

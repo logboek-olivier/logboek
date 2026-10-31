@@ -11,6 +11,7 @@ import type { Store } from '../src/storage/store'
 import { decryptRecords, encryptRecords } from '../src/storage/sync'
 import { storeToken } from '../src/storage/token'
 import { noteStartedBuild, ownBuildForTests } from '../src/storage/versions'
+import { WRITER_VERSION, writerVersionForTests } from '../src/model/schema'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 import { UPGRADE_SAMPLES } from './upgrade/upgrade-samples'
@@ -66,11 +67,12 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+  writerVersionForTests()
   for (const s of sessions) s.lock()
   sessions.length = 0
 })
 
-type Fault = 'andere sleutel' | 'afgekapt' | 'ongeldig' | 'nieuwere versie' | 'nieuwer objectformaat'
+type Fault = 'andere sleutel' | 'afgekapt' | 'ongeldig' | 'nieuwere versie' | 'nieuwer objectformaat' | 'nieuwere schrijfversie'
 type Where = 'GitHub' | 'apparaat' | 'beide'
 
 const samples = (path: CollectionPath) => (UPGRADE_SAMPLES[path] ?? []) as unknown as SyncRecord[]
@@ -91,6 +93,9 @@ async function broken(fault: Fault, path: CollectionPath): Promise<Bytes> {
       return encryptObject(k1.masterKey, path, utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 1, records: [...records, { kapot: true }] })))
     case 'nieuwere versie':
       return encryptObject(k1.masterKey, path, utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 99, records })))
+    case 'nieuwere schrijfversie':
+      // Zelfde schema, maar geschreven door een build met een hogere schrijfversie: deze build schrijft er niet overheen.
+      return encryptObject(k1.masterKey, path, utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 1, minWriterVersion: 99, records })))
     case 'nieuwer objectformaat': {
       const blob = await encryptRecords(k1.masterKey, path, records)
       blob[0] = 2
@@ -168,7 +173,7 @@ async function expectSamplesOnGithub(except: CollectionPath[] = []): Promise<voi
   }
 }
 
-const FAULTS: Fault[] = ['andere sleutel', 'afgekapt', 'ongeldig', 'nieuwere versie', 'nieuwer objectformaat']
+const FAULTS: Fault[] = ['andere sleutel', 'afgekapt', 'ongeldig', 'nieuwere versie', 'nieuwer objectformaat', 'nieuwere schrijfversie']
 const WHERE: Where[] = ['GitHub', 'apparaat', 'beide']
 
 describe('Foutmatrix: één defect bestand blokkeert alleen zijn eigen onderdeel', () => {
@@ -180,7 +185,7 @@ describe('Foutmatrix: één defect bestand blokkeert alleen zijn eigen onderdeel
           const bad = await broken(fault, path)
           if (where !== 'apparaat') github.write(path, toBase64(bad))
           if (where !== 'GitHub') await putObject(db, { path, blob: bad, sha: 'lokaal' })
-          const newer = fault === 'nieuwere versie' || fault === 'nieuwer objectformaat'
+          const newer = fault === 'nieuwere versie' || fault === 'nieuwer objectformaat' || fault === 'nieuwere schrijfversie'
           // Alleen een lokaal bestand onder een andere sleutel (of afgekapt) is een sleutelprobleem: herstelscherm.
           const keyProblem = where !== 'GitHub' && (fault === 'andere sleutel' || fault === 'afgekapt')
           const s = await openApp(name, keyProblem)
@@ -526,6 +531,52 @@ describe('Foutmatrix: antwoorden die niet bij hun sha horen, een ouder venster, 
     await expectSamplesOnGithub()
     const clean = await cleanDevice()
     expect(store(clean).list('trips.json.enc').map((t) => t.id)).toContain('nep-trip-oud-venster')
+  }, 60_000)
+
+  it('een oudere build als tweede schrijver op een ander apparaat: schrijft nooit over een bestand van een nieuwere build, "Werk de app bij"; na bijwerken gaat alles mee', async () => {
+    const PUTS = () => github.requests.filter((r) => r.method === 'PUT').length
+    const now = () => new Date().toISOString()
+    const trip = samples('trips.json.enc')[0] as Trip
+    // De telefoon met de oudere build is gesynct.
+    const { name } = await phone()
+    writerVersionForTests(WRITER_VERSION)
+    const old = await openApp(name, false)
+    await store(old).sync()
+    expect(store(old).getStatus()).toEqual({ kind: 'synced' })
+    // De laptop met een nieuwere build (hogere schrijfversie) slaat een trip op en synct.
+    writerVersionForTests(WRITER_VERSION + 1)
+    const laptop = await cleanDevice()
+    await store(laptop).put('trips.json.enc', { ...trip, id: 'nep-trip-nieuwe-build', updatedAt: now() })
+    await store(laptop).sync()
+    expect(store(laptop).getStatus()).toEqual({ kind: 'synced' })
+    const written = github.files.get('trips.json.enc')!.sha
+    laptop.lock()
+    // De oudere build slaat ook iets op in dat bestand en synct: niets naar GitHub, "Werk de app bij".
+    writerVersionForTests(WRITER_VERSION)
+    await store(old).put('trips.json.enc', { ...trip, id: 'nep-trip-oude-build', updatedAt: now() })
+    const puts = PUTS()
+    await store(old).sync()
+    expect(store(old).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
+    // Ook een volgende ronde, met een wijziging in een ander bestand, schrijft niets.
+    await store(old).put('places.json.enc', { ...(samples('places.json.enc')[0] as Place), id: 'nep-plaats-oude-build', updatedAt: now() })
+    await store(old).sync()
+    expect(store(old).getStatus()).toMatchObject({ kind: 'error', code: 'update' })
+    expect(PUTS()).toBe(puts)
+    expect(github.files.get('trips.json.enc')!.sha).toBe(written)
+    // Wat de oudere build opsloeg, staat nog op het apparaat.
+    expect(store(old).list('trips.json.enc').map((t) => t.id)).toContain('nep-trip-oude-build')
+    // Bijwerken (herladen met de nieuwere build): wat de oudere build opsloeg, gaat alsnog mee; niets van de laptop verloren.
+    old.lock()
+    writerVersionForTests(WRITER_VERSION + 1)
+    const updated = await openApp(name, false)
+    await store(updated).sync()
+    expect(store(updated).getStatus()).toEqual({ kind: 'synced' })
+    const key = await remoteKey()
+    const onGithub = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
+    expect(onGithub.map((t) => t.id)).toEqual(expect.arrayContaining(['nep-trip-nieuwe-build', 'nep-trip-oude-build', TRIP_ID]))
+    const places = await decryptRecords(key, 'places.json.enc', Uint8Array.from(Buffer.from(github.files.get('places.json.enc')!.content, 'base64')))
+    expect(places.map((p) => p.id)).toContain('nep-plaats-oude-build')
+    await expectSamplesOnGithub()
   }, 60_000)
 
   it('een venster dat midden in een ronde hervat nadat een nieuwere versie startte: na die start geen schrijfactie meer', async () => {

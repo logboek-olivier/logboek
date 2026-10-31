@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { META_PATH, parseMeta, unlock } from '../../src/crypto/keys'
 import { decryptObject } from '../../src/crypto/encrypt'
 import { translate } from '../../src/i18n'
+import { WRITER_VERSION } from '../../src/model/schema'
 import { COLLECTION_PATHS } from '../../src/model/types'
 import { decryptRecords } from '../../src/storage/sync'
 import { UPGRADE_SAMPLES } from '../upgrade/upgrade-samples'
@@ -147,6 +148,14 @@ async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, g
     // dat begint opnieuw. Elk ander voorbeeld moet er nog staan.
     if (startedUnreadable.includes(path)) continue
     for (const sample of UPGRADE_SAMPLES[path] ?? []) expect(records.map((r) => r.id), path).toContain(sample.id)
+  }
+  // Minimale schrijfversie: na een volledige sync met deze release draagt elk bestand op GitHub zijn schrijfversie (ook wat
+  // deze release niet veranderde, één keer opnieuw geschreven), zodat een build met een lagere er niet overheen schrijft.
+  for (const path of COLLECTION_PATHS) {
+    const file = github.files.get(path)
+    if (!file) continue
+    const raw = JSON.parse(new TextDecoder().decode(await decryptObject(key, path, Uint8Array.from(Buffer.from(file.content, 'base64'))))) as { minWriterVersion?: number }
+    expect(raw.minWriterVersion, path).toBe(WRITER_VERSION)
   }
 }
 
