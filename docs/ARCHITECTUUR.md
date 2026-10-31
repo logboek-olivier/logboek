@@ -19,7 +19,9 @@ bestand verouderd.
 | Herstel en diagnose | `src/repair.ts`, `src/errors.ts`, `src/storage/storage-log.ts` | Diagnose lokaal en op GitHub, herstelverslag, foutdetails zonder inhoud, opslaglogboek in `localStorage` |
 | Back-up en export | `src/storage/backup.ts`, `src/model/export.ts`, `src/components/ExportSection.tsx`, `src/share.ts` | Versleutelde back-up (tekstbestand), onversleutelde CSV-export na waarschuwing, delen of downloaden |
 | Demo | `src/demo.ts`, `src/demo/data.ts` | Eigen IndexedDB `logboek-demo`, eigen sleutel, `blockNetwork` |
-| Model | `src/model/*.ts` | Typen (`types.ts`), afgeleide data, bewerkingen met ongedaan maken (`edit.ts`, `trip-ops.ts`, ...), geld, agenda, statistieken |
+| Domein | `src/domain/*.ts` (docs/FUNDERING.md) | De enige weg naar de opslag: benoemde opdrachten per gebied, `commit` (één transactie over alle bestanden plus outbox, invarianten, een regel geschiedenis, ongedaan maken per veld), `Tx`, prullenbak en geschiedenis (`history.ts`, `prullenbak.ts`), invarianten en gezondheid (`invariants.ts`, `gezondheid.ts`) |
+| Basis | `src/basis/*.ts` | Datums, bedragen, organisaties (de lijst van dit logboek uit de instellingen), inhoud vergelijken |
+| Model | `src/model/*.ts` | Typen (`types.ts`), afgeleide data, plannen van wijzigingen (schrijven alleen via een `Tx`), geld, agenda, statistieken, prullenbak en geschiedenis lezen (`trash.ts`, `history-view.ts`) |
 | Import | `src/import/*.ts` | CSV/Excel lezen (`rows.ts`, `csv.ts`, `xlsx.ts`, `xml.ts`), mijlenregistratie (`mileage-csv.ts`, `apply.ts`), planning, bankstanden |
 | Schermen | `src/screens/*.tsx`, `src/components/*.tsx`, `src/lazy.ts`, `src/back.ts`, `src/navigation.ts`, `src/screen-files.ts` | UI; alleen Vandaag laadt direct, de rest lui; terugknop; welke bestanden bij welk scherm horen |
 | Taal | `src/i18n/` | `nl.ts` (bron, getypeerde sleutels), `en.ts`, `labels.ts` |
@@ -36,7 +38,7 @@ nodig geweest: nieuwe velden zijn optioneel en worden bij het lezen aangevuld of
 dagen, `currentSettings` met standaardwaarden, `deletedAt` ontbreekt = `null`). Een hogere versie of objectformaat →
 `NewerSchemaError` → niets schrijven, "Werk de app bij".
 
-**Schrijfversie:** elk bestand draagt `minWriterVersion`, de schrijfversie van de build die het schreef (`WRITER_VERSION`
+**Schrijfversie:** nu 3 (sinds de prullenbak en de geschiedenis). Elk bestand draagt `minWriterVersion`, de schrijfversie van de build die het schreef (`WRITER_VERSION`
 in `src/model/schema.ts`). Een build met een lagere schrijfversie krijgt `NewerWriterError` (een `NewerSchemaError`) en
 schrijft dus niets over dat bestand; zonder het veld telt een bestand als 0, een onbekende waarde als nieuwer. Een bestand
 met een lagere schrijfversie schrijft `syncCollection` één keer opnieuw. Omhoog als een oudere build niet meer over de
@@ -51,9 +53,9 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 |---|---|---|---|---|
 | `meta.json.enc` | `Meta` (geen collectie) | `Session.finishNewVault`, `doChangePassphrase`, `doRestoreRemoteMeta` | sessie (ontgrendelen), `Store.checkMeta` | Niet onder de hoofdsleutel: JSON met salts, verpakte MK (wachtzin, herstelcode) en `check` (binding aan MK). Lokaal als platte JSON in `objects` |
 | `trips.json.enc` | `Trip` | `weeks`, `trip-ops`, `trip-dates`, `edit`, `salary`, `money-path`, `boats`, `gaps`, `guests`, `counters`, `checklists`, `calendar`, `import/apply`, `import/planning`, QuickAdd, MoneyPath | bijna alle schermen | Periode op het water (werk, training, plezier): `kind` opgeslagen of afgeleid (`trip-kind`), `type` is het subtype. Alle velden optioneel; type, datums en boot afgeleid. Salaris met status verwacht, ontvangen of `geen`; wat meetelt bepaalt `countedSalary` (geen 0, geen "Geen salaris", een standaardbedrag alleen bij een trip van die organisatie) |
-| `legs.json.enc` | `Leg` | `edit`, `trip-ops`, `places`, `routes`, `boats`, `gaps`, `import/apply`, QuickAdd | Vandaag, Deze trip, Logboek, Agenda, Statistieken, Plaatsen | Import vervangt alle `source: import`-legs |
+| `legs.json.enc` | `Leg` | `edit`, `trip-ops`, `places`, `routes`, `boats`, `gaps`, `import/apply`, `domain/dagen` | Vandaag, Deze trip, Logboek, Agenda, Statistieken, Plaatsen | Import met vaste id's `import:<trip>:<datum>:<n>`: opnieuw importeren werkt dezelfde dagen bij; een `import`-dag die niet meer in het bestand staat gaat weg. Een dag verhuist nooit vanzelf naar een andere trip (`placeLeg`) |
 | `transactions.json.enc` | `Transaction` | `edit`, `salary`, `money-path`, `claims`, `trip-ops`, `rates` (koers vastleggen), QuickAdd | Geld, Deze trip, Agenda, positie, kosten | `tripId` is het periode-id (trip of periode aan land). Soort (`category`) bij elke uitgave; opleiding en uitrusting zijn `investering`. `source` afgeleid uit de periode (`expenses`). Geboekte vaste last: `fixedCostId`, id `vast:<vaste last>:<jjjj-mm>` (`fixed-bookings`). Richting volgt uit `kind`; `payoutId`, `claimId` koppelen. Vaste id's voor wat de app zelf boekt: `salaris:<trip>` (salaris ontvangen of uitbetaling), `uitgave:<declaratie>` en `terugbetaling:<declaratie>`, zodat een tweede tik of een tweede apparaat nooit dubbel boekt |
-| `settings.json.enc` | `Settings` | `settings`, `trip-dates` | overal | Hoofdrecord `settings` plus per apparaat `laatst:<apparaat-id>` (laatst gebruikte boot, rol, valuta enzovoort), zodat loggen op het ene apparaat nooit een instelling van het andere overschrijft; `currentSettings` legt ze over elkaar en vult standaardwaarden |
+| `settings.json.enc` | `Settings` | `settings`, `trip-dates`, `domain/instellingen` | overal | Organisaties (`organisations`; zonder het veld en zonder `startedEmpty` Sailing Virgins en Yacht Week), `startedEmpty`, `curriculumPacks`. Hoofdrecord `settings` plus per apparaat `laatst:<apparaat-id>` (laatst gebruikte boot, rol, valuta enzovoort), zodat loggen op het ene apparaat nooit een instelling van het andere overschrijft; `currentSettings` legt ze over elkaar en vult standaardwaarden |
 | `curricula.json.enc` | `Curriculum` | `curricula` | Cursussen, studenten, planning | Alleen eigen en bewerkte; seeds in de code. Onleesbaar → vanzelf hersteld |
 | `students.json.enc` | `Student` | `students`, `weeks`, `trip-ops` | Deze trip, Studentenarchief | Regel 14; archiveren na 12 maanden |
 | `plans.json.enc` | `WeekPlan` | `plans`, `trip-ops` | Planning, Vandaag | Blok standaard voor alle groepen samen; `ownThemes` (eigen thema's als tekst); concept en opgeslagen planning bewerkt via `applyBlockEdit` |
@@ -72,21 +74,23 @@ aan. Elke upload gaat door `sealForUpload` (versleutelen en weer ontsleutelen) e
 | `balances.json.enc` | `Balance` | `accounts`, `week-money`, Accounts | Rekeningen, positie | id = `stand:<rekening>:<jjjj-mm>` |
 | `fixedcosts.json.enc` | `FixedCost` | `costs` | Geld → Kosten, vooruitblik | |
 | `claims.json.enc` | `Claim` | `claims`, `trip-ops` | Deze trip, Geld, positie | Bonnetje in de kluis; uitgave met `claimId` |
+| `history.json.enc` | `HistoryEntry` | `domain/commit` (in dezelfde transactie als de opdracht), `domain/prullenbak` | Prullenbak, Geschiedenis | Per opdracht de gewijzigde velden vooraf en erna (nieuw: alleen gemarkeerd; studenten, carrière, rekeningen en standen alleen koppelvelden). Geen regel bij vanzelf, importeren, back-up en studenten wissen. Na 30 dagen zonder inhoud (`geschiedenisOpruimen`). Schrijfversie 3 |
 | `periods.json.enc` | `StayPeriod` | `periods` (`setStayDays`, `updateStay`), `migrate-periods`, `calendar` (`followTrip`), `trip-dates`, `import/planning`, `expenses` | Agenda, periodepagina, Periodes, Nakijken, Geld | Periodes aan land (reis, thuis, vrij). Water gaat voor land: een trip maakt ze korter of splitst ze. Migratie-id `periode:<soort>:<start>` |
 
 **Eenmalig en terugkerend na een geslaagde sync** (`src/screens/Home.tsx`, nooit in de demo): de migratie naar het
 periodemodel (`migrate-periods.ts`, één keer per logboek, `settings.periodsMigratedAt`; zonder iets om te zetten schrijft
 hij niets) en het boeken van vaste lasten van voorbije maanden (`fixed-bookings.ts`, vaste id's, nooit opnieuw na
-aanpassen of verwijderen). Wijzigingen over meerdere bestanden met ongedaan maken gaan via `changes.ts`
-(`applyChanges`, `undoableIn`).
+aanpassen of verwijderen), en het opruimen van de prullenbak na 30 dagen (`geschiedenisOpruimen`).
 
 ## 3. Levenscyclus van een wijziging
 
-1. **Invoer** (scherm) → een modelfunctie (`src/model/*.ts`) maakt een nieuw record met nieuwe `updatedAt` en roept
-   `store.put` / `putMany` aan. Verwijderen = tombstone (`deletedAt`), vaak geschoond (`scrubbed*`), met ongedaan maken
-   uit het geheugen. Bewerken neemt velden die deze build niet kent ongewijzigd mee (`keepUnknownFields`), zodat een
-   oudere build niets weggooit wat een nieuwere schreef.
-2. **Geheugen:** `putMany` werkt de collectie in het geheugen bij en zet het record in de outbox (`markPending`) en in
+1. **Invoer** (scherm) → een benoemde opdracht (`src/domain/<gebied>.ts`, bijvoorbeeld `dagLoggen`). `commit` vraagt bij de
+   tik direct een schrijfhandvat (`Store.beginWrite`) en voert het werk uit op een `Tx`: modelfuncties lezen en schrijven
+   daarop (nieuwe `updatedAt`; verwijderen = tombstone, persoonlijke gegevens zonder inhoud via `tombstone.ts`). Bewerken
+   neemt velden die deze build niet kent ongewijzigd mee (`keepUnknownFields`). Daarna in `commit`: alleen records die
+   echt veranderen; de invarianten (een nieuwe harde overtreding → niets schrijven, `InvariantError`); één regel in
+   `history.json.enc`; en ongedaan maken per veld als eigen opdracht.
+2. **Geheugen:** de transactie werkt de collecties in het geheugen bij en zet de records in de outbox (`markPending`) en in
    `unsaved`. Een `updatedAt` die niet later is dan die van de vorige versie (een klok die achterloopt, of een record
    met een tijd in de toekomst) wordt `justAfter(vorige)`, zodat de laatste wijziging echt wint. Wat de app vanzelf
    vastlegt (koers, archiveren) krijgt `justAfter` van het record waarop het rekende, zodat het nooit wint van een echte

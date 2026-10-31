@@ -77,3 +77,20 @@ het herstel bij onleesbare bestanden. De ombouw zit tussen de schermen en de Sto
 | 4 | Invarianten als code, gezondheidscheck, willekeurige tests over reeksen acties |
 | 5 | Organisaties instelbaar, geen persoonlijke standaarden voor een nieuwe gebruiker, eerste start met begeleiding |
 | 6 | CLAUDE.md en docs bij |
+
+## 4. Wat er gebouwd is (PR 0 tot en met 5)
+
+- **Eén poort.** Elke wijziging is een benoemde opdracht via `commit`. In dezelfde IndexedDB-transactie als de opdracht
+  komen alle gewijzigde bestanden, de outbox en één regel geschiedenis (`history.json.enc`: per record de gewijzigde
+  velden vooraf en erna). Een opdracht die een nieuwe harde overtreding maakt (`src/domain/invariants.ts`), schrijft niets.
+- **Terug te halen.** Ongedaan maken (10 seconden, bij periode verwijderen 30), Meer → Geschiedenis (per opdracht, per dag
+  en per periode) en Meer → Prullenbak (30 dagen, met wat eraan hing) zetten terug per veld: een latere wijziging blijft
+  staan. Een trip die een opdracht maakte en waar intussen iets aan hangt, blijft staan; begin en eind blijven een paar.
+- **Niets verhuist stil.** Geld, dagen en deelnemers wisselen nooit vanzelf van periode (alleen een periode aan land die
+  gesplitst wordt of samengaat met een buur van dezelfde soort, neemt het geld van dezelfde dagen mee). Samenvoegen en
+  vervangen tonen vooraf wat er meegaat.
+- **Gecontroleerd.** `tests/eigenschappen.test.ts` speelt duizenden willekeurige reeksen opdrachten (één apparaat, en twee
+  apparaten met en zonder verbinding) en controleert na elke stap: geen nieuwe harde overtreding, niets stil verhuisd of
+  kwijt, ongedaan maken precies terug, beide apparaten na syncen gelijk. Meer → Opslag → Gezondheid toont de zachte
+  overtredingen met een fix van één tik.
+- **Voor iedereen.** Organisaties staan in de instellingen (`src/basis/organisatie.ts`); een nieuw logboek begint leeg.
