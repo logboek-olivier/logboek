@@ -66,6 +66,10 @@ van `logboek-data`.
 4. **Source**: blijft staan. Hangt een inkomen met source Sailing Virgins of Yacht Week aan een trip zonder organisatie,
    dan stelt Nakijken die organisatie voor.
 
+Schrijfversie 2 (`WRITER_VERSION` in `src/model/schema.ts`): na de eerste volledige sync draagt elk bestand op GitHub
+schrijfversie 2. Een build zonder het periodemodel (schrijfversie 1) schrijft dan nergens meer overheen en toont "Werk de
+app bij"; wat hij opsloeg, gaat mee na bijwerken.
+
 Getest met een migratietest die eerst rood was (`tests/periodes.test.ts`), de upgradetest vanaf de vorige release en
 vanaf de twee vaste oudere releases, en koppelen op een schoon tweede apparaat (`tests/e2e/upgrade.spec.ts`).
 
