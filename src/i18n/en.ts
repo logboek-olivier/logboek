@@ -193,6 +193,7 @@ export const en: Messages = {
 
   'edit.transaction': (p) => `Edit ${p.kind.toLowerCase()}`,
   'edit.day': 'Edit day',
+  'edit.keepWithoutTrip': 'No period (leave as is)',
   'edit.newTrip': 'New trip…',
   'edit.importedDay': 'Imported day: a new import replaces this change.',
 
@@ -949,7 +950,7 @@ export const en: Messages = {
   'overlap.resolve': 'Resolve',
   'overlap.title': 'Overlapping trips',
   'overlap.keep': 'Which trip stays?',
-  'overlap.moves': (p: { parts: string; other: string; keep: string }) => `${p.parts} move from ${p.other} to ${p.keep}.`,
+  'overlap.moves': (p: { parts: string; other: string; keep: string }) => `From ${p.other}, ${p.parts} will move to ${p.keep}.`,
   'overlap.movesNothing': (p: { other: string }) => `Nothing is linked to ${p.other}.`,
   'overlap.mergedRange': (p: { keep: string; range: string }) => `Merged, ${p.keep} runs ${p.range}.`,
   'overlap.outside': (p: { n: number; keep: string }) => `When replacing, ${p.n === 1 ? '1 day falls' : `${p.n} days fall`} outside the dates of ${p.keep}; they will be listed in Review.`,

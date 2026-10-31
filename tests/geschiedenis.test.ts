@@ -6,6 +6,7 @@ import { geschiedenisTerugzetten } from '../src/domain/prullenbak'
 import { landperiodeZetten } from '../src/domain/agenda'
 import { periodeVerwijderen } from '../src/domain/trips'
 import { historyRows } from '../src/model/history-view'
+import { placeLeg } from '../src/model/leg-trip'
 import type { Leg, Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -47,6 +48,33 @@ describe('nooit stil verhuizen', () => {
     await landperiodeZetten(s, ['2026-11-03'], null)
     expect(s.list('transactions.json.enc')[0]!.tripId).toBe(home.id)
   })
+
+  it('een thuisperiode die gesplitst wordt of samengaat met een buur: het geld blijft bij dezelfde dagen thuis', async () => {
+    const s = await store()
+    await landperiodeZetten(s, ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05'], 'thuis')
+    const home = s.list('periods.json.enc')[0]!
+    await put(s, 'transactions.json.enc', expense('e3', { date: '2026-11-05', tripId: home.id }))
+    // Splitsen: 3 november wordt reis; 4 en 5 november zijn een nieuw stuk thuis (nieuw id).
+    await landperiodeZetten(s, ['2026-11-03'], 'reis')
+    const second = s.list('periods.json.enc').find((p) => p.kind === 'thuis' && p.startDate === '2026-11-04')!
+    expect(second.id).not.toBe(home.id)
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe(second.id)
+    // Samengaan: 3 november weer thuis; het geld volgt de periode die blijft.
+    await landperiodeZetten(s, ['2026-11-03'], 'thuis')
+    const merged = s.list('periods.json.enc').filter((p) => p.kind === 'thuis')
+    expect(merged).toHaveLength(1)
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe(merged[0]!.id)
+    // Een andere soort op die dag: het geld blijft bij zijn eigen (nu kortere) periode, niet bij de reis.
+    await landperiodeZetten(s, ['2026-11-05'], 'reis')
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe(merged[0]!.id)
+  })
+
+  it('een trip die zijn dagen volgt, slokt geen dag op die weken verderop ligt', () => {
+    const follow = trip('volgt', { startDate: '2026-10-10', endDate: '2026-10-11', datesFromDays: true })
+    const legs: Leg[] = [{ id: 'l1', tripId: 'volgt', date: '2026-10-10', fromPlace: '', fromCountry: '', toPlace: '', toCountry: '', role: 'schipper', boat: '', nmInland: 0, nmSea: 0, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T0, deletedAt: null }]
+    expect(placeLeg([follow], legs, 'volgt', '2026-10-12').tripId).toBe('volgt')
+    expect(placeLeg([follow], legs, 'volgt', '2026-12-01')).toEqual({ tripId: null, moved: true })
+  })
 })
 
 describe('geschiedenis', () => {
@@ -78,6 +106,24 @@ describe('geschiedenis', () => {
     const back = historyRows(s).find((r) => r.entry.command === 'geschiedenisTerugzetten')!
     await geschiedenisTerugzetten(s, back.entry.id)
     expect(s.list('legs.json.enc')[0]!.nmSea).toBe(14)
+  })
+
+  it('per dag: ook een dag die naar die datum verschoof', async () => {
+    const s = await logged()
+    const leg = s.list('legs.json.enc')[0]!
+    await dagBewerken(s, leg, { ...leg, date: '2026-10-12' } as Omit<Leg, 'id' | 'updatedAt' | 'deletedAt' | 'source' | 'dateEstimated' | 'tripId'>, { id: 'a' })
+    expect(historyRows(s, { date: '2026-10-12' }).map((r) => r.entry.command)).toEqual(['dagBewerken', 'dagLoggen'])
+  })
+
+  it('een nieuwe trip terugzetten waar intussen een dag aan hangt: de trip blijft, de eerste dag gaat weg', async () => {
+    const s = await store()
+    await dagLoggen(s, { date: '2026-10-11', tripId: null, newTripName: 'Nep nieuw', fromPlace: 'Nephaven', toPlace: 'Nepbaai', role: 'schipper', boat: '', water: 'zee', nm: 5, nightHours: 0, wind: '', notes: '' })
+    const created = historyRows(s).find((r) => r.entry.command === 'dagLoggen')!
+    const tripId = s.list('trips.json.enc')[0]!.id
+    await dagLoggen(s, { date: '2026-10-12', tripId, newTripName: '', fromPlace: 'Nepbaai', toPlace: 'Nephaven', role: 'schipper', boat: '', water: 'zee', nm: 5, nightHours: 0, wind: '', notes: '' })
+    await geschiedenisTerugzetten(s, created.entry.id)
+    expect(s.list('trips.json.enc').map((x) => x.id)).toEqual([tripId])
+    expect(s.list('legs.json.enc').map((l) => [l.date, l.tripId])).toEqual([['2026-10-12', tripId]])
   })
 
   it('een gelogde dag terugzetten haalt hem weg (een nieuwe dag)', async () => {

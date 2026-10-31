@@ -214,8 +214,21 @@ export function stayDayChanges(store: Reader, dates: readonly string[], kind: St
   const plan = planStayDays(store.list('periods.json.enc'), dates, kind, (d) => inWater(d) !== null, now, () => crypto.randomUUID(), details)
   const changes: Change[] = plan.changes.map((c) => ({ path: 'periods.json.enc', before: c.before, after: c.after }))
   if (changes.length === 0 && kind === null) return changes
-  // Geld verhuist nooit vanzelf (docs/FUNDERING.md): het blijft bij zijn periode, ook als die korter wordt of weggaat.
-  // Hoort het daarna bij geen periode meer, dan staat het in Nakijken met een voorstel.
+  // Geld verhuist nooit vanzelf naar een andere periode (docs/FUNDERING.md): het blijft bij zijn periode, ook als die
+  // korter wordt of weggaat, en hoort het daarna bij geen periode meer, dan staat het in Nakijken met een voorstel.
+  // Alleen een dag die dezelfde soort houdt maar een ander id krijgt (een periode die gesplitst wordt of samengaat met
+  // een buurperiode van dezelfde soort), neemt zijn geld mee: dat is dezelfde periode in twee stukken of één stuk.
+  const before = new Map(plan.changes.filter((c) => c.before).map((c) => [c.before!.id, c.before!]))
+  const after = new Map(plan.changes.map((c) => [c.after.id, c.after]))
+  for (const money of active(store.list('transactions.json.enc'))) {
+    const was = money.tripId ? before.get(money.tripId) : undefined
+    if (!was || money.claimId || money.fixedCostId || money.date < was.startDate || money.date > was.endDate) continue
+    const self = after.get(was.id)
+    if (self && self.deletedAt === null && self.startDate <= money.date && money.date <= self.endDate) continue
+    const owner = plan.owner.get(money.date)
+    const next = owner ? (after.get(owner) ?? active(store.list('periods.json.enc')).find((p) => p.id === owner)) : undefined
+    if (next && next.kind === was.kind) changes.push({ path: 'transactions.json.enc', before: money, after: { ...money, tripId: next.id, updatedAt: now } })
+  }
   if (kind !== null) {
     const own = new Map(active(store.list('calendar.json.enc')).map((d) => [d.date, d]))
     for (const date of dates) {

@@ -5,6 +5,7 @@ import { t, useLang } from '../i18n'
 import { tripRange } from '../model/calendar'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
 import { MAX_COUNTRY, MAX_TAG, participantName } from '../model/guests'
+import { datesFollowDays } from '../model/trip-dates'
 import { tripDependents, type Overlap } from '../model/trip-ops'
 import { STUDENT_LEVELS, type Participant, type StudentLevel, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
@@ -68,11 +69,15 @@ export function OverlapSheet({ store, overlap, notify, onClose, onEditTrip }: { 
     deps.legs.length > 0 && t('trip.part.legs', { n: deps.legs.length }),
     deps.transactions.length > 0 && t('trip.part.transactions', { n: deps.transactions.length }),
     deps.participants.length > 0 && t('trip.part.participants', { n: deps.participants.length }),
+    deps.students.length > 0 && t('trip.part.students', { n: deps.students.length }),
+    deps.plans.length > 0 && t('trip.part.plans', { n: deps.plans.length }),
+    deps.claims.length > 0 && t('trip.part.claims', { n: deps.claims.length }),
   ].filter((x): x is string => !!x)
   const keepRange = tripRange(keep, legs)
   const otherRange = tripRange(other, legs)
   const merged = keepRange && otherRange ? { start: keepRange.start < otherRange.start ? keepRange.start : otherRange.start, end: keepRange.end > otherRange.end ? keepRange.end : otherRange.end } : (keepRange ?? otherRange)
-  const outside = keepRange ? deps.legs.filter((l) => l.date < keepRange.start || l.date > keepRange.end).length : 0
+  // Een trip die zijn dagen volgt, groeit mee met de dagen die erbij komen; alleen een trip met vaste datums laat dagen buiten.
+  const outside = keepRange && !datesFollowDays(keep) ? deps.legs.filter((l) => l.date < keepRange.start || l.date > keepRange.end).length : 0
 
   async function run(kind: 'merge' | 'replace') {
     if (busy) return

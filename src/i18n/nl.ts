@@ -211,6 +211,7 @@ export const nl = {
   // Bewerken
   'edit.transaction': (p: { kind: string }) => `${p.kind} bewerken`,
   'edit.day': 'Dag bewerken',
+  'edit.keepWithoutTrip': 'Zonder periode (zo laten)',
   'edit.newTrip': 'Nieuwe trip…',
   'edit.importedDay': 'Geïmporteerde dag: een nieuwe import vervangt deze wijziging.',
 

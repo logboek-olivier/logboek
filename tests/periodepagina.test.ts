@@ -37,11 +37,12 @@ describe('een dag hoort bij de trip van zijn datum', () => {
     expect(placeLeg([sv1, sv2], [], 'sv1', '2026-10-20')).toEqual({ tripId: 'sv1' })
   })
 
-  it('vlak naast de gekozen trip wordt die langer; verder weg een nieuwe trip; een trip die zijn dagen volgt blijft', () => {
+  it('vlak naast de gekozen trip wordt die langer; verder weg een nieuwe trip; ook een trip die zijn dagen volgt groeit alleen vlak ernaast', () => {
     expect(placeLeg([sv1], [], 'sv1', '2026-10-26')).toEqual({ tripId: 'sv1', extend: { start: '2026-10-18', end: '2026-10-26' } })
     expect(placeLeg([sv1], [], 'sv1', '2026-11-20')).toEqual({ tripId: null, moved: true })
     const follows = trip('dag', { startDate: '2026-11-01', endDate: '2026-11-01', datesFromDays: true })
-    expect(placeLeg([follows], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-11-09')).toEqual({ tripId: 'dag' })
+    expect(placeLeg([follows], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-11-04')).toEqual({ tripId: 'dag' })
+    expect(placeLeg([follows], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-11-09')).toEqual({ tripId: null, moved: true })
     expect(placeLeg([sv1], [], null, '2026-10-19')).toEqual({ tripId: 'sv1' })
     expect(placeLeg([sv1], [], null, '2026-12-01')).toEqual({ tripId: null })
   })

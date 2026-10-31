@@ -22,6 +22,7 @@ import { Sheet } from './Sheet'
 import { TipFromPicker } from './TipFromPicker'
 import { TipViaPicker } from './TipViaPicker'
 import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
+import { stayName } from '../model/periods'
 import { t } from '../i18n'
 import { dagBewerkenMetTrip, dagVerwijderen } from '../domain/dagen'
 import { geldBewerken, geldVerwijderen, uitgaveBewerken } from '../domain/geld'
@@ -65,6 +66,7 @@ export function TransactionSheet({
   const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId, true)
   const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
+  const stayOf = (id: string) => active(store.get('periods.json.enc')).find((p) => p.id === id)
   const [busy, setBusy] = useState(false)
   // Fooi: van wie, achteraf te wijzigen; een andere trip begint weer bij onbekend.
   const people = kind === 'fooi' ? (trips.find((x) => x.id === tripId)?.participants ?? []) : []
@@ -89,7 +91,8 @@ export function TransactionSheet({
         date,
         note: note.trim() || undefined,
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
-        tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : null,
+        // Zonder deelnemers in beeld (de trip is weg) blijft van wie de fooi kwam zoals het was.
+        tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : undefined,
         tipVia: kind === 'fooi' ? tipVia : null,
         category: expense ? (category ?? undefined) : null,
         // Gestort kan niet vóór de fooi zelf.
@@ -195,6 +198,8 @@ export function TransactionSheet({
           <label>
             {t('field.trip')}
             <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+              {/* Gekoppeld aan een periode die weg is of aan land: zo laten staan. */}
+              {tx.tripId && !trips.some((x) => x.id === tx.tripId) && <option value={tx.tripId}>{stayOf(tx.tripId) ? stayName(stayOf(tx.tripId)!) : t('belongsTo.none')}</option>}
               <option value="">{t('quick.noTrip')}</option>
               {trips.map((trip) => (
                 <option key={trip.id} value={trip.id}>
@@ -272,7 +277,10 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   const legs = store.list('legs.json.enc').filter((l) => l.id !== leg.id)
   // Een dag ligt altijd binnen de datums van zijn trip: valt de datum erbuiten, dan de trip van die datum (of de
   // gekozen trip een paar dagen langer, of een nieuwe trip).
-  const placement = placeLeg(trips, legs, tripId === NEW_TRIP ? null : tripId, date || leg.date)
+  // Datum en trip onveranderd (bijvoorbeeld een notitie verbeteren) of de trip van de dag is weg ("Geld en dagen
+  // behouden") en Olivier koos geen andere: de dag blijft waar hij is. Nooit stil naar een andere periode.
+  const keep = tripId === leg.tripId && ((date || leg.date) === leg.date || !trips.some((x) => x.id === leg.tripId))
+  const placement = keep ? { tripId: leg.tripId } : placeLeg(trips, legs, tripId === NEW_TRIP ? null : tripId, date || leg.date)
   const movedTo = placement.moved && placement.tripId ? trips.find((x) => x.id === placement.tripId) : undefined
   const target = (): { id: string } | { newName: string } => {
     if (tripId !== NEW_TRIP && placement.tripId) return { id: placement.tripId }
@@ -403,6 +411,8 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
         <label>
           {t('field.trip')}
           <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
+            {/* De trip van deze dag is verwijderd ("behouden"): zo laten staan is ook een keuze. */}
+            {!trips.some((x) => x.id === leg.tripId) && <option value={leg.tripId}>{t('edit.keepWithoutTrip')}</option>}
             {trips.map((trip) => (
               <option key={trip.id} value={trip.id}>
                 {trip.name}

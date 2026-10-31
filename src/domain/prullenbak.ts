@@ -1,6 +1,8 @@
 // Opdrachten voor de prullenbak en de geschiedenis: terugzetten, en na 30 dagen definitief opruimen. Elke wijziging is
 // een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
+import { active } from '../model/derive'
+import { currentSettings, saveSettings } from '../model/settings'
 import { scrubbed } from '../model/students'
 import { movedAway, trashItems } from '../model/trash'
 import { followDays } from '../model/trip-dates'
@@ -80,9 +82,16 @@ export async function pruneTrash(tx: Tx, now = tx.now): Promise<void> {
  */
 export async function revertEntry(tx: Tx, entry: HistoryEntry, participants = false): Promise<number> {
   let count = 0
-  for (const change of [...entry.changes].reverse()) {
+  const removedTrips: string[] = []
+  // Trips en periodes als laatste: wat deze opdracht eraan hing (een gelogde dag), is dan al teruggezet.
+  const isPeriod = (c: { path: string }) => c.path === 'trips.json.enc' || c.path === 'periods.json.enc'
+  const changes = [...entry.changes].reverse()
+  for (const change of [...changes.filter((c) => !isPeriod(c)), ...changes.filter(isPeriod)]) {
     const current = tx.get(change.path as CollectionPath).find((r) => r.id === change.id)
     if (!current) continue
+    // Een trip of periode die deze opdracht maakte en waar intussen dagen, geld, studenten of een planning aan hangen,
+    // blijft staan: anders zouden die stil zonder periode komen te staan.
+    if (change.before === null && !change.after.deletedAt && isPeriod(change) && hasDependents(tx, change.id)) continue
     if (participants && change.path === 'trips.json.enc') {
       const trip = current as Trip
       const was = (change.before?.participants ?? []) as Participant[]
@@ -93,15 +102,31 @@ export async function revertEntry(tx: Tx, entry: HistoryEntry, participants = fa
       }
       continue
     }
-    const reverted = revertChange(current, change, tx.now, (path, record, at) => tombstone(path as CollectionPath, record, at))
+    const reverted = revertChange(current, change, tx.now, (path, record, at) => tombstone(path as CollectionPath, record, at), entry.at)
     if (reverted) {
       await tx.put(change.path as CollectionPath, reverted as never)
+      if (change.path === 'trips.json.enc' && reverted.deletedAt !== null) removedTrips.push(change.id)
       count++
     }
   }
+  // Een lopende trip die zo weggaat, is niet meer lopend.
+  const running = currentSettings(tx.list('settings.json.enc')).activeWeekId
+  if (running && removedTrips.includes(running)) await saveSettings(tx, { activeWeekId: undefined })
   const stored = tx.list(HISTORY_PATH).find((h) => h.id === entry.id)
   if (stored && !stored.undoneAt) await tx.put(HISTORY_PATH, { ...stored, undoneAt: tx.now, updatedAt: tx.now })
   return count
+}
+
+/** Hangt er nog iets aan deze trip of periode (dagen, geld, studenten, planningen, declaraties)? */
+function hasDependents(tx: Tx, id: string): boolean {
+  const linked = (records: readonly { tripId?: string | null }[]) => active(records as { tripId?: string | null; deletedAt: string | null }[]).some((r) => r.tripId === id)
+  return (
+    linked(tx.get('legs.json.enc')) ||
+    linked(tx.get('transactions.json.enc')) ||
+    linked(tx.get('plans.json.enc')) ||
+    linked(tx.get('claims.json.enc')) ||
+    active(tx.get('students.json.enc')).some((s) => s.weekId === id)
+  )
 }
 
 /** Een regel uit Meer → Geschiedenis terugzetten (niet als hij al teruggezet of opgeruimd is). */

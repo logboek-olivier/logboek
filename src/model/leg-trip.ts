@@ -22,7 +22,7 @@ export interface LegPlacement {
 
 /**
  * De trip voor een dag op `date`, uitgaande van de gekozen trip (null = nieuwe trip):
- * 1. de gekozen trip als de datum erin valt, of als hij zijn dagen volgt;
+ * 1. de gekozen trip als de datum erin valt, of als hij zijn dagen volgt en de datum hoogstens drie dagen naast zijn dagen ligt;
  * 2. anders de trip waarin de datum valt (bij een wisseldag de laatst begonnen);
  * 3. anders de gekozen trip verlengd, als de datum hoogstens drie dagen ernaast ligt;
  * 4. anders een nieuwe trip.
@@ -33,7 +33,13 @@ export function placeLeg(trips: readonly Trip[], legs: readonly Leg[], chosenId:
   const views = live.map((trip) => weekView(trip, legs)).filter((v) => v.startDate && v.endDate)
   const inside = (v: { startDate: string; endDate: string }) => v.startDate <= date && date <= v.endDate
   const chosenView = chosen ? weekView(chosen, legs) : null
-  if (chosen && (datesFollowDays(chosen) || (chosenView && inside(chosenView)))) return { tripId: chosen.id }
+  if (chosen && chosenView && inside(chosenView)) return { tripId: chosen.id }
+  // Een trip die zijn dagen volgt, groeit mee, maar alleen met een dag vlak ernaast (een tikfout in de datum rekt hem
+  // nooit maanden op, over periodes aan land en andere trips heen).
+  if (chosen && datesFollowDays(chosen)) {
+    const own = legs.filter((l) => l.tripId === chosen.id && l.deletedAt === null).map((l) => l.date).sort()
+    if (own.length === 0 || (daysBetween(own.at(-1)!, date) <= LEG_EXTEND_DAYS && daysBetween(date, own[0]!) <= LEG_EXTEND_DAYS)) return { tripId: chosen.id }
+  }
   const containing = views.filter(inside).sort((a, b) => (a.startDate < b.startDate ? -1 : 1)).at(-1)
   if (containing) return { tripId: containing.trip.id, ...(chosen ? { moved: true } : {}) }
   if (chosen && chosenView?.startDate && chosenView.endDate) {

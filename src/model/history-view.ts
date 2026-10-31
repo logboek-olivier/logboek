@@ -54,7 +54,7 @@ function touchesPeriod(line: HistoryLine, change: HistoryChange, periodId: strin
 
 function touchesDate(line: HistoryLine, change: HistoryChange, date: string): boolean {
   const own = value(line.record, change, 'date')
-  if (own === date || change.before?.date === date) return true
+  if (own === date || change.before?.date === date || change.after.date === date) return true
   const start = value(line.record, change, 'startDate')
   const end = value(line.record, change, 'endDate')
   return (line.path === 'trips.json.enc' || line.path === 'periods.json.enc') && typeof start === 'string' && typeof end === 'string' && start <= date && date <= end
