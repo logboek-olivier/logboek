@@ -23,7 +23,7 @@ import { TipFromPicker } from './TipFromPicker'
 import { TipViaPicker } from './TipViaPicker'
 import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { stayName } from '../model/periods'
-import { t } from '../i18n'
+import { getLang, t } from '../i18n'
 import { dagBewerkenMetTrip, dagVerwijderen } from '../domain/dagen'
 import { geldBewerken, geldVerwijderen, uitgaveBewerken } from '../domain/geld'
 import { instellingenOpslaan } from '../domain/instellingen'
@@ -36,8 +36,10 @@ import { todayIso } from '../basis/datum'
 export type Notify = (text: string, undo?: Undo, options?: { long?: boolean }) => void
 
 /** 12.5 → "12,5"; 0 → "" zodat lege velden leeg blijven. */
+/** Mijlen en uren voorgevuld met het decimaalteken van de taal ("23,5" in het Nederlands, "23.5" in het Engels). */
 function toInput(n: number): string {
-  return n === 0 ? '' : String(n).replace('.', ',')
+  if (n === 0) return ''
+  return getLang() === 'nl' ? String(n).replace('.', ',') : String(n)
 }
 
 export function TransactionSheet({
