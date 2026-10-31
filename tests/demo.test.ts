@@ -3,6 +3,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DEMO_DB, demoNetworkAttempts, demoStore, demoWanted, isDemo, startDemo, stopDemo } from '../src/demo'
 import { getLang, setLang } from '../src/i18n'
 import { COLLECTION_PATHS } from '../src/model/types'
+import { allPeriods } from '../src/model/periods'
+import { reviewInput, reviewItems } from '../src/model/review'
 import { GithubClient, isNetworkBlocked, NetworkError } from '../src/storage/github'
 import { DB_NAME, openLogboekDb, type Db } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
@@ -44,7 +46,7 @@ async function snapshot(db: Db): Promise<string> {
 }
 
 describe('demomodus', () => {
-  it('voorbeelddata in het Engels zonder bedragen, en de demo-Store probeert nooit iets te versturen', async () => {
+  it('voorbeelddata in het Engels met periodes van elke soort, routes, studenten en geld per periode; niets in Nakijken; de demo-Store probeert nooit iets te versturen', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     setLang('nl', false)
     const before = demoNetworkAttempts()
@@ -55,8 +57,22 @@ describe('demomodus', () => {
     expect(store.list('trips.json.enc').length).toBeGreaterThanOrEqual(3)
     expect(store.list('legs.json.enc').some((l) => l.toPlace === 'Vis')).toBe(true)
     expect(store.list('students.json.enc').length).toBeGreaterThan(0)
-    expect(store.list('transactions.json.enc')).toEqual([])
-    expect(store.list('trips.json.enc').every((t) => !t.salary)).toBe(true)
+    // Periodemodel: werk, training, plezier, reis, thuis en vrij; elke trip met een vaste soort en gelogde dagen op zijn
+    // route (behalve de komende); geld hangt altijd aan een periode van die soort.
+    const periods = allPeriods(store.list('trips.json.enc'), store.list('legs.json.enc'), store.list('periods.json.enc'))
+    expect(new Set(periods.map((p) => p.kind))).toEqual(new Set(['werk', 'training', 'plezier', 'reis', 'thuis', 'vrij']))
+    expect(store.list('trips.json.enc').every((t) => t.kind !== undefined)).toBe(true)
+    for (const id of ['demo-trip-bvi', 'demo-trip-cro', 'demo-trip-bvi-old', 'demo-trip-friends']) {
+      expect(store.list('legs.json.enc').filter((l) => l.tripId === id).length, id).toBeGreaterThan(1)
+    }
+    const money = store.list('transactions.json.enc')
+    expect(money.length).toBeGreaterThan(0)
+    const ids = new Set(periods.map((p) => p.id))
+    expect(money.every((tx) => tx.tripId !== undefined && ids.has(tx.tripId))).toBe(true)
+    const withMoney = new Set(money.map((tx) => periods.find((p) => p.id === tx.tripId)!.kind))
+    expect(withMoney).toEqual(new Set(['werk', 'training', 'plezier', 'reis', 'thuis', 'vrij']))
+    // Alles klopt: Nakijken blijft leeg in de demo.
+    expect(reviewItems(reviewInput(store))).toEqual([])
     // Opslaan, synchroniseren, vanzelf synchroniseren en controleren: nergens een poging tot netwerk.
     store.enableAutoSync()
     await store.put('legs.json.enc', { ...store.list('legs.json.enc')[0]!, notes: 'demo edit', updatedAt: new Date().toISOString() })
