@@ -53,6 +53,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Geld → Kosten: een vaste last, dan een nieuw bedrag vanaf volgende maand.
       await openMore(page, L('nav.money'), L('nav.more'))
+      // Vaste lasten en het gemiddelde per dagsoort staan bij Verwacht (PR 3 van het periodemodel).
+      await page.getByRole('tab', { name: L('money.expected') }).click()
       const costs = page.locator('.costs')
       await costs.getByRole('button', { name: L('costs.addFixed') }).click()
       let sheet = page.getByRole('dialog')

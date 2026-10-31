@@ -12,6 +12,7 @@ import { COST_DAY_TYPES, CURRENCIES, todayIso, type CostDayType, type Currency, 
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { bookFixedCosts } from '../model/fixed-bookings'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
@@ -47,6 +48,7 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
         </h2>
       </div>
       <h3>{t('costs.fixed')}</h3>
+      <p className="muted small">{t('actual.fixedHint')}</p>
       {fixed.length === 0 ? (
         <p className="muted small">{t('costs.noFixed')}</p>
       ) : (
@@ -136,6 +138,8 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
         notify(t('costs.saved'), undo)
       } else {
         await addFixedCost(store, { name, amount: parsed, currency, from })
+        // Een vaste last vanaf een voorbije maand: die maanden staan direct als uitgave bij Werkelijk.
+        await bookFixedCosts(store, todayIso())
         onClose()
         notify(t('costs.saved'))
       }

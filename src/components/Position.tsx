@@ -47,7 +47,7 @@ function signed(n: number): string {
 /**
  * Mijn positie en de vooruitblik met één periode bovenaan (snelkeuze of zelf van en tot, per apparaat onthouden).
  */
-export function PositionAndForecast({ store, notify }: { store: Store; notify: Notify }) {
+export function PositionAndForecast({ store, notify, part = 'beide' }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik. */ part?: 'werkelijk' | 'verwacht' | 'beide' }) {
   const input = usePositionInput(store)
   const settingsRecords = useCollection(store, 'settings.json.enc')
   const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
@@ -61,8 +61,8 @@ export function PositionAndForecast({ store, notify }: { store: Store; notify: N
   return (
     <>
       {hasData && <PeriodPicker period={period} />}
-      <PositionSection store={store} notify={notify} input={input} settings={settings} period={period} />
-      <ForecastSection store={store} input={input} settings={settings} index={index} period={period} />
+      {part !== 'verwacht' && <PositionSection store={store} notify={notify} input={input} settings={settings} period={period} />}
+      {part !== 'werkelijk' && <ForecastSection store={store} input={input} settings={settings} index={index} period={period} />}
     </>
   )
 }

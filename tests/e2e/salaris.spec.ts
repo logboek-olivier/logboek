@@ -101,6 +101,7 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   // Geld → Vooruitblik: bedragen pas na Toon bedragen; verwacht 1.300 + 1.500, ontvangen 1.250 deze maand.
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
   await openMore(page, 'Geld')
+  await page.getByRole('tab', { name: 'Verwacht' }).click()
   const outlook = page.locator('.outlook')
   await expect(outlook).toContainText('Verwacht salaris voor 2 trips')
   await expect(outlook).not.toContainText('€')

@@ -95,7 +95,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(position.locator('.position-totals')).toContainText(lang === 'nl' ? 'Sinds' : 'Since')
       await shots(page, 'positie', lang)
 
-      // De vooruitblik: het salaris van de komende trip komt erbij.
+      // De vooruitblik (Verwacht): het salaris van de komende trip komt erbij.
+      await page.getByRole('tab', { name: L('money.expected') }).click()
       const forecast = page.locator('.forecast')
       await expect(forecast).toContainText(lang === 'nl' ? 'Netto waarde op' : 'Net worth on')
       await expect(forecast).toContainText(money(-7500))

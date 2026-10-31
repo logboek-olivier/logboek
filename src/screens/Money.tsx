@@ -7,6 +7,7 @@ import { SalaryOutlook } from '../components/SalaryOutlook'
 import { MoneyPathSection } from '../components/MoneyPath'
 import { PositionAndForecast } from '../components/Position'
 import { CostsSection } from '../components/Costs'
+import { ActualCostsSection } from '../components/ActualCosts'
 import { ClaimsSection } from '../components/Claims'
 import { TaxYearSection } from '../components/TaxYear'
 import { Empty } from '../components/Empty'
@@ -28,8 +29,21 @@ import type { Store } from '../storage/store'
 import { t } from '../i18n'
 
 // Geld: alles in euro (ECB-koers van de transactiedatum, of het ontvangen eurobedrag), het originele bedrag klein
-// eronder. Zeilgeld per maand, per werkdag (uit de agenda), per bron, fooi per week (12 weken), lijst per maand met
-// verwijderen. Geen netto waarde.
+// eronder. Twee weergaven: Werkelijk (Mijn positie, kosten per maand, zeilgeld, uitbetalingen, declaraties, per werkdag,
+// per organisatie, fooi, lijst per maand met bewerken) en Verwacht (vooruitblik netto waarde, verwacht salaris, vaste
+// lasten en het gemiddelde per dagsoort).
+
+type MoneyView = 'werkelijk' | 'verwacht'
+/** Gekozen weergave in Geld, per apparaat (niet gesynct). */
+const VIEW_KEY = 'logboek-geld-weergave'
+
+function readView(): MoneyView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'verwacht' ? 'verwacht' : 'werkelijk'
+  } catch {
+    return 'werkelijk'
+  }
+}
 
 export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -69,13 +83,38 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const investment = careerInvestment(live, eurOf)
   const workdays = incomePerWorkday(index, live, today).filter((m) => m.workdays > 0 || m.eur > 0)
   const [tipView, setTipView] = useState<TipView>('gast')
+  const [view, setView] = useState<MoneyView>(readView)
+  const chooseView = (next: MoneyView) => {
+    setView(next)
+    try {
+      localStorage.setItem(VIEW_KEY, next)
+    } catch {
+      // Geen opslag: dan alleen voor nu.
+    }
+  }
 
   return (
     <section className="stack-lg">
       <header className="page-header">
         <h1>{t('nav.money')}</h1>
       </header>
-      {live.length === 0 && (
+      {/* Twee weergaven: Werkelijk (wat er gebeurd is) en Verwacht (de toekomst), per apparaat onthouden. */}
+      <div className="segments money-view" role="tablist" aria-label={t('money.view')}>
+        {(['werkelijk', 'verwacht'] as const).map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} className={`segment${view === v ? ' active' : ''}`} onClick={() => chooseView(v)}>
+            {t(v === 'werkelijk' ? 'money.actual' : 'money.expected')}
+          </button>
+        ))}
+      </div>
+      {view === 'verwacht' && (
+        <>
+          <p className="muted small">{t('money.expectedHint')}</p>
+          <PositionAndForecast store={store} notify={notify} part="verwacht" />
+          <SalaryOutlook store={store} />
+          <CostsSection store={store} notify={notify} />
+        </>
+      )}
+      {view === 'werkelijk' && live.length === 0 && (
         <Empty
           icon={Wallet}
           action={
@@ -87,12 +126,11 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           {t('money.empty')}
         </Empty>
       )}
-      <PositionAndForecast store={store} notify={notify} />
-      <CostsSection store={store} notify={notify} />
-      <ClaimsSection store={store} notify={notify} />
-      {live.length === 0 && <MoneyPathSection store={store} notify={notify} />}
-      {live.length === 0 && <SalaryOutlook store={store} />}
-      {live.length > 0 && (
+      {view === 'werkelijk' && <PositionAndForecast store={store} notify={notify} part="werkelijk" />}
+      {view === 'werkelijk' && <ActualCostsSection store={store} />}
+      {view === 'werkelijk' && <ClaimsSection store={store} notify={notify} />}
+      {view === 'werkelijk' && live.length === 0 && <MoneyPathSection store={store} notify={notify} />}
+      {view === 'werkelijk' && live.length > 0 && (
         <>
           <dl className="grid">
             <Stat
@@ -110,8 +148,6 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
           <p className="muted small">{t('money.resultHint')}</p>
 
           <MoneyPathSection store={store} notify={notify} />
-
-          <SalaryOutlook store={store} />
 
           <TaxYearSection store={store} />
 

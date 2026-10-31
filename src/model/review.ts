@@ -132,7 +132,8 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
   // Geld zonder periode (declaraties volgen hun declaratie).
   const ids = new Set(periods.map((p) => p.id))
   for (const tx of active(input.transactions)) {
-    if (tx.claimId || (tx.tripId && ids.has(tx.tripId))) continue
+    // Vaste lasten hangen aan de maand, niet aan een periode (docs/PERIODEMODEL.md).
+    if (tx.claimId || tx.fixedCostId || (tx.tripId && ids.has(tx.tripId))) continue
     items.push({ key: `geld:${tx.id}`, kind: 'geld-zonder-periode', tx, target: periodAt(periods, tx.date) })
   }
 

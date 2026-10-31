@@ -1973,6 +1973,16 @@ export const nl = {
   'money.investment': 'Investering in mijn zeilcarrière',
   'money.perOrganisation': 'Per organisatie',
   'review.investmentKind': (p: { date: string; note: string }) => `Investering van ${p.date}${p.note}: opleiding of uitrusting?`,
+  'actual.title': 'Kosten per maand',
+  'actual.fixedHint': 'Vaste lasten van een voorbije maand staan als echte uitgave bij Werkelijk (per maand aan te passen of te verwijderen); komende maanden alleen bij Verwacht.',
+  'actual.fixed': 'Vast',
+  'actual.loose': 'Los',
+  'actual.week': 'Week',
+  'actual.total': 'Totaal',
+  'money.view': 'Weergave',
+  'money.actual': 'Werkelijk',
+  'money.expected': 'Verwacht',
+  'money.expectedHint': 'De toekomst: verwacht salaris, geschatte fooi, vaste lasten en je gemiddelde losse kosten per dagsoort.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

@@ -32,6 +32,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     // Periodemodel (PR 2): opleiding is een investering met een soort; verblijf hangt aan een periode aan land.
     { id: 'upg-tx-opleiding', date: '2026-12-02', kind: 'investering', amount: 450, currency: 'EUR', source: 'overig', category: 'opleiding', tripId: 'upg-stay-thuis', note: 'Nepcursus', updatedAt: T, deletedAt: null },
     { id: 'upg-tx-verblijf', date: '2026-12-06', kind: 'kosten', amount: 80, currency: 'EUR', source: 'overig', category: 'verblijf', tripId: 'upg-stay-reis', updatedAt: T, deletedAt: null },
+    // Periodemodel (PR 3): een vaste last van een voorbije maand, geboekt als echte uitgave (vast id per maand).
+    { id: 'vast:upg-fixed-1:2026-09', date: '2026-09-30', kind: 'kosten', amount: 20, amountEur: 20, currency: 'EUR', source: 'overig', category: 'overig', note: 'Nepabonnement', fixedCostId: 'upg-fixed-1', updatedAt: T, deletedAt: null },
     // Periodemodel: een uitgave zonder trip op een thuisdag komt aan de thuisperiode.
     { id: 'upg-tx-thuis', date: '2026-11-11', kind: 'kosten', amount: 7.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
     // Kosten (ronde 3): een losse uitgave met een soort.
