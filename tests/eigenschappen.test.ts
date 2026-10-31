@@ -11,7 +11,7 @@ import { periodeMaken, periodeVervangen, periodeVerwijderen, samenvoegen } from 
 import { addDays } from '../src/basis/datum'
 import { historyRows } from '../src/model/history-view'
 import { trashItems } from '../src/model/trash'
-import type { CollectionPath, StayKind, SyncRecord } from '../src/model/types'
+import type { CollectionPath, StayKind, StayPeriod, SyncRecord, Transaction } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
@@ -139,6 +139,19 @@ async function act(s: Store, r: ReturnType<typeof random>): Promise<{ name: stri
   }
 }
 
+/**
+ * Geld op een dag die dezelfde soort aan land houdt maar een ander id krijgt (een periode gesplitst, of samengegaan met
+ * een buurperiode van dezelfde soort): dezelfde periode, dus het geld gaat mee (src/model/periods.ts, stayDayChanges).
+ */
+function continued(before: Snapshot, after: Snapshot, was: Transaction, now: Transaction): boolean {
+  const stay = (snap: Snapshot, id: string | undefined) => (id ? (snap.get(`periods.json.enc\n${id}`) as StayPeriod | undefined) : undefined)
+  const from = stay(before, was.tripId)
+  const to = stay(after, now.tripId)
+  const within = (p: StayPeriod | undefined, d: string) => !!p && p.deletedAt === null && p.startDate <= d && d <= p.endDate
+  const stillThere = stay(after, was.tripId)
+  return !!from && !!to && from.kind === to.kind && within(from, was.date) && within(to, now.date) && !within(stillThere, now.date)
+}
+
 function checkStep(seed: number, step: number, name: string, before: Snapshot, after: Snapshot): void {
   const where = `zaad ${seed}, stap ${step}, ${name}`
   for (const [key, was] of before) {
@@ -146,7 +159,7 @@ function checkStep(seed: number, step: number, name: string, before: Snapshot, a
     if (path !== 'legs.json.enc' && path !== 'transactions.json.enc') continue
     const now = after.get(key) as (SyncRecord & { tripId?: string }) | undefined
     if (!now) expect(REMOVES.has(name), `${where}: ${path} verdween stil`).toBe(true)
-    else if (now.tripId !== (was as SyncRecord & { tripId?: string }).tripId) expect(MOVES.has(name), `${where}: ${path} verhuisde stil`).toBe(true)
+    else if (now.tripId !== (was as SyncRecord & { tripId?: string }).tripId) expect(MOVES.has(name) || continued(before, after, was as Transaction, now as Transaction), `${where}: ${path} verhuisde stil`).toBe(true)
   }
 }
 

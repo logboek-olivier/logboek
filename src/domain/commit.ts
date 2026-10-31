@@ -76,7 +76,7 @@ export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Pr
       if (written.length > 0 && name !== 'test' && name !== 'demoVullen') {
         const base = { get: tx.base.bind(tx), list: <P extends CollectionPath>(path: P) => tx.base(path).filter((r) => r.deletedAt === null) } as Reader
         const broken = newHardViolations(base, tx)
-        if (broken.length > 0) throw new InvariantError(broken)
+        if (broken.length > 0) throw new InvariantError(broken, name)
       }
       // De geschiedenis in dezelfde transactie: de opdracht en zijn regel komen samen op het apparaat, of geen van beide.
       const entry = historyEntry(name, tx.now, written)

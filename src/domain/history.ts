@@ -114,5 +114,12 @@ export function revertChange(
   }
   // deletedAt hoort altijd te bestaan (null = niet verwijderd).
   if (changed && next.deletedAt === undefined) next.deletedAt = null
+  // Begin en eind horen bij elkaar: is er na de opdracht maar één van de twee gewijzigd, dan zou per veld terugzetten
+  // een begin na het eind kunnen geven. Dan blijven beide zoals ze nu zijn.
+  const [start, end] = [next.startDate, next.endDate]
+  if (typeof start === 'string' && typeof end === 'string' && start > end) {
+    next.startDate = (current as unknown as Record<string, unknown>).startDate
+    next.endDate = (current as unknown as Record<string, unknown>).endDate
+  }
   return changed ? ({ ...next, updatedAt: now } as unknown as SyncRecord) : null
 }

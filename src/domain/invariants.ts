@@ -96,8 +96,12 @@ export function hardViolations(reader: Reader): Violation[] {
 
 /** Een opdracht wilde iets schrijven dat een invariant breekt; er is niets geschreven. */
 export class InvariantError extends Error {
-  constructor(readonly broken: readonly Violation[]) {
-    super(`Invariant: ${broken.map((b) => b.rule).join(', ')}`)
+  constructor(
+    readonly broken: readonly Violation[],
+    /** De opdracht die werd tegengehouden (alleen de naam, nooit inhoud; regel 9). */
+    readonly command = '',
+  ) {
+    super(`Invariant: ${broken.map((b) => b.rule).join(', ')}${command ? ` (${command})` : ''}`)
     this.name = 'InvariantError'
   }
 }
