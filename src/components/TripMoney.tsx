@@ -1,3 +1,4 @@
+import { tripKind } from '../model/trip-kind'
 import { ChevronDown, ChevronRight, ChevronUp, Coins, Eye, EyeOff, Plus } from 'lucide-react'
 import { useState, useSyncExternalStore } from 'react'
 import { formatDate, formatMoney } from '../format'
@@ -32,7 +33,7 @@ export function sumText(sum: MoneySum, sign = false): string {
 const hasAmount = (sum: MoneySum) => sum.eur !== 0 || Object.keys(sum.other).length > 0
 
 /** Het resultaat van een trip als regels: salaris, fooi, overige inkomsten, uitgaven, en het resultaat. */
-export function TripResultLines({ result }: { result: TripResult }) {
+export function TripResultLines({ result, work = true }: { result: TripResult; /** Training of plezier: geen regels voor salaris en fooi zonder bedrag. */ work?: boolean }) {
   const negative = result.result.eur < 0
   return (
     <div className="stack-sm trip-result">
@@ -41,14 +42,18 @@ export function TripResultLines({ result }: { result: TripResult }) {
         <strong className={`num ${negative ? 'negative' : 'positive'}`}>{sumText(result.result)}</strong>
       </p>
       <ul className="plain-list">
-        <li className="row muted small">
-          <span className="grow">{t(result.salaryExpected ? 'tripResult.salaryExpected' : 'tripResult.salary')}</span>
-          <span className="num">{sumText(result.salary)}</span>
-        </li>
-        <li className="row muted small">
-          <span className="grow">{t('tripResult.tips')}</span>
-          <span className="num">{sumText(result.tips)}</span>
-        </li>
+        {(work || hasAmount(result.salary)) && (
+          <li className="row muted small">
+            <span className="grow">{t(result.salaryExpected ? 'tripResult.salaryExpected' : 'tripResult.salary')}</span>
+            <span className="num">{sumText(result.salary)}</span>
+          </li>
+        )}
+        {(work || hasAmount(result.tips)) && (
+          <li className="row muted small">
+            <span className="grow">{t('tripResult.tips')}</span>
+            <span className="num">{sumText(result.tips)}</span>
+          </li>
+        )}
         {hasAmount(result.otherIncome) && (
           <li className="row muted small">
             <span className="grow">{t('tripResult.otherIncome')}</span>
@@ -99,7 +104,7 @@ export function TripMoneySection({ store, trip, heading = 'h2' }: { store: Store
       </div>
       {shown ? (
         <div className="stack-sm">
-          <TripResultLines result={tripResult(trip, legs, all, rates)} />
+          <TripResultLines result={tripResult(trip, legs, all, rates)} work={tripKind(trip, legs).kind === 'werk'} />
           <dl className="grid">
             <div className="stat">
               <dt>{t('week.income')}</dt>
@@ -210,7 +215,7 @@ export function TripIncomeFields({ store, trip, notify }: { store: Store; trip: 
       </button>
       {open && (
         <div className="stack-sm">
-          <TripResultLines result={tripResult(trip, legs, all, rates)} />
+          <TripResultLines result={tripResult(trip, legs, all, rates)} work={tripKind(trip, legs).kind === 'werk'} />
           {income.length > 0 && (
             <ul className="plain-list">
               {income.map((tx) => (

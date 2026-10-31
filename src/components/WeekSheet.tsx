@@ -35,6 +35,7 @@ import { SalaryFields, useSalaryDraft } from './SalaryFields'
 import { TripIncomeFields } from './TripMoney'
 import { PeriodDays } from './PeriodPage'
 import { kindForType, typeForKind } from '../model/trip-kind'
+import { parseShip } from '../model/boats'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -65,8 +66,10 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   }
   const [startDate, setStartDate] = useState(view?.startDate || initial?.startDate || todayIso())
   const [dayCount, setDayCount] = useState(String(view ? dayCountOf(view) : (initial?.dayCount ?? DEFAULT_WEEK_DAYS)))
-  const [boat, setBoat] = useState(view?.boat ?? '')
-  const [boatModel, setBoatModel] = useState(trip?.boatModel ?? '')
+  // Een boot uit de dagen als "Sazarac (Oceanis 38.1)": naam en model apart (de kolom Schip van de import).
+  const shipFromDays = trip && !trip.boat && !trip.boatModel ? parseShip(view?.boat ?? '') : null
+  const [boat, setBoat] = useState(shipFromDays ? shipFromDays.name : (view?.boat ?? ''))
+  const [boatModel, setBoatModel] = useState(shipFromDays ? shipFromDays.model : (trip?.boatModel ?? ''))
   const [boatLength, setBoatLength] = useState(trip?.boatLengthFt ? formatNumber(trip.boatLengthFt) : '')
   const [boatKind, setBoatKind] = useState<BoatKind | undefined>(trip?.boatKind)
   const [base, setBase] = useState(trip?.base ?? '')
@@ -256,7 +259,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             <div className="stack-sm">
               <label>
                 {t('boat.length')}
-                <input inputMode="decimal" autoComplete="off" placeholder="42" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
+                <input inputMode="decimal" autoComplete="off" value={boatLength} onChange={(e) => setBoatLength(e.target.value)} />
               </label>
               {lengthFt !== null && lengthFt > 0 && <span className="muted small">{t('boat.metres', { m: formatNumber(feetToMetres(lengthFt)) })}</span>}
             </div>

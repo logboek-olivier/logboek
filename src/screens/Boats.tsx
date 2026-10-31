@@ -61,7 +61,10 @@ export function BoatCheck({
   // Lijst en regels staan vast bij openen: bevestigen verandert de bootlijst (en de sleutels) tijdens het opslaan.
   const [frozen] = useState(boats)
   const [rows, setRows] = useState<Row[]>(() => boats.map(initialRow))
+  // Per boot afgehandeld (bevestigd of overgeslagen): die verdwijnt uit de lijst.
+  const [done, setDone] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
+  const open = rows.filter((r) => !done.has(r.key))
   const set = (i: number, patch: Partial<Row>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
 
   async function submit(e: FormEvent) {
@@ -69,9 +72,9 @@ export function BoatCheck({
     if (busy) return
     setBusy(true)
     try {
-      const inputs: BoatInput[] = rows.map((r) => ({ key: r.key, name: r.name, model: r.model, lengthFt: parseAmount(r.length), kind: r.kind }))
+      const inputs: BoatInput[] = open.map((r) => ({ key: r.key, name: r.name, model: r.model, lengthFt: parseAmount(r.length), kind: r.kind }))
       await confirmBoats(store, frozen, inputs)
-      notify(t('boats.saved', { n: rows.length }))
+      notify(t('boats.saved', { n: open.length }))
       onDone()
     } finally {
       setBusy(false)
@@ -79,8 +82,24 @@ export function BoatCheck({
   }
 
   async function skip() {
-    await skipBoats(store, frozen)
+    await skipBoats(store, frozen.filter((b) => !done.has(b.key)))
     onDone()
+  }
+
+  /** Eén boot bevestigen of overslaan; de andere blijven staan. Na de laatste is het klaar. */
+  async function one(r: Row, confirm: boolean) {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (confirm) await confirmBoats(store, frozen, [{ key: r.key, name: r.name, model: r.model, lengthFt: parseAmount(r.length), kind: r.kind }])
+      else await skipBoats(store, frozen.filter((b) => b.key === r.key))
+      notify(t(confirm ? 'boats.savedOne' : 'boats.skippedOne', { name: r.name || r.model }))
+      const next = new Set(done).add(r.key)
+      setDone(next)
+      if (rows.every((x) => next.has(x.key))) onDone()
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -88,6 +107,7 @@ export function BoatCheck({
       <p className="muted">{t('boats.intro')}</p>
       <ul className="boat-list">
         {rows.map((r, i) => {
+          if (done.has(r.key)) return null
           const ft = parseAmount(r.length)
           const kinds = r.kind && !SHOWN_KINDS.includes(r.kind) ? [...SHOWN_KINDS, r.kind] : SHOWN_KINDS
           return (
@@ -126,6 +146,18 @@ export function BoatCheck({
                 ))}
               </div>
               <span className="muted small">{t('gaps.boatTrips', { n: r.trips })}</span>
+              {canSkip && rows.length > 1 && (
+                <div className="row wrap boat-one">
+                  <button type="button" className="btn small" disabled={busy} onClick={() => void one(r, true)}>
+                    <Icon icon={Check} />
+                    {t('boats.confirmOne')}
+                  </button>
+                  <button type="button" className="btn small" disabled={busy} onClick={() => void one(r, false)}>
+                    <Icon icon={SkipForward} />
+                    {t('boats.skipOne')}
+                  </button>
+                </div>
+              )}
             </li>
           )
         })}
@@ -134,6 +166,7 @@ export function BoatCheck({
         <button className="btn primary" type="submit" disabled={busy}>
           <Icon icon={Check} />
           {t(canSkip ? 'boats.confirm' : 'common.save')}
+          {canSkip && open.length < rows.length ? ` (${open.length})` : ''}
         </button>
         {canSkip && (
           <button className="btn" type="button" onClick={() => void skip()} disabled={busy}>

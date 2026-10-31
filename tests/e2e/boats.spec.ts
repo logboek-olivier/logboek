@@ -30,13 +30,19 @@ test('Boten uit de import: naam en model uit Schip, lengte als voorstel, alles i
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/trips/boten-controleren.png', fullPage: true })
 
-  // Aanpassen en in één keer bevestigen.
+  // Eén boot apart bevestigen (PR 5): die kaart verdwijnt, de andere blijven.
+  await koala.getByLabel('Lengte (ft)').fill('36')
+  await koala.getByRole('button', { name: 'Bevestigen', exact: true }).click()
+  await expect(page.getByText(/Nepkoala X/).first()).toBeVisible()
+  await expect(cards).toHaveCount(7)
+
+  // Aanpassen en de rest in één keer bevestigen.
   await zwaan.getByLabel('Lengte (ft)').fill('50')
   await expect(zwaan).not.toContainText('voorstel uit het model')
   await sport.getByLabel('Bootnaam').fill('Nepflits')
   await zwaan.getByRole('radio', { name: 'Catamaran' }).click()
   await page.getByRole('button', { name: 'Alles bevestigen' }).click()
-  await expect(page.getByText('8 boten opgeslagen')).toBeVisible()
+  await expect(page.getByText('7 boten opgeslagen')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
   await expect(page.getByText(/boten uit je import controleren/)).toHaveCount(0)
 

@@ -89,7 +89,8 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
   await expect(card).toContainText('Werk')
   await expect(card).toContainText('SV #1 · Nepgebied')
   await expect(card).toContainText('46 nm')
-  await expect(card).toContainText('Geen fooi op deze dag.')
+  // Geen geld op deze dag: dan ook geen regel over geld.
+  await expect(card).not.toContainText('Geen fooi op deze dag.')
   await expect(card.getByRole('radio', { name: 'Vrij' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/bekijken/dagkaart.png', fullPage: true })
