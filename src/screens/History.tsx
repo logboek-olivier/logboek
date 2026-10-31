@@ -9,6 +9,8 @@ import { formatDate } from '../format'
 import { t, type MessageKey } from '../i18n'
 import { canRevert, historyRows, type HistoryFilter, type HistoryLine, type HistoryRow } from '../model/history-view'
 import type { Store } from '../storage/store'
+import { stayName } from '../model/periods'
+import type { StayPeriod } from '../model/types'
 
 // Meer → Geschiedenis, en dezelfde lijst per periode (onder "⋯") en per dag (de dagkaart): wat er de laatste 30 dagen
 // veranderde, met "Terugzetten" per regel. Terugzetten is zelf ook een regel (en dus weer terug te zetten).
@@ -41,7 +43,10 @@ const COMMAND: Record<string, MessageKey> = {
   ongedaanMaken: 'history.cmd.terugzetten',
 }
 
-/** Wat voor record: dag, geld, trip, periode aan land, agendadag; de rest "Overig". */
+/** De naam van het bestand zoals onder Meer → Opslag ("Instellingen", "Studenten"); nooit een vaag "Overig". */
+const fileName = (path: string): MessageKey => `storage.file.${path === 'documents/index.json.enc' ? 'documents' : path.replace('.json.enc', '')}` as MessageKey
+
+/** Wat voor record: dag, geld, trip, periode aan land, agendadag; anders de naam van het bestand. */
 const KIND: Partial<Record<string, MessageKey>> = {
   'legs.json.enc': 'history.file.leg',
   'transactions.json.enc': 'history.file.money',
@@ -60,10 +65,12 @@ function lineText(line: HistoryLine): string {
       ? [date, [r.fromPlace, r.toPlace].filter((x) => typeof x === 'string' && x).join(' → ')].filter(Boolean).join(' · ')
       : line.path === 'transactions.json.enc'
         ? [date, typeof r.note === 'string' && r.note ? r.note : typeof r.kind === 'string' ? t(`kind.${r.kind}` as MessageKey) : ''].filter(Boolean).join(' · ')
-        : typeof r.name === 'string' && r.name
-          ? r.name
-          : date
-  return `${t(KIND[line.path] ?? 'history.file.other')}${label ? `: ${label}` : ''} · ${t(`history.what.${line.what}`)}`
+        : line.path === 'periods.json.enc' && typeof r.kind === 'string'
+          ? stayName(r as unknown as StayPeriod)
+          : typeof r.name === 'string' && r.name
+            ? r.name
+            : date
+  return `${t(KIND[line.path] ?? fileName(line.path))}${label ? `: ${label}` : ''} · ${t(`history.what.${line.what}`)}`
 }
 
 export function useHistoryRows(store: Store, filter: HistoryFilter = {}): HistoryRow[] {
@@ -95,7 +102,7 @@ export function HistoryList({ store, notify, filter = {} }: { store: Store; noti
       {rows.map((row) => (
         <li key={row.entry.id} className="row-item history-row">
           <span className="row-main">
-            <span>{t(COMMAND[row.entry.command] ?? 'history.cmd.other')}</span>
+            <span>{COMMAND[row.entry.command] ? t(COMMAND[row.entry.command]!) : t('history.cmd.changed', { what: t(fileName(row.entry.changes[0]?.path ?? '')) })}</span>
             <span className="muted small">
               {formatDate(row.entry.at.slice(0, 10))} {new Date(row.entry.at).toTimeString().slice(0, 5)}
               {row.entry.undoneAt ? ` · ${t('history.undone')}` : ''}
