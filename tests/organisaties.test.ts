@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { countedOrganisations, LEGACY_ORGS, orgFromName, organisationChoices, organisationsFrom, setOrganisations, sourceForPeriod, tripOrganisation } from '../src/basis/organisatie'
 import { nieuwLogboekInrichten } from '../src/domain/instellingen'
 import { curriculumPacks, effectiveCurricula, setCurriculumPacks } from '../src/model/curricula'
-import { tripCounters } from '../src/model/counters'
+import { nameWithCounter, tripCounters } from '../src/model/counters'
+import { tellerBeginnummersOpslaan } from '../src/domain/trips'
+import { organisationLabel } from '../src/i18n/labels'
+import { parsePlanning } from '../src/import/planning'
 import { careerStart } from '../src/model/position'
 import { currentSettings, DEFAULT_SETTINGS } from '../src/model/settings'
 import type { Trip } from '../src/model/types'
@@ -76,5 +79,45 @@ describe('leeg beginnen', () => {
     expect(effectiveCurricula([])).toEqual([])
     setCurriculumPacks(['ASA'])
     expect(new Set(effectiveCurricula([]).map((c) => c.body))).toEqual(new Set(['ASA']))
+  })
+})
+
+describe('review PR 5', () => {
+  it('een afkorting met leestekens breekt geen scherm; een eigen naam telt alleen als losse woorden', () => {
+    setOrganisations([{ id: 'org:c', name: 'Sun', short: 'C++' }])
+    const trips = [trip('a', { organisation: 'org:c', name: 'C++ 4 · BVI' })]
+    const counter = tripCounters(trips, [], currentSettings([])).get('a')
+    expect(() => nameWithCounter(trips[0]!, counter)).not.toThrow()
+    expect(nameWithCounter(trips[0]!, counter)).toBe('C++ #1 · BVI')
+    expect(orgFromName('Sunsail week 3')).toBeNull()
+    expect(orgFromName('Sun week 3')).toEqual({ org: 'org:c', sure: true })
+  })
+
+  it('Yacht Week hernoemd: trips met de oude naam horen er nog steeds bij', () => {
+    setOrganisations([{ id: 'yacht-week', name: 'The Yacht Week', short: 'YW' }])
+    expect(orgFromName('Yacht week 7')).toEqual({ org: 'yacht-week', sure: true })
+  })
+
+  it('een organisatie die niet (meer) in de lijst staat, blijft te kiezen en heet nooit naar haar id', () => {
+    setOrganisations([])
+    expect(organisationChoices([trip('a', { organisation: 'org:weg' })])).toEqual(['eigen', 'overig', 'org:weg'])
+    expect(organisationLabel('org:weg', 'nl')).toBe('Onbekende organisatie')
+  })
+
+  it('beginnummers van een organisatie die even weg is, blijven bewaard', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    const store = await Store.open(await openLogboekDb('logboek-leeg-2'), key, new GithubClient('github_pat_LEEG_0123456789abcdefghijklmnopqrstuvwxyz0', new FakeGithub().fetch))
+    await tellerBeginnummersOpslaan(store, { 'sailing-virgins': 3, 'yacht-week': 10 })
+    setOrganisations([LEGACY_ORGS[0]!])
+    await tellerBeginnummersOpslaan(store, { 'sailing-virgins': 4 })
+    expect(currentSettings(store.list('settings.json.enc')).orgFirst).toEqual({ 'sailing-virgins': 4, 'yacht-week': 10 })
+  })
+
+  it('de planningsimport herkent een eigen organisatie aan naam of afkorting', () => {
+    setOrganisations([{ id: 'org:x', name: 'Nep Charters', short: 'NC' }])
+    const csv = (org: string) => new TextEncoder().encode(`start;eind;soort;naam;organisatie\n2026-11-01;2026-11-07;werk;Nepweek;${org}\n`)
+    expect(parsePlanning(csv('Nep Charters'))[0]!.organisation).toBe('org:x')
+    expect(parsePlanning(csv('nc'))[0]!.organisation).toBe('org:x')
+    expect(() => parsePlanning(csv('Onbekend'))).toThrow()
   })
 })

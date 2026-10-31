@@ -115,6 +115,7 @@ export function Setup() {
         <TokenForm
           check={check}
           withRepo
+          repoDefault={step.mode === 'new' ? '' : DATA_REPO}
           onDone={(token) => setStep(step.mode === 'new' ? { kind: 'passphrase', token } : { kind: 'secret', token })}
         />
       </Screen>
@@ -252,17 +253,20 @@ export function TokenForm({
   submitLabel = t('common.next'),
   disabled = false,
   withRepo = false,
+  repoDefault = DATA_REPO,
 }: {
   check: (token: string, repo: string) => Promise<{ expiresAt: string | null }>
   onDone: (token: TokenInfo) => void
   submitLabel?: string
   /** Bijvoorbeeld zolang de aanroeper nog bezig is met opslaan; voorkomt dubbel tikken. */
   disabled?: boolean
-  /** De eerste keer: ook de data-repo ("eigenaar/naam"), standaard die van Olivier. */
+  /** De eerste keer: ook de data-repo ("eigenaar/naam"). */
   withRepo?: boolean
+  /** Voorgevulde data-repo: bij koppelen die van Olivier (zijn andere apparaten), bij een eigen logboek leeg. */
+  repoDefault?: string
 }) {
   const [token, setToken] = useState('')
-  const [repo, setRepo] = useState(DATA_REPO)
+  const [repo, setRepo] = useState(repoDefault)
   const [expiresAt, setExpiresAt] = useState('')
   const [checked, setChecked] = useState(false)
   const [fromHeader, setFromHeader] = useState(false)
@@ -324,6 +328,7 @@ export function TokenForm({
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+            placeholder={t('token.repoPlaceholder')}
             value={repo}
             onChange={(e) => {
               setRepo(e.target.value)

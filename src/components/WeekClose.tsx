@@ -64,7 +64,7 @@ function useMoneyStep(store: Store, enabled: boolean) {
   const [received, setReceived] = useState<ReadonlySet<string>>(new Set())
   const [deposited, setDeposited] = useState<ReadonlySet<Currency>>(new Set())
   const today = todayIso()
-  const openTrips = organisationChoices().flatMap((org) => openSalaryTrips(trips, legs, org, today)).filter((x) => !hasSalaryIncome(x, transactions))
+  const openTrips = organisationChoices(trips).flatMap((org) => openSalaryTrips(trips, legs, org, today)).filter((x) => !hasSalaryIncome(x, transactions))
   const cash = Object.entries(cashOnHand(transactions)) as [Currency, number][]
   const lang = getLang()
   const parsedStands = accounts.map((a) => ({ account: a, text: stands[a.id] ?? '', value: (stands[a.id] ?? '').trim() === '' ? null : parseStand(stands[a.id]!, lang) }))

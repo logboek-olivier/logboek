@@ -19,6 +19,9 @@ export async function createNewLogbook(page: Page, lang: Lang = 'nl', options: {
   await page.goto('./')
   await page.getByRole('button', { name: L('setup.own') }).click()
   await page.getByRole('button', { name: L('common.next') }).click()
+  // Een eigen logboek: de repository staat niet voorgevuld (geen standaard van een ander).
+  await expect(page.getByLabel(L('token.repo'))).toHaveValue('')
+  await page.getByLabel(L('token.repo')).fill('logboek-olivier/logboek-data')
   await enterToken(page, L('common.next'), lang)
   await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
   await page.getByLabel(L('passphrase.again')).fill(PASSPHRASE)

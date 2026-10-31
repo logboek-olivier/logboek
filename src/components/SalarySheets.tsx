@@ -50,9 +50,11 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
   const [asking, setAsking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Wat bij een organisatie hoort die nu niet in de lijst staat, blijft bewaard (terugzetten = dezelfde instellingen).
   function nextPayouts(): Partial<Record<Organisation, PayoutRule>> {
-    const out: Partial<Record<Organisation, PayoutRule>> = {}
+    const out: Partial<Record<Organisation, PayoutRule>> = { ...settings.payouts }
     for (const org of organisationChoices()) {
+      delete out[org]
       const day = Math.round(Number(payouts[org]?.day ?? '1'))
       if (payouts[org]?.kind === 'maandelijks') out[org] = { kind: 'maandelijks', day: Number.isFinite(day) ? Math.min(28, Math.max(1, day)) : 1 }
     }
@@ -60,8 +62,9 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
   }
 
   function next(): Partial<Record<Organisation, SalaryDefault>> {
-    const out: Partial<Record<Organisation, SalaryDefault>> = {}
+    const out: Partial<Record<Organisation, SalaryDefault>> = { ...settings.salaryDefaults }
     for (const org of organisationChoices()) {
+      delete out[org]
       const amount = parseAmount(rows[org]?.amount ?? '')
       if (amount !== null && amount > 0) out[org] = { amount, currency: rows[org]?.currency ?? 'EUR' }
     }

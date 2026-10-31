@@ -596,6 +596,7 @@ export const nl = {
   'organisation.yacht-week': 'Yacht Week',
   'organisation.eigen': 'Eigen',
   'organisation.overig': 'Overig',
+  'organisation.unknown': 'Onbekende organisatie',
 
   // Deze week en navigatie
   'nav.week': 'Deze trip',
@@ -1845,6 +1846,7 @@ export const nl = {
   'weekMoney.deposited': (p: { amount: string }) => `${p.amount} contant gestort`,
   'weekMoney.skipped': (p: { orgs: string }) => `Week afgesloten; salaris van ${p.orgs} niet geboekt (geen koers): voer de uitbetaling in onder Geld.`,
   'token.repo': 'Data-repository (eigenaar/naam)',
+  'token.repoPlaceholder': 'eigenaar/logboek-data',
   'token.repoHint': 'De private repository waarin dit logboek versleuteld staat. Elke gebruiker heeft een eigen repository en token.',
   'error.repoName': 'Vul de repository in als eigenaar/naam.',
   'salaryStatus.geen': 'Geen salaris',

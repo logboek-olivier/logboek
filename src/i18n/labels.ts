@@ -21,5 +21,6 @@ export function organisationLabel(org: Organisation, lang: Lang = getLang()): st
   const name = orgName(org)
   if (name) return name
   if (org === 'eigen' || org === 'overig' || org === 'sailing-virgins' || org === 'yacht-week') return translate(lang, `organisation.${org}`)
-  return org
+  // Niet (meer) in Instellingen → Organisaties: nooit het interne id tonen.
+  return translate(lang, 'organisation.unknown')
 }

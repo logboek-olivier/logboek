@@ -1,6 +1,8 @@
 import { decryptObject, DecryptError, encryptObject, fromBase64, toBase64, utf8, type Bytes } from '../crypto/encrypt'
 import { parseMeta, unlock, type Meta, type Secret } from '../crypto/keys'
+import { sameValue } from '../basis/gelijk'
 import { NewerSchemaError } from '../model/schema'
+import { DEFAULT_SETTINGS } from '../model/settings'
 import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import type { Tx } from '../domain/tx'
 import type { Store } from './store'
@@ -124,11 +126,31 @@ export interface RestoreItem {
 }
 
 /** Voorbeeld vooraf: per bestand wat er terugkomt. Alleen records waarvan nu niets meer bestaat (ook geen verwijdering). */
+/**
+ * Een nieuw logboek schrijft meteen zijn instellingen ("leeg begonnen", src/domain/instellingen.ts). Zolang daar verder
+ * niets in staat, telt dat record als ontbrekend: anders zou een back-up in een nieuw logboek (een verloren telefoon, de
+ * live-gang) de instellingen nooit terugzetten (salaris, uitbetalingen, tellers, organisaties).
+ */
+function isFreshSettings(record: SyncRecord): boolean {
+  if (record.id !== 'settings' || record.deletedAt !== null) return false
+  const extra = Object.entries(record).filter(([key]) => key !== 'id' && key !== 'updatedAt' && key !== 'deletedAt')
+  const defaults = DEFAULT_SETTINGS as unknown as Record<string, unknown>
+  return extra.every(
+    ([key, value]) =>
+      key === 'startedEmpty' || ((key === 'organisations' || key === 'curriculumPacks') && Array.isArray(value) && value.length === 0) || sameValue(value, defaults[key]),
+  )
+}
+
+/** Wat er nu al staat (een vers record met alleen "leeg begonnen" telt niet). */
+function present(records: readonly SyncRecord[]): Set<string> {
+  return new Set(records.filter((r) => !isFreshSettings(r)).map((r) => r.id))
+}
+
 export function restorePlan(store: Store, backup: OpenedBackup): RestoreItem[] {
   return COLLECTION_PATHS.flatMap((path) => {
     const records = backup.files.get(path)
     if (!records) return []
-    const now = new Set(store.get(path).map((r) => r.id))
+    const now = present(store.get(path))
     const active = records.filter((r) => r.deletedAt === null)
     return [{ path, inBackup: active.length, back: active.filter((r) => !now.has(r.id)) }]
   })
@@ -141,8 +163,10 @@ export function restorePlan(store: Store, backup: OpenedBackup): RestoreItem[] {
 export async function applyRestore(store: Tx, plan: readonly RestoreItem[]): Promise<void> {
   if (!store.hasSynced()) throw new RestoreNeedsSyncError()
   for (const item of plan) {
-    const now = new Set(store.get(item.path).map((r) => r.id))
-    const back = item.back.filter((r) => !now.has(r.id))
+    const now = present(store.get(item.path))
+    // De instellingen vervangen het verse record van een nieuw logboek; daarvoor een nieuwe tijd, anders wint het verse
+    // record (later gemaakt) bij de sync.
+    const back = item.back.filter((r) => !now.has(r.id)).map((r) => (item.path === 'settings.json.enc' && r.id === 'settings' ? { ...r, updatedAt: store.now } : r))
     if (back.length > 0) await putRecords(store, item.path, back)
   }
 }

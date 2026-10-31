@@ -16,6 +16,8 @@ import { storeToken } from '../src/storage/token'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
 import { backupTerugzetten } from '../src/domain/importeren'
+import { instellingenOpslaan, nieuwLogboekInrichten } from '../src/domain/instellingen'
+import { currentSettings } from '../src/model/settings'
 import { put, remove } from './helpers/schrijf'
 
 // PR A, "Data eerst": opslaan moet gewoon werken. Alle gegevens zijn verzonnen.
@@ -389,6 +391,7 @@ describe('Back-up zonder laptop', () => {
     const at = new Date().toISOString()
     await put(store(s), 'accounts.json.enc', { id: 'acc1', name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie', updatedAt: at, deletedAt: null })
     await put(store(s), 'balances.json.enc', { id: 'stand:acc1:2026-09', accountId: 'acc1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: at, deletedAt: null })
+    await instellingenOpslaan(store(s), { salaryDefaults: { 'sailing-virgins': { amount: 900, currency: 'EUR' } }, yearGoalNm: 3000 })
     const text = await backupOf(s)
     s.lock()
     // GitHub en de telefoon zijn het logboek kwijt; Olivier begint opnieuw (een ander logboek, K2) met één eigen plaats.
@@ -404,14 +407,22 @@ describe('Back-up zonder laptop', () => {
     await other.init()
     await other.unlockLocal({ passphrase: 'nep wachtzin van een ander logboek' })
     await store(other).sync()
+    // Een nieuw logboek begint leeg en schrijft dat meteen in zijn instellingen.
+    await nieuwLogboekInrichten(store(other))
     await put(store(other), 'places.json.enc', place('n1'))
     const plan = restorePlan(store(other), await openBackup(text, { passphrase: PASSPHRASE }))
+    // De instellingen van de back-up komen terug in plaats van het verse record (salaris, jaardoel, organisaties).
+    expect(plan.find((p) => p.path === 'settings.json.enc')!.back.map((r) => r.id)).toEqual(['settings'])
     expect(plan.find((p) => p.path === 'places.json.enc')!.back.map((r) => r.id)).toEqual(['p1'])
     expect(plan.find((p) => p.path === 'trips.json.enc')!.back.map((r) => r.id)).toEqual(['w1'])
     const undo = await backupTerugzetten(store(other), plan)
     expect(store(other).list('places.json.enc').map((p) => p.id).sort()).toEqual(['n1', 'p1'])
     expect(store(other).list('trips.json.enc').map((p) => p.id)).toEqual(['w1'])
+    expect(currentSettings(store(other).list('settings.json.enc'))).toMatchObject({ yearGoalNm: 3000, salaryDefaults: { 'sailing-virgins': { amount: 900 } } })
+    expect(currentSettings(store(other).list('settings.json.enc')).startedEmpty).toBeUndefined()
     await store(other).sync()
+    // Ook na de sync: de teruggezette instellingen winnen van het verse record.
+    expect(currentSettings(store(other).list('settings.json.enc')).yearGoalNm).toBe(3000)
     // Op GitHub onder de sleutel van het nieuwe logboek.
     expect((await remote('places.json.enc', k2.masterKey)).filter((r) => r.deletedAt === null).map((r) => r.id).sort()).toEqual(['n1', 'p1'])
     await undo()

@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { LEGACY_ORGS, organisations, type OrgDef } from '../basis/organisatie'
+import { LEGACY_ORGS, orgFromName, organisations, type OrgDef } from '../basis/organisatie'
 import { instellingenOpslaan } from '../domain/instellingen'
 import { t } from '../i18n'
 import { newId } from '../model/types'
@@ -20,7 +20,10 @@ export function organisationsLine(): string {
 export function OrganisationsSheet({ store, notify, onClose }: { store: Store; notify: Notify; onClose: () => void }) {
   const [rows, setRows] = useState<OrgDef[]>(() => organisations().map((o) => ({ ...o })))
   const [busy, setBusy] = useState(false)
-  const used = (id: string) => store.list('trips.json.enc').filter((x) => x.organisation === id).length
+  // In gebruik: trips met deze organisatie (ook alleen uit de naam, zoals "Yacht week 7"), en doelen per organisatie.
+  const used = (id: string) =>
+    store.list('trips.json.enc').filter((x) => x.organisation === id || (!x.organisation && orgFromName(x.name)?.org === id)).length +
+    store.list('goals.json.enc').filter((g) => g.organisation === id).length
   const valid = rows.every((r) => r.name.trim().length > 0) && new Set(rows.map((r) => r.short?.trim().toUpperCase()).filter(Boolean)).size === rows.filter((r) => r.short?.trim()).length
 
   async function save(e: FormEvent) {

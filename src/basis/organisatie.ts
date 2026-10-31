@@ -39,9 +39,14 @@ export function organisations(): readonly OrgDef[] {
   return current
 }
 
-/** Te kiezen bij een trip: de eigen organisaties, dan eigen en overig. */
-export function organisationChoices(): string[] {
-  return [...current.map((o) => o.id), ...BUILT_IN_ORGS]
+/**
+ * Te kiezen bij een trip: de eigen organisaties, dan eigen en overig, en daarna elke organisatie van `inUse` die niet
+ * (meer) in de lijst staat (op een ander apparaat weggehaald, of een trip uit de prullenbak): die blijft te zien en te kiezen.
+ */
+export function organisationChoices(inUse: readonly { organisation?: string; deletedAt?: string | null }[] = []): string[] {
+  const base: string[] = [...current.map((o) => o.id), ...BUILT_IN_ORGS]
+  const extra = inUse.filter((x) => !x.deletedAt).map((x) => x.organisation).filter((o): o is string => !!o && !base.includes(o))
+  return [...base, ...new Set(extra)]
 }
 
 /** Organisaties met een teller (een afkorting). */
@@ -58,18 +63,34 @@ export function orgName(id: string): string | null {
   return current.find((o) => o.id === id)?.name ?? null
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Tekst letterlijk in een reguliere expressie (een afkorting als "C++" of "(SV)"). */
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * De volledige naam als patroon: spaties of een streepje ertussen, een s op het eind mag weg ("Sailing Virgins",
+ * "sailing-virgin", "Yacht week"). Een eigen organisatie alleen als losse woorden ("Sun" telt niet in "Sunsail").
+ */
+function namePattern(name: string, bounded: boolean): RegExp | null {
+  const words = name.trim().split(/\s+/).filter(Boolean).map(escapeRegExp)
+  if (words.length === 0) return null
+  const body = words.join('\\s*-?\\s*').replace(/s$/, 's?')
+  return bounded ? new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'iu') : new RegExp(body, 'i')
+}
+
+/** De namen waaraan een organisatie te herkennen is; Sailing Virgins en Yacht Week ook onder hun oude naam (na hernoemen). */
+function namePatterns(o: OrgDef): RegExp[] {
+  const legacy = LEGACY_ORGS.find((l) => l.id === o.id)
+  return [legacy && namePattern(legacy.name, false), namePattern(o.name, !legacy || o.name.trim().toLowerCase() !== legacy.name.toLowerCase())].filter((r): r is RegExp => !!r)
+}
 
 /** Organisatie uit de naam van een trip: de volledige naam is zeker, alleen een afkorting als los woord is twijfel. */
 export function orgFromName(name: string): { org: string; sure: boolean } | null {
   for (const o of current) {
-    const words = o.name.trim().split(/\s+/).filter(Boolean).map(escape)
-    // "Sailing Virgins", "sailing-virgin", "Yacht week": spaties of een streepje ertussen, een s op het eind mag weg.
-    if (words.length > 0 && new RegExp(words.join('\\s*-?\\s*').replace(/s$/, 's?'), 'i').test(name)) return { org: o.id, sure: true }
+    if (namePatterns(o).some((r) => r.test(name))) return { org: o.id, sure: true }
   }
   for (const o of current) {
     const short = o.short?.trim()
-    if (short && new RegExp(`(^|[^A-Za-z])${escape(short)}([^A-Za-z]|$)`).test(name)) return { org: o.id, sure: false }
+    if (short && new RegExp(`(^|[^A-Za-z])${escapeRegExp(short)}([^A-Za-z]|$)`).test(name)) return { org: o.id, sure: false }
   }
   return null
 }

@@ -78,7 +78,7 @@ export function MoneyPathSection({ store, notify }: { store: Store; notify: Noti
   const today = todayIso()
   const [paying, setPaying] = useState(false)
   const [deposit, setDeposit] = useState<{ currency: Currency; amount: number } | null>(null)
-  const open = organisationChoices().map((org) => ({ org, trips: openSalaryTrips(trips, legs, org, today) })).filter((o) => o.trips.length > 0)
+  const open = organisationChoices(trips).map((org) => ({ org, trips: openSalaryTrips(trips, legs, org, today) })).filter((o) => o.trips.length > 0)
   const cash = Object.entries(cashOnHand(transactions)) as [Currency, number][]
   const hasSalary = active(trips).some((x) => x.salary)
   if (!hasSalary && cash.length === 0) return null
@@ -175,7 +175,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
   useSyncExternalStore(subscribeRates, getRates)
   const rates = getRates()
   const today = todayIso()
-  const withOpen = organisationChoices().filter((o) => openSalaryTrips(trips, legs, o, today).length > 0)
+  const withOpen = organisationChoices(trips).filter((o) => openSalaryTrips(trips, legs, o, today).length > 0)
   const [org, setOrgState] = useState<Organisation>(initialOrg ?? withOpen[0] ?? organisationChoices()[0] ?? 'overig')
   const [date, setDate] = useState(today)
   const [chosen, setChosen] = useState<ReadonlySet<string> | null>(preset ? new Set(preset) : null)
@@ -226,7 +226,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
         <label>
           {t('week.organisation')}
           <select value={org} onChange={(e) => setOrg(e.target.value as Organisation)}>
-            {organisationChoices().map((o) => (
+            {organisationChoices(trips).map((o) => (
               <option key={o} value={o}>
                 {organisationLabel(o)}
               </option>

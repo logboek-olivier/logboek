@@ -1,7 +1,7 @@
 import { sameValue } from '../basis/gelijk'
 import { summarizeTrips } from '../model/derive'
 import { hasOtherData } from '../model/trip-dates'
-import type { Leg, Trip } from '../model/types'
+import { keepUnknownFields, type Leg, type Trip } from '../model/types'
 import type { Tx } from '../domain/tx'
 import type { ImportResult } from './mileage-csv'
 
@@ -18,7 +18,8 @@ export async function applyImport(store: Tx, input: ImportResult): Promise<void>
   // Vaste id's: dezelfde dag uit Excel houdt bij opnieuw importeren zijn id (geschiedenis, prullenbak en twee apparaten
   // zien zo één dag, geen nieuwe). Een dag die precies gelijk bleef, wordt niet opnieuw geschreven.
   const stored = new Map(legs.map((l) => [l.id, l]))
-  const fixed = withFixedIds(kept.legs)
+  // Velden die deze versie niet kent (van een nieuwere versie op een ander apparaat) blijven staan.
+  const fixed = withFixedIds(kept.legs).map((l) => keepUnknownFields(stored.get(l.id), l, IMPORT_FIELDS))
   const result = { ...kept, legs: fixed.filter((l) => !sameLeg(stored.get(l.id), l)) }
   const incoming = new Set(fixed.map((l) => l.id))
 
@@ -58,6 +59,9 @@ function keepWeeks(result: ImportResult, trips: readonly Trip[], legs: readonly 
   if (rename.size === 0) return result
   return { ...result, trips: newTrips, legs: result.legs.map((l) => (rename.has(l.tripId) ? { ...l, tripId: rename.get(l.tripId)! } : l)) }
 }
+
+/** Wat de import van een dag bepaalt (src/import/mileage-csv.ts); de rest van een opgeslagen dag blijft staan. */
+const IMPORT_FIELDS = ['id', 'tripId', 'date', 'fromPlace', 'fromCountry', 'toPlace', 'toCountry', 'role', 'boat', 'skipperName', 'coSkipperName', 'windBft', 'nmInland', 'nmSea', 'nmTidal', 'nightHours', 'notes', 'dateEstimated', 'source', 'updatedAt', 'deletedAt'] as const
 
 /** `import:<trip>:<datum>:<n>`: de n-de dag op die datum in die tocht, in de volgorde van het bestand. */
 function withFixedIds(legs: readonly Leg[]): Leg[] {

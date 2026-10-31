@@ -14,7 +14,10 @@ export const SCHEMA_VERSION = 1
 // geld aan een periode) schrijft niet meer over de bestanden van een build met het periodemodel.
 // 3: de prullenbak (history.json.enc). Een oudere build zou het bestand van een verwijderd document na een dag van GitHub
 // halen (nu na 30 dagen) en kent dagen en geld die naar een verwijderde periode wijzen niet.
-export const WRITER_VERSION = 3
+// 4: organisaties in de instellingen (`organisation` is elk id uit Instellingen → Organisaties). Een oudere build kent
+// alleen Sailing Virgins en Yacht Week en zou het salaris, de uitbetaling en de beginnummers van een eigen organisatie
+// bij het opslaan weggooien.
+export const WRITER_VERSION = 4
 
 let writer = WRITER_VERSION
 

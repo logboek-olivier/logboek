@@ -561,6 +561,7 @@ export const en: Messages = {
   'organisation.yacht-week': 'Yacht Week',
   'organisation.eigen': 'Own',
   'organisation.overig': 'Other',
+  'organisation.unknown': 'Unknown organisation',
 
   'nav.week': 'This trip',
   'nav.logbook': 'Logbook',
@@ -1807,6 +1808,7 @@ export const en: Messages = {
   'weekMoney.cash': 'Cash paid in',
   'weekMoney.deposited': (p) => `${p.amount} cash paid in`,
   'weekMoney.skipped': (p) => `Week closed; salary from ${p.orgs} not entered (no rate): enter the payment under Money.`,
+  'token.repoPlaceholder': 'owner/logboek-data',
   'token.repo': 'Data repository (owner/name)',
   'token.repoHint': 'The private repository that holds this logbook, encrypted. Each user has their own repository and token.',
   'error.repoName': 'Enter the repository as owner/name.',

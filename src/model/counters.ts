@@ -5,7 +5,7 @@ import { active } from './derive'
 import { currentSettings, saveSettings } from './settings'
 import { type CountedOrganisation, type Leg, type Settings, type Trip } from './types'
 import { todayIso } from '../basis/datum'
-import { countedOrganisations, isCounted, orgFromName, orgShort, tripOrganisation } from '../basis/organisatie'
+import { countedOrganisations, escapeRegExp, isCounted, orgFromName, orgShort, tripOrganisation } from '../basis/organisatie'
 
 // Teller per organisatie: elke trip van Sailing Virgins of Yacht Week krijgt zijn volgnummer op datum ("SV #3",
 // "YW #10"), vanaf een instelbaar beginnummer voor trips van vóór de app. Ook geïmporteerde trips tellen mee: een naam
@@ -67,7 +67,7 @@ export function nextNumber(trips: readonly Trip[], legs: readonly Leg[], setting
 
 /** Een eigen teller vooraan in de naam: "SV #4 · BVI", "YW10", of alleen de afkorting ("SV BVI"). */
 function ownCounter(name: string, org: CountedOrganisation): RegExpExecArray | null {
-  return new RegExp(`^${orgShort(org)}(?:\\s*#?\\s*\\d+)?(?![A-Za-z])`).exec(name)
+  return new RegExp(`^${escapeRegExp(orgShort(org))}(?:\\s*#?\\s*\\d+)?(?![A-Za-z])`).exec(name)
 }
 
 /**
@@ -112,8 +112,10 @@ export async function answerDoubt(store: Tx, trip: Trip, org: CountedOrganisatio
 
 /** Beginnummers per organisatie (voor trips van vóór de app). */
 export async function saveFirstNumbers(store: Tx, first: Partial<Record<CountedOrganisation, number>>): Promise<void> {
-  const clean: Partial<Record<CountedOrganisation, number>> = {}
+  // Beginnummers van organisaties die nu niet in de lijst staan, blijven bewaard (een organisatie terugzetten = dezelfde nummers).
+  const clean: Partial<Record<CountedOrganisation, number>> = { ...currentSettings(store.get('settings.json.enc')).orgFirst }
   for (const org of countedOrganisations()) {
+    delete clean[org]
     const n = first[org]
     if (typeof n === 'number' && Number.isInteger(n) && n >= 1 && n < 10_000) clean[org] = n
   }

@@ -306,7 +306,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
           {t('week.organisation')}
           <select value={organisation} onChange={(e) => setOrganisation(e.target.value as Organisation | '')}>
             <option value="">{t('week.noOrganisation')}</option>
-            {organisationChoices().map((o) => (
+            {organisationChoices(trip ? [trip] : []).map((o) => (
               <option key={o} value={o}>
                 {organisationLabel(o)}
               </option>

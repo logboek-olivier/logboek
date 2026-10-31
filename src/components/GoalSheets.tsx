@@ -261,7 +261,7 @@ export function GoalSheet({ store, goal, notify, onClose }: { store: Store; goal
                 {t('week.organisation')}
                 <select value={organisation} onChange={(e) => setOrganisation(e.target.value as Organisation | '')}>
                   <option value="">{t('goals.allOrgs')}</option>
-                  {organisationChoices().map((o) => (
+                  {organisationChoices(goal ? [goal] : []).map((o) => (
                     <option key={o} value={o}>
                       {organisationLabel(o)}
                     </option>

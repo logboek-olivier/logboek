@@ -15,10 +15,14 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-trip-geen-salaris', name: 'Nep geen salaris', organisation: 'yacht-week', startDate: '2026-08-01', endDate: '2026-08-07', salary: { amount: 0, currency: 'EUR', status: 'geen', source: 'eigen' }, updatedAt: T, deletedAt: null },
     // Periodemodel: een trip met een opgeslagen soort (plezier).
     { id: 'upg-trip-plezier', name: 'Nepplezier upgrade', kind: 'plezier', type: 'zelf-cruisen', startDate: '2026-09-10', endDate: '2026-09-12', updatedAt: T, deletedAt: null },
+    // Organisaties in de instellingen (schrijfversie 4): een trip bij een eigen organisatie.
+    { id: 'upg-trip-eigen-org', name: 'Nep eigen organisatie', organisation: 'org:upg-nep', startDate: '2026-07-01', endDate: '2026-07-03', updatedAt: T, deletedAt: null },
     { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [
     { id: 'upg-leg-dag', tripId: 'upg-trip-dag', date: '2026-10-12', fromPlace: 'Nepbaai', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', nmInland: 0, nmSea: 8, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T, deletedAt: null },
+    // Mijlenimport met vaste id's (import:<trip>:<datum>:<n>): opnieuw importeren werkt dezelfde dag bij.
+    { id: 'import:upg-trip-1:2026-10-18:0', tripId: 'upg-trip-1', date: '2026-10-18', fromPlace: 'Nepdorp', fromCountry: 'NL', toPlace: 'Nephaven', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', nmInland: 0, nmSea: 12, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T, deletedAt: null },
     { id: 'upg-leg-1', tripId: 'upg-trip-1', date: '2026-10-19', fromPlace: 'Nephaven', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', windBft: '3-4', nmInland: 0, nmSea: 21.5, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T, deletedAt: null },
   ],
   'transactions.json.enc': [
@@ -42,7 +46,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-claim', date: '2026-10-20', kind: 'kosten', amount: 18.4, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', category: 'overig', claimId: 'upg-claim-1', updatedAt: T, deletedAt: null },
   ],
   'settings.json.enc': [
-    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', careerStart: '2026-09-01', costDefaults: { thuis: 25, reis: 40 }, lastCostCategory: 'eten', updatedAt: T, deletedAt: null },
+    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', careerStart: '2026-09-01', costDefaults: { thuis: 25, reis: 40 }, lastCostCategory: 'eten', organisations: [{ id: 'sailing-virgins', name: 'Sailing Virgins', short: 'SV' }, { id: 'yacht-week', name: 'Yacht Week', short: 'YW' }, { id: 'org:upg-nep', name: 'Nep Charters', short: 'NC' }], curriculumPacks: ['ASA', 'RYA', 'CWO'], updatedAt: T, deletedAt: null },
     // Fundering: "laatst gebruikt" van een ander apparaat in een eigen record (oudere versies lezen alleen 'settings').
     { id: 'laatst:0a1b2c3d', lastBoat: 'Nepboot ander apparaat', lastRole: 'instructeur', lastCurrency: 'USD', lastSource: 'overig', lastWater: 'getij', updatedAt: T, deletedAt: null },
   ],
