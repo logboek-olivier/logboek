@@ -280,7 +280,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
   // Datum en trip onveranderd (bijvoorbeeld een notitie verbeteren) of de trip van de dag is weg ("Geld en dagen
   // behouden") en Olivier koos geen andere: de dag blijft waar hij is. Nooit stil naar een andere periode.
   const keep = tripId === leg.tripId && ((date || leg.date) === leg.date || !trips.some((x) => x.id === leg.tripId))
-  const placement = keep ? { tripId: leg.tripId } : placeLeg(trips, legs, tripId === NEW_TRIP ? null : tripId, date || leg.date)
+  const placement = keep ? { tripId: leg.tripId } : placeLeg(trips, legs, tripId === NEW_TRIP ? null : tripId, date || leg.date, tripId !== leg.tripId)
   const movedTo = placement.moved && placement.tripId ? trips.find((x) => x.id === placement.tripId) : undefined
   const target = (): { id: string } | { newName: string } => {
     if (tripId !== NEW_TRIP && placement.tripId) return { id: placement.tripId }

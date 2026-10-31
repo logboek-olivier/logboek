@@ -43,6 +43,10 @@ describe('een dag hoort bij de trip van zijn datum', () => {
     const follows = trip('dag', { startDate: '2026-11-01', endDate: '2026-11-01', datesFromDays: true })
     expect(placeLeg([follows], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-11-04')).toEqual({ tripId: 'dag' })
     expect(placeLeg([follows], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-11-09')).toEqual({ tripId: null, moved: true })
+    // Zelf gekozen: de trip groeit mee.
+    expect(placeLeg([follows], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-11-09', true)).toEqual({ tripId: 'dag' })
+    // Vanzelf gaat de trip van de datum voor een trip die zijn dagen volgt.
+    expect(placeLeg([follows, sv1], [leg('l', 'dag', '2026-11-01')], 'dag', '2026-10-20')).toEqual({ tripId: 'sv1', moved: true })
     expect(placeLeg([sv1], [], null, '2026-10-19')).toEqual({ tripId: 'sv1' })
     expect(placeLeg([sv1], [], null, '2026-12-01')).toEqual({ tripId: null })
   })

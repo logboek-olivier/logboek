@@ -479,8 +479,10 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const [boat, setBoat] = useState(current?.boat || settings.lastBoat || lastLeg?.boat || '')
   const [role, setRole] = useState<Role>(weekRole(current ?? undefined) ?? settings.lastRole)
   const [tripId, setTripId] = useState<string>(defaultTripId)
+  // Zelf een trip gekozen: die houdt de dag (een trip die zijn dagen volgt, groeit mee); anders volgt de trip de datum.
+  const [tripTouched, setTripTouched] = useState(false)
   // Waar de dag terechtkomt met deze trip en datum (verlengen, of een andere trip als de datum erbuiten valt).
-  const placement = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, date || today)
+  const placement = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, date || today, tripTouched)
 
   /** Andere week gekozen: boot en rol volgen die week als die ze heeft; Van ook, zolang Olivier hem niet zelf koos. */
   function chooseWeek(id: string, forDate: string = date) {
@@ -532,6 +534,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
       await dagLoggen(store, {
         date: day,
         tripId: tripId === NEW_WEEK ? null : tripId,
+        explicit: tripTouched,
         newTripName: tripName.trim() || defaultTripName(boat.trim() || t('field.trip'), day),
         fromPlace,
         toPlace,
@@ -565,7 +568,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
                 setDate(e.target.value)
                 // Een andere datum: de trip van die datum (een vergeten dag in een eerdere trip komt in die trip, niet in
                 // een nieuwe of in een trip waar de datum buiten valt).
-                const id = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, next).tripId ?? NEW_WEEK
+                const id = placeLeg(trips, legs, tripId === NEW_WEEK ? null : tripId, next, tripTouched).tripId ?? NEW_WEEK
                 if (id !== tripId) chooseWeek(id, next)
                 else if (!fromTouched) setFromPlaceState(defaultFromPlace(legs, trips.find((w) => w.id === tripId), next))
               }}
@@ -658,7 +661,13 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
         </div>
         <label>
           {t('field.week')}
-          <select value={tripId} onChange={(e) => chooseWeek(e.target.value)}>
+          <select
+            value={tripId}
+            onChange={(e) => {
+              setTripTouched(true)
+              chooseWeek(e.target.value)
+            }}
+          >
             <option value={NEW_WEEK}>{t('quick.newWeek')}</option>
             {[...(weeks.some((w) => w.id === tripId) ? [] : trips.filter((w) => w.id === tripId)), ...weeks].map((w) => (
               <option key={w.id} value={w.id}>
