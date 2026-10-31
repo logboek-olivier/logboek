@@ -335,9 +335,10 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect.poll(() => puts('balances.json.enc'), { timeout: 20_000 }).toBeGreaterThan(balancePuts)
     await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
     await expectSynced(page)
-    // Vaste lasten (fixedcosts.json.enc, nieuw in ronde 3): een vaste last toevoegen onder Geld → Kosten.
+    // Vaste lasten (fixedcosts.json.enc, nieuw in ronde 3): een vaste last toevoegen onder Geld → Verwacht → Kosten.
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     await openMore(page, L('nav.money'), L('nav.more'))
+    await page.getByRole('tab', { name: L('money.expected') }).click()
     const fixedPuts = puts('fixedcosts.json.enc')
     await page.getByRole('button', { name: L('costs.addFixed') }).click()
     await page.getByRole('dialog').getByLabel(L('costs.name')).fill('Nephuur upgrade')
