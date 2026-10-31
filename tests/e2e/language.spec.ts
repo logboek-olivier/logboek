@@ -11,7 +11,7 @@ test.describe('telefoon in het Engels', () => {
     await mockGithub(page)
     await page.goto('./')
     await expect(page.getByRole('heading', { name: 'First time' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'New logbook' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start your own logbook' })).toBeVisible()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   })
 })
