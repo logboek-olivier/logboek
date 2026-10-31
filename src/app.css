@@ -4650,3 +4650,26 @@ textarea.note {
 .period-month[open] > summary {
   margin-bottom: var(--s-2);
 }
+
+/* Begin je eigen logboek: de stappen bij GitHub. Links in de kleur van de app (ook donker), een lange link breekt af. */
+.guide-steps {
+  margin: 0;
+  padding-left: var(--s-5);
+}
+
+.guide-steps a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+/* Instellingen → Organisaties. */
+.org-row {
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.org-suggestions {
+  gap: var(--s-2);
+}
