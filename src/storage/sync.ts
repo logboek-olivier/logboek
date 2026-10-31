@@ -1,5 +1,5 @@
 import { decryptObject, encryptObject, FORMAT_VERSION, utf8, type Bytes } from '../crypto/encrypt'
-import { NewerSchemaError, SCHEMA_VERSION } from '../model/schema'
+import { NewerSchemaError, NewerWriterError, SCHEMA_VERSION, writerVersion } from '../model/schema'
 import type { SyncRecord } from '../model/types'
 import { ConflictError, type GithubClient, type RemoteFile } from './github'
 
@@ -37,15 +37,30 @@ export class LocalInvalidError extends Error {
 interface CollectionFile {
   format: 'logboek-collection'
   schemaVersion: number
+  /** De schrijfversie van de build die dit bestand schreef: een build met een lagere schrijft er niet overheen. */
+  minWriterVersion: number
   records: SyncRecord[]
 }
 
 export function encodeRecords(records: readonly SyncRecord[]): Bytes {
-  const file: CollectionFile = { format: 'logboek-collection', schemaVersion: SCHEMA_VERSION, records: [...records] }
+  const file: CollectionFile = { format: 'logboek-collection', schemaVersion: SCHEMA_VERSION, minWriterVersion: writerVersion(), records: [...records] }
   return utf8(JSON.stringify(file))
 }
 
-/** Leest een bestand; een hogere schemaVersion dan de app kent geeft NewerSchemaError (dan niets schrijven). */
+/**
+ * De minimale schrijfversie van een bestand (0 zonder het veld: geschreven door een build van vóór de schrijfversie), of
+ * NaN als het veld er wel staat maar geen geheel getal van 0 of hoger is.
+ */
+function minWriterOf(raw: Record<string, unknown>): number {
+  const value = raw.minWriterVersion
+  if (value === undefined) return 0
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : NaN
+}
+
+/**
+ * Leest een bestand; een hogere schemaVersion dan de app kent geeft NewerSchemaError, een hogere minimale schrijfversie
+ * dan die van deze build NewerWriterError (in beide gevallen niets schrijven en "Werk de app bij").
+ */
 export function decodeRecords<T extends SyncRecord>(path: string, plain: Bytes): T[] {
   let raw: unknown
   try {
@@ -60,6 +75,9 @@ export function decodeRecords<T extends SyncRecord>(path: string, plain: Bytes):
   const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
   if (!Number.isInteger(found) || found < 1) throw new InvalidDataError(path)
   if (found > SCHEMA_VERSION) throw new NewerSchemaError(found)
+  const minWriter = minWriterOf(raw)
+  if (Number.isNaN(minWriter)) throw new InvalidDataError(path)
+  if (minWriter > writerVersion()) throw new NewerWriterError(minWriter)
   // Een record zonder deletedAt (JSON laat undefined weg) is gewoon niet verwijderd: aanvullen in plaats van het hele
   // bestand af te keuren. Zonder id of updatedAt is een record niet samen te voegen: dan is het bestand ongeldig.
   const records = raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r))
@@ -82,7 +100,7 @@ export function invalidReason(plain: Bytes): 'json' | 'soort' | 'versie' | 'reco
   }
   if (!isRecord(raw) || raw.format !== 'logboek-collection' || !Array.isArray(raw.records)) return 'soort'
   const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
-  if (!Number.isInteger(found) || found < 1) return 'versie'
+  if (!Number.isInteger(found) || found < 1 || Number.isNaN(minWriterOf(raw))) return 'versie'
   const records = raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r))
   return records.every(isSyncRecord) ? null : 'record'
 }
@@ -124,6 +142,9 @@ export async function salvageRecords(masterKey: CryptoKey, path: string, blob: B
   if (!isRecord(raw) || raw.format !== 'logboek-collection' || !Array.isArray(raw.records)) return []
   const found = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : raw.version === 1 ? 1 : NaN
   if (!Number.isInteger(found) || found < 1 || found > SCHEMA_VERSION) return []
+  // Van een nieuwere schrijver neemt deze build niets over (hij schrijft er ook niet overheen).
+  const minWriter = minWriterOf(raw)
+  if (Number.isNaN(minWriter) || minWriter > writerVersion()) return []
   return raw.records.map((r: unknown) => (isRecord(r) && r.deletedAt === undefined ? { ...r, deletedAt: null } : r)).filter(isSyncRecord)
 }
 

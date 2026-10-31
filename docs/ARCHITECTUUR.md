@@ -27,13 +27,18 @@ bestand verouderd.
 ## 2. Databestanden in logboek-data
 
 Alle databestanden hebben hetzelfde formaat: `versie(1) | iv(12) | AES-GCM(ciphertext + tag)` onder de hoofdsleutel, met het
-pad als AAD; de inhoud is `{format: 'logboek-collection', schemaVersion: 1, records: [...]}`. Elk record heeft `id`,
+pad als AAD; de inhoud is `{format: 'logboek-collection', schemaVersion: 1, minWriterVersion, records: [...]}`. Elk record heeft `id`,
 `updatedAt`, `deletedAt`. Samenvoegen per `id`, laatste `updatedAt` wint (`mergeRecords` in `src/storage/sync.ts`).
 
 **Schemaversie:** alle bestanden staan op `SCHEMA_VERSION = 1` (`src/model/schema.ts`). Er is nog nooit een migratie
 nodig geweest: nieuwe velden zijn optioneel en worden bij het lezen aangevuld of afgeleid (bijvoorbeeld tripdatums uit de
 dagen, `currentSettings` met standaardwaarden, `deletedAt` ontbreekt = `null`). Een hogere versie of objectformaat →
 `NewerSchemaError` → niets schrijven, "Werk de app bij".
+
+**Schrijfversie:** elk bestand draagt `minWriterVersion`, de schrijfversie van de build die het schreef (`WRITER_VERSION`
+in `src/model/schema.ts`). Een build met een lagere schrijfversie krijgt `NewerWriterError` (een `NewerSchemaError`) en
+schrijft dus niets over dat bestand; zonder het veld telt een bestand als 0. Omhoog als een oudere build niet meer over de
+bestanden van een nieuwe build mag schrijven, ook zonder nieuw schema.
 
 **Aanmaken op GitHub:** een databestand ontstaat op GitHub alleen in `Store.syncPath` (na de meta-controle van die ronde
 en een tweede GET), en wordt daarna één keer teruggelezen (`verifyCreated`). Herstellen (`replaceRemote`) maakt nooit iets

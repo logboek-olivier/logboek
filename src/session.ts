@@ -1108,6 +1108,7 @@ export function describeError(error: unknown): string {
   if (error instanceof Error) {
     switch (error.name) {
       case 'NewerSchemaError':
+      case 'NewerWriterError':
         return t('sync.updateApp')
       case 'NetworkError':
         return t('sync.offline')
