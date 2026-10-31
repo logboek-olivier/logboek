@@ -32,7 +32,7 @@ import { todayIso } from '../basis/datum'
 // Onderbladen om een transactie, dag of tocht te bewerken. Verwijderen zonder bevestigingsvraag; de aanroeper toont
 // "Verwijderd · Ongedaan maken".
 
-export type Notify = (text: string, undo?: Undo) => void
+export type Notify = (text: string, undo?: Undo, options?: { long?: boolean }) => void
 
 /** 12.5 → "12,5"; 0 → "" zodat lege velden leeg blijven. */
 function toInput(n: number): string {

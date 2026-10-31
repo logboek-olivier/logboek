@@ -1,16 +1,14 @@
-import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { STAY_KINDS, TRAVEL_MODES, type StayKind, type StayPeriod, type TravelMode } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
-import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
-import { landperiodeBewerken, landperiodeVerwijderen } from '../domain/agenda'
+import { landperiodeBewerken } from '../domain/agenda'
 
 // Een periode aan land bewerken: soort (reis, thuis, vrij), naam, datums, notitie en bij reis van, naar en vervoer.
-// Verwijderen onderaan, zonder vraag, met ongedaan maken; de dagen worden dan weer automatisch.
+// Verwijderen staat niet hier maar onder "⋯" op de periodepagina (src/components/PeriodMenu.tsx).
 
 export function StaySheet({ store, stay, notify, onClose }: { store: Store; stay: StayPeriod; notify: Notify; onClose: () => void }) {
   const [kind, setKind] = useState<StayKind>(stay.kind)
@@ -35,12 +33,6 @@ export function StaySheet({ store, stay, notify, onClose }: { store: Store; stay
     } finally {
       setBusy(false)
     }
-  }
-
-  async function remove() {
-    const undo = await landperiodeVerwijderen(store, stay)
-    onClose()
-    notify(t('toast.deleted'), undo)
   }
 
   return (
@@ -96,10 +88,6 @@ export function StaySheet({ store, stay, notify, onClose }: { store: Store; stay
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!valid || busy}>
             {t('common.save')}
-          </button>
-          <button className="btn danger" type="button" onClick={() => void remove()}>
-            <Icon icon={Trash2} />
-            {t('common.delete')}
           </button>
         </div>
       </form>

@@ -27,7 +27,6 @@ import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
-import { DeleteTrip } from './TripSheets'
 import { SalaryFields, useSalaryDraft } from './SalaryFields'
 import { TripIncomeFields } from './TripMoney'
 import { PeriodDays } from './PeriodPage'
@@ -407,7 +406,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
               </>
             )}
           </button>
-          {trip && <DeleteTrip store={store} trip={trip} notify={notify} onDone={onClose} />}
         </div>
       </form>
     </Sheet>

@@ -12,7 +12,9 @@ export const SCHEMA_VERSION = 1
 // niet bij terugdraaien: de bestanden van de hogere versie blijven dan voor elke build "van een nieuwere versie".
 // 2: het periodemodel (docs/PERIODEMODEL.md). Een build zonder (thuis, reis en vrij als periodes, de soort van een trip,
 // geld aan een periode) schrijft niet meer over de bestanden van een build met het periodemodel.
-export const WRITER_VERSION = 2
+// 3: de prullenbak (history.json.enc). Een oudere build zou het bestand van een verwijderd document na een dag van GitHub
+// halen (nu na 30 dagen) en kent dagen en geld die naar een verwijderde periode wijzen niet.
+export const WRITER_VERSION = 3
 
 let writer = WRITER_VERSION
 

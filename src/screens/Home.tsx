@@ -39,6 +39,7 @@ const Agenda = lazyComponent(() => import('./Agenda').then((m) => m.Agenda))
 const Storage = lazyComponent(() => import('./Storage').then((m) => m.Storage))
 const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
 const Review = lazyComponent(() => import('./Review').then((m) => m.Review))
+const Trash = lazyComponent(() => import('./Trash').then((m) => m.Trash))
 const Periods = lazyComponent(() => import('./Periods').then((m) => m.Periods))
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
@@ -68,6 +69,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   instellingen: 'Instellingen',
   opslag: 'Opslag',
   nakijken: 'Nakijken',
+  prullenbak: 'Prullenbak',
   periodes: 'Periodes',
 }
 
@@ -107,12 +109,13 @@ export function Home({ store }: { store: Store }) {
     [],
   )
 
-  const notify: Notify = useCallback((text, undo) => {
+  const notify: Notify = useCallback((text, undo, options) => {
     counter.current++
     setToast({
       id: counter.current,
       text,
       action: undo ? { label: t('common.undo'), run: () => void undo() } : undefined,
+      long: options?.long,
     })
   }, [])
 
@@ -155,11 +158,13 @@ export function Home({ store }: { store: Store }) {
     if (migrating.current || demo || !store.hasSynced()) return
     migrating.current = true
     // De opdrachten pas laden als ze nodig zijn (snel openen: alleen Vandaag laadt direct).
-    void Promise.all([import('../domain/agenda'), import('../domain/geld')])
-      .then(async ([agenda, geld]) => {
+    void Promise.all([import('../domain/agenda'), import('../domain/geld'), import('../domain/prullenbak')])
+      .then(async ([agenda, geld, prullenbak]) => {
         await agenda.periodemodelMigreren(store)
         // Vaste lasten: elke voorbije maand als echte uitgave (Geld → Werkelijk).
         await geld.vasteLastenBoeken(store, todayIso())
+        // Na 30 dagen definitief: de geschiedenis en de prullenbak verliezen hun inhoud.
+        await prullenbak.geschiedenisOpruimen(store)
       })
       .catch((error: unknown) => {
         // Lukt het nu niet (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
@@ -215,7 +220,7 @@ export function Home({ store }: { store: Store }) {
   const activeTab: Tab =
     screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes' || screen === 'prullenbak'
         ? 'meer'
         : screen
 
@@ -362,6 +367,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Review store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'prullenbak' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Trash store={store} notify={notify} />
         </>
       )}
       </Suspense>

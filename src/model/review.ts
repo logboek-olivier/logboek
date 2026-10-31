@@ -40,6 +40,11 @@ export type ReviewItem =
   | { key: string; kind: 'investering-soort'; tx: Transaction }
   /** Inkomen of uitgave zonder periode. */
   | { key: string; kind: 'geld-zonder-periode'; tx: Transaction; target: Period | null }
+  /**
+   * Gelogde dagen waarvan de trip weg is (verwijderd met "Geld en dagen behouden zonder periode"): de trip terugzetten,
+   * naar de trip van die datum, of een nieuwe trip voor deze dagen. Nooit vanzelf.
+   */
+  | { key: string; kind: 'dagen-zonder-trip'; tripId: string; tripName: string | null; legs: Leg[]; target: Trip | null }
   /** Twee plaatsnamen die dezelfde plaats lijken: `from` gaat op in `into`. */
   | { key: string; kind: 'plaatsen'; from: PlaceUse; into: PlaceUse; reason: 'spelling' }
   /**
@@ -50,6 +55,8 @@ export type ReviewItem =
 
 export interface ReviewInput {
   trips: readonly Trip[]
+  /** Verwijderde trips (voor de naam bij dagen zonder trip). */
+  removedTrips?: readonly Trip[]
   legs: readonly Leg[]
   stays: readonly StayPeriod[]
   calendar: readonly CalendarDay[]
@@ -137,6 +144,17 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     items.push({ key: `geld:${tx.id}`, kind: 'geld-zonder-periode', tx, target: periodAt(periods, tx.date) })
   }
 
+  // Dagen zonder trip: per verdwenen trip één punt.
+  const orphans = new Map<string, Leg[]>()
+  for (const leg of legs) if (!byId.has(leg.tripId)) orphans.set(leg.tripId, [...(orphans.get(leg.tripId) ?? []), leg])
+  for (const [tripId, list] of orphans) {
+    const sorted = [...list].sort(compareLegs)
+    const at = periodAt(periods, sorted[0]!.date)
+    const target = at && isWaterKind(at.kind) ? (byId.get(at.id) ?? null) : null
+    const tripName = input.removedTrips?.find((x) => x.id === tripId)?.name ?? null
+    items.push({ key: `dagen-zonder-trip:${tripId}`, kind: 'dagen-zonder-trip', tripId, tripName, legs: sorted, target })
+  }
+
   // Investeringen zonder soort (van vóór het periodemodel).
   for (const tx of active(input.transactions)) if (tx.kind === 'investering' && tx.category !== 'opleiding' && tx.category !== 'uitrusting') items.push({ key: `investering:${tx.id}`, kind: 'investering-soort', tx })
 
@@ -193,6 +211,7 @@ function runsOf<T extends { date: string }>(list: readonly T[], value: (item: T)
 export function reviewInput(store: Reader): ReviewInput {
   return {
     trips: store.list('trips.json.enc'),
+    removedTrips: store.get('trips.json.enc').filter((x) => x.deletedAt !== null),
     legs: store.list('legs.json.enc'),
     stays: store.list('periods.json.enc'),
     calendar: store.list('calendar.json.enc'),
@@ -252,6 +271,25 @@ export async function makeTripFor(store: Tx, from: string, to: string, lang: Lan
   const trip: Trip = { id: crypto.randomUUID(), name: defaultWeekName(from, lang), kind: 'werk', type: 'overig', startDate: from, endDate: to, updatedAt: now, deletedAt: null }
   await applyChanges(store, [{ path: 'trips.json.enc', before: null, after: trip }])
   await followTrip(store, trip.id, null, { start: from, end: to })
+}
+
+/** Dagen zonder trip naar een bestaande trip (de trip van hun datum). */
+export async function moveLegsTo(store: Tx, legs: readonly Leg[], target: Trip): Promise<void> {
+  const current = store.list('legs.json.enc')
+  await applyChanges(store, legs.flatMap((leg) => {
+    const now = current.find((l) => l.id === leg.id)
+    return now ? [{ path: 'legs.json.enc' as const, before: now, after: changed(now, { tripId: target.id }) }] : []
+  }))
+  await followDays(store, [target.id])
+}
+
+/** Dagen zonder trip: een nieuwe trip die hun dagen volgt (met de naam van de verdwenen trip als die bekend is). */
+export async function tripForLegs(store: Tx, legs: readonly Leg[], name: string): Promise<void> {
+  const sorted = [...legs].sort(compareLegs)
+  const trip: Trip = { id: crypto.randomUUID(), name, startDate: sorted[0]!.date, endDate: sorted.at(-1)!.date, datesFromDays: true, updatedAt: store.now, deletedAt: null }
+  await applyChanges(store, [{ path: 'trips.json.enc', before: null, after: trip }])
+  await moveLegsTo(store, legs, trip)
+  await followTrip(store, trip.id, null, { start: trip.startDate!, end: trip.endDate! })
 }
 
 /** Agendadagen zonder periode: een periode van die soort over die dagen. */

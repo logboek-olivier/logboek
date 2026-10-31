@@ -1,118 +1,24 @@
-import { CalendarRange, Merge, Replace, Trash2, TriangleAlert, Users } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { CalendarRange, Merge, Replace, TriangleAlert, Users } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { formatDateRange } from '../format'
 import { t, useLang } from '../i18n'
 import { tripRange } from '../model/calendar'
 import { courseLabel, effectiveCurricula } from '../model/curricula'
-import { active } from '../model/derive'
 import { MAX_COUNTRY, MAX_TAG, participantName } from '../model/guests'
-import { hasDependents, tripDependents, type Overlap } from '../model/trip-ops'
+import { type Overlap } from '../model/trip-ops'
 import { STUDENT_LEVELS, type Participant, type StudentLevel, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
-import { deelnemerWijzigen, periodeVervangen, periodeVerwijderen, samenvoegen } from '../domain/trips'
+import { deelnemerVerwijderen, deelnemerWijzigen, periodeVervangen, samenvoegen } from '../domain/trips'
 
-// Vast patroon voor alles: tikken opent bewerken met alle velden; onderaan "Verwijderen", daarna 10 seconden
-// "Ongedaan maken". Hier de onderdelen voor trips: verwijderen met de keuze wat er met dagen, inkomsten en deelnemers
-// gebeurt, overlappende trips oplossen, en één deelnemer bewerken of verwijderen.
-
-function list(parts: string[]): string {
-  return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} ${t('common.and')} ${parts[parts.length - 1]}`
-}
-
-/** Andere trips, dichtstbij in tijd eerst (meestal is de trip ervoor of erna de bedoeling). */
-function otherTrips(store: Store, trip: Trip): Trip[] {
-  const legs = store.list('legs.json.enc')
-  const start = tripRange(trip, legs)?.start ?? ''
-  const distance = (x: Trip) => {
-    const s = tripRange(x, legs)?.start
-    return s && start ? Math.abs(Date.parse(s) - Date.parse(start)) : Number.MAX_SAFE_INTEGER
-  }
-  return active(store.get('trips.json.enc'))
-    .filter((x) => x.id !== trip.id)
-    .sort((a, b) => distance(a) - distance(b))
-}
+// Onderdelen voor trips: overlappende trips oplossen, en één deelnemer bewerken of verwijderen. Een periode verwijderen
+// staat onder "⋯" op de periodepagina (src/components/PeriodMenu.tsx).
 
 function tripLabel(store: Store, trip: Trip): string {
   const range = tripRange(trip, store.list('legs.json.enc'))
   return range ? `${trip.name} · ${formatDateRange(range.start, range.end)}` : trip.name
-}
-
-/**
- * Trip verwijderen. Hangt er niets aan, dan direct (met ongedaan maken); anders eerst de keuze: "Meenemen naar trip …"
- * of "Ook verwijderen".
- */
-export function DeleteTrip({ store, trip, notify, onDone }: { store: Store; trip: Trip; notify: Notify; onDone: () => void }) {
-  const [asking, setAsking] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const deps = tripDependents(store, trip)
-  const others = otherTrips(store, trip)
-  const [target, setTarget] = useState(others[0]?.id ?? '')
-  const choice = useRef<HTMLDivElement>(null)
-  // De keuze staat onderaan een lang blad: direct in beeld brengen.
-  useEffect(() => {
-    if (asking) choice.current?.scrollIntoView({ block: 'nearest' })
-  }, [asking])
-
-  async function run(moveTo: Trip | null) {
-    if (busy) return
-    setBusy(true)
-    try {
-      const undo = await periodeVerwijderen(store, trip, moveTo)
-      onDone()
-      notify(moveTo ? t('trip.deletedMoved', { name: moveTo.name }) : t('trip.deleted'), undo)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (!asking) {
-    return (
-      <button className="btn danger" type="button" disabled={busy} onClick={() => (hasDependents(deps) ? setAsking(true) : void run(null))}>
-        <Icon icon={Trash2} />
-        {t('trip.delete')}
-      </button>
-    )
-  }
-  const parts = [
-    deps.legs.length > 0 && t('trip.part.legs', { n: deps.legs.length }),
-    deps.transactions.length > 0 && t('trip.part.transactions', { n: deps.transactions.length }),
-    deps.participants.length > 0 && t('trip.part.participants', { n: deps.participants.length }),
-    deps.students.length > 0 && t('trip.part.students', { n: deps.students.length }),
-    deps.plans.length > 0 && t('trip.part.plans', { n: deps.plans.length }),
-    deps.claims.length > 0 && t('trip.part.claims', { n: deps.claims.length }),
-  ].filter((x): x is string => !!x)
-  return (
-    <div ref={choice} className="stack-sm delete-choice" role="group" aria-label={t('trip.delete')}>
-      <p>{t('trip.deleteWhat', { parts: list(parts) })}</p>
-      {others.length > 0 && (
-        <>
-          <label>
-            {t('trip.moveTo')}
-            <select value={target} onChange={(e) => setTarget(e.target.value)}>
-              {others.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {tripLabel(store, o)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="btn" type="button" disabled={busy || !target} onClick={() => void run(others.find((o) => o.id === target) ?? null)}>
-            {t('trip.moveAndDelete')}
-          </button>
-        </>
-      )}
-      <button className="btn danger" type="button" disabled={busy} onClick={() => void run(null)}>
-        <Icon icon={Trash2} />
-        {t('trip.deleteAll')}
-      </button>
-      <button className="btn link" type="button" onClick={() => setAsking(false)}>
-        {t('common.cancel')}
-      </button>
-    </div>
-  )
 }
 
 /** Meldingen bij trips die op dezelfde dagen liggen, met een knop die de keuze opent. */
@@ -239,7 +145,7 @@ export function ParticipantSheet({ store, trip, participant, notify, onClose }: 
   }
 
   async function remove() {
-    const undo = await deelnemerWijzigen(store, trip, participant.id, null)
+    const undo = await deelnemerVerwijderen(store, trip, participant.id)
     onClose()
     notify(t('participant.removed', { name: participantName(participant, trip.participants ?? []) }), undo)
   }

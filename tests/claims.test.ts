@@ -117,7 +117,7 @@ describe('declaraties', () => {
     const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: 'trip-1', note: 'Nephaven', amount: 10, currency: 'EUR' }, jpeg)
     await samenvoegen(s, other, trip)
     expect(s.list('claims.json.enc')[0]!.tripId).toBe('trip-2')
-    const undo = await periodeVerwijderen(s, s.list('trips.json.enc').find((x) => x.id === 'trip-2')!, null)
+    const undo = await periodeVerwijderen(s, s.list('trips.json.enc').find((x) => x.id === 'trip-2')!, 'alles')
     expect(s.list('claims.json.enc')).toEqual([])
     expect(s.get('claims.json.enc')[0]!.note).toBeUndefined()
     expect(s.list('documents/index.json.enc')).toEqual([])

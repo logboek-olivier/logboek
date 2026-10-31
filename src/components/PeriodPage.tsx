@@ -29,6 +29,7 @@ import { Icon } from './Icon'
 import { PeriodMoneyAddSheet, type MoneyAdd } from './PeriodMoneyAdd'
 import { OverlapNotices } from './TripSheets'
 import { TripHead, TripRouteSection } from './TripOverview'
+import { PeriodMenu } from './PeriodMenu'
 import { TripMoneySection } from './TripMoney'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
@@ -53,6 +54,8 @@ export interface PeriodPageProps {
   onAddDay?: (init: AddInit) => void
   /** Potlood in de kop (in een onderblad staat het potlood in de kop van het blad). */
   onEdit?: () => void
+  /** Na "Periode verwijderen" (onder "⋯"): het blad sluiten. */
+  onDeleted?: () => void
   /** Planning of student open (volledig scherm in Deze trip): de andere onderdelen wijken. */
   planOpen?: boolean
   studentOpen?: boolean
@@ -66,7 +69,7 @@ export function PeriodPage(props: PeriodPageProps) {
   return props.period.view ? <WaterPeriod {...props} trip={props.period.view.trip} /> : props.period.stay ? <LandPeriod {...props} stay={props.period.stay} /> : null
 }
 
-function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, studentOpen = false, onPlanDetail, onStudentDetail, trip: given }: PeriodPageProps & { trip: Trip }) {
+function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpen = false, studentOpen = false, onPlanDetail, onStudentDetail, trip: given }: PeriodPageProps & { trip: Trip }) {
   const detail = planOpen || studentOpen
   const lang = useLang()
   const demo = useIsDemo()
@@ -105,7 +108,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
       {!detail && (
         <>
           {/* 1. Overzicht */}
-          <TripHead view={view} counter={counter} legs={legs} compact={mode === 'sheet'} onEdit={onEdit} />
+          <TripHead view={view} counter={counter} legs={legs} compact={mode === 'sheet'} onEdit={onEdit} menu={<PeriodMenu store={store} notify={notify} trip={trip} onDeleted={onDeleted} />} />
           <OverlapNotices store={store} overlaps={tripOverlaps(trips, legs).filter((o) => o.a.id === trip.id || o.b.id === trip.id)} notify={notify} onEditTrip={setOtherTrip} />
           {missing.length > 0 && onAddDay && (
             <div className="notice">
@@ -253,7 +256,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
   )
 }
 
-function LandPeriod({ store, notify, period, stay: given }: PeriodPageProps & { stay: StayPeriod }) {
+function LandPeriod({ store, notify, period, onDeleted, stay: given }: PeriodPageProps & { stay: StayPeriod }) {
   const stays = useCollection(store, 'periods.json.enc')
   const stay = stays.find((s) => s.id === given.id) ?? given
   const [adding, setAdding] = useState<MoneyAdd | null>(null)
@@ -263,7 +266,10 @@ function LandPeriod({ store, notify, period, stay: given }: PeriodPageProps & { 
     <div className="stack-lg period-page">
       {/* 1. Overzicht */}
       <div className="card trip-head">
-        <p className="muted small">{[t(`periodKind.${stay.kind}`), formatDateRange(stay.startDate, stay.endDate)].join(' · ')}</p>
+        <div className="trip-head-title">
+          <p className="muted small">{[t(`periodKind.${stay.kind}`), formatDateRange(stay.startDate, stay.endDate)].join(' · ')}</p>
+          <PeriodMenu store={store} notify={notify} stay={stay} onDeleted={onDeleted} />
+        </div>
         <p className="muted small">{t('unit.days', { n: days })}</p>
         {travel && <p className="muted small">{travel}</p>}
       </div>

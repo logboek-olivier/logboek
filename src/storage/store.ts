@@ -6,7 +6,7 @@ import { NewerSchemaError } from '../model/schema'
 import { COLLECTION_PATHS, justAfter, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
 import { AuthError, BUILD, ConflictError, DOCUMENT_TIMEOUT_MS, GithubError, IntegrityError, NetworkError, type GithubClient, type GithubErrorCode, type RemoteFile } from './github'
 import { deleteObject, getLocal, getObject, listObjectPaths, putObject, putObjectAndLocal, putObjectIfVault, setAsideIfVault, type Db, type StoredObject } from './idb'
-import { DOCUMENT_GRACE_MS, DOCUMENT_RETRY_MS, documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, isFileId, MAX_DOCUMENT_BYTES, rememberRemovedDocumentFile, removedDocumentFiles } from './documents'
+import { DOCUMENT_GRACE_MS, DOCUMENT_RETRY_MS, ORPHAN_GRACE_MS, documentPath, DocumentTooLargeError, DocumentUnavailableError, DOCUMENTS_PREFIX, fileIdOf, isFileId, MAX_DOCUMENT_BYTES, rememberRemovedDocumentFile, removedDocumentFiles } from './documents'
 import { clearSynced, decryptOutbox, encryptOutbox, loadOutbox, markPending, mergeOutbox, OUTBOX_NAME, pendingCount, type Outbox } from './outbox'
 import { MAX_REPAIRS, rememberReplaced, repairAttempts, setRepairAttempts, wasReplaced } from '../repair'
 import { decryptFailureKind, decryptRecords, encryptRecords, InvalidDataError, mergeRecords, salvageRecords, sameRecords, sealForUpload, syncCollection } from './sync'
@@ -1548,7 +1548,7 @@ export class Store {
       if (!object) continue
       // Losgeraakt (de index werd nooit opgeslagen): na een dag weg; zo'n bestand gaat nooit naar GitHub.
       if (!document) {
-        if (object.sha === null && object.addedAt !== undefined && now - object.addedAt > DOCUMENT_GRACE_MS) await deleteObject(this.db, path)
+        if (object.sha === null && object.addedAt !== undefined && now - object.addedAt > ORPHAN_GRACE_MS) await deleteObject(this.db, path)
         continue
       }
       const deletedLongAgo = document.deletedAt !== null && now - Date.parse(document.deletedAt) > DOCUMENT_GRACE_MS

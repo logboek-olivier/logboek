@@ -170,7 +170,7 @@ describe('documentbestanden', () => {
     expect(github.files.has(documentPath(FILE_A))).toBe(true)
   })
 
-  it('verwijderen: de kopie blijft een dag (ongedaan maken), daarna weg; groter dan 20 MB en na vergrendelen: geweigerd', async () => {
+  it('verwijderen: de kopie blijft 30 dagen (prullenbak), daarna weg; groter dan 20 MB en na vergrendelen: geweigerd', async () => {
     const phone = await device()
     await add(phone, FILE_A, bytes('A'), { offline: true })
     await phone.sync()
@@ -179,8 +179,8 @@ describe('documentbestanden', () => {
     expect(await phone.documentFileState(FILE_A)).toBe('local')
     await undo()
     expect(phone.list('documents/index.json.enc')).toHaveLength(1)
-    // Twee dagen geleden verwijderd: de volgende ronde haalt de kopie weg.
-    const old = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString()
+    // Meer dan 30 dagen geleden verwijderd (uit de prullenbak): de volgende ronde haalt de kopie weg.
+    const old = new Date(Date.now() - 31 * 24 * 3_600_000).toISOString()
     await put(phone, 'documents/index.json.enc', { ...phone.list('documents/index.json.enc')[0]!, updatedAt: new Date().toISOString(), deletedAt: old })
     await phone.sync()
     await phone.sync()

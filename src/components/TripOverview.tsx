@@ -1,5 +1,5 @@
 import { MapPin, Pencil, Share2 } from 'lucide-react'
-import { Suspense, useState } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { formatDateRangeShort, formatHours, formatNm, formatNumber } from '../format'
 import { t } from '../i18n'
 import { nameWithCounter, type TripCounter } from '../model/counters'
@@ -45,7 +45,7 @@ export function kindLine(view: Pick<WeekView, 'kind' | 'type'>): string {
 }
 
 /** `compact`: zonder de titel (in het tripoverzicht staat die al bovenaan het blad). */
-export function TripHead({ view, counter, onEdit, legs, compact = false }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean }) {
+export function TripHead({ view, counter, onEdit, legs, compact = false, menu }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean; menu?: ReactNode }) {
   const trip = view.trip
   return (
     <div className="card trip-head">
@@ -62,6 +62,7 @@ export function TripHead({ view, counter, onEdit, legs, compact = false }: { vie
             <Icon icon={Pencil} />
           </button>
         )}
+        {menu}
       </div>
       <p className="muted small">{[kindLine(view), trip.organisation ? organisationLabel(trip.organisation) : '', trip.area].filter(Boolean).join(' · ')}</p>
       <p className="muted small trip-day-count">{tripDaysText(view)}</p>
@@ -150,7 +151,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose, onAddDay }: { 
   return (
     <Sheet title={tripTitle(view, counters.get(current.id))} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="view trip-overview">
-        <PeriodPage store={store} period={waterPeriod(view)} notify={notify} mode="sheet" onAddDay={onAddDay} />
+        <PeriodPage store={store} period={waterPeriod(view)} notify={notify} mode="sheet" onAddDay={onAddDay} onDeleted={onClose} />
       </div>
     </Sheet>
   )
@@ -166,7 +167,7 @@ export function StayOverviewSheet({ store, stay, notify, onClose }: { store: Sto
   return (
     <Sheet title={period.name} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="view trip-overview">
-        <PeriodPage store={store} period={period} notify={notify} mode="sheet" />
+        <PeriodPage store={store} period={period} notify={notify} mode="sheet" onDeleted={onClose} />
       </div>
     </Sheet>
   )
