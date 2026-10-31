@@ -1983,6 +1983,22 @@ export const nl = {
   'money.actual': 'Werkelijk',
   'money.expected': 'Verwacht',
   'money.expectedHint': 'De toekomst: verwacht salaris, geschatte fooi, vaste lasten en je gemiddelde losse kosten per dagsoort.',
+  'periods.title': 'Periodes',
+  'more.periodsHint': 'Alle trips, reizen en thuisperiodes: nu, komend en afgelopen',
+  'periods.search': 'Zoeken op naam, boot, plaats of persoon',
+  'periods.searchShort': 'Naam, boot, plaats, persoon',
+  'periods.filter': 'Soort',
+  'periods.filter.alles': 'Alles',
+  'periods.filter.werk': 'Werk',
+  'periods.filter.training': 'Training',
+  'periods.filter.plezier': 'Plezier',
+  'periods.filter.land': 'Reis en thuis',
+  'periods.now': 'Nu',
+  'periods.upcoming': 'Komend',
+  'periods.past': 'Afgelopen',
+  'periods.undated': 'Zonder datums',
+  'periods.empty': 'Nog geen periodes.',
+  'periods.noMatch': 'Niets gevonden.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }
