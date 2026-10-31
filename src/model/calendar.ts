@@ -2,22 +2,30 @@ import type { Store } from '../storage/store'
 import { active, lastMonths, round1, totalNm } from './derive'
 import { addDays, round2, totals } from './money'
 import { weekView, type WeekView } from './weeks'
-import { keepUnknownFields, todayIso, type CalendarDay, type DayTravel, type DayType, type Leg, type Reminder, type Transaction, type Trip } from './types'
+import { setStayDays } from './periods'
+import { later, undoableIn } from './changes'
+import { keepUnknownFields, todayIso, type CalendarDay, type DayTravel, type DayType, type Leg, type PeriodKind, type Reminder, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
 
-// Agenda: elke dag heeft één dagsoort. Opgeslagen (calendar.json.enc) worden alleen dagen die Olivier zelf instelt;
-// de rest volgt uit trips en dagen, met deze voorrang:
-//   1. eigen instelling;
-//   2. binnen een trip (eerste tot en met laatste dag, ook als er alleen gasten worden afgezet of opgehaald): werk;
-//   3. een dag met een gelogde etappe: werk;
-//   4. een korte pauze tussen twee trips (hoogstens twee dagen): rust;
-//   5. toekomst zonder iets: beschikbaar;
-//   6. verleden zonder iets: leeg.
-// Trips zonder datums krijgen die uit hun dagen (weekView), dus ook geïmporteerde tochten staan er vanzelf in.
+// Agenda: elke dag heeft één dagsoort, die volgt uit de periode van die dag (docs/PERIODEMODEL.md), met deze voorrang:
+//   1. binnen een trip (eerste tot en met laatste dag, ook als er alleen gasten worden afgezet of opgehaald): op het
+//      water ('werk'; de soort werk, training of plezier staat in `kind`);
+//   2. binnen een periode aan land: reis, thuis of vrij ('rust');
+//   3. een zelf ingestelde dagtoestand (beschikbaar, optie, onbeschikbaar; van oudere versies ook andere soorten);
+//   4. een dag met een gelogde etappe: op het water;
+//   5. een korte pauze tussen twee trips (hoogstens twee dagen): vrij;
+//   6. toekomst zonder iets: beschikbaar;
+//   7. verleden zonder iets: leeg.
+// Opgeslagen in calendar.json.enc worden alleen dagen die Olivier zelf instelt (dagtoestand, of gegevens van een dag
+// zoals een notitie). Trips zonder datums krijgen die uit hun dagen (weekView), dus ook geïmporteerde tochten staan er
+// vanzelf in.
 
 /** Zoveel dagen tussen twee trips gelden vanzelf als rust (geen aparte wisseldag). */
 export const REST_GAP_DAYS = 2
 
-export type DaySource = 'eigen' | 'trip' | 'etappe' | 'tussen' | 'toekomst'
+export type DaySource = 'eigen' | 'trip' | 'periode' | 'etappe' | 'tussen' | 'toekomst'
+
+/** Dagsoort van een periode aan land (vrij heet in de data nog 'rust'). */
+export const DAY_OF_STAY: Record<StayKind, DayType> = { reis: 'reis', thuis: 'thuis', vrij: 'rust' }
 
 export interface DayInfo {
   date: string
@@ -25,6 +33,10 @@ export interface DayInfo {
   type: DayType | null
   source: DaySource | null
   own: CalendarDay | null
+  /** Soort periode van de dag (werk, training, plezier, reis, thuis, vrij), of null zonder periode. */
+  kind: PeriodKind | null
+  /** De periode aan land van de dag. */
+  stay: StayPeriod | null
   /** Trips waarin de dag valt (op een wisseldag kunnen dat er twee zijn), eerst begonnen eerst. */
   trips: WeekView[]
   legs: Leg[]
@@ -39,6 +51,8 @@ export interface CalendarIndex {
   views: WeekView[]
   legsByDate: Map<string, Leg[]>
   remindersByDate: Map<string, Reminder[]>
+  /** Periodes aan land, op begindatum. */
+  stays: StayPeriod[]
   /** Einddatums en startdatums van trips, gesorteerd, voor de rust tussen twee trips. */
   ends: string[]
   starts: string[]
@@ -48,7 +62,7 @@ export function calendarId(date: string): string {
   return `dag:${date}`
 }
 
-export function buildIndex(calendar: readonly CalendarDay[], trips: readonly Trip[], legs: readonly Leg[], reminders: readonly Reminder[] = []): CalendarIndex {
+export function buildIndex(calendar: readonly CalendarDay[], trips: readonly Trip[], legs: readonly Leg[], reminders: readonly Reminder[] = [], stays: readonly StayPeriod[] = []): CalendarIndex {
   const own = new Map(active(calendar).map((d) => [d.date, d]))
   const views = active(trips)
     .map((t) => weekView(t, legs))
@@ -72,6 +86,9 @@ export function buildIndex(calendar: readonly CalendarDay[], trips: readonly Tri
     views,
     legsByDate,
     remindersByDate,
+    stays: active(stays)
+      .filter((st) => isDate(st.startDate) && isDate(st.endDate) && st.startDate <= st.endDate)
+      .sort((a, b) => (a.startDate < b.startDate ? -1 : 1)),
     ends: views.map((v) => v.endDate).sort(),
     starts: views.map((v) => v.startDate).sort(),
   }
@@ -103,9 +120,11 @@ export function dayInfo(index: CalendarIndex, date: string, today: string = toda
   const nm = round1(legs.reduce((n, l) => n + totalNm(l), 0))
   const boat = own?.boat || trips.at(-1)?.boat || legs.at(-1)?.boat || ''
   const reminders = index.remindersByDate.get(date) ?? []
-  const base = { date, own, trips, legs, nm, boat, reminders }
+  const stay = trips.length > 0 ? null : (index.stays.find((st) => st.startDate <= date && date <= st.endDate) ?? null)
+  const base = { date, own, trips, legs, nm, boat, reminders, stay, kind: null }
+  if (trips.length > 0) return { ...base, kind: trips.at(-1)!.kind, type: 'werk', source: 'trip' }
+  if (stay) return { ...base, kind: stay.kind, type: DAY_OF_STAY[stay.kind], source: 'periode' }
   if (own) return { ...base, type: own.type, source: 'eigen' }
-  if (trips.length > 0) return { ...base, type: 'werk', source: 'trip' }
   if (legs.length > 0) return { ...base, type: 'werk', source: 'etappe' }
   const { prevEnd, nextStart } = neighbours(index, date)
   if (prevEnd && nextStart && daysBetween(prevEnd, nextStart) - 1 <= REST_GAP_DAYS) return { ...base, type: 'rust', source: 'tussen' }
@@ -267,7 +286,7 @@ export function weekStart(date: string): string {
 
 /** Laatste geplande dag: einde van de laatste trip of de laatste zelf ingestelde dag. */
 export function planningEnd(index: CalendarIndex): string | null {
-  const ends = [...index.views.map((v) => v.endDate), ...index.own.keys()]
+  const ends = [...index.views.map((v) => v.endDate), ...index.own.keys(), ...index.stays.map((st) => st.endDate)]
   return ends.length > 0 ? ends.reduce((a, b) => (a > b ? a : b)) : null
 }
 
@@ -311,7 +330,7 @@ export function seasonWeeks(index: CalendarIndex, from: string, to: string, toda
         run = null
         continue
       }
-      const travel = info.type === 'reis' ? info.own?.travel : undefined
+      const travel = info.type === 'reis' ? stayTravel(info) : undefined
       if (run && run.type === info.type && !travel && !run.travel && run.to === addDays(d, -1)) run.to = d
       else {
         run = { kind: 'days', type: info.type, from: d, to: d, ...(travel ? { travel } : {}) }
@@ -321,6 +340,22 @@ export function seasonWeeks(index: CalendarIndex, from: string, to: string, toda
     weeks.push({ start, end, items })
   }
   return weeks
+}
+
+/**
+ * De sleutel van de dagsoort zoals hij in beeld komt: op het water met de soort van de trip (werk, training, plezier),
+ * anders de dagsoort zelf ('leeg' zonder iets).
+ */
+export function dayLabelKey(info: Pick<DayInfo, 'type' | 'kind'>): `dayType.${DayType | 'leeg'}` | `periodKind.${PeriodKind}` {
+  if (info.type === 'werk' && (info.kind === 'werk' || info.kind === 'training' || info.kind === 'plezier')) return `periodKind.${info.kind}`
+  return `dayType.${info.type ?? 'leeg'}`
+}
+
+/** Van en naar van een reisdag: de dag zelf, anders de reisperiode. */
+export function stayTravel(info: Pick<DayInfo, 'own' | 'stay'>): DayTravel | undefined {
+  if (info.own?.travel && (info.own.travel.from || info.own.travel.to)) return info.own.travel
+  const tr = info.stay?.travel
+  return tr && (tr.from || tr.to) ? { from: tr.from ?? '', to: tr.to ?? '' } : undefined
 }
 
 // ---------- Delen ----------
@@ -381,7 +416,7 @@ export function planningRuns(index: CalendarIndex, from: string, to: string, tod
       return {
         type: info.type,
         ...(view ? { trip: { id: view.trip.id, name: view.trip.name, tripType: view.type, ...(view.trip.area ? { area: view.trip.area } : {}) } } : {}),
-        ...(info.type === 'reis' && info.own?.travel ? { travel: { from: info.own.travel.from, to: info.own.travel.to } } : {}),
+        ...(info.type === 'reis' && stayTravel(info) ? { travel: { from: stayTravel(info)!.from, to: stayTravel(info)!.to } } : {}),
       }
     },
     (a, b) => a.type === b.type && a.trip?.id === b.trip?.id && a.travel?.from === b.travel?.from && a.travel?.to === b.travel?.to,
@@ -428,12 +463,19 @@ export async function followTrip(store: Store, tripId: string, before: DateRange
     const dropped = within(before, day.date) && !within(after, day.date)
     if (added) {
       if (day.type !== 'werk' && hasDetails(day)) changed.push({ ...day, type: 'werk', updatedAt: now })
-      else if (day.type !== 'werk' || !day.boat) changed.push({ ...day, updatedAt: now, deletedAt: now })
+      else if (!hasDetails(day) && (day.type !== 'werk' || !day.boat)) changed.push({ ...day, updatedAt: now, deletedAt: now })
     } else if (dropped && day.type === 'werk' && !hasDetails(day) && !others.some((r) => within(r, day.date))) {
       changed.push({ ...day, updatedAt: now, deletedAt: now })
     }
   }
   if (changed.length > 0) await store.putMany('calendar.json.enc', changed)
+  // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land (geld op die datum gaat mee
+  // naar de trip).
+  if (after) {
+    const added: string[] = []
+    for (let d = after.start; d <= after.end && added.length <= 400; d = addDays(d, 1)) if (!within(before, d)) added.push(d)
+    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= after.end && st.endDate >= after.start)) await setStayDays(store, added, null, {}, false)
+  }
 }
 
 /** Trips die met werk op `from`–`to` langer kunnen worden: eindigen hoogstens 3 dagen ervoor of beginnen hoogstens 3 dagen erna. */
@@ -475,29 +517,27 @@ export async function resizeTrip(store: Store, change: TripResize): Promise<() =
   const before = store.list('trips.json.enc').find((t) => t.id === change.view.trip.id) ?? change.view.trip
   const legs = store.list('legs.json.enc')
   const oldRange = tripRange(before, legs)
-  const calendarBefore = store.list('calendar.json.enc')
   // Verlengen of inkorten in de agenda is zelf de datums kiezen: die volgen de dagen daarna niet meer.
   const { datesFromDays: _follows, ...fixed } = before
   void _follows
   const next: Trip = { ...fixed, startDate: change.start, endDate: change.end, updatedAt: new Date().toISOString() }
   await store.put('trips.json.enc', next)
-  await followTrip(store, before.id, oldRange, { start: change.start, end: change.end })
+  // De agenda volgt: zelf ingestelde dagen, periodes aan land en het geld dat daarbij meeging komen bij ongedaan maken terug.
+  const undoFollow = await undoableIn(store, ['calendar.json.enc', 'periods.json.enc', 'transactions.json.enc'], () => followTrip(store, before.id, oldRange, { start: change.start, end: change.end }))
   void store.sync()
   return async () => {
-    const now = new Date().toISOString()
-    await store.put('trips.json.enc', { ...before, updatedAt: now })
-    // Dagen die het verlengen of inkorten wegnam, komen terug.
-    const current = new Map(store.get('calendar.json.enc').map((d) => [d.id, d]))
-    const restore = calendarBefore.filter((d) => {
-      const c = current.get(d.id)
-      return !c || c.deletedAt !== null || c.type !== d.type
-    })
-    if (restore.length > 0) await store.putMany('calendar.json.enc', restore.map((d) => ({ ...d, updatedAt: now })))
+    await store.put('trips.json.enc', { ...before, updatedAt: later(next.updatedAt) })
+    await undoFollow()
     void store.sync()
   }
 }
 
 // ---------- Geld per werkdag ----------
+
+/** Een werkdag: op het water in een trip van soort werk (training en plezier niet), of een gelogde dag zonder trip. */
+export function isWorkday(info: Pick<DayInfo, 'type' | 'kind'>): boolean {
+  return info.type === 'werk' && (info.kind === null || info.kind === 'werk')
+}
 
 export interface WorkdayIncome {
   month: string
@@ -511,7 +551,7 @@ export interface WorkdayIncome {
 /** Inkomsten van een maand en per werkdag (werkdagen tot en met vandaag). */
 export function monthIncome(index: CalendarIndex, transactions: readonly Transaction[], month: string, today: string = todayIso()): WorkdayIncome {
   let workdays = 0
-  for (let d = `${month}-01`; monthOf(d) === month && d <= today; d = addDays(d, 1)) if (dayInfo(index, d, today).type === 'werk') workdays++
+  for (let d = `${month}-01`; monthOf(d) === month && d <= today; d = addDays(d, 1)) if (isWorkday(dayInfo(index, d, today))) workdays++
   const eur = totals(active(transactions).filter((tx) => tx.date.slice(0, 7) === month)).incomeEur
   return { month, workdays, eur, perWorkday: workdays > 0 ? round2(eur / workdays) : null }
 }

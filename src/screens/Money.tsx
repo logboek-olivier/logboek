@@ -47,7 +47,8 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const calendar = useCollection(store, 'calendar.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
-  const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
+  const stays = useCollection(store, 'periods.json.enc')
+  const index = useMemo(() => buildIndex(calendar, trips, legs, [], stays), [calendar, trips, legs, stays])
   const workdays = incomePerWorkday(index, live, today).filter((m) => m.workdays > 0 || m.eur > 0)
   const [tipView, setTipView] = useState<TipView>('gast')
 

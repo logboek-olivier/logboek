@@ -149,6 +149,11 @@ async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, g
     if (startedUnreadable.includes(path)) continue
     for (const sample of UPGRADE_SAMPLES[path] ?? []) expect(records.map((r) => r.id), path).toContain(sample.id)
   }
+  // Bestanden die de vorige release niet kende (zoals periods.json.enc): als ze op GitHub staan, zijn ze leesbaar.
+  for (const path of COLLECTION_PATHS) {
+    if (data.paths.includes(path) || !github.files.has(path)) continue
+    await decryptRecords(key, path, Uint8Array.from(Buffer.from(github.files.get(path)!.content, 'base64')))
+  }
   // Minimale schrijfversie: na een volledige sync met deze release draagt elk bestand op GitHub zijn schrijfversie (ook wat
   // deze release niet veranderde, één keer opnieuw geschreven), zodat een build met een lagere er niet overheen schrijft.
   for (const path of COLLECTION_PATHS) {
@@ -182,6 +187,23 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('status').first().click()
     await expectSynced(page)
     const puts = (path: string) => github.requests.filter((r) => r.method === 'PUT' && r.url.includes(path)).length
+    // Periodemodel (docs/PERIODEMODEL.md): na de eerste geslaagde sync zet de app de agenda en het geld één keer om. De
+    // reisdag van het voorbeeld (met gegevens: blijft staan) en de thuis- en rustdagen worden periodes; de uitgave op
+    // een thuisdag komt aan die thuisperiode.
+    await expect.poll(() => github.files.has('periods.json.enc'), { timeout: 30_000 }).toBe(true)
+    await expectSynced(page)
+    {
+      const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
+      const key = await unlock(meta, { passphrase: PASSPHRASE })
+      const read = async (path: string) => decryptRecords(key, path as never, Uint8Array.from(Buffer.from(github.files.get(path)!.content, 'base64')))
+      const stays = await read('periods.json.enc')
+      expect(stays.map((r) => r.id)).toEqual(expect.arrayContaining(['periode:reis:2026-10-25', 'periode:thuis:2026-11-10', 'periode:vrij:2026-11-12']))
+      const calendar = await read('calendar.json.enc')
+      expect(calendar.find((r) => r.id === 'dag:2026-10-25')?.deletedAt).toBeNull()
+      expect(calendar.find((r) => r.id === 'dag:2026-11-10')?.deletedAt).not.toBeNull()
+      const transactions = await read('transactions.json.enc')
+      expect((transactions.find((r) => r.id === 'upg-tx-thuis') as { tripId?: string } | undefined)?.tripId).toBe('periode:thuis:2026-11-10')
+    }
     // Na de update controleert de app vanzelf (Controleer nu), met de schrijver per bestand uit de commits.
     await expect.poll(() => github.requests.some((r) => r.method === 'GET' && r.url.includes('/commits?path=')), { timeout: 30_000 }).toBe(true)
     // Een trip uit Toevoegen → Dag: een dag erbij, de datums volgen (trips.json.enc, nieuw veld datesFromDays).
@@ -195,8 +217,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expectSynced(page)
     // De melding "Dag opgeslagen" ligt anders over de knop Opslaan van de volgende invoer.
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
-    // Agenda (calendar.json.enc, nieuw sinds de agenda-release): een dag instellen, synchroniseren.
-    const calendarPuts = puts('calendar.json.enc')
+    // Agenda: een dag thuis maken (periods.json.enc: een periode aan land), synchroniseren.
+    const calendarPuts = puts('periods.json.enc')
     await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
     await page.locator('.cal-day.today').click()
     // Eerst de dagkaart; de dagsoort kiezen via het potlood.
@@ -205,7 +227,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
     await expect(page.locator('.cal-day.today')).toHaveClass(/day-thuis/)
     // Wachten tot de wijziging echt op GitHub staat ("Gesynct" kan nog de status van vóór de wijziging zijn).
-    await expect.poll(() => puts('calendar.json.enc'), { timeout: 20_000 }).toBeGreaterThan(calendarPuts)
+    await expect.poll(() => puts('periods.json.enc'), { timeout: 20_000 }).toBeGreaterThan(calendarPuts)
     await expectSynced(page)
     // Fooi per persoon (nieuwe velden in trips en transacties): een fooi van één deelnemer van de voorbeeldtrip.
     await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
@@ -335,11 +357,13 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
-    // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
+    // Het schone apparaat leest ook de agenda: de nieuwe thuisdag staat als periode in periods.json.enc (periodemodel),
+    // naast de voorbeelden als de vorige release de agenda al kende.
     const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
     const key = await unlock(meta, { passphrase: PASSPHRASE })
     const calendar = await decryptRecords(key, 'calendar.json.enc', Uint8Array.from(Buffer.from(github.files.get('calendar.json.enc')!.content, 'base64')))
-    expect(calendar).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'thuis', deletedAt: null })]))
+    const stays = await decryptRecords(key, 'periods.json.enc', Uint8Array.from(Buffer.from(github.files.get('periods.json.enc')!.content, 'base64')))
+    expect(stays).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'thuis', deletedAt: null })]))
     // De dagsoort onbeschikbaar met reden komt ongeschonden over.
     expect(calendar.find((d) => d.id === 'dag:2026-10-27')).toMatchObject({ type: 'onbeschikbaar', reason: 'Nepreden', deletedAt: null })
     // En de fooi per persoon: de voorbeelden (per persoon, hele groep) en de nieuwe fooi van één deelnemer.

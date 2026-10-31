@@ -3,6 +3,7 @@ import type { DateRange } from './calendar'
 import { active } from './derive'
 import { addDays } from './money'
 import type { Leg, Trip } from './types'
+import { setStayDays } from './periods'
 
 // Datums van een trip die de dagen volgen (aangemaakt via Toevoegen → Dag, of een trip zonder datums): begin en eind
 // komen uit de gelogde dagen en schuiven mee als er dagen bijkomen of weggaan. Stelt Olivier de datums zelf in (Trip
@@ -59,6 +60,10 @@ export async function followDays(store: Store, tripIds: readonly (string | null 
     }
     if (trip.startDate === range.start && trip.endDate === range.end && trip.datesFromDays) continue
     await store.put('trips.json.enc', { ...trip, startDate: range.start, endDate: range.end, datesFromDays: true, updatedAt: new Date().toISOString() })
+    // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land.
+    const added: string[] = []
+    for (let d = range.start; d <= range.end && added.length <= 400; d = addDays(d, 1)) if (!(trip.startDate && trip.endDate && trip.startDate <= d && d <= trip.endDate)) added.push(d)
+    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= range.end && st.endDate >= range.start)) await setStayDays(store, added, null, {}, false)
     changed = true
   }
   if (changed) void store.sync()

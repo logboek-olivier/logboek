@@ -16,6 +16,36 @@ export const ROLES: readonly Role[] = ['schipper', 'co-schipper', 'bemanningslid
 
 export type WeekType = 'training-geven' | 'skipper-charter' | 'zelf-cruisen' | 'zelf-trainen' | 'delivery' | 'overig'
 export const WEEK_TYPES: readonly WeekType[] = ['training-geven', 'skipper-charter', 'zelf-cruisen', 'zelf-trainen', 'delivery', 'overig']
+
+// Periodemodel (docs/PERIODEMODEL.md): elke dag hoort bij hoogstens één periode. Werk, training en plezier zijn trips
+// (op het water, trips.json.enc); reis, thuis en vrij zijn periodes aan land (periods.json.enc).
+
+export type PeriodKind = 'werk' | 'training' | 'plezier' | 'reis' | 'thuis' | 'vrij'
+export const PERIOD_KINDS: readonly PeriodKind[] = ['werk', 'training', 'plezier', 'reis', 'thuis', 'vrij']
+export type WaterKind = 'werk' | 'training' | 'plezier'
+export const WATER_KINDS: readonly WaterKind[] = ['werk', 'training', 'plezier']
+export type StayKind = 'reis' | 'thuis' | 'vrij'
+export const STAY_KINDS: readonly StayKind[] = ['reis', 'thuis', 'vrij']
+/** Subtypes van werk (de andere WeekType-waarden horen bij training en plezier). */
+export const WORK_TYPES: readonly WeekType[] = ['training-geven', 'skipper-charter', 'delivery', 'overig']
+export type TravelMode = 'vliegtuig' | 'boot' | 'trein' | 'bus' | 'auto' | 'overig'
+export const TRAVEL_MODES: readonly TravelMode[] = ['vliegtuig', 'boot', 'trein', 'bus', 'auto', 'overig']
+
+/**
+ * Een periode aan land (periods.json.enc): reis, thuis of vrij, van een begin- tot en met een einddatum. Zonder naam
+ * toont de app "Thuis", "Vrij" of "Reis <van> → <naar>". Geld hangt eraan via `Transaction.tripId`.
+ */
+export interface StayPeriod extends SyncRecord {
+  kind: StayKind
+  name?: string
+  /** jjjj-mm-dd */
+  startDate: string
+  /** jjjj-mm-dd, inclusief. */
+  endDate: string
+  note?: string
+  /** Alleen bij reis. */
+  travel?: { from?: string; to?: string; by?: TravelMode }
+}
 export type Organisation = 'sailing-virgins' | 'yacht-week' | 'eigen' | 'overig'
 export const ORGANISATIONS: readonly Organisation[] = ['sailing-virgins', 'yacht-week', 'eigen', 'overig']
 
@@ -148,6 +178,11 @@ export interface PlannedLeg {
 
 export interface Trip extends SyncRecord {
   name: string
+  /**
+   * Soort periode op het water. Ontbreekt bij trips van vóór het periodemodel: dan afgeleid uit type, organisatie,
+   * rollen en naam (src/model/trip-kind.ts). `type` blijft het subtype (werk) en wat oudere versies lezen.
+   */
+  kind?: WaterKind
   type?: WeekType
   /** jjjj-mm-dd */
   startDate?: string
@@ -297,6 +332,10 @@ export interface Settings extends SyncRecord {
   costDefaults?: Partial<Record<CostDayType, number>>
   /** Laatst gekozen soort losse uitgave. */
   lastCostCategory?: CostCategory
+  /** Periodemodel: wanneer de agenda en het geld één keer zijn omgezet (src/model/migrate-periods.ts). */
+  periodsMigratedAt?: string
+  /** Nakijken: punten waarvan Olivier zei "Klopt zo" (vaste sleutels per punt, src/model/review.ts). */
+  reviewDismissed?: string[]
 }
 
 /** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */
@@ -673,6 +712,7 @@ export interface Collections {
   'balances.json.enc': Balance
   'fixedcosts.json.enc': FixedCost
   'claims.json.enc': Claim
+  'periods.json.enc': StayPeriod
 }
 
 export type CollectionPath = keyof Collections
@@ -699,6 +739,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'balances.json.enc',
   'fixedcosts.json.enc',
   'claims.json.enc',
+  'periods.json.enc',
 ]
 
 export function newId(): string {

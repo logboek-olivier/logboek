@@ -46,6 +46,7 @@ export const FILE_NAME: Record<CollectionPath, MessageKey> = {
   'balances.json.enc': 'storage.file.balances',
   'fixedcosts.json.enc': 'storage.file.fixedcosts',
   'claims.json.enc': 'storage.file.claims',
+  'periods.json.enc': 'storage.file.periods',
 }
 
 const STATE_LABEL: Record<FileState, MessageKey> = {

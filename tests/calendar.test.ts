@@ -46,9 +46,14 @@ describe('dagsoort afleiden', () => {
   const trips = [trip('a', { startDate: '2026-11-02', endDate: '2026-11-08', boat: 'Nepboot A' }), trip('b', { startDate: '2026-11-10', endDate: '2026-11-16' })]
   const legs = [leg('l1', 'a', '2026-11-03', 12.5), leg('l2', 'a', '2026-11-03', 3), leg('los', 'x', '2026-11-20', 8)]
 
-  it('voorrang: eigen instelling > trip > gelogde etappe > rust tussen trips > toekomst beschikbaar > verleden leeg', () => {
-    const index = buildIndex([own('2026-11-05', 'rust')], trips, legs)
-    expect(dayInfo(index, '2026-11-05', TODAY)).toMatchObject({ type: 'rust', source: 'eigen' })
+  it('voorrang (periodemodel): trip > periode aan land > eigen instelling > gelogde etappe > vrij tussen trips > toekomst beschikbaar > verleden leeg', () => {
+    const index = buildIndex([own('2026-11-05', 'rust'), own('2026-11-22', 'onbeschikbaar'), own('2026-11-24', 'optie')], trips, legs, [], [
+      { id: 's', kind: 'thuis', startDate: '2026-11-23', endDate: '2026-11-24', updatedAt: NOW, deletedAt: null },
+    ])
+    // Een losse agendadag binnen een trip: de trip gaat voor (de dag staat in Nakijken).
+    expect(dayInfo(index, '2026-11-05', TODAY)).toMatchObject({ type: 'werk', source: 'trip', kind: 'werk' })
+    expect(dayInfo(index, '2026-11-22', TODAY)).toMatchObject({ type: 'onbeschikbaar', source: 'eigen' })
+    expect(dayInfo(index, '2026-11-24', TODAY)).toMatchObject({ type: 'thuis', source: 'periode', kind: 'thuis' })
     expect(dayInfo(index, '2026-11-02', TODAY)).toMatchObject({ type: 'werk', source: 'trip' })
     expect(dayInfo(index, '2026-11-08', TODAY)).toMatchObject({ type: 'werk', source: 'trip' })
     expect(dayInfo(index, '2026-11-09', TODAY)).toMatchObject({ type: 'rust', source: 'tussen' })

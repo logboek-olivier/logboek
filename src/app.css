@@ -4577,3 +4577,11 @@ textarea.note {
   margin: var(--s-2) 0 0;
   font-size: var(--fs-md);
 }
+
+/* Nakijken: de knoppen onder elk punt. */
+.review-item .review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}

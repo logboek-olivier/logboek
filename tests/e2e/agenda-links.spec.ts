@@ -56,34 +56,15 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(card).toContainText(L('today.dayOf', { n: 3, total: 8 }))
       await expect(page.getByRole('button', { name: L('today.logDay') })).toBeVisible()
 
-      // Thuis: niets te loggen.
+      // Midden in een trip hoort de dag bij de trip (periodemodel): thuis kiezen kan niet, de dag blijft op het water.
       await today.click()
       await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.thuis') }).click()
-      await sheet.getByRole('button', { name: L('common.close') }).click()
-      await expect(today).toHaveClass(/day-thuis/)
-      await expect(card).toContainText(L('today.nothingToLog'))
-      await expect(page.getByRole('button', { name: L('today.logDay') })).toHaveCount(0)
-
-      // Reis: de reisgegevens.
-      await today.click()
-      await sheet.getByRole('button', { name: L('common.edit') }).click()
-      await sheet.getByRole('radio', { name: L('dayType.reis') }).click()
-      await sheet.getByLabel(L('day.from')).fill('Nepstad')
-      await sheet.getByLabel(L('day.to')).fill('Nephaven')
-      await sheet.getByLabel(L('day.flight')).fill('NP 42')
-      await sheet.getByRole('button', { name: L('common.save') }).click()
-      await expect(today).toHaveClass(/day-reis/)
-      await expect(card).toContainText('Nepstad → Nephaven · NP 42')
-      await expect(page.getByRole('button', { name: L('today.logDay') })).toHaveCount(0)
-      await shots(page, 'vandaag-reis', lang)
-
-      // Terug naar automatisch: weer werk.
-      await today.click()
-      await sheet.getByRole('button', { name: L('common.edit') }).click()
-      await sheet.getByRole('button', { name: L('day.auto') }).click()
+      await expect(page.getByText(L('day.inTrip', { name: 'Nepweek Koppel' }))).toBeVisible()
       await sheet.getByRole('button', { name: L('common.close') }).click()
       await expect(today).toHaveClass(/day-werk/)
+      await expect(today).toContainText(L('periodKind.werk'))
+      await expect(page.getByRole('button', { name: L('today.logDay') })).toBeVisible()
 
       // Agenda → trip: werk op 15 maart verlengt de trip (14 maart komt erbij); rust op de laatste dag maakt hem korter.
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()

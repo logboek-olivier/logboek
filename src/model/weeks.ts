@@ -8,7 +8,8 @@ import type { Undo } from './edit'
 import { addDays } from './money'
 import { currentSettings, saveSettings } from './settings'
 import { cleanSalary, withSalaryDefault } from './salary'
-import { firstNameOnly, newId, todayIso, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { tripKind } from './trip-kind'
+import { firstNameOnly, newId, todayIso, type WaterKind, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
 // charterbedrijf), gebied, organisatie, deelnemers en review. Oudere tochten hebben alleen een naam; dan worden type
@@ -91,6 +92,10 @@ export function roleForType(type: WeekType): Role | null {
 
 export interface WeekView {
   trip: Trip
+  /** Soort periode op het water (opgeslagen of afgeleid, src/model/trip-kind.ts). */
+  kind: WaterKind
+  /** De soort is opgeslagen of zeker afgeleid; anders staat de trip in Nakijken. */
+  kindSure: boolean
   type: WeekType
   /** Het type is een voorstel (niet opgeslagen). */
   typeSuggested: boolean
@@ -111,9 +116,12 @@ export function weekView(trip: Trip, legs: readonly Leg[]): WeekView {
   const last = own.at(-1)?.date
   const startDate = trip.startDate ?? first ?? ''
   const endDate = trip.endDate ?? last ?? (startDate ? addDays(startDate, DEFAULT_WEEK_DAYS - 1) : '')
+  const guess = tripKind(trip, own)
   return {
     trip,
-    type: trip.type ?? suggestType(trip.name),
+    kind: guess.kind,
+    kindSure: guess.sure,
+    type: trip.type ?? guess.type,
     typeSuggested: !trip.type,
     startDate,
     endDate,

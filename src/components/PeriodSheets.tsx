@@ -4,6 +4,9 @@ import { formatDateRange, formatDateShort } from '../format'
 import { t, useLang } from '../i18n'
 import { applyPlan, hasOverlap, type PlanItem } from '../import/planning'
 import { datesBetween, extendOptions, resizeTrip, setDays, type CalendarIndex } from '../model/calendar'
+import { setStayDays } from '../model/periods'
+import { bothUndo } from '../model/changes'
+import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { DAY_TYPES, type DayType } from '../model/types'
 import { weekTypeLabel } from './WeekSheet'
 import type { Store } from '../storage/store'
@@ -42,8 +45,24 @@ export function PeriodSheet({
       else setWork(true)
       return
     }
-    await setDays(store, dates, type)
-    notify(t('calendar.periodSaved', { n: dates.length }))
+    // Reis, thuis of vrij: een periode over die dagen (dagen in een trip blijven bij de trip). Een dagtoestand
+    // (beschikbaar, optie, onbeschikbaar) hoort bij dagen zonder periode: eerst uit een periode aan land, en niet in een trip.
+    const land = STAY_FROM_DAY[type]
+    if (land) {
+      const undo = await setStayDays(store, dates, land)
+      notify(t('calendar.periodSaved', { n: dates.length }), undo)
+    } else {
+      const free = dates.filter((d) => !index.views.some((v) => v.startDate <= d && d <= v.endDate))
+      const undoStay = await setStayDays(store, free, null)
+      const before = new Map(store.list('calendar.json.enc').map((d) => [d.date, d]))
+      await setDays(store, free, type)
+      const undoDays = async () => {
+        const now = new Date().toISOString()
+        const back = free.map((d) => before.get(d) ?? store.list('calendar.json.enc').find((x) => x.date === d)).filter((d) => !!d)
+        await store.putMany('calendar.json.enc', back.map((d) => (before.get(d.date) ? { ...d, updatedAt: now } : { ...d, updatedAt: now, deletedAt: now })))
+      }
+      notify(t('calendar.periodSaved', { n: free.length }), bothUndo(undoStay, undoDays))
+    }
     onClose()
   }
 

@@ -56,7 +56,8 @@ export function Stats({ store }: { store: Store }) {
   const [custom, setCustom] = useState({ from: `${today.slice(0, 4)}-01-01`, to: today })
   const [showAmounts, setShowAmounts] = useState(false)
   const period = periodFor(kind, today, { trips, legs, calendar }, custom)
-  const index = useMemo(() => buildIndex(calendar, trips, legs), [calendar, trips, legs])
+  const stays = useCollection(store, 'periods.json.enc')
+  const index = useMemo(() => buildIndex(calendar, trips, legs, [], stays), [calendar, trips, legs, stays])
 
   const sailing = period ? sailingStats(trips, legs, settings, period) : null
   const rya = ryaYachtmasterOffshore(legs)

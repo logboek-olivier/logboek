@@ -10,7 +10,9 @@ export const SCHEMA_VERSION = 1
 // deze build mag schrijven (bijvoorbeeld omdat hij velden of bestanden anders gebruikt), ook als het schema gelijk blijft.
 // Builds van vóór de schrijfversie kennen het veld niet; daartegen beschermt alleen de schemaversie. Nooit verlagen, ook
 // niet bij terugdraaien: de bestanden van de hogere versie blijven dan voor elke build "van een nieuwere versie".
-export const WRITER_VERSION = 1
+// 2: het periodemodel (docs/PERIODEMODEL.md). Een build zonder (thuis, reis en vrij als periodes, de soort van een trip,
+// geld aan een periode) schrijft niet meer over de bestanden van een build met het periodemodel.
+export const WRITER_VERSION = 2
 
 let writer = WRITER_VERSION
 

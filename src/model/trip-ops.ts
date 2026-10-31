@@ -4,7 +4,8 @@ import type { Undo } from './edit'
 import { saveSettings, currentSettings } from './settings'
 import { scrubbed } from './students'
 import { active } from './derive'
-import type { Claim, CollectionPath, Collections, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
+import type { Claim, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
+import { applyChanges, undoableIn, type Change } from './changes'
 import { scrubbedClaim } from './claims'
 import { scrubbedDocument } from './documents'
 import { syncParticipants } from './weeks'
@@ -39,56 +40,15 @@ export function hasDependents(d: TripDependents): boolean {
   return d.legs.length + d.transactions.length + d.participants.length + d.students.length + d.plans.length + d.claims.length > 0
 }
 
-type Change = { [P in CollectionPath]: { path: P; before: Collections[P] | null; after: Collections[P] } }[CollectionPath]
-
-/** Een tijd die later is dan `iso` en dan nu (een record kan van een apparaat met een voorlopende klok komen). */
-function after(iso: string): string {
-  return new Date(Math.max(Date.now(), Date.parse(iso) + 1)).toISOString()
-}
-
-function putGroup(store: Store, path: CollectionPath, records: SyncRecord[]): Promise<void> {
-  // Alle records hieronder zijn records van dit pad (voor of na de wijziging).
-  return store.putMany(path, records as Collections[typeof path][])
-}
-
-/** Wijzigingen opslaan, per bestand in één keer; ongedaan maken zet elke vorige versie terug (of verwijdert wat nieuw was). */
-async function apply(store: Store, changes: Change[]): Promise<Undo> {
-  const byPath = new Map<CollectionPath, Change[]>()
-  for (const c of changes) byPath.set(c.path, [...(byPath.get(c.path) ?? []), c])
-  for (const [path, list] of byPath) await putGroup(store, path, list.map((c) => c.after))
-  void store.sync()
-  return async () => {
-    for (const [path, list] of byPath) {
-      const back = list.map((c) => {
-        const at = after(c.after.updatedAt)
-        return c.before ? { ...c.before, updatedAt: at } : { ...c.after, updatedAt: at, deletedAt: at }
-      })
-      await putGroup(store, path, back)
-    }
-    void store.sync()
-  }
-}
-
 /**
- * De agenda volgt een trip (zie followTrip); ook dat hoort bij ongedaan maken: zelf ingestelde dagen die daardoor
- * veranderden, komen terug zoals ze waren.
+ * De agenda volgt een trip (zie followTrip); ook dat hoort bij ongedaan maken: zelf ingestelde dagen en periodes aan
+ * land die daardoor veranderden (en het geld dat meeging), komen terug zoals ze waren.
  */
-async function followUndoable(store: Store, follow: () => Promise<void>): Promise<Undo> {
-  const before = new Map(store.get('calendar.json.enc').map((d) => [d.id, d]))
-  await follow()
-  const changed = store.get('calendar.json.enc').filter((d) => before.get(d.id)?.updatedAt !== d.updatedAt)
-  return async () => {
-    if (changed.length === 0) return
-    await store.putMany(
-      'calendar.json.enc',
-      changed.map((d) => {
-        const old = before.get(d.id)
-        const at = after(d.updatedAt)
-        return old ? { ...old, updatedAt: at } : { ...d, updatedAt: at, deletedAt: at }
-      }),
-    )
-  }
+function followUndoable(store: Store, follow: () => Promise<void>): Promise<Undo> {
+  return undoableIn(store, ['calendar.json.enc', 'periods.json.enc', 'transactions.json.enc'], follow)
 }
+
+const apply = (store: Store, changes: Change[]) => applyChanges(store, changes)
 
 function both(a: Undo, b: Undo): Undo {
   return async () => {

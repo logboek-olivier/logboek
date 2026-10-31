@@ -13,6 +13,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-trip-salaris', name: 'Nepsalaris upgrade', organisation: 'sailing-virgins', startDate: '2026-10-01', endDate: '2026-10-07', salary: { amount: 1200, currency: 'EUR', status: 'verwacht', source: 'eigen' }, updatedAt: T, deletedAt: null },
     // "Geen salaris" (status geen, bedrag 0): telt nergens mee.
     { id: 'upg-trip-geen-salaris', name: 'Nep geen salaris', organisation: 'yacht-week', startDate: '2026-08-01', endDate: '2026-08-07', salary: { amount: 0, currency: 'EUR', status: 'geen', source: 'eigen' }, updatedAt: T, deletedAt: null },
+    // Periodemodel: een trip met een opgeslagen soort (plezier).
+    { id: 'upg-trip-plezier', name: 'Nepplezier upgrade', kind: 'plezier', type: 'zelf-cruisen', startDate: '2026-09-10', endDate: '2026-09-12', updatedAt: T, deletedAt: null },
     { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [
@@ -27,6 +29,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-4', date: '2026-10-22', kind: 'fooi', amount: 20, currency: 'USD', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'contant', depositedAt: '2026-10-23', updatedAt: T, deletedAt: null },
     { id: 'upg-tx-5', date: '2026-10-24', kind: 'fooi', amount: 15, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', tipVia: 'bank', updatedAt: T, deletedAt: null },
     { id: 'upg-tx-payout', date: '2026-10-25', kind: 'loon', amount: 900, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', payoutId: 'upg-payout-1', updatedAt: T, deletedAt: null },
+    // Periodemodel: een uitgave zonder trip op een thuisdag komt aan de thuisperiode.
+    { id: 'upg-tx-thuis', date: '2026-11-11', kind: 'kosten', amount: 7.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
     // Kosten (ronde 3): een losse uitgave met een soort.
     { id: 'upg-tx-kosten', date: '2026-10-19', kind: 'kosten', amount: 12.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
     // Declaraties (ronde 3): de uitgave bij een declaratie, met claimId.
@@ -53,12 +57,21 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'dag:2026-10-26', date: '2026-10-26', type: 'werk', boat: 'Andere nepboot', updatedAt: T, deletedAt: null },
     // Dagsoort onbeschikbaar met een reden (ronde 2): een oudere versie bewaart hem ongewijzigd.
     { id: 'dag:2026-10-27', date: '2026-10-27', type: 'onbeschikbaar', reason: 'Nepreden', updatedAt: T, deletedAt: null },
+    // Periodemodel: thuis en rust zonder gegevens worden een periode thuis en vrij (de dag zelf een tombstone).
+    { id: 'dag:2026-11-10', date: '2026-11-10', type: 'thuis', updatedAt: T, deletedAt: null },
+    { id: 'dag:2026-11-11', date: '2026-11-11', type: 'thuis', updatedAt: T, deletedAt: null },
+    { id: 'dag:2026-11-12', date: '2026-11-12', type: 'rust', updatedAt: T, deletedAt: null },
   ],
   'checklists.json.enc': [
     { id: 'upg-list-1', title: { nl: 'Neplijst', en: 'Fake list' }, items: [{ id: 'i1', text: { nl: 'Nepvink', en: 'Fake tick' } }], tripTypes: ['skipper-charter'], source: 'eigen', updatedAt: T, deletedAt: null },
   ],
   // Weekafsluiting (ronde 2): cijfer en één zin per ISO-week; het id volgt uit de week.
   'weekreviews.json.enc': [{ id: 'week:2026-W43', week: '2026-W43', start: '2026-10-19', rating: 8, lesson: 'Nepzin over de week', spent: { amount: 85, currency: 'EUR' }, updatedAt: T, deletedAt: null }],
+  // Periodemodel: periodes aan land (reis, thuis, vrij); werk, training en plezier zijn trips.
+  'periods.json.enc': [
+    { id: 'upg-stay-thuis', kind: 'thuis', startDate: '2026-12-01', endDate: '2026-12-05', note: 'Nepnotitie', updatedAt: T, deletedAt: null },
+    { id: 'upg-stay-reis', kind: 'reis', name: 'Nepreis', startDate: '2026-12-06', endDate: '2026-12-06', travel: { from: 'Nepstad', to: 'Nephaven', by: 'vliegtuig' }, updatedAt: T, deletedAt: null },
+  ],
   // Vaste lasten (ronde 3): een bedrag dat vanaf een maand verandert.
   'fixedcosts.json.enc': [{ id: 'upg-fixed-1', name: 'Nepabonnement', currency: 'EUR', amounts: [{ from: '2026-09', amount: 20 }, { from: '2026-11', amount: 25 }], updatedAt: T, deletedAt: null }],
   // Declaraties (ronde 3): een ingediende declaratie zonder bonnetje en een terugbetaalde.
