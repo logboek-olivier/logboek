@@ -8,7 +8,7 @@ import type { Undo } from './edit'
 import { addDays } from './money'
 import { currentSettings, saveSettings } from './settings'
 import { cleanSalary, withSalaryDefault } from './salary'
-import { tripKind } from './trip-kind'
+import { kindForType, tripKind } from './trip-kind'
 import { firstNameOnly, newId, todayIso, type WaterKind, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
@@ -139,11 +139,14 @@ export function weekView(trip: Trip, legs: readonly Leg[]): WeekView {
 export function activeWeek(trips: readonly Trip[], settings: Settings, today: string = todayIso()): Trip | null {
   const open = trips.filter((t) => t.deletedAt === null && !t.closedAt)
   const chosen = settings.activeWeekId ? open.find((t) => t.id === settings.activeWeekId) : undefined
+  const inside = open.filter((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate)
+  // Een trip waarin vandaag valt, gaat voor een trip die ooit als lopend is gestart maar al voorbij is (zo kwam een dag
+  // van 28 oktober in SV #1 van 18–24 oktober terecht). Vallen er twee trips op vandaag (wisseldag), dan de gekozen.
+  if (chosen && inside.includes(chosen)) return chosen
+  if (inside.length > 0) return inside.sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1)).at(-1)!
   if (chosen) return chosen
-  const inside = open.find((t) => t.startDate && t.endDate && t.startDate <= today && today <= t.endDate)
-  if (inside) return inside
   // Een trip uit Toevoegen → Dag (datums volgen de dagen) blijft drie dagen na de laatste gelogde dag lopend, zodat
-  // hij 's ochtends vóór het loggen nog in Deze trip staat. Een trip met eigen datums waarin vandaag valt, gaat voor.
+  // hij 's ochtends vóór het loggen nog in Deze trip staat.
   return open.find((t) => t.datesFromDays && t.startDate && t.endDate && t.startDate <= today && today <= endedFor(t, t.endDate)) ?? null
 }
 
@@ -260,6 +263,8 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
   const dated = /^\d{4}-\d{2}-\d{2}$/.test(input.startDate)
   return {
     name: text(input.name) || defaultWeekName(dated ? input.startDate : todayIso(), lang, input.base),
+    // Soort en type samen: zo is de soort na opslaan zeker (geen Nakijken meer), en lezen oudere versies het type.
+    kind: kindForType(input.type),
     type: input.type,
     ...(dated ? { startDate: input.startDate, endDate: addDays(input.startDate, days - 1) } : {}),
     ...(text(input.boat) ? { boat: text(input.boat) } : {}),

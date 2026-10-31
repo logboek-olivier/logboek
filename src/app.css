@@ -4585,3 +4585,19 @@ textarea.note {
   gap: var(--s-2);
   margin-top: var(--s-2);
 }
+
+/* Periodepagina: een gelogde dag met het potlood ernaast, en de knoppen voor geld. */
+.leg-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.leg-row .row-button {
+  flex: 1;
+  min-width: 0;
+}
+
+.period-money-buttons {
+  gap: var(--s-2);
+}
