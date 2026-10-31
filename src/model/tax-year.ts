@@ -50,7 +50,8 @@ export interface TaxYear {
 
 const GROUP_ORDER: readonly TaxGroup[] = ['sailing-virgins', 'yacht-week', 'eigen', 'delivery', 'overig']
 
-function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxGroup {
+/** De organisatie van een inkomen of uitgave: van de trip (ook uit de naam), anders de oude bron. */
+export function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxGroup {
   const trip = tx.tripId ? trips.get(tx.tripId) : undefined
   // De organisatie van de trip, ook uit de naam ("Yacht week 7"), zoals de teller en de statistieken.
   const counted = trip ? tripOrganisation(trip) : null

@@ -16,7 +16,9 @@ import { MergeProposal } from './Places'
 import { plannedFor } from '../model/routes'
 import { followDays } from '../model/trip-dates'
 import { estimateWater, type WaterEstimate } from '../model/estimate'
-import { kindLabel, roleLabel, sourceLabel } from '../i18n/labels'
+import { kindLabel, roleLabel } from '../i18n/labels'
+import { BelongsTo, useBelongsTo, usePeriods } from '../components/BelongsTo'
+import { kindForCategory, resolveTarget, sourceForPeriod } from '../model/expenses'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../model/trip-name'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
@@ -35,7 +37,6 @@ import {
   nowIso,
   ROLES,
   todayIso,
-  TRANSACTION_SOURCES,
   type AddTab,
   type Currency,
   type Settings,
@@ -47,8 +48,6 @@ import {
   type Role,
   type Transaction,
   type IncomeKind,
-  type TransactionKind,
-  type TransactionSource,
   type Trip,
 } from '../model/types'
 import type { Store } from '../storage/store'
@@ -154,7 +153,7 @@ async function saveTransaction(
   if (tx.currency === 'EUR') record.amountEur = tx.amount
   else Object.assign(record, finalRateFields(tx) ?? {})
   await store.put('transactions.json.enc', record)
-  await saveSettings(store, { lastCurrency: tx.currency, lastSource: tx.source, ...remember })
+  await saveSettings(store, { lastCurrency: tx.currency, ...remember })
   confirmVibration()
   void store.sync()
 }
@@ -218,7 +217,6 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
   const [kind, setKind] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
   // Fooi contant of op de bank (laatst gekozen); contant staat in Geld → Contant tot hij gestort is.
   const [tipVia, setTipVia] = useState<TipVia>(settings.lastTipVia ?? 'contant')
-  const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [date, setDate] = useState(() => dateIn(store.list('trips.json.enc'), preset, todayIso()))
   const [note, setNote] = useState('')
@@ -240,6 +238,8 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
     try {
       const tipFrom = people.length > 0 ? tipFromDraft(draft, people) : undefined
       const tip = kind === 'fooi' ? { tipVia } : {}
+      // Geen bron meer in beeld: die volgt uit de organisatie van de trip (oudere versies lezen hem nog).
+      const source = sourceForPeriod(options.find((x) => x.id === tripId))
       await saveTransaction(
         store,
         { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}), ...tip },
@@ -291,16 +291,6 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
       )}
       <div className="two">
         <label>
-          {t('field.source')}
-          <select value={source} onChange={(e) => setSource(e.target.value as TransactionSource)}>
-            {TRANSACTION_SOURCES.map((s) => (
-              <option key={s} value={s}>
-                {sourceLabel(s)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
           {t('field.currency')}
           <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
             {CURRENCIES.map((c) => (
@@ -310,11 +300,11 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
             ))}
           </select>
         </label>
+        <label>
+          {t('field.date')}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
       </div>
-      <label>
-        {t('field.date')}
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </label>
       <NoteField label={t('field.note')} value={note} onChange={setNote} maxLength={200} />
       <button className="btn primary" type="submit" disabled={parsed === null || !date || !tripOk || busy}>
         {t('common.save')}
@@ -323,30 +313,40 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
   )
 }
 
+/**
+ * Uitgave: bedrag, soort, omschrijving en datum; daaronder "Hoort bij" met de periodes rond die datum (docs/PERIODEMODEL.md).
+ * Opleiding en uitrusting zijn een investering in de zeilcarrière. Geen bron: die volgt uit de organisatie van de periode.
+ */
 export function CostForm({ store, onDone, tripId: preset }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de periode staat al vast. */ tripId?: string }) {
   const { settings } = useDefaults(store)
+  const periods = usePeriods(store)
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
-  const [kind, setKind] = useState<TransactionKind>(settings.lastCostKind ?? 'kosten')
-  // Soort losse uitgave (vervoer, eten en drinken, overig), laatst gekozen; leert de kosten per dagsoort.
+  // Soort (reizen, eten en drinken, verblijf, opleiding, uitrusting, overig), laatst gekozen; leert de kosten per dagsoort.
   const [category, setCategory] = useState<CostCategory>(settings.lastCostCategory ?? 'overig')
-  const [more, setMore] = useState(false)
-  const [source, setSource] = useState<TransactionSource>(settings.lastSource)
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
-  const [date, setDate] = useState(() => dateIn(store.list('trips.json.enc'), preset, todayIso()))
+  const [date, setDate] = useState(() => {
+    const period = preset ? periods.find((p) => p.id === preset) : undefined
+    const today = todayIso()
+    return period?.start && period.end ? (today < period.start ? period.start : today > period.end ? period.end : today) : today
+  })
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
-  const { tripId, setTripId, options } = useTripChoice(store, date, true, preset)
+  const belongs = useBelongsTo(store, date || todayIso(), category, preset)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (parsed === null || busy) return
+    if (parsed === null || busy || !date) return
     setBusy(true)
     try {
+      // Een uitgave zonder periode bestaat niet: zo nodig eerst de periode thuis of vrij op die dag.
+      const tripId = (await resolveTarget(store, belongs.current, date)) ?? ''
+      const trip = store.list('trips.json.enc').find((x) => x.id === tripId)
+      const kind = kindForCategory(category)
       await saveTransaction(
         store,
-        { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim() } : {}), ...(kind === 'kosten' ? { category } : {}) },
-        { lastCostKind: kind === 'investering' ? 'investering' : 'kosten', ...(kind === 'kosten' ? { lastCostCategory: category } : {}) },
+        { date, kind, amount: parsed, currency, source: sourceForPeriod(trip), ...(note.trim() ? { note: note.trim() } : {}), category },
+        { lastCostKind: kind === 'investering' ? 'investering' : 'kosten', lastCostCategory: category },
         tripId,
       )
       onDone(t('toast.kindSaved', { kind: kindLabel(kind) }))
@@ -357,87 +357,47 @@ export function CostForm({ store, onDone, tripId: preset }: { store: Store; onDo
 
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
-      <label>
-        {t('field.amount')}
-        <input
-          className="amount"
-          inputMode="decimal"
-          autoFocus
-          enterKeyHint="done"
-          autoComplete="off"
-          placeholder={t('quick.amountPlaceholder')}
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </label>
+      <div className="amount-row">
+        <label className="grow">
+          {t('field.amount')}
+          <input
+            className="amount"
+            inputMode="decimal"
+            autoFocus
+            enterKeyHint="done"
+            autoComplete="off"
+            placeholder={t('quick.amountPlaceholder')}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+        <label className="currency">
+          {t('field.currency')}
+          <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="type-buttons" role="radiogroup" aria-label={t('costs.category')}>
+        {COST_CATEGORIES.map((c) => (
+          <button key={c} type="button" role="radio" aria-checked={category === c} className={`chip${category === c ? ' active' : ''}`} onClick={() => setCategory(c)}>
+            {t(`costCategory.${c}`)}
+          </button>
+        ))}
+      </div>
       <label>
         {t('field.description')}
         <input type="text" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
-      <div className="segments small" role="radiogroup" aria-label={t('field.kind')}>
-        {(['kosten', 'investering'] as TransactionKind[]).map((k) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={kind === k}
-            className={`segment${kind === k ? ' active' : ''}`}
-            onClick={() => setKind(k)}
-          >
-            {kindLabel(k)}
-          </button>
-        ))}
-      </div>
-      {kind === 'kosten' && (
-        <div className="type-buttons" role="radiogroup" aria-label={t('costs.category')}>
-          {COST_CATEGORIES.map((c) => (
-            <button key={c} type="button" role="radio" aria-checked={category === c} className={`chip${category === c ? ' active' : ''}`} onClick={() => setCategory(c)}>
-              {t(`costCategory.${c}`)}
-            </button>
-          ))}
-        </div>
-      )}
-      {!more && (
-        <p className="muted">
-          {sourceLabel(source)} · {currency} · {t('quick.today')}{' '}
-          <button type="button" className="btn link inline" onClick={() => setMore(true)}>
-            {t('common.more')}
-          </button>
-        </p>
-      )}
-      {more && (
-        <>
-          <div className="two">
-            <label>
-              {t('field.source')}
-              <select value={source} onChange={(e) => setSource(e.target.value as TransactionSource)}>
-                {TRANSACTION_SOURCES.map((s) => (
-                  <option key={s} value={s}>
-                    {sourceLabel(s)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              {t('field.currency')}
-              <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-                {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="two">
-            <label>
-              {t('field.date')}
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </label>
-            <TripField value={tripId} options={options} onChange={setTripId} required={false} />
-          </div>
-        </>
-      )}
+      <label>
+        {t('field.date')}
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      <BelongsTo store={store} options={belongs.options} value={belongs.key} onChange={belongs.choose} />
       <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
         {t('common.save')}
       </button>

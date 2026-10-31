@@ -34,12 +34,28 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await mockRates(page, 0)
       await createNewLogbook(page, lang)
 
-      for (const [amount, currency, source] of [['125', 'USD', 'sailing-virgins'], ['40', 'EUR', 'yacht-week']] as const) {
+      // De organisatie volgt uit de periode (periodemodel): twee trips deze maand, bij Sailing Virgins en Yacht Week.
+      const month = new Date().toISOString().slice(0, 7)
+      const sheet = page.getByRole('dialog')
+      const day = (n: number) => page.locator('.cal-day:not(.other-month)').nth(n - 1)
+      for (const [from, to, org, name] of [[1, 3, 'sailing-virgins', 'Neptrip SV'], [10, 12, 'yacht-week', 'Neptrip YW']] as const) {
+        await page.getByRole('navigation').getByRole('button', { name: L('nav.calendar'), exact: true }).click()
+        await page.getByRole('button', { name: L('calendar.markPeriod') }).click()
+        await day(from).click()
+        await day(to).click()
+        await sheet.getByRole('button', { name: L('dayType.werk') }).click()
+        await sheet.getByLabel(L('field.name'), { exact: true }).fill(name)
+        await sheet.getByRole('combobox', { name: L('week.organisation') }).selectOption(org)
+        await sheet.getByRole('button', { name: L('week.start') }).click()
+        await expect(sheet).toHaveCount(0)
+        await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+      }
+      for (const [amount, currency, date] of [['125', 'USD', `${month}-02`], ['40', 'EUR', `${month}-11`]] as const) {
         await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
         await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
         await page.getByLabel(L('field.amount')).fill(amount)
         await page.getByRole('combobox', { name: L('field.currency') }).selectOption(currency)
-        await page.getByRole('combobox', { name: L('field.source') }).selectOption(source)
+        await page.getByLabel(L('field.date'), { exact: true }).fill(date)
         await page.getByRole('button', { name: L('common.save') }).click()
         await expect(page.locator('.toast')).toBeVisible()
         await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })

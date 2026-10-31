@@ -4601,3 +4601,20 @@ textarea.note {
 .period-money-buttons {
   gap: var(--s-2);
 }
+
+/* Uitgave: bedrag groot met de valuta ernaast (periodemodel). */
+.amount-row {
+  display: flex;
+  gap: var(--s-3);
+  align-items: end;
+}
+
+.amount-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.amount-row .currency {
+  width: 6.5rem;
+  flex: none;
+}

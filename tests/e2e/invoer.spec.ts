@@ -24,7 +24,7 @@ async function newTrip(page: Page, name: string, start: string) {
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 }
 
-test('een uitgave hangt alleen aan de trip van haar datum, en "Geen trip" blijft geen trip', async ({ page }) => {
+test('een uitgave hoort bij de periode van haar datum; zonder periode een nieuwe thuisperiode (niet de vorige trip)', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
   await createNewLogbook(page)
@@ -35,12 +35,14 @@ test('een uitgave hangt alleen aan de trip van haar datum, en "Geen trip" blijft
   await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByLabel('Bedrag').fill('12')
   await page.getByLabel('Omschrijving').fill('Nepboodschappen')
-  await page.getByRole('button', { name: 'Meer velden' }).click()
-  await expect(page.getByRole('combobox', { name: 'Trip', exact: true })).toHaveValue('')
-  // Een datum in de trip: dan de trip; zelf "Geen trip" kiezen blijft geen trip.
+  // Hoort bij (periodemodel): de vorige trip staat als keuze, maar standaard een nieuwe thuisperiode op vandaag.
+  const belongs = page.getByRole('radiogroup', { name: 'Hoort bij' })
+  await expect(belongs.getByRole('radio', { name: 'Nepweek voorbij' })).toHaveAttribute('aria-checked', 'false')
+  await expect(belongs.getByRole('radio', { name: 'Thuis (nieuw)' })).toHaveAttribute('aria-checked', 'true')
+  // Een datum in de trip: dan de trip.
   await page.getByLabel('Datum').fill(iso(-18))
-  await expect(page.getByRole('combobox', { name: 'Trip', exact: true })).not.toHaveValue('')
-  await page.getByRole('combobox', { name: 'Trip', exact: true }).selectOption({ value: '' })
+  await expect(belongs.getByRole('radio', { name: 'Nepweek voorbij' })).toHaveAttribute('aria-checked', 'true')
+  await page.getByLabel('Datum').fill(iso(0))
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toContainText('opgeslagen')
 
@@ -49,6 +51,7 @@ test('een uitgave hangt alleen aan de trip van haar datum, en "Geen trip" blijft
   const view = page.getByRole('dialog', { name: 'Kosten' })
   await expect(view).toBeVisible()
   await expect(view).not.toContainText('Nepweek voorbij')
+  await expect(view).toContainText('Thuis')
   expect(errors).toEqual([])
 })
 

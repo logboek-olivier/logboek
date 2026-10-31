@@ -111,9 +111,13 @@ export type PayoutRule = { kind: 'per-trip' } | { kind: 'maandelijks'; day: numb
 /** Hoe een fooi binnenkwam: contant (staat in Contant tot hij gestort is) of op de bank. Ontbreekt = onbekend. */
 export type TipVia = 'contant' | 'bank'
 
-/** Soort losse uitgave (alleen bij kosten): vervoer, eten en drinken, overig. Ontbreekt = overig. */
-export type CostCategory = 'vervoer' | 'eten' | 'overig'
-export const COST_CATEGORIES: readonly CostCategory[] = ['vervoer', 'eten', 'overig']
+/**
+ * Soort uitgave (docs/PERIODEMODEL.md): reizen (in de data 'vervoer'), eten en drinken, verblijf, opleiding, uitrusting,
+ * overig. Opleiding en uitrusting zijn `kind: investering` (investering in de zeilcarrière), de rest `kind: kosten`.
+ * Ontbreekt = overig (bij een investering van vóór het periodemodel: nog niet bekend, zie Nakijken).
+ */
+export type CostCategory = 'vervoer' | 'eten' | 'verblijf' | 'opleiding' | 'uitrusting' | 'overig'
+export const COST_CATEGORIES: readonly CostCategory[] = ['vervoer', 'eten', 'verblijf', 'opleiding', 'uitrusting', 'overig']
 
 /** Status van een declaratie: open (nog niet ingediend), ingediend, terugbetaald. */
 export type ClaimStatus = 'open' | 'ingediend' | 'terugbetaald'

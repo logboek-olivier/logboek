@@ -81,7 +81,8 @@ function repaymentIdOf(claimId: string): string {
 
 /** De levende uitgave bij een declaratie. */
 function costOf(store: Store, claimId: string): Transaction | undefined {
-  return store.list('transactions.json.enc').find((tx) => tx.claimId === claimId && tx.kind === 'kosten')
+  // De uitgave van de declaratie (ook als iemand er een investering van maakte); de terugbetaling is een inkomen.
+  return store.list('transactions.json.enc').find((tx) => tx.claimId === claimId && (tx.kind === 'kosten' || tx.kind === 'investering'))
 }
 
 /**

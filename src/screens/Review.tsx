@@ -15,6 +15,7 @@ import { stayName } from '../model/periods'
 import {
   acceptAllKinds,
   fixDayInStay,
+  setInvestmentCategory,
   fixLegStart,
   legOutsideCanExtend,
   dismissReview,
@@ -130,6 +131,8 @@ function describe(item: ReviewItem): string {
       return t('review.placesSpelling', { a: item.from.name, b: item.into.name })
     case 'aansluiting':
       return t('review.placesJoin', { date: formatDate(item.leg.date), a: item.leg.fromPlace, b: item.previous.toPlace })
+    case 'investering-soort':
+      return t('review.investmentKind', { date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
     case 'agendadag-in-periode':
       return t('review.dayInStay', { date: formatDate(item.day.date), type: t(`dayType.${item.day.type}`), name: stayName(item.stay) })
     case 'overlap-trips':
@@ -180,6 +183,8 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
         { label: t('review.startAt', { name: item.previous.toPlace }), primary: true, run: () => fixLegStart(store, item.leg, item.previous) },
         { label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), run: () => mergePlaceInto(store, item.from, item.into) },
       ]
+    case 'investering-soort':
+      return (['opleiding', 'uitrusting'] as const).map((c) => ({ label: t(`costCategory.${c}`), run: () => setInvestmentCategory(store, item.tx, c) }))
     case 'agendadag-in-periode':
       return [{ label: t('review.dayWins', { type: t(`dayType.${item.day.type}`) }), primary: true, run: () => fixDayInStay(store, item.day) }]
     case 'overlap-trips':

@@ -34,7 +34,6 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByLabel('Bedrag').fill('35')
   await page.getByLabel('Omschrijving').fill('Taxi haven')
-  await page.getByRole('button', { name: 'Meer velden' }).click()
   await page.getByLabel('Valuta').selectOption('EUR')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Kosten opgeslagen')).toBeVisible()
