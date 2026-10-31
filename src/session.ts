@@ -29,6 +29,7 @@ import { KeyMismatchError, Store } from './storage/store'
 import { loadToken, repoOf, storeToken, type StoredToken } from './storage/token'
 import { decryptRecords } from './storage/sync'
 import { COLLECTION_PATHS, type CollectionPath } from './model/types'
+import { nieuwLogboekInrichten } from './domain/instellingen'
 
 // Levenscyclus van een sessie: eerste keer (nieuw of koppelen), ontgrendelen, vergrendelen.
 // Beveiligingsregel 10: vergrendelen na 5 minuten zonder gebruik. Binnen die 5 minuten staat de niet-exporteerbare
@@ -405,6 +406,8 @@ export class Session {
     await clearAll(db)
     await Store.storeMeta(db, vault.meta, sha)
     await this.open(client, { token: token.trim(), expiresAt, repo }, vault.masterKey, 'new')
+    // Een nieuw logboek begint leeg: geen organisaties, cursussen of startdatum van een ander (src/basis/organisatie.ts).
+    if (this.state.phase === 'unlocked') await nieuwLogboekInrichten(this.state.store)
   }
 
   /** Bestaand logboek koppelen: meta ophalen, ontgrendelen met wachtzin of herstelcode, alles ophalen. */

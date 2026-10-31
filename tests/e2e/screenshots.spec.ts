@@ -73,7 +73,7 @@ for (const { width, scheme, lang } of RUNS) {
       await expect(page.getByRole('heading', { name: L('setup.title') })).toBeVisible()
       await shot('eerste-keer')
 
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       await shot('vandaag-leeg')
       await button('nav.calendar').click()

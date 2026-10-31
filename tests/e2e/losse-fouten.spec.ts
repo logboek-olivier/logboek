@@ -30,7 +30,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.clock.setSystemTime(new Date('2027-02-15T10:00:00'))
       const errors = collectConsoleErrors(page)
       await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
       const nav = page.getByRole('navigation')
       const sheet = page.getByRole('dialog')

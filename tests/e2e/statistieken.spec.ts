@@ -16,7 +16,7 @@ function iso(offset: number): string {
 test('statistieken: zeilen, RYA, werk en geld achter Toon bedragen; filters', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   // Een trip van Yacht Week die vandaag begint, twee dagen en een fooi.
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()

@@ -5,7 +5,7 @@ import { getLang, t } from '../i18n'
 import { newTripName } from '../model/counters'
 import { currentSettings } from '../model/settings'
 import { tripOverlaps, type Overlap } from '../model/trip-ops'
-import { ORGANISATIONS, WEEK_TYPES, type Organisation, type Trip, type WeekType } from '../model/types'
+import { WEEK_TYPES, type Organisation, type Trip, type WeekType } from '../model/types'
 import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, suggestTripName } from '../model/weeks'
 import { periodeMaken } from '../domain/trips'
 import type { Store } from '../storage/store'
@@ -15,6 +15,7 @@ import { OverlapSheet } from './TripSheets'
 import { useCollection } from './useCollection'
 import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
 import { addDays, daysBetween, todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Toevoegen → Trip: snel een trip in de planning zetten. Alleen startdatum en einddatum zijn nodig, dan Opslaan.
 // Naam en type krijgen een voorstel uit de vorige trip; organisatie, boot, gebied en deelnemers zijn optioneel en later
@@ -147,7 +148,7 @@ export function TripForm({ store, onDone, notify }: { store: Store; onDone: (mes
             {t('week.organisation')}
             <select value={organisation} onChange={(e) => setOrganisation(e.target.value as Organisation | '')}>
               <option value="">{t('week.noOrganisation')}</option>
-              {ORGANISATIONS.map((o) => (
+              {organisationChoices().map((o) => (
                 <option key={o} value={o}>
                   {organisationLabel(o)}
                 </option>

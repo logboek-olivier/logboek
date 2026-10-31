@@ -1,7 +1,7 @@
 import { t } from '../i18n'
 import { datesBetween, followTrip, type CalendarIndex } from '../model/calendar'
 import { suggestType, weekFields, MAX_WEEK_DAYS, type WeekInput } from '../model/weeks'
-import { DAY_TYPES, newId, ORGANISATIONS, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type StayKind, type Trip, type WeekType } from '../model/types'
+import { DAY_TYPES, newId, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type StayKind, type Trip, type WeekType } from '../model/types'
 import { setStayDays } from '../model/periods'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import type { Lang } from '../i18n'
@@ -10,6 +10,7 @@ import { withSalaryDefault } from '../model/salary'
 import { currentSettings } from '../model/settings'
 import { FileFormatError, readRowSources, type SheetCell } from './rows'
 import { todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Planning importeren uit CSV (of Excel) met de kolommen start, eind, soort, naam, type, organisatie, boot, gebied,
 // notitie. Datums jjjj-mm-dd; soort = werk|rust|reis|thuis|onbeschikbaar|optie; type = het triptype bij werk. Werk wordt een trip,
@@ -115,7 +116,7 @@ export function parsePlanning(bytes: Uint8Array): PlanningRow[] {
       const rawType = slug(text('type'))
       if (rawType && !(WEEK_TYPES as readonly string[]).includes(rawType)) throw new PlanningError(t('planning.badType', { row: r.number }))
       const rawOrg = slug(text('organisation'))
-      if (rawOrg && !(ORGANISATIONS as readonly string[]).includes(rawOrg)) throw new PlanningError(t('planning.badOrganisation', { row: r.number }))
+      if (rawOrg && !(organisationChoices() as readonly string[]).includes(rawOrg)) throw new PlanningError(t('planning.badOrganisation', { row: r.number }))
       if (kind === 'werk' && datesBetween(start, end).length > MAX_WEEK_DAYS) throw new PlanningError(t('planning.tooLong', { row: r.number, max: MAX_WEEK_DAYS }))
       out.push({
         row: r.number,

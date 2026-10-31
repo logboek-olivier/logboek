@@ -7,7 +7,7 @@ test.use({ viewport: { width: 360, height: 740 } })
 test('Studenten in Deze week: deelnemers met cursus krijgen een checklist, afvinken, groep afvinken, archiveren en wissen via Meer', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   const nav = page.getByRole('navigation')
   await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
   await expect(page.getByText('Geen lopende trip.')).toBeVisible()

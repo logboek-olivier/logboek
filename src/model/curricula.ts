@@ -10,11 +10,28 @@ import { CURRICULUM_BODIES, newId, type Curriculum, type CurriculumBody, type Lo
 export const SEED_IDS = new Set(SEED_CURRICULA.map((c) => c.id))
 
 /** Zichtbare cursussen: opgeslagen (niet verwijderd) plus meegeleverde die niet opgeslagen of verwijderd zijn. */
+/** Cursuspakketten (de meegeleverde cursussen per bond). */
+export const CURRICULUM_PACKS = ['ASA', 'RYA', 'CWO'] as const
+
+// Welke pakketten zichtbaar zijn: null = alle (een logboek van vóór de pakketten); een nieuw logboek begint zonder en
+// zet ze zelf aan onder Meer → Cursussen (settings.curriculumPacks, gezet in src/screens/Home.tsx).
+let packs: readonly string[] | null = null
+
+export function setCurriculumPacks(list: readonly string[] | null): void {
+  packs = list
+}
+
+export function curriculumPacks(): readonly string[] | null {
+  return packs
+}
+
 export function effectiveCurricula(stored: readonly Curriculum[]): Curriculum[] {
   const byId = new Map(stored.map((c) => [c.id, c]))
   const result: Curriculum[] = []
   for (const seed of SEED_CURRICULA) {
     const own = byId.get(seed.id)
+    // Een meegeleverde cursus van een pakket dat uit staat: niet zichtbaar (een bewerkte blijft wel staan).
+    if (!own && packs !== null && !packs.includes(seed.body)) continue
     if (!own) result.push(seed)
     else if (own.deletedAt === null) result.push(own)
   }

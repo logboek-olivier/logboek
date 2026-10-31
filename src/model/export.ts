@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from 'fflate'
 import { translate, type Lang } from '../i18n'
+import { organisationLabel } from '../i18n/labels'
 import { boatList } from './boats'
 import { totalNm } from './derive'
 import { isIncome } from './money'
@@ -90,7 +91,7 @@ export function exportFiles(data: ExportData, lang: Lang): ExportFile[] {
       return [
         trip.name,
         view.type ? L(`weekType.${view.type}`) : '',
-        trip.organisation ? L(`organisation.${trip.organisation}`) : '',
+        trip.organisation ? organisationLabel(trip.organisation, lang) : '',
         view.startDate,
         view.endDate,
         days.length,

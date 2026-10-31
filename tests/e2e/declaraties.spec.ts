@@ -47,7 +47,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
         })
       })
       const github = await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
 
       // Een trip die vandaag loopt.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.week'), exact: true }).click()

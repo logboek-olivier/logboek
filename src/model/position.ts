@@ -23,7 +23,9 @@ export const DEFAULT_CAREER_START = '2026-09-11'
 
 export function careerStart(settings: Settings): string {
   const d = settings.careerStart
-  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : DEFAULT_CAREER_START
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d
+  // Een nieuw logboek heeft geen startdatum van een ander: het begin van dit jaar tot Olivier er zelf een kiest.
+  return settings.startedEmpty ? `${new Date().getFullYear()}-01-01` : DEFAULT_CAREER_START
 }
 
 /** Periode voor Mijn positie en de vooruitblik (Geld): een snelkeuze of zelf gekozen van en tot. */

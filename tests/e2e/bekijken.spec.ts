@@ -12,7 +12,7 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
   test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   // Een trip van Sailing Virgins vanaf vandaag, met basis Hvar.
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()

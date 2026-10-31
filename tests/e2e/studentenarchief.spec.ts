@@ -31,7 +31,7 @@ test('studentenarchief: alle studenten per trip, lopende trip bovenaan, zoeken e
   test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   const earlier = iso(-40)
   await newTrip(page, 'Nepweek eerder', earlier, [['Nepcees', 'seed-asa-101']])

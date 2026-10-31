@@ -31,7 +31,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const L = (key: MessageKey, ...args: unknown[]) => (translate as (l: Lang, k: MessageKey, ...a: unknown[]) => string)(lang, key, ...args)
       const errors = collectConsoleErrors(page)
       const github = await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       const nav = page.getByRole('navigation')
       await nav.getByRole('button', { name: L('nav.week'), exact: true }).click()
       const card = page.locator('main')

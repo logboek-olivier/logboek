@@ -18,7 +18,7 @@ import {
   type GoalProgress,
 } from '../model/goals'
 import { getRates, subscribeRates } from '../model/rates'
-import { GOAL_METRICS, ORGANISATIONS, type Goal, type GoalMetric, type Milestone, type Organisation, type Skill } from '../model/types'
+import { GOAL_METRICS, type Goal, type GoalMetric, type Milestone, type Organisation, type Skill } from '../model/types'
 import type { Store } from '../storage/store'
 import { BarChart } from './BarChart'
 import type { Notify } from './EditSheets'
@@ -28,6 +28,7 @@ import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
 import { doelOpslaanMetMeting, doelVerwijderen, mijlpaalAfvinken, sessieLoggen, sessieVerwijderen, skillOpslaan, skillVerwijderen } from '../domain/doelen'
 import { todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Doelen en skills: eerst bekijken, dan bewerken (potlood); verwijderen met ongedaan maken. Een doel vult zichzelf uit
 // de app of Olivier meet zelf; een skill heeft sessies, een trend en mijlpalen. Zie src/model/goals.ts.
@@ -185,7 +186,7 @@ export function GoalSheet({ store, goal, notify, onClose }: { store: Store; goal
   const year = new Date().getFullYear()
   const [kind, setKind] = useState<Goal['kind']>(goal?.kind ?? 'auto')
   const [metric, setMetric] = useState<GoalMetric>(goal?.metric ?? 'nm')
-  const [organisation, setOrganisation] = useState<Organisation | ''>(goal?.organisation ?? 'sailing-virgins')
+  const [organisation, setOrganisation] = useState<Organisation | ''>(goal?.organisation ?? organisationChoices()[0] ?? '')
   const [goalYear, setGoalYear] = useState(String(goal?.year ?? year))
   const [target, setTarget] = useState(goal ? String(goal.target) : String(defaultTarget('nm')))
   const [targetTouched, setTargetTouched] = useState(!!goal)
@@ -260,7 +261,7 @@ export function GoalSheet({ store, goal, notify, onClose }: { store: Store; goal
                 {t('week.organisation')}
                 <select value={organisation} onChange={(e) => setOrganisation(e.target.value as Organisation | '')}>
                   <option value="">{t('goals.allOrgs')}</option>
-                  {ORGANISATIONS.map((o) => (
+                  {organisationChoices().map((o) => (
                     <option key={o} value={o}>
                       {organisationLabel(o)}
                     </option>

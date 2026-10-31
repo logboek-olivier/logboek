@@ -1,9 +1,9 @@
 import { Check, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
-import { doubtfulTrips, firstNumber, ORG_CODE, tripCounters } from '../model/counters'
+import { doubtfulTrips, firstNumber, tripCounters } from '../model/counters'
 import { currentSettings } from '../model/settings'
-import { COUNTED_ORGANISATIONS, type CountedOrganisation } from '../model/types'
+import { type CountedOrganisation } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -11,6 +11,7 @@ import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { organisationLabel } from './WeekSheet'
 import { organisatieBeantwoorden, tellerBeginnummersOpslaan } from '../domain/trips'
+import { countedOrganisations, orgShort } from '../basis/organisatie'
 
 /** Twijfel bij de teller: een naam met alleen "SV" of "YW". Eén vraag tegelijk, ja of nee, nooit stil meegeteld. */
 export function CounterDoubtNotice({ store, notify }: { store: Store; notify: Notify }) {
@@ -54,23 +55,20 @@ export function CounterDoubtNotice({ store, notify }: { store: Store; notify: No
 /** Korte weergave van de beginnummers voor de rij in Instellingen: "SV #1 · YW #10". */
 export function firstNumbersLine(store: Store): string {
   const settings = currentSettings(store.get('settings.json.enc'))
-  return COUNTED_ORGANISATIONS.map((org) => `${ORG_CODE[org]} #${firstNumber(settings, org)}`).join(' · ')
+  return countedOrganisations().map((org) => `${orgShort(org)} #${firstNumber(settings, org)}`).join(' · ')
 }
 
 /** Beginnummer per organisatie, voor trips van vóór de app. */
 export function FirstNumbersSheet({ store, onClose, notify }: { store: Store; onClose: () => void; notify: Notify }) {
   const settings = currentSettings(store.get('settings.json.enc'))
-  const [values, setValues] = useState<Record<CountedOrganisation, string>>(() => ({
-    'sailing-virgins': String(firstNumber(settings, 'sailing-virgins')),
-    'yacht-week': String(firstNumber(settings, 'yacht-week')),
-  }))
+  const [values, setValues] = useState<Record<CountedOrganisation, string>>(() => Object.fromEntries(countedOrganisations().map((org) => [org, String(firstNumber(settings, org))])))
   const parse = (v: string) => (/^\d{1,4}$/.test(v.trim()) && Number(v) >= 1 ? Number(v) : null)
-  const valid = COUNTED_ORGANISATIONS.every((org) => parse(values[org]) !== null)
+  const valid = countedOrganisations().every((org) => parse(values[org] ?? '') !== null)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!valid) return
-    await tellerBeginnummersOpslaan(store, { 'sailing-virgins': parse(values['sailing-virgins']) ?? 1, 'yacht-week': parse(values['yacht-week']) ?? 1 })
+    await tellerBeginnummersOpslaan(store, Object.fromEntries(countedOrganisations().map((org) => [org, parse(values[org] ?? '') ?? 1])))
     onClose()
     notify(t('counter.saved'))
   }
@@ -79,9 +77,9 @@ export function FirstNumbersSheet({ store, onClose, notify }: { store: Store; on
     <Sheet title={t('counter.title')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
         <div className="two">
-          {COUNTED_ORGANISATIONS.map((org) => (
+          {countedOrganisations().map((org) => (
             <label key={org}>
-              {t('counter.first', { org: ORG_CODE[org] })}
+              {t('counter.first', { org: orgShort(org) })}
               <input inputMode="numeric" autoComplete="off" value={values[org]} onChange={(e) => setValues({ ...values, [org]: e.target.value })} />
             </label>
           ))}

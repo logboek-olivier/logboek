@@ -26,7 +26,7 @@ test('Weekplanning: wizard in drie stappen, afvinken voor de groep, blok verplaa
   })
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   const nav = page.getByRole('navigation')
   await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
 

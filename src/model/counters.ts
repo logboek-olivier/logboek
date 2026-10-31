@@ -3,16 +3,15 @@ import type { Tx } from '../domain/tx'
 import { tripRange } from './calendar'
 import { active } from './derive'
 import { currentSettings, saveSettings } from './settings'
-import { COUNTED_ORGANISATIONS, type CountedOrganisation, type Leg, type Settings, type Trip } from './types'
+import { type CountedOrganisation, type Leg, type Settings, type Trip } from './types'
 import { todayIso } from '../basis/datum'
-import { isCounted, orgFromName, tripOrganisation } from '../basis/organisatie'
+import { countedOrganisations, isCounted, orgFromName, orgShort, tripOrganisation } from '../basis/organisatie'
 
 // Teller per organisatie: elke trip van Sailing Virgins of Yacht Week krijgt zijn volgnummer op datum ("SV #3",
 // "YW #10"), vanaf een instelbaar beginnummer voor trips van vóór de app. Ook geïmporteerde trips tellen mee: een naam
 // met "Sailing Virgins" of "Yacht week" hoort er zeker bij; alleen een afkorting (SV, YW) is twijfel en telt pas mee
 // als Olivier het bevestigt.
 
-export const ORG_CODE: Record<CountedOrganisation, string> = { 'sailing-virgins': 'SV', 'yacht-week': 'YW' }
 
 export interface TripCounter {
   org: CountedOrganisation
@@ -48,13 +47,13 @@ function startOf(trip: Trip, legs: readonly Leg[]): string {
 export function tripCounters(trips: readonly Trip[], legs: readonly Leg[], settings: Settings): Map<string, TripCounter> {
   const out = new Map<string, TripCounter>()
   const live = active(legs)
-  for (const org of COUNTED_ORGANISATIONS) {
+  for (const org of countedOrganisations()) {
     const list = active(trips)
       .filter((t) => tripOrganisation(t) === org)
       .map((trip) => ({ trip, start: startOf(trip, live) }))
       .sort((a, b) => (a.start || '9999') < (b.start || '9999') ? -1 : (a.start || '9999') > (b.start || '9999') ? 1 : a.trip.name.localeCompare(b.trip.name))
     const first = firstNumber(settings, org)
-    list.forEach(({ trip }, i) => out.set(trip.id, { org, n: first + i, label: `${ORG_CODE[org]} #${first + i}` }))
+    list.forEach(({ trip }, i) => out.set(trip.id, { org, n: first + i, label: `${orgShort(org)} #${first + i}` }))
   }
   return out
 }
@@ -68,7 +67,7 @@ export function nextNumber(trips: readonly Trip[], legs: readonly Leg[], setting
 
 /** Een eigen teller vooraan in de naam: "SV #4 · BVI", "YW10", of alleen de afkorting ("SV BVI"). */
 function ownCounter(name: string, org: CountedOrganisation): RegExpExecArray | null {
-  return new RegExp(`^${ORG_CODE[org]}(?:\\s*#?\\s*\\d+)?(?![A-Za-z])`).exec(name)
+  return new RegExp(`^${orgShort(org)}(?:\\s*#?\\s*\\d+)?(?![A-Za-z])`).exec(name)
 }
 
 /**
@@ -98,7 +97,7 @@ export function newTripName(
 
 /** Naamvoorstel met teller: "SV #4 · BVI". */
 export function counterName(org: CountedOrganisation, n: number, area: string): string {
-  return area.trim() ? `${ORG_CODE[org]} #${n} · ${area.trim()}` : `${ORG_CODE[org]} #${n}`
+  return area.trim() ? `${orgShort(org)} #${n} · ${area.trim()}` : `${orgShort(org)} #${n}`
 }
 
 /** Twijfelgeval beantwoorden: ja = de trip hoort bij de organisatie (opgeslagen), nee = niet meer vragen. */
@@ -114,7 +113,7 @@ export async function answerDoubt(store: Tx, trip: Trip, org: CountedOrganisatio
 /** Beginnummers per organisatie (voor trips van vóór de app). */
 export async function saveFirstNumbers(store: Tx, first: Partial<Record<CountedOrganisation, number>>): Promise<void> {
   const clean: Partial<Record<CountedOrganisation, number>> = {}
-  for (const org of COUNTED_ORGANISATIONS) {
+  for (const org of countedOrganisations()) {
     const n = first[org]
     if (typeof n === 'number' && Number.isInteger(n) && n >= 1 && n < 10_000) clean[org] = n
   }

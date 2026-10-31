@@ -10,7 +10,7 @@ const fixture = { pathname: fixturePath('mijlen-nep.csv') }
 test('importeert de mijlenregistratie met controle-overzicht en toont tochten en dagen', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
 
   await openLogbook(page)
@@ -68,7 +68,7 @@ async function setVisibility(page: import('@playwright/test').Page, state: 'hidd
 test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrendelt niet, voorbeeld, Annuleren en Importeren', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await openLogbook(page)
 
   // Geen accept-filter: Android en Google Drive grijzen anders bestanden uit.
@@ -100,7 +100,7 @@ test('Excel-bestand via de bestandskiezer: verbergen tijdens het kiezen vergrend
 
 test('een onleesbaar bestand geeft een melding in gewone taal', async ({ page }) => {
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await openLogbook(page)
   await page.getByLabel('Mijlenbestand').setInputFiles({ name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]) })
   await expect(page.getByRole('alert')).toHaveText('Dit is geen CSV- of Excel-bestand.')

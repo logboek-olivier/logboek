@@ -58,7 +58,7 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   await setDefault(page, '1200')
   await expect(page.locator('.toast')).toHaveText('Salaris opgeslagen')

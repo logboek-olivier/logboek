@@ -45,8 +45,11 @@ export interface StayPeriod extends SyncRecord {
   /** Alleen bij reis. */
   travel?: { from?: string; to?: string; by?: TravelMode }
 }
-export type Organisation = 'sailing-virgins' | 'yacht-week' | 'eigen' | 'overig'
-export const ORGANISATIONS: readonly Organisation[] = ['sailing-virgins', 'yacht-week', 'eigen', 'overig']
+/**
+ * Organisatie van een trip: een eigen organisatie uit Instellingen → Organisaties (src/basis/organisatie.ts; de bestaande
+ * zijn 'sailing-virgins' en 'yacht-week'), of 'eigen' of 'overig'.
+ */
+export type Organisation = string
 
 /**
  * Deelnemer van een trip (student of gast, regel 14): alleen voornaam, optioneel land en optioneel kort kenmerk
@@ -342,11 +345,16 @@ export interface Settings extends SyncRecord {
   periodsMigratedAt?: string
   /** Nakijken: punten waarvan Olivier zei "Klopt zo" (vaste sleutels per punt, src/model/review.ts). */
   reviewDismissed?: string[]
+  /** Instellingen → Organisaties: naam en afkorting (src/basis/organisatie.ts). Ontbreekt = de bestaande (SV, YW). */
+  organisations?: { id: string; name: string; short?: string }[]
+  /** Een logboek dat leeg begon (na deze versie aangemaakt): geen organisaties, cursussen of startdatum vooraf. */
+  startedEmpty?: boolean
+  /** Cursuspakketten die zichtbaar zijn (src/model/seed-curricula.ts); ontbreekt = alle (een bestaand logboek). */
+  curriculumPacks?: string[]
 }
 
-/** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"). */
-export type CountedOrganisation = 'sailing-virgins' | 'yacht-week'
-export const COUNTED_ORGANISATIONS: readonly CountedOrganisation[] = ['sailing-virgins', 'yacht-week']
+/** Organisaties met een eigen volgnummer per trip ("SV #3", "YW #10"): die met een afkorting (src/basis/organisatie.ts). */
+export type CountedOrganisation = string
 
 // Training (release 2). Bond-onafhankelijk: ASA, RYA, CWO of een eigen cursus.
 

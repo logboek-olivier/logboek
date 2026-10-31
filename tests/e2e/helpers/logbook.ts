@@ -13,11 +13,12 @@ export async function enterToken(page: Page, submitLabel = 'Verder', lang: Lang 
   await page.getByRole('button', { name: submitLabel, exact: true }).click()
 }
 
-/** Doorloopt "Nieuw logboek" tot en met het ontgrendelde hoofdscherm. Geeft de herstelwoorden terug. */
-export async function createNewLogbook(page: Page, lang: Lang = 'nl'): Promise<string[]> {
+/** Doorloopt "Begin je eigen logboek" tot en met het ontgrendelde hoofdscherm. Geeft de herstelwoorden terug. */
+export async function createNewLogbook(page: Page, lang: Lang = 'nl', options: { olivier?: boolean } = {}): Promise<string[]> {
   const L = (key: Parameters<typeof translate>[1]) => translate(lang, key as 'common.next')
   await page.goto('./')
-  await page.getByRole('button', { name: L('setup.new') }).click()
+  await page.getByRole('button', { name: L('setup.own') }).click()
+  await page.getByRole('button', { name: L('common.next') }).click()
   await enterToken(page, L('common.next'), lang)
   await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
   await page.getByLabel(L('passphrase.again')).fill(PASSPHRASE)
@@ -32,7 +33,33 @@ export async function createNewLogbook(page: Page, lang: Lang = 'nl'): Promise<s
   }
   await page.getByRole('button', { name: L('setup.create') }).click()
   await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible({ timeout: 30_000 })
+  // Een nieuw logboek begint leeg (geen organisaties, geen meegeleverde cursussen). Specs die Sailing Virgins, Yacht Week
+  // of de ASA-cursussen nodig hebben, zetten ze erbij zoals een gebruiker dat doet.
+  if (options.olivier) await setUpLikeOlivier(page, lang)
   return words
+}
+
+/** Zoals een bestaand logboek: Sailing Virgins en Yacht Week (Instellingen → Organisaties) en alle cursuspakketten. */
+export async function setUpLikeOlivier(page: Page, lang: Lang = 'nl'): Promise<void> {
+  const L = (key: Parameters<typeof translate>[1], p?: Record<string, string>) => translate(lang, key as 'curriculum.addPack', p as { body: string })
+  await addKnownOrganisations(page, lang)
+  await openMore(page, L('curriculum.courses'), L('nav.more'))
+  for (const body of ['ASA', 'RYA', 'CWO']) await page.getByRole('button', { name: L('curriculum.addPack', { body }) }).click()
+  await expect(page.getByRole('button', { name: /ASA 101/ }).first()).toBeVisible()
+  await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
+}
+
+/** Instellingen → Organisaties: Sailing Virgins en Yacht Week uit de voorstellen. */
+export async function addKnownOrganisations(page: Page, lang: Lang = 'nl'): Promise<void> {
+  const L = (key: Parameters<typeof translate>[1]) => translate(lang, key as 'common.next')
+  await openMore(page, L('nav.settings'), L('nav.more'))
+  await page.getByRole('button', { name: new RegExp(`^${L('orgs.title')}`) }).click()
+  const sheet = page.getByRole('dialog')
+  await sheet.getByRole('button', { name: 'Sailing Virgins (SV)' }).click()
+  await sheet.getByRole('button', { name: 'Yacht Week (YW)' }).click()
+  await sheet.getByRole('button', { name: L('common.save') }).click()
+  await expect(sheet).toHaveCount(0)
+  await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
 }
 
 /** Vergrendelt via Instellingen. */

@@ -15,13 +15,14 @@ import {
   legOutsideCanExtend,
   type ReviewItem,
 } from '../model/review'
-import { ORGANISATIONS, WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } from '../model/types'
+import { WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
 import { plaatsenSamenvoegen } from '../domain/plaatsen'
 import { tripTerugzetten } from '../domain/prullenbak'
 import { trashItems } from '../model/trash'
 import { defaultTripName } from '../model/trip-name'
 import { agendadagBijTrip, dagBeginAansluiten, dagenNaarTrip, tripVoorDagen, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
+import { organisationChoices } from '../basis/organisatie'
 
 // Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): twijfelgevallen en tegenstrijdigheden, elk met één knop die het
 // oplost (met ongedaan maken) en "Klopt zo". Zonder punten staat het scherm niet in Meer.
@@ -144,7 +145,7 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
     case 'soort':
       return [item.suggestion, ...KIND_CHOICES.filter((k) => k !== item.suggestion)].map((type, i) => ({ label: kindChoiceLabel(type), primary: i === 0, run: () => periodeSoortZetten(store, item.trip, type) }))
     case 'organisatie': {
-      const order: Organisation[] = item.suggestion ? [item.suggestion, ...ORGANISATIONS.filter((o) => o !== item.suggestion)] : [...ORGANISATIONS]
+      const order: Organisation[] = item.suggestion ? [item.suggestion, ...organisationChoices().filter((o) => o !== item.suggestion)] : organisationChoices()
       return order.map((org, i) => ({ label: organisationLabel(org), primary: i === 0 && !!item.suggestion, run: () => periodeOrganisatieZetten(store, item.trip, org) }))
     }
     case 'overlap-land':

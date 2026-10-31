@@ -28,7 +28,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const L = (key: MessageKey, ...args: unknown[]) => (translate as (l: Lang, k: MessageKey, ...a: unknown[]) => string)(lang, key, ...args)
       const errors = collectConsoleErrors(page)
       await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       const shoot = async (name: string) => {
         for (const width of [360, 412]) {
           for (const scheme of ['light', 'dark'] as const) {

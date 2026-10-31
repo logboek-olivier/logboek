@@ -5,7 +5,7 @@ import { nameWithCounter } from '../model/counters'
 import { defaultChanges, salaryQuestions } from '../model/salary'
 import { asksPerTrip, payoutRule } from '../model/money-path'
 import { currentSettings } from '../model/settings'
-import { CURRENCIES, ORGANISATIONS, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
+import { CURRENCIES, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -17,19 +17,22 @@ import { geenSalaris, salarisLaterVragen, salarisOntvangen, standaardsalarisOpsl
 import { instellingenOpslaan } from '../domain/instellingen'
 import { amountInput, parseAmount } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Salaris: standaardbedrag per organisatie (Instellingen), en op Vandaag "Salaris van <trip> ontvangen?" na de
 // einddatum. Vandaag toont geen bedragen; het werkelijke bedrag staat pas in het blad "Ander bedrag".
 
 type Row = { amount: string; currency: Currency }
 type PayoutRow = { kind: PayoutRule['kind']; day: string }
+const EMPTY_ROW: Row = { amount: '', currency: 'EUR' }
+const EMPTY_PAYOUT: PayoutRow = { kind: 'per-trip', day: '1' }
 
 /** Instellingen → Salaris per organisatie. Een gewijzigd bedrag vraagt eerst of het ook voor komende trips geldt. */
 export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; onClose: () => void; notify: Notify }) {
   const settings = currentSettings(store.get('settings.json.enc'))
   const [rows, setRows] = useState<Record<Organisation, Row>>(() => {
     const out = {} as Record<Organisation, Row>
-    for (const org of ORGANISATIONS) {
+    for (const org of organisationChoices()) {
       const d = settings.salaryDefaults?.[org]
       out[org] = { amount: d ? amountInput(d.amount) : '', currency: d?.currency ?? 'EUR' }
     }
@@ -38,7 +41,7 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
   // Uitbetaling per organisatie: na elke trip (standaard) of maandelijks rond dag N voor de trips van de vorige maand.
   const [payouts, setPayouts] = useState<Record<Organisation, PayoutRow>>(() => {
     const out = {} as Record<Organisation, PayoutRow>
-    for (const org of ORGANISATIONS) {
+    for (const org of organisationChoices()) {
       const rule = payoutRule(settings, org)
       out[org] = { kind: rule.kind, day: rule.kind === 'maandelijks' ? String(rule.day) : '1' }
     }
@@ -49,18 +52,18 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
 
   function nextPayouts(): Partial<Record<Organisation, PayoutRule>> {
     const out: Partial<Record<Organisation, PayoutRule>> = {}
-    for (const org of ORGANISATIONS) {
-      const day = Math.round(Number(payouts[org].day))
-      if (payouts[org].kind === 'maandelijks') out[org] = { kind: 'maandelijks', day: Number.isFinite(day) ? Math.min(28, Math.max(1, day)) : 1 }
+    for (const org of organisationChoices()) {
+      const day = Math.round(Number(payouts[org]?.day ?? '1'))
+      if (payouts[org]?.kind === 'maandelijks') out[org] = { kind: 'maandelijks', day: Number.isFinite(day) ? Math.min(28, Math.max(1, day)) : 1 }
     }
     return out
   }
 
   function next(): Partial<Record<Organisation, SalaryDefault>> {
     const out: Partial<Record<Organisation, SalaryDefault>> = {}
-    for (const org of ORGANISATIONS) {
-      const amount = parseAmount(rows[org].amount)
-      if (amount !== null && amount > 0) out[org] = { amount, currency: rows[org].currency }
+    for (const org of organisationChoices()) {
+      const amount = parseAmount(rows[org]?.amount ?? '')
+      if (amount !== null && amount > 0) out[org] = { amount, currency: rows[org]?.currency ?? 'EUR' }
     }
     return out
   }
@@ -101,7 +104,7 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
       ) : (
         <form className="stack" onSubmit={submit}>
           <p className="muted small">{t('salary.defaultsHint')}</p>
-          {ORGANISATIONS.map((org) => (
+          {organisationChoices().map((org) => (
             <div key={org} className="stack-sm salary-org">
               <div className="row">
                 <label className="grow">
@@ -110,13 +113,13 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
                     type="text"
                     inputMode="decimal"
                     autoComplete="off"
-                    value={rows[org].amount}
-                    onChange={(e) => setRows({ ...rows, [org]: { ...rows[org], amount: e.target.value } })}
+                    value={(rows[org] ?? EMPTY_ROW).amount}
+                    onChange={(e) => setRows({ ...rows, [org]: { ...(rows[org] ?? EMPTY_ROW), amount: e.target.value } })}
                   />
                 </label>
                 <label>
                   {t('field.currency')}
-                  <select aria-label={`${t('field.currency')}: ${organisationLabel(org)}`} value={rows[org].currency} onChange={(e) => setRows({ ...rows, [org]: { ...rows[org], currency: e.target.value as Currency } })}>
+                  <select aria-label={`${t('field.currency')}: ${organisationLabel(org)}`} value={(rows[org] ?? EMPTY_ROW).currency} onChange={(e) => setRows({ ...rows, [org]: { ...(rows[org] ?? EMPTY_ROW), currency: e.target.value as Currency } })}>
                     {CURRENCIES.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -128,15 +131,15 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
               <div className="row payout-rule">
                 <label className="grow">
                   {t('payout.rule')}
-                  <select aria-label={`${t('payout.rule')}: ${organisationLabel(org)}`} value={payouts[org].kind} onChange={(e) => setPayouts({ ...payouts, [org]: { ...payouts[org], kind: e.target.value as PayoutRule['kind'] } })}>
+                  <select aria-label={`${t('payout.rule')}: ${organisationLabel(org)}`} value={(payouts[org] ?? EMPTY_PAYOUT).kind} onChange={(e) => setPayouts({ ...payouts, [org]: { ...(payouts[org] ?? EMPTY_PAYOUT), kind: e.target.value as PayoutRule['kind'] } })}>
                     <option value="per-trip">{t('payout.perTrip')}</option>
                     <option value="maandelijks">{t('payout.monthly')}</option>
                   </select>
                 </label>
-                {payouts[org].kind === 'maandelijks' && (
+                {(payouts[org] ?? EMPTY_PAYOUT).kind === 'maandelijks' && (
                   <label>
                     {t('payout.day')}
-                    <input aria-label={`${t('payout.day')}: ${organisationLabel(org)}`} type="number" inputMode="numeric" min={1} max={28} value={payouts[org].day} onChange={(e) => setPayouts({ ...payouts, [org]: { ...payouts[org], day: e.target.value } })} />
+                    <input aria-label={`${t('payout.day')}: ${organisationLabel(org)}`} type="number" inputMode="numeric" min={1} max={28} value={(payouts[org] ?? EMPTY_PAYOUT).day} onChange={(e) => setPayouts({ ...payouts, [org]: { ...(payouts[org] ?? EMPTY_PAYOUT), day: e.target.value } })} />
                   </label>
                 )}
               </div>
@@ -154,7 +157,7 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
 /** Samenvatting voor de rij in Instellingen, zonder bedragen: voor welke organisaties een standaardbedrag staat. */
 export function salaryDefaultsLine(store: Store): string {
   const defaults = currentSettings(store.get('settings.json.enc')).salaryDefaults ?? {}
-  const orgs = ORGANISATIONS.filter((o) => (defaults[o]?.amount ?? 0) > 0)
+  const orgs = organisationChoices().filter((o) => (defaults[o]?.amount ?? 0) > 0)
   return orgs.length > 0 ? orgs.map((o) => organisationLabel(o)).join(', ') : t('salary.noDefaults')
 }
 

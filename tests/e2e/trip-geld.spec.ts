@@ -21,7 +21,7 @@ async function openTripFromLog(page: Page, name: string) {
 test('geen salaris, fooi toevoegen bij de trip, resultaat van de trip en zeilgeld', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   // Een voorbije trip van Yacht Week met een verwacht salaris.
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()

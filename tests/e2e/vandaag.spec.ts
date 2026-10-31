@@ -21,7 +21,7 @@ test('de app opent binnen 2 seconden: eerste keer en ontgrendelen', async ({ pag
   test.info().annotations.push({ type: 'eerste keer', description: `${Math.round(first)} ms` })
   expect(first).toBeLessThan(2000)
 
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await page.getByRole('navigation').getByRole('button', { name: 'Meer', exact: true }).click()
   await page.getByRole('button', { name: /^Instellingen/ }).click()
   await page.getByRole('button', { name: 'Vergrendelen' }).click()
@@ -39,7 +39,7 @@ test('de app opent binnen 2 seconden: eerste keer en ontgrendelen', async ({ pag
 test('Vandaag: de lopende trip groot bovenaan, tik opent het tripoverzicht, de dagsoort de dagkaart', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   // Zonder lopende trip: de dagsoort in één regel.
   await expect(page.locator('.today-kind')).toBeVisible()

@@ -32,7 +32,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const github = await mockGithub(page)
       // Koersen tot en met vandaag: USD 1,25 per euro.
       await mockRates(page, 0)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
 
       // De organisatie volgt uit de periode (periodemodel): twee trips deze maand, bij Sailing Virgins en Yacht Week.
       const month = new Date().toISOString().slice(0, 7)

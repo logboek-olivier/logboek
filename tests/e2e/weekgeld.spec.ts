@@ -34,7 +34,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const errors = collectConsoleErrors(page)
       const toast = page.locator('.toast')
       await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
 
       // Een betaalrekening, een voorbije trip met salaris te ontvangen, en een contante fooi.
       await openMore(page, L('accounts.screen'), L('nav.more'))

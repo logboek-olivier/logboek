@@ -8,6 +8,7 @@ import { describeError, MIN_PASSPHRASE_LENGTH, useSession, type PreparedVault } 
 import { t } from '../i18n'
 import { useBack } from '../back'
 import { DATA_REPO, isRepoName } from '../storage/github'
+import { startDemo } from '../demo'
 
 // Eerste keer op een apparaat: nieuw logboek of bestaand logboek koppelen.
 
@@ -21,6 +22,7 @@ interface TokenInfo {
 
 type Step =
   | { kind: 'choose' }
+  | { kind: 'guide' }
   | { kind: 'token'; mode: 'new' | 'link' }
   | { kind: 'passphrase'; token: TokenInfo }
   | { kind: 'words'; token: TokenInfo; vault: PreparedVault }
@@ -56,13 +58,51 @@ export function Setup() {
       <Screen title={t('setup.title')}>
         <p className="muted">{t('setup.choose')}</p>
         <div className="stack">
-          <button className="btn primary" onClick={() => setStep({ kind: 'token', mode: 'new' })}>
-            {t('setup.new')}
+          <button className="btn primary" onClick={() => setStep({ kind: 'guide' })}>
+            {t('setup.own')}
           </button>
-          <button className="btn" onClick={() => setStep({ kind: 'token', mode: 'link' })}>
+          <button className="btn" onClick={() => void startDemo().catch(() => undefined)}>
+            {t('setup.demo')}
+          </button>
+          <button className="btn link" onClick={() => setStep({ kind: 'token', mode: 'link' })}>
             {t('setup.link')}
           </button>
         </div>
+      </Screen>
+    )
+  }
+
+  if (step.kind === 'guide') {
+    // Begin je eigen logboek: wat er bij GitHub nodig is, in vier stappen. De app praat alleen met api.github.com; de
+    // links openen GitHub zelf in de browser.
+    return (
+      <Screen title={t('setup.own')} onBack={() => setStep({ kind: 'choose' })}>
+        <p className="muted">{t('setup.guideIntro')}</p>
+        <ol className="stack-sm guide-steps">
+          <li>
+            {t('setup.guide1')}{' '}
+            <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer">
+              github.com/signup
+            </a>
+          </li>
+          <li>
+            {t('setup.guide2')}{' '}
+            <a href="https://github.com/new" target="_blank" rel="noopener noreferrer">
+              github.com/new
+            </a>
+          </li>
+          <li>
+            {t('setup.guide3')}{' '}
+            <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">
+              github.com/settings/personal-access-tokens/new
+            </a>
+          </li>
+          <li>{t('setup.guide4')}</li>
+        </ol>
+        <p className="muted small">{t('setup.guideSafe')}</p>
+        <button className="btn primary" onClick={() => setStep({ kind: 'token', mode: 'new' })}>
+          {t('common.next')}
+        </button>
       </Screen>
     )
   }
@@ -71,7 +111,7 @@ export function Setup() {
     const check = (token: string, repo: string) =>
       step.mode === 'new' ? session.checkEmptyRepo(token, repo) : session.checkToken(token, repo)
     return (
-      <Screen title={step.mode === 'new' ? t('setup.new') : t('setup.linkTitle')} onBack={() => setStep({ kind: 'choose' })}>
+      <Screen title={step.mode === 'new' ? t('setup.new') : t('setup.linkTitle')} onBack={() => setStep(step.mode === 'new' ? { kind: 'guide' } : { kind: 'choose' })}>
         <TokenForm
           check={check}
           withRepo
