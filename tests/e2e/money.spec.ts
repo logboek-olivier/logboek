@@ -100,7 +100,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
     await view.getByRole('button', { name: 'Bewerken' }).click()
   }
   await editTaxi()
-  await expect(page.getByRole('dialog', { name: 'Kosten bewerken' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Uitgave bewerken' })).toBeVisible()
   await page.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.tx')).toHaveCount(2)
   await expect(grid).toContainText('Kosten€ 0,00')
