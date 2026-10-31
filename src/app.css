@@ -3183,13 +3183,15 @@ body.presenting .bottom-bar {
 }
 
 .storage-ok,
+.health-ok,
 .storage-problem {
   justify-content: flex-start;
   margin: 0;
   padding: var(--s-2) var(--s-3);
 }
 
-.storage-ok {
+.storage-ok,
+.health-ok {
   background: var(--accent-soft);
   border-color: var(--accent);
 }

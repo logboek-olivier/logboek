@@ -495,7 +495,7 @@ function HealthSection({ store, notify }: { store: Store; notify: Notify }) {
     <div className="section stack health">
       <h2>{t('health.title')}</h2>
       {found.length === 0 ? (
-        <p className="notice storage-ok" role="status">
+        <p className="notice health-ok" role="status">
           {t('health.ok')}
         </p>
       ) : (
