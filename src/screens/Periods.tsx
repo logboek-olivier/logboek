@@ -51,7 +51,7 @@ export function Periods({ store, notify, onAddDay }: { store: Store; notify: Not
       <div className="stack-sm">
         <label className="search-field">
           <Icon icon={Search} />
-          <input type="search" autoComplete="off" placeholder={t('periods.search')} aria-label={t('periods.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input type="search" autoComplete="off" placeholder={t('periods.searchShort')} aria-label={t('periods.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <div className="type-buttons" role="radiogroup" aria-label={t('periods.filter')}>
           {PERIOD_FILTERS.map((f) => (

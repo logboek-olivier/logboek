@@ -1986,6 +1986,7 @@ export const nl = {
   'periods.title': 'Periodes',
   'more.periodsHint': 'Alle trips, reizen en thuisperiodes: nu, komend en afgelopen',
   'periods.search': 'Zoeken op naam, boot, plaats of persoon',
+  'periods.searchShort': 'Naam, boot, plaats, persoon',
   'periods.filter': 'Soort',
   'periods.filter.alles': 'Alles',
   'periods.filter.werk': 'Werk',

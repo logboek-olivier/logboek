@@ -1949,6 +1949,7 @@ export const en: Messages = {
   'periods.title': 'Periods',
   'more.periodsHint': 'All trips, travel and time at home: now, upcoming and past',
   'periods.search': 'Search by name, boat, place or person',
+  'periods.searchShort': 'Name, boat, place, person',
   'periods.filter': 'Kind',
   'periods.filter.alles': 'All',
   'periods.filter.werk': 'Work',
