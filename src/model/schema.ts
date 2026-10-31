@@ -8,7 +8,8 @@ export const SCHEMA_VERSION = 1
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
 // schrijft niets naar GitHub en toont "Werk de app bij". Omhoog wanneer een oudere build niet meer over de bestanden van
 // deze build mag schrijven (bijvoorbeeld omdat hij velden of bestanden anders gebruikt), ook als het schema gelijk blijft.
-// Builds van vóór de schrijfversie kennen het veld niet; daartegen beschermt alleen de schemaversie.
+// Builds van vóór de schrijfversie kennen het veld niet; daartegen beschermt alleen de schemaversie. Nooit verlagen, ook
+// niet bij terugdraaien: de bestanden van de hogere versie blijven dan voor elke build "van een nieuwere versie".
 export const WRITER_VERSION = 1
 
 let writer = WRITER_VERSION

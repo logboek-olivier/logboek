@@ -129,7 +129,7 @@ async function newContext(browser: Browser) {
 }
 
 /** Een schoon apparaat koppelt met de wachtzin; elk bestand op GitHub is te lezen en elk voorbeeld staat er nog. */
-async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, github: E2eGithub, data: UpgradeData, startedUnreadable: string[] = [], newWrites = false): Promise<void> {
+async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, github: E2eGithub, data: UpgradeData, startedUnreadable: string[] = []): Promise<void> {
   const clean = await newContext(browser)
   const page = await clean.newPage()
   await mockGithub(page, github)
@@ -149,18 +149,14 @@ async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, g
     if (startedUnreadable.includes(path)) continue
     for (const sample of UPGRADE_SAMPLES[path] ?? []) expect(records.map((r) => r.id), path).toContain(sample.id)
   }
-  // Minimale schrijfversie: geen bestand vraagt een hogere dan deze release kent, en wat deze release op GitHub zette
-  // (`newWrites`: na de update is er iets opgeslagen), draagt zijn schrijfversie (een build met een lagere schrijft er niet
-  // overheen).
-  const writers: number[] = []
+  // Minimale schrijfversie: na een volledige sync met deze release draagt elk bestand op GitHub zijn schrijfversie (ook wat
+  // deze release niet veranderde, één keer opnieuw geschreven), zodat een build met een lagere er niet overheen schrijft.
   for (const path of COLLECTION_PATHS) {
     const file = github.files.get(path)
     if (!file) continue
     const raw = JSON.parse(new TextDecoder().decode(await decryptObject(key, path, Uint8Array.from(Buffer.from(file.content, 'base64'))))) as { minWriterVersion?: number }
-    writers.push(raw.minWriterVersion ?? 0)
+    expect(raw.minWriterVersion, path).toBe(WRITER_VERSION)
   }
-  expect(Math.max(...writers)).toBeLessThanOrEqual(WRITER_VERSION)
-  if (newWrites) expect(Math.max(...writers)).toBe(WRITER_VERSION)
 }
 
 test('upgrade: vorige release → deze release in dezelfde opslag → schoon apparaat leest alles', async ({ browser }) => {
@@ -338,7 +334,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect.poll(() => puts('claims.json.enc'), { timeout: 20_000 }).toBeGreaterThan(claimPuts)
     await expectSynced(page)
     await phone.close()
-    await cleanDeviceReadsAll(browser, server, github, data, [], true)
+    await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe dag, naast de voorbeelden als de vorige release de agenda al kende.
     const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
     const key = await unlock(meta, { passphrase: PASSPHRASE })
