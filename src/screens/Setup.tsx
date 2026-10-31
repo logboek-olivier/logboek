@@ -82,19 +82,19 @@ export function Setup() {
           <li>
             {t('setup.guide1')}{' '}
             <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer">
-              github.com/signup
+              {'github.com/signup'}
             </a>
           </li>
           <li>
             {t('setup.guide2')}{' '}
             <a href="https://github.com/new" target="_blank" rel="noopener noreferrer">
-              github.com/new
+              {'github.com/new'}
             </a>
           </li>
           <li>
             {t('setup.guide3')}{' '}
             <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">
-              github.com/settings/personal-access-tokens/new
+              {'github.com/settings/personal-access-tokens/new'}
             </a>
           </li>
           <li>{t('setup.guide4')}</li>

@@ -152,7 +152,8 @@ export function restorePlan(store: Store, backup: OpenedBackup): RestoreItem[] {
     if (!records) return []
     const now = present(store.get(path))
     const active = records.filter((r) => r.deletedAt === null)
-    return [{ path, inBackup: active.length, back: active.filter((r) => !now.has(r.id)) }]
+    // Een vers "leeg begonnen" record in de back-up zet niets terug.
+    return [{ path, inBackup: active.length, back: active.filter((r) => !now.has(r.id) && !isFreshSettings(r)) }]
   })
 }
 
@@ -166,7 +167,7 @@ export async function applyRestore(store: Tx, plan: readonly RestoreItem[]): Pro
     const now = present(store.get(item.path))
     // De instellingen vervangen het verse record van een nieuw logboek; daarvoor een nieuwe tijd, anders wint het verse
     // record (later gemaakt) bij de sync.
-    const back = item.back.filter((r) => !now.has(r.id)).map((r) => (item.path === 'settings.json.enc' && r.id === 'settings' ? { ...r, updatedAt: store.now } : r))
+    const back = item.back.filter((r) => !now.has(r.id) && !isFreshSettings(r)).map((r) => (item.path === 'settings.json.enc' && r.id === 'settings' ? { ...r, updatedAt: store.now } : r))
     if (back.length > 0) await putRecords(store, item.path, back)
   }
 }

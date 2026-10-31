@@ -11,7 +11,7 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page, 'nl', { olivier: true })
-  await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
+  await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
   await openLogbook(page)
   await expect(page.getByRole('heading', { name: 'Logboek' })).toBeVisible()
@@ -44,7 +44,7 @@ test('importeert de mijlenregistratie met controle-overzicht en toont tochten en
   await expectNoHorizontalOverflow(page)
   await overview.getByRole('button', { name: 'Sluiten' }).click()
 
-  await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
+  await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   const wire = github.requests.map((r) => `${r.url}\n${r.body ?? ''}`).join('\n')
   expect(wire).not.toContain('Meerdorp')
   expect(wire).not.toContain('Cursus')
