@@ -21,6 +21,24 @@ import { instellingenOpslaan } from '../../src/domain/instellingen'
 // gelijktijdig schrijven, "herladen", een onleesbare versie van een ander logboek en "Alles herstellen", en een schoon
 // apparaat dat alles leest. Na elke stap: elk bestand op GitHub is met de sleutel te lezen. Alleen nepdata.
 
+// Zoals in de browser: een localStorage (Node heeft er geen). Het opslaglogboek onthoudt daarin per apparaat (database)
+// welke versie het net verving, zodat GitHub die vlak na schrijven nog even mag teruggeven zonder dat het als "net
+// overschreven door een ander" telt (gezien op PR #103). Alleen in het geheugen van deze test.
+if (typeof globalThis.localStorage === 'undefined') {
+  const items = new Map<string, string>()
+  const shim = {
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem: (key: string, value: string) => void items.set(key, String(value)),
+    removeItem: (key: string) => void items.delete(key),
+    clear: () => items.clear(),
+    key: (i: number) => [...items.keys()][i] ?? null,
+    get length() {
+      return items.size
+    },
+  }
+  Object.defineProperty(globalThis, 'localStorage', { value: shim, configurable: true })
+}
+
 const t = target('node')
 const wordlist = parseWordlistForTests()
 let k1: Awaited<ReturnType<typeof createVault>>
