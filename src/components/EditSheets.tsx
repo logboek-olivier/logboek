@@ -125,7 +125,7 @@ export function TransactionSheet({
   }
 
   return (
-    <Sheet title={t('edit.transaction', { kind: kindLabel(tx.kind) })} onClose={onClose}>
+    <Sheet title={expense ? t('edit.expense') : t('edit.transaction', { kind: kindLabel(tx.kind) })} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
         <label>
           {t('field.amount')}
@@ -181,7 +181,7 @@ export function TransactionSheet({
         {currency !== 'EUR' && (
           <>
             <label>
-              {t('money.receivedEur')}
+              {t(expense ? 'money.paidEur' : 'money.receivedEur')}
               <input inputMode="decimal" autoComplete="off" placeholder={converted ? formatNumber(converted.eur) : ''} value={received} onChange={(e) => setReceived(e.target.value)} />
             </label>
             <p className="muted small">

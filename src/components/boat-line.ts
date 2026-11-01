@@ -12,6 +12,8 @@ export function boatLine(trip: Trip, fallbackBoat = ''): string {
 
 /** "6 dagen · 5 gelogd" (dagen van start tot en met eind); zonder datums alleen het aantal gelogde dagen. */
 export function tripDaysText(view: Pick<WeekView, 'startDate' | 'endDate' | 'legs'>, until?: string): string {
-  const { days, logged } = tripDayCounts(view, until)
-  return days === null ? t('trip.loggedOnly', { logged }) : t('trip.daysLogged', { days, logged })
+  // "7 dagen · 6 gelogd · 10 etappes": etappes alleen als dat er meer zijn dan gelogde dagen.
+  const { days, logged, legs } = tripDayCounts(view, until)
+  const base = days === null ? t('trip.loggedOnly', { logged }) : t('trip.daysLogged', { days, logged })
+  return legs > logged ? `${base} · ${t('trip.legsCount', { n: legs })}` : base
 }

@@ -210,6 +210,7 @@ export const nl = {
 
   // Bewerken
   'edit.transaction': (p: { kind: string }) => `${p.kind} bewerken`,
+  'edit.expense': 'Uitgave bewerken',
   'edit.day': 'Dag bewerken',
   'edit.keepWithoutTrip': 'Zonder periode (zo laten)',
   'edit.newTrip': 'Nieuwe trip…',
@@ -612,6 +613,7 @@ export const nl = {
 
   // Geld in euro
   'money.receivedEur': 'Werkelijk ontvangen in euro (optioneel)',
+  'money.paidEur': 'Werkelijk betaald in euro (optioneel)',
   'money.receivedHint': 'Een ingevuld eurobedrag gaat voor de omrekening.',
   'money.rateUsed': (p: { rate: string; currency: string; date: string }) => `Koers ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
   'money.rateProvisional': (p: { rate: string; currency: string; date: string }) => `Voorlopig: laatst bekende koers ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
@@ -1119,6 +1121,7 @@ export const nl = {
   'trip.openDay': (p: { date: string }) => `Dag van ${p.date} bekijken`,
   'trip.open': (p: { name: string }) => `${p.name} bekijken`,
   'view.received': 'Werkelijk ontvangen',
+  'view.paid': 'Werkelijk betaald',
   'view.returning': 'Terugkerende gast',
   'students.openChecklist': 'Checklist openen',
   'day.unpinned': (p: { names: string }) => `Zonder pin, dus niet op de kaart: ${p.names}`,
@@ -1858,7 +1861,9 @@ export const nl = {
   'money.monthResult': 'Resultaat',
   'trip.daysLogged': (p: { days: number; logged: number }) => `${p.days} ${plural(p.days, 'dag', 'dagen')} · ${p.logged} gelogd`,
   'trip.loggedOnly': (p: { logged: number }) => `${p.logged} gelogd`,
+  'trip.legsCount': (p: { n: number }) => `${p.n} ${plural(p.n, 'etappe', 'etappes')}`,
   'trip.logged': 'Gelogd',
+  'trip.legs': 'Etappes',
   'period.title': 'Periode',
   'period.carriere': 'Sinds start zeilcarrière',
   'period.jaar': 'Dit jaar',

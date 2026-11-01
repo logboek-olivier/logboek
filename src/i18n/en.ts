@@ -192,6 +192,7 @@ export const en: Messages = {
   'import.xlsxNoSheets': 'No sheets found in the Excel file.',
 
   'edit.transaction': (p) => `Edit ${p.kind.toLowerCase()}`,
+  'edit.expense': 'Edit expense',
   'edit.day': 'Edit day',
   'edit.keepWithoutTrip': 'No period (leave as is)',
   'edit.newTrip': 'New trip…',
@@ -575,6 +576,7 @@ export const en: Messages = {
   'week.costs': 'Expenses',
 
   'money.receivedEur': 'Actually received in euro (optional)',
+  'money.paidEur': 'Actually paid in euro (optional)',
   'money.receivedHint': 'A euro amount filled in here takes precedence over the conversion.',
   'money.rateUsed': (p) => `Rate ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
   'money.rateProvisional': (p) => `Provisional: last known rate ${p.rate} ${p.currency} per euro (ECB, ${p.date}).`,
@@ -1082,6 +1084,7 @@ export const en: Messages = {
   'trip.openDay': (p: { date: string }) => `View day of ${p.date}`,
   'trip.open': (p: { name: string }) => `View ${p.name}`,
   'view.received': 'Actually received',
+  'view.paid': 'Actually paid',
   'view.returning': 'Returning guest',
   'students.openChecklist': 'Open checklist',
   'day.unpinned': (p: { names: string }) => `No pin, so not on the map: ${p.names}`,
@@ -1821,7 +1824,9 @@ export const en: Messages = {
   'money.monthResult': 'Result',
   'trip.daysLogged': (p) => `${p.days} ${plural(p.days, 'day', 'days')} · ${p.logged} logged`,
   'trip.loggedOnly': (p) => `${p.logged} logged`,
+  'trip.legsCount': (p: { n: number }) => `${p.n} ${plural(p.n, 'leg', 'legs')}`,
   'trip.logged': 'Logged',
+  'trip.legs': 'Legs',
   'period.title': 'Period',
   'period.carriere': 'Since sailing career start',
   'period.jaar': 'This year',
