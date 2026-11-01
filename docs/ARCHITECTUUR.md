@@ -190,7 +190,7 @@ dezelfde weg voor het bonnetje.
 | Geld in euro | `money.ts` (bedragen lezen en tonen), `rates.ts` (koers van de dag, `public/rates.json`) | transactions |
 | Salaris en geldpad | `salary.ts`, `money-path.ts` (ook `tripResult`: resultaat per trip) | trips, transactions, settings |
 | Uitgaven | `expenses.ts` (soort, Hoort bij, bron, investering) | transactions, trips, periods |
-| Kosten werkelijk | `actual-costs.ts` (per maand: geboekte vaste lasten, losse kosten, weekschatting) | transactions, weekreviews |
+| Kosten werkelijk | `actual-costs.ts` (per maand: geboekte vaste lasten en losse kosten; de weekschatting is weg sinds november 2026) | transactions |
 | Positie en vooruitblik | `position.ts` (`resolvePeriod`: periode zelf kiezen), `costs.ts` | accounts, balances, transactions, trips, claims, fixedcosts, weekreviews, calendar |
 | Belasting | `tax-year.ts` | transactions, trips |
 | Weekafsluiting | `week-close.ts`, `week-money.ts` | legs, calendar, trips, students |

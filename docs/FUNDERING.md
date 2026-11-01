@@ -106,17 +106,57 @@ die datums en deelnemers staan. Een geïmporteerde trip heeft geen eigen datums,
 bleven als enige over. Geen code koppelde op index of volgorde (gezocht in de hele codebase); wel zocht Nakijken een trip
 in de prullenbak op naam (nu op id).
 
-- **Terugzetten** geeft de overblijvende trip weer alleen zijn eigen datums en deelnemers (`untangleSurvivors` in
-  `src/model/link-repair.ts`). Een deelnemer die al bij een andere trip staat, komt niet dubbel terug.
-- **Logboek herstellen** (Meer → Opslag): herstelt wat al beschadigd is, alleen met bewijs (vast import-id,
-  geschiedenis, student), met een voorbeeld vooraf, één tik en ongedaan maken (`src/domain/herstel.ts`).
+- **Terugzetten** gaf de overblijvende trip weer alleen zijn eigen datums en deelnemers. Weggehaald in sectie 6: er is
+  geen samenvoegen meer, dus ook niets meer te ontwarren.
+- **Logboek herstellen** (Meer → Opslag) herstelde wat al beschadigd was. Weggehaald in sectie 6: Excel opnieuw
+  importeren is nu de schone herstart.
 - **Proef op een kopie** (`src/domain/relaties.ts`, in `commit`): een automatische stap die een bestaande koppeling
   verandert of een nieuwe overtreding maakt, schrijft niets; een import mag geen bestaande koppeling veranderen.
-- **Nieuwe invarianten**: een trip loopt niet over de dagen van een andere trip heen met datums die Olivier niet zelf
-  koos; een geïmporteerde trip is hoogstens 21 dagen (anders Nakijken); een deelnemer staat in één trip.
+- **Nieuwe invarianten** (een trip loopt niet over een andere heen, een geïmporteerde trip is hoogstens 21 dagen, een
+  deelnemer staat in één trip): weggehaald in sectie 6. Overlap is normaal en een deelnemer mag in meerdere trips staan.
 - **Tweede route met dezelfde schade** (gevonden door de review): samenvoegen en daarna de Excel opnieuw importeren.
   De samengevoegde trip komt dan onder een nieuw id terug; de overblijvende houdt de datums en deelnemers van beide.
   Herstel op id: de verwijderde dag `import:<oud>:<datum>:<n>` en de nieuwe `import:<nieuw>:<datum>:<n>` met dezelfde
   inhoud koppelen oud aan nieuw; de deelnemers uit de lijst van de verwijderde trip gaan naar de nieuwe.
 - **Gouden dataset** (`tests/helpers/gouden-dataset.ts`) in de tests van elke migratie (`tests/migraties-gouden.test.ts`:
   relaties en totalen gelijk, twee keer = één keer) en in de upgradetest (relaties na het bijwerken).
+
+## 6. Versimpeld (november 2026)
+
+Na veel rondes was de app te ingewikkeld: slimme automatische oplossingen voor simpele dingen veroorzaakten zelf fouten
+(trips die maanden doorliepen, de agenda vol overlapmeldingen). De vijf uitgangspunten bovenaan CLAUDE.md gaan nu voor
+alles: het Excel-logboek is de waarheid, tripdatums zijn gewone velden, overlap is normaal, een deelnemer mag in
+meerdere trips staan, en niets verandert zonder een tik (behalve sync en noodzakelijke omzettingen van het dataformaat).
+
+De trips die maanden doorliepen, kwamen uit de Excel zelf. In een paar blokken lag elke dag een maand na de vorige, en
+één rij had 31 april. De app rekende de datums daarna uit de dagen en "repareerde" ze. Nu meldt het voorbeeld van de
+import zulke datums, en lost Olivier ze op in de Excel.
+
+Weggehaald (PR 1, ongeveer 2.900 regels code en tests):
+- de weekschatting "Ongeveer los uitgegeven deze week?";
+- de overlapmeldingen en overlap-invarianten;
+- de invariant "deelnemer in één trip";
+- tripdatums uit de dagen rekenen en aanpassen (`followDays`, `followTrip`, korter maken bij een andere dagsoort);
+- trips samenvoegen en vervangen, en dagen verplaatsen vanuit Nakijken;
+- Nakijken-punten die geïmporteerde data "verbeteren";
+- Logboek herstellen (`src/domain/herstel.ts`, `src/model/link-repair.ts`);
+- koersen vanzelf vastleggen;
+- vaste lasten vanzelf boeken (nu na een tik).
+
+Schrijfversie 5 houdt oudere builds tegen.
+
+Erbij, zo klein mogelijk:
+- **Excel opnieuw importeren als schone herstart** (PR 2, `src/import/apply.ts`). Een blok is een trip met de eerste en
+  laatste dag. Alleen wat uit een import kwam, wordt vervangen en gaat naar de prullenbak. Twee keer importeren geeft
+  hetzelfde.
+- **Terug waar je was** (PR 3). Toevoegen is een laag over het scherm, en na Opslaan, terug of "‹ Terug" sta je er weer.
+- **Een trip overal hetzelfde** (PR 4). Trip bewerken volgt de volgorde van de periodepagina, met Dag toevoegen.
+  Checklists verschijnen alleen bij een vastgelegde, passende soort.
+
+Wat nog vanzelf gebeurt, staat in CLAUDE.md onder uitgangspunt 5:
+- sync;
+- de eenmalige omzetting naar het periodemodel;
+- studenten archiveren na 12 maanden;
+- de geschiedenis opruimen na 30 dagen;
+- een onleesbaar cursus- of checklistbestand terugzetten.
+

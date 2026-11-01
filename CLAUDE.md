@@ -16,7 +16,7 @@ Dit bestand is de bron van waarheid voor ontwerp, regels en volgorde. Wijkt code
 
 ## Vijf uitgangspunten (harde regels, november 2026)
 
-Na veel rondes was de app te ingewikkeld: slimme automatische oplossingen voor simpele dingen veroorzaakten zelf fouten (trips die maanden doorliepen, de agenda vol overlap-meldingen). Deze vijf regels gaan voor alles hieronder; wijkt een beschrijving verderop ervan af, dan geldt de regel.
+Na veel rondes was de app te ingewikkeld: slimme automatische oplossingen voor simpele dingen veroorzaakten zelf fouten (trips die maanden doorliepen, de agenda vol overlap-meldingen). Deze vijf regels gaan voor alles hieronder; wijkt een beschrijving verderop ervan af, dan geldt de regel. Wat daarvoor is weggehaald en waarom (weekschatting, overlapmeldingen, datums uit de dagen, samenvoegen, Logboek herstellen, koersen en vaste lasten vanzelf): docs/FUNDERING.md, sectie 6.
 
 1. **Oliviers Excel-logboek is de waarheid.** Een trip is een blok tussen twee lege regels; de startdatum is de eerste dag van dat blok, de einddatum de laatste. De app verandert geïmporteerde trips en dagen nooit zelf: niet verlengen, niet samenvoegen, niet verplaatsen, niet "repareren". Staat er iets vreemds in de Excel (bijvoorbeeld een datum die niet bestaat, of dagen die ver uit elkaar liggen), dan meldt het voorbeeld van de import dat; de oplossing is de Excel aanpassen en opnieuw importeren.
 2. **Startdatum en einddatum van een trip zijn gewone velden.** Wat Olivier invult of wat de import invult, blijft staan. De app rekent nooit zelf datums uit de dagen en past ze nooit automatisch aan.
