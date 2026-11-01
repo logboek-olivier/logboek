@@ -149,6 +149,35 @@ async function cleanDeviceReadsAll(browser: Browser, server: SwitchableServer, g
     if (startedUnreadable.includes(path)) continue
     for (const sample of UPGRADE_SAMPLES[path] ?? []) expect(records.map((r) => r.id), path).toContain(sample.id)
   }
+  // Gouden regel: relaties veranderen niet. Elke voorbeelddag, -transactie, -planning en -student hangt nog aan dezelfde
+  // trip, elke voorbeeldtrip heeft nog dezelfde deelnemers, en een voorbeeldtrip zonder eigen datums heeft er nog geen.
+  const LINKS: Array<[string, 'tripId' | 'weekId']> = [
+    ['legs.json.enc', 'tripId'],
+    ['transactions.json.enc', 'tripId'],
+    ['plans.json.enc', 'tripId'],
+    ['claims.json.enc', 'tripId'],
+    ['students.json.enc', 'weekId'],
+  ]
+  const readAll = async (path: string) =>
+    github.files.has(path) ? ((await decryptRecords(key, path, Uint8Array.from(Buffer.from(github.files.get(path)!.content, 'base64')))) as unknown as Array<Record<string, unknown>>) : []
+  for (const [path, field] of LINKS) {
+    if (startedUnreadable.includes(path) || !data.paths.includes(path)) continue
+    const records = new Map((await readAll(path)).map((r) => [r.id, r]))
+    for (const sample of UPGRADE_SAMPLES[path] ?? []) {
+      const now = records.get(sample.id)
+      if (now && now.deletedAt === null && sample.deletedAt === null) expect(now[field] ?? null, `${path} ${String(sample.id)}`).toBe(sample[field] ?? null)
+    }
+  }
+  if (!startedUnreadable.includes('trips.json.enc') && data.paths.includes('trips.json.enc')) {
+    const trips = new Map((await readAll('trips.json.enc')).map((r) => [r.id, r]))
+    for (const sample of UPGRADE_SAMPLES['trips.json.enc'] ?? []) {
+      const now = trips.get(sample.id)
+      if (!now || now.deletedAt !== null) continue
+      const ids = (r: Record<string, unknown>) => ((r.participants as Array<{ id: string }> | undefined) ?? []).map((p) => p.id).sort()
+      expect(ids(now), `deelnemers ${String(sample.id)}`).toEqual(ids(sample))
+      if (String(sample.id).startsWith('upg-gouden-')) expect([now.startDate, now.endDate], `datums ${String(sample.id)}`).toEqual([undefined, undefined])
+    }
+  }
   // Bestanden die de vorige release niet kende (zoals periods.json.enc): als ze op GitHub staan, zijn ze leesbaar.
   for (const path of COLLECTION_PATHS) {
     if (data.paths.includes(path) || !github.files.has(path)) continue

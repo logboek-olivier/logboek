@@ -19,7 +19,8 @@ import { WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } fro
 import type { Store } from '../storage/store'
 import { plaatsenSamenvoegen } from '../domain/plaatsen'
 import { tripTerugzetten } from '../domain/prullenbak'
-import { trashItems } from '../model/trash'
+import { trashItemForTrip } from '../model/trash'
+import { openStorage } from '../navigation'
 import { defaultTripName } from '../model/trip-name'
 import { agendadagBijTrip, dagBeginAansluiten, dagenNaarTrip, tripVoorDagen, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 import { organisationChoices } from '../basis/organisatie'
@@ -83,7 +84,7 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
             <p>{describe(item)}</p>
             <div className="review-actions">
               {fixes(store, item, lang).map((fix) => (
-                <button key={fix.label} type="button" className={`btn small${fix.primary ? ' primary' : ''}`} disabled={busy} onClick={() => (fix.edit ? setEditLeg(fix.edit) : void run(fix.run))}>
+                <button key={fix.label} type="button" className={`btn small${fix.primary ? ' primary' : ''}`} disabled={busy} onClick={() => (fix.go ? fix.go() : fix.edit ? setEditLeg(fix.edit) : void run(fix.run))}>
                   {fix.label}
                 </button>
               ))}
@@ -129,6 +130,8 @@ function describe(item: ReviewItem): string {
       return t('review.investmentKind', { date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
     case 'agendadag-in-periode':
       return t('review.dayInStay', { date: formatDate(item.day.date), type: t(`dayType.${item.day.type}`), name: stayName(item.stay) })
+    case 'lange-trip':
+      return t('review.longTrip', { name: item.trip.name, range: formatDateRange(item.start, item.end), n: item.days })
     case 'overlap-trips':
       return ''
   }
@@ -138,7 +141,7 @@ function range(start?: string, end?: string): string {
   return start && end ? formatDateRange(start, end) : start ? formatDate(start) : t('review.noDates')
 }
 
-type Fix = { label: string; primary?: boolean } & ({ run: () => Promise<Undo>; edit?: undefined } | { edit: Leg; run?: undefined })
+type Fix = { label: string; primary?: boolean } & ({ run: () => Promise<Undo>; edit?: undefined; go?: undefined } | { edit: Leg; run?: undefined; go?: undefined } | { go: () => void; run?: undefined; edit?: undefined })
 
 function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
   switch (item.kind) {
@@ -164,7 +167,8 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
     case 'agendadag-in-trip':
       return [{ label: t('review.belongsTo', { name: item.trip.name }), primary: true, run: () => agendadagBijTrip(store, item.day) }]
     case 'dagen-zonder-trip': {
-      const restorable = !!item.tripName && trashItems(store).some((i) => i.kind === 'periode' && i.title === item.tripName)
+      // Op id: een andere trip met dezelfde naam in de prullenbak telt niet.
+      const restorable = !!item.tripName && !!trashItemForTrip(store, item.tripId)
       return [
         ...(restorable ? [{ label: t('review.restoreTrip', { name: item.tripName! }), primary: true, run: () => tripTerugzetten(store, item.tripId) }] : []),
         ...(item.target ? [{ label: t('review.moveTo', { name: item.target.name }), primary: !restorable, run: () => dagenNaarTrip(store, item.legs, item.target!) }] : []),
@@ -189,6 +193,8 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
       return (['opleiding', 'uitrusting'] as const).map((c) => ({ label: t(`costCategory.${c}`), run: () => investeringssoortZetten(store, item.tx, c) }))
     case 'agendadag-in-periode':
       return [{ label: t('review.dayWins', { type: t(`dayType.${item.day.type}`) }), primary: true, run: () => dagtoestandUitLandperiode(store, item.day) }]
+    case 'lange-trip':
+      return [{ label: t('review.openRepair'), primary: true, go: openStorage }]
     case 'overlap-trips':
       return []
   }

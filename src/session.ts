@@ -1131,6 +1131,9 @@ export function describeError(error: unknown): string {
         return t('backup.syncFirst')
       case 'WebAuthnError':
         return describeWebAuthnError(error.message)
+      case 'RelationError':
+      case 'InvariantError':
+        return t('error.blocked')
     }
   }
   return t('error.generic')

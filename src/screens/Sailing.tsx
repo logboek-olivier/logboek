@@ -29,6 +29,7 @@ import { currentSettings } from '../model/settings'
 import { t } from '../i18n'
 import { useBack } from '../back'
 import { mijlenImporteren } from '../domain/importeren'
+import { describeError } from '../session'
 import { todayIso } from '../basis/datum'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
@@ -79,10 +80,14 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   async function confirmImport() {
     if (!pending) return
     setBusy(true)
+    setError(null)
     try {
       await mijlenImporteren(store, pending)
       setPending(null)
       setChecking(true)
+    } catch (e) {
+      // Bijvoorbeeld een import die een bestaande koppeling zou veranderen (src/domain/relaties.ts): niets geschreven.
+      setError(describeError(e))
     } finally {
       setBusy(false)
     }

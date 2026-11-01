@@ -2,7 +2,8 @@ import type { CollectionPath, SyncRecord } from '../model/types'
 import type { Store } from '../storage/store'
 import { sameValue } from '../basis/gelijk'
 import { HISTORY_PATH, historyEntry } from './history'
-import { InvariantError, newHardViolations } from './invariants'
+import { InvariantError, newHardViolations, newViolations } from './invariants'
+import { AUTOMATIC, KEEPS_RELATIONS, RelationError, relationChanges } from './relaties'
 import { tombstone } from './tombstone'
 import { Tx, type Reader } from './tx'
 
@@ -77,6 +78,14 @@ export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Pr
         const base = { get: tx.base.bind(tx), list: <P extends CollectionPath>(path: P) => tx.base(path).filter((r) => r.deletedAt === null) } as Reader
         const broken = newHardViolations(base, tx)
         if (broken.length > 0) throw new InvariantError(broken, name)
+        // Vanzelf of bij een import: geen bestaande koppeling anders, en ook geen nieuwe overtreding om na te kijken
+        // (src/domain/relaties.ts). Dit is de proef op een kopie: er is nog niets geschreven.
+        if (KEEPS_RELATIONS.has(name)) {
+          const moved = relationChanges(written)
+          if (moved.length > 0) throw new RelationError(moved, name)
+          const soft = AUTOMATIC.has(name) ? newViolations(base, tx) : []
+          if (soft.length > 0) throw new InvariantError(soft, name)
+        }
       }
       // De geschiedenis in dezelfde transactie: de opdracht en zijn regel komen samen op het apparaat, of geen van beide.
       const entry = historyEntry(name, tx.now, written)

@@ -1,4 +1,5 @@
 import { MoveHorizontal, Plus } from 'lucide-react'
+import { describeError } from '../session'
 import { useState } from 'react'
 import { formatDateRange, formatDateShort } from '../format'
 import { t, useLang } from '../i18n'
@@ -111,9 +112,14 @@ export function PlanningImportSheet({ store, items, notify, onClose }: { store: 
 
   async function confirm() {
     setBusy(true)
-    const { result } = await planningImporteren(store, items, include, lang)
-    notify(t('planning.done', result))
-    onClose()
+    try {
+      const { result } = await planningImporteren(store, items, include, lang)
+      notify(t('planning.done', result))
+      onClose()
+    } catch (e) {
+      notify(describeError(e))
+      setBusy(false)
+    }
   }
 
   return (

@@ -4673,3 +4673,15 @@ textarea.note {
 .org-suggestions {
   gap: var(--s-2);
 }
+
+/* Een automatische stap is tegengehouden (src/domain/relaties.ts): tekst, foutdetails en sluiten onder elkaar. */
+.notice.auto-blocked {
+  flex-direction: column;
+  align-items: flex-start;
+  margin: var(--s-2) 0;
+}
+
+/* Logboek herstellen (Meer → Opslag): per trip nu en na herstellen. */
+.link-repair .row-main {
+  gap: var(--s-1);
+}

@@ -19,7 +19,13 @@ export async function applyImport(store: Tx, input: ImportResult): Promise<void>
   // zien zo één dag, geen nieuwe). Een dag die precies gelijk bleef, wordt niet opnieuw geschreven.
   const stored = new Map(legs.map((l) => [l.id, l]))
   // Velden die deze versie niet kent (van een nieuwere versie op een ander apparaat) blijven staan.
-  const fixed = withFixedIds(kept.legs).map((l) => keepUnknownFields(stored.get(l.id), l, IMPORT_FIELDS))
+  // Een dag die Olivier na de import zelf naar een andere trip zette (Dag bewerken, Nakijken), blijft daar: hetzelfde
+  // vaste id betekent dezelfde tocht in Excel, dus een andere trip is zijn eigen keuze (relaties veranderen niet).
+  const fixed = withFixedIds(kept.legs).map((l) => {
+    const before = stored.get(l.id)
+    const next = keepUnknownFields(before, l, IMPORT_FIELDS)
+    return before && before.deletedAt === null && before.tripId !== next.tripId ? { ...next, tripId: before.tripId } : next
+  })
   const result = { ...kept, legs: fixed.filter((l) => !sameLeg(stored.get(l.id), l)) }
   const incoming = new Set(fixed.map((l) => l.id))
 

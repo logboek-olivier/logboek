@@ -1,5 +1,6 @@
 import { isDate } from '../basis/datum'
 import { currentSettings } from '../model/settings'
+import { datesChosen, longImportTrips, stretchedDates } from '../model/link-repair'
 import type { CollectionPath, StayPeriod } from '../model/types'
 import type { Reader } from './tx'
 
@@ -20,6 +21,9 @@ export type Rule =
   | 'salaris-zonder-inkomen'
   | 'lopende-trip-weg'
   | 'student-zonder-trip'
+  | 'trip-langer-dan-dagen'
+  | 'lange-importtrip'
+  | 'deelnemer-dubbel'
 
 export interface Violation {
   /** Vast per overtreding: zo is te zien of een opdracht er een nieuwe maakt. */
@@ -74,6 +78,22 @@ export function violations(reader: Reader): Violation[] {
   out.push(...landOverlaps(stays))
   for (const stay of stays) if (!isDate(stay.startDate) || !isDate(stay.endDate) || stay.startDate > stay.endDate) out.push(v('datum', 'periods.json.enc', stay.id))
   for (const student of reader.list('students.json.enc')) if (student.weekId && !live.has(student.weekId) && !student.archivedAt) out.push(v('student-zonder-trip', 'students.json.enc', student.id))
+  // Een trip loopt nooit langer dan zijn eigen dagen plus de datums die Olivier zelf instelde: eigen datums die over de
+  // dagen van een andere trip heen lopen, kwamen van samenvoegen (src/model/link-repair.ts).
+  const allLegs = reader.get('legs.json.enc')
+  const chosen = datesChosen(reader)
+  for (const trip of trips) if (stretchedDates(trip, allLegs, trips, chosen)) out.push(v('trip-langer-dan-dagen', 'trips.json.enc', trip.id))
+  // Een geïmporteerde trip van meer dan 21 dagen: bijna altijd een verkeerde koppeling (ook in Nakijken).
+  for (const long of longImportTrips(reader)) out.push(v('lange-importtrip', 'trips.json.enc', long.trip.id))
+  // Een deelnemer hoort bij één trip (op id, nooit op positie).
+  const seen = new Map<string, string>()
+  for (const trip of trips) {
+    for (const p of trip.participants ?? []) {
+      const first = seen.get(p.id)
+      if (first && first !== trip.id) out.push(v('deelnemer-dubbel', 'trips.json.enc', trip.id, p.id))
+      else seen.set(p.id, trip.id)
+    }
+  }
   const settings = currentSettings(reader.list('settings.json.enc'))
   if (settings.activeWeekId && !live.has(settings.activeWeekId)) out.push(v('lopende-trip-weg', 'settings.json.enc', 'settings'))
   return out
@@ -104,6 +124,12 @@ export class InvariantError extends Error {
     super(`Invariant: ${broken.map((b) => b.rule).join(', ')}${command ? ` (${command})` : ''}`)
     this.name = 'InvariantError'
   }
+}
+
+/** Alle nieuwe overtredingen na een opdracht, ook om na te kijken (voor wat vanzelf draait: src/domain/relaties.ts). */
+export function newViolations(before: Reader, after: Reader): Violation[] {
+  const known = new Set(violations(before).map((x) => x.key))
+  return violations(after).filter((x) => !known.has(x.key))
 }
 
 /** Nieuwe harde overtredingen na een opdracht (wat er vooraf al was, telt niet: dat staat in de gezondheidscheck). */

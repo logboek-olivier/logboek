@@ -107,8 +107,9 @@ function fromEntry(reader: Reader, entry: HistoryEntry): TrashItem | null {
     const gone = was.filter((p) => !now.some((q) => q.id === p.id))
     if (!trip || gone.length === 0) return null
     const current = find(reader, 'trips.json.enc', trip.id) as Trip | undefined
-    // Al terug (of de trip is weg): niet meer in de prullenbak.
-    if (!current || current.deletedAt !== null || gone.every((p) => current.participants?.some((q) => q.id === p.id))) return null
+    // Al terug, of al bij een (andere) trip (een deelnemer hoort bij één trip), of de trip is weg: niet meer in de prullenbak.
+    const placed = new Set(active(reader.get('trips.json.enc')).flatMap((t) => (t.participants ?? []).map((q) => q.id)))
+    if (!current || current.deletedAt !== null || gone.every((p) => placed.has(p.id))) return null
     return item(`${gone.map((p) => p.firstName).join(', ')} · ${current.name}`, null)
   }
   if (kind === 'boot') {
@@ -185,6 +186,15 @@ export function trashItems(reader: Reader, now = new Date().toISOString()): Tras
   const all = reader.get(HISTORY_PATH)
   const since = all.length > 0 ? all.map((e) => e.at).sort()[0]! : null
   return [...fromHistory, ...legacyItems(reader, covered, now, since)].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt))
+}
+
+/** Het item in de prullenbak waarmee deze trip (op id) verwijderd werd, of undefined. Nooit op naam. */
+export function trashItemForTrip(reader: Reader, tripId: string, now = new Date().toISOString()): TrashItem | undefined {
+  return trashItems(reader, now).find(
+    (i) =>
+      i.kind === 'periode' &&
+      (i.legacy.some((r) => r.path === 'trips.json.enc' && r.record.id === tripId) || !!i.entry?.changes.some((c) => c.path === 'trips.json.enc' && c.id === tripId && typeof c.after.deletedAt === 'string')),
+  )
 }
 
 /**
