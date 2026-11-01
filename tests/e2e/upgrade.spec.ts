@@ -274,7 +274,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect.poll(() => puts('transactions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(tipPuts)
     await expectSynced(page)
     // Teller per organisatie (nieuwe velden in de instellingen): beginnummer Yacht Week, het voorbeeld voor SV blijft.
-    await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+    // Na opslaan terug waar je was (de agenda): Toevoegen is dicht.
+    await expect(page.locator('.add-layer')).toHaveCount(0)
     // De melding na opslaan ligt over het menu Meer: eerst laten verdwijnen.
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     await openMore(page, L('nav.settings'), L('nav.more'))

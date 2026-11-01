@@ -219,7 +219,10 @@ for (const { width, scheme, lang } of RUNS) {
       await tripEdit.getByRole('button', { name: new RegExp(L('tripIncome.title')) }).click()
       await tripEdit.locator('.trip-income').scrollIntoViewIfNeeded()
       await shot('trip-bewerken-geld')
-      await tripEdit.getByRole('button', { name: L('common.close') }).click()
+      // Sluiten: terug in het tripoverzicht, dan dat ook dicht.
+      await tripEdit.getByRole('button', { name: L('common.close'), exact: true }).click()
+      await page.getByRole('dialog').getByRole('button', { name: L('common.close'), exact: true }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
       await openMore(page, L('nav.money'), L('nav.more'))
       await shot('geld')
       await page.locator('.tx button').first().click()
