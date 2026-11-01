@@ -22,7 +22,7 @@ import { describeStatus, type RepairResult, type Store } from '../storage/store'
 import { violations, type Rule, type Violation } from '../domain/invariants'
 import { canFix, gezondheidHerstellen } from '../domain/gezondheid'
 import { logboekHerstellen, planSignature } from '../domain/herstel'
-import { backupLinks, compareWithBackup, planLinkRepair, type LinkRepairPlan } from '../model/link-repair'
+import { backupLinks, compareWithBackup, isEmptyPlan, planLinkRepair, type LinkRepairPlan } from '../model/link-repair'
 import { formatDateRange } from '../format'
 import { ErrorLine } from './Setup'
 import { backupTerugzetten } from '../domain/importeren'
@@ -559,7 +559,7 @@ function LinkRepairSection({ store, notify }: { store: Store; notify: Notify }) 
   const plan = useMemo(() => planLinkRepair(store, undefined, links), [store, trips, legs, students, history, links])
   const comparison = useMemo(() => (backup ? compareWithBackup(store, backup.files) : null), [store, backup, trips, legs])
   const [busy, setBusy] = useState(false)
-  const empty = plan.legs.length + plan.trips.length + plan.students.length + plan.participants.length === 0
+  const empty = isEmptyPlan(plan)
 
   async function chosen(file: File | undefined) {
     if (!file) return
@@ -674,6 +674,7 @@ function LinkRepairPreview({ store, plan }: { store: Store; plan: LinkRepairPlan
   const ids = new Set<string>([
     ...plan.trips.map((f) => f.trip.id),
     ...plan.legs.flatMap((m) => [m.from, m.to]),
+    ...plan.moves.flatMap((m) => [m.from, m.to]),
     ...plan.students.map((m) => m.to),
     ...plan.participants.map((b) => b.to),
   ])
@@ -701,6 +702,8 @@ function LinkRepairPreview({ store, plan }: { store: Store; plan: LinkRepairPlan
           lines.push(t('links.legsIn', { n: list.length, range: datesRange(list.map((m) => m.leg.date)), from: tripName(store, from) }))
         }
         if (fix && fix.removedParticipants.length > 0) lines.push(t('links.dupes', { people: fix.removedParticipants.map((p) => p.firstName).join(', ') }))
+        for (const m of plan.moves.filter((x) => x.from === id)) lines.push(t('links.movedOut', { name: m.participant.firstName, to: tripName(store, m.to) }))
+        for (const m of plan.moves.filter((x) => x.to === id)) lines.push(t('links.movedIn', { name: m.participant.firstName, from: tripName(store, m.from) }))
         for (const m of plan.students.filter((x) => x.to === id)) lines.push(t('links.student', { name: m.student.firstName, to: tripName(store, id) }))
         for (const b of plan.participants.filter((x) => x.to === id)) lines.push(t('links.participant', { name: b.participant.firstName }))
         if (lines.length === 0) return null

@@ -186,12 +186,15 @@ export function Home({ store }: { store: Store }) {
         await prullenbak.geschiedenisOpruimen(store)
       })
       .catch((error: unknown) => {
-        // Lukt het nu niet (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
-        migrating.current = false
         recordError(error)
         // De proef op een kopie zag dat een automatische stap een koppeling of regel zou breken: er is niets geschreven
-        // (src/domain/relaties.ts). Dat staat in beeld, met de foutdetails; de volgende sessie probeert het opnieuw.
-        if (error instanceof Error && (error.name === 'RelationError' || error.name === 'InvariantError')) setBlocked(true)
+        // (src/domain/relaties.ts). Dat staat in beeld, met de foutdetails; pas de volgende sessie opnieuw (geen lus).
+        if (error instanceof Error && (error.name === 'RelationError' || error.name === 'InvariantError')) {
+          setBlocked(true)
+          return
+        }
+        // Lukt het nu niet om een andere reden (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
+        migrating.current = false
       })
   }, [store, status, demo])
   const [blocked, setBlocked] = useState(false)

@@ -9,14 +9,21 @@ import type { CollectionPath, Participant, SyncRecord } from '../model/types'
 // schrijft niets als een koppeling verandert. Nieuwe records en records die weggaan tellen niet: die maakt of ruimt de
 // opdracht zelf op (een import vervangt zijn dagen door dagen met een vast id).
 
-/** Opdrachten die vanzelf draaien: geen koppeling anders en ook geen nieuwe overtreding om na te kijken. */
-export const AUTOMATIC: ReadonlySet<string> = new Set(['koersenVastleggen', 'vasteLastenBoeken', 'periodemodelMigreren', 'studentenArchiveren', 'geschiedenisOpruimen', 'nieuwLogboekInrichten'])
+/**
+ * Opdrachten die vanzelf draaien: geen koppeling anders en ook geen nieuwe overtreding om na te kijken. Opruimen na 30
+ * dagen (geschiedenisOpruimen) staat er niet bij: dat haalt regels uit de geschiedenis, waardoor een regel die op de
+ * geschiedenis leunt (welke datums Olivier zelf koos) anders kan uitvallen; opruimen moet altijd door (regel 14). Het
+ * mag wel geen koppeling veranderen (zie KEEPS_RELATIONS).
+ */
+export const AUTOMATIC: ReadonlySet<string> = new Set(['koersenVastleggen', 'vasteLastenBoeken', 'periodemodelMigreren', 'studentenArchiveren', 'nieuwLogboekInrichten'])
 
 /**
- * Opdrachten die nooit een bestaande koppeling mogen veranderen: de automatische plus de imports (die mogen wel iets
- * nieuws laten nakijken, zoals een geïmporteerde dag buiten de eigen datums van zijn trip).
+ * Opdrachten die nooit een bestaande koppeling mogen veranderen: de automatische, opruimen, en de imports (die mogen wel
+ * iets nieuws laten nakijken, zoals een geïmporteerde dag buiten de eigen datums van zijn trip).
  */
-export const KEEPS_RELATIONS: ReadonlySet<string> = new Set([...AUTOMATIC, 'mijlenImporteren', 'planningImporteren', 'standenImporteren', 'backupTerugzetten'])
+// De planningsimport staat er niet bij: een werkregel die een periode aan land splitst, neemt het geld van die dagen
+// bewust mee (dezelfde periode in twee stukken); hij heeft zijn eigen voorbeeld vooraf.
+export const KEEPS_RELATIONS: ReadonlySet<string> = new Set([...AUTOMATIC, 'geschiedenisOpruimen', 'mijlenImporteren', 'standenImporteren', 'backupTerugzetten'])
 
 const LINK_FIELD: Partial<Record<CollectionPath, 'tripId' | 'weekId'>> = {
   'legs.json.enc': 'tripId',

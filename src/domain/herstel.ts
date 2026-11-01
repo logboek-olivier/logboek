@@ -12,6 +12,7 @@ export function planSignature(plan: LinkRepairPlan): string {
   return [
     ...plan.legs.map((m) => `dag ${m.leg.id} ${m.from}>${m.to}`),
     ...plan.trips.map((f) => `trip ${f.trip.id} ${f.dates ? `${f.dates.before.start}..${f.dates.before.end}>${f.dates.after ? `${f.dates.after.start}..${f.dates.after.end}` : '-'}` : ''} ${f.removedParticipants.map((p) => p.id).sort().join(',')}`),
+    ...plan.moves.map((m) => `verhuist ${m.participant.id} ${m.from}>${m.to}`),
     ...plan.students.map((m) => `student ${m.student.id} ${m.from ?? '-'}>${m.to}`),
     ...plan.participants.map((b) => `deelnemer ${b.participant.id} ${b.from}>${b.to}`),
   ]
@@ -44,6 +45,13 @@ export async function repairLinks(tx: Tx, expected: string, backup?: BackupLinks
     }
     if (fix.removedParticipants.length > 0) next = { ...next, participants: (next.participants ?? []).filter((p) => !fix.removedParticipants.some((r) => r.id === p.id)) }
     await tx.put('trips.json.enc', { ...next, updatedAt: tx.now })
+  }
+  for (const m of plan.moves) {
+    const from = tx.list('trips.json.enc').find((t) => t.id === m.from)
+    const to = tx.list('trips.json.enc').find((t) => t.id === m.to)
+    if (!from || !to || to.participants?.some((p) => p.id === m.participant.id)) continue
+    await tx.put('trips.json.enc', { ...from, participants: (from.participants ?? []).filter((p) => p.id !== m.participant.id), updatedAt: tx.now })
+    await tx.put('trips.json.enc', { ...to, participants: [...(to.participants ?? []), m.participant], updatedAt: tx.now })
   }
   for (const m of plan.students) {
     const current = tx.list('students.json.enc').find((s) => s.id === m.student.id)

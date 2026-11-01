@@ -114,5 +114,9 @@ in de prullenbak op naam (nu op id).
   verandert of een nieuwe overtreding maakt, schrijft niets; een import mag geen bestaande koppeling veranderen.
 - **Nieuwe invarianten**: een trip loopt niet over de dagen van een andere trip heen met datums die Olivier niet zelf
   koos; een geïmporteerde trip is hoogstens 21 dagen (anders Nakijken); een deelnemer staat in één trip.
+- **Tweede route met dezelfde schade** (gevonden door de review): samenvoegen en daarna de Excel opnieuw importeren.
+  De samengevoegde trip komt dan onder een nieuw id terug; de overblijvende houdt de datums en deelnemers van beide.
+  Herstel op id: de verwijderde dag `import:<oud>:<datum>:<n>` en de nieuwe `import:<nieuw>:<datum>:<n>` met dezelfde
+  inhoud koppelen oud aan nieuw; de deelnemers uit de lijst van de verwijderde trip gaan naar de nieuwe.
 - **Gouden dataset** (`tests/helpers/gouden-dataset.ts`) in de tests van elke migratie (`tests/migraties-gouden.test.ts`:
   relaties en totalen gelijk, twee keer = één keer) en in de upgradetest (relaties na het bijwerken).

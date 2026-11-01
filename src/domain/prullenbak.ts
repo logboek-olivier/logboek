@@ -30,10 +30,6 @@ export async function restoreTrash(tx: Tx, key: string, relink: readonly string[
     count++
   }
   if (item.entry) return revertEntry(tx, item.entry, item.kind === 'deelnemer')
-  const restored = item.legacy.find((r) => r.path === 'trips.json.enc')?.record as Trip | undefined
-  // De trips die bij hetzelfde verwijderen iets van deze trip kregen (samenvoegen of vervangen gaf ze dezelfde tijd):
-  // vóór het schrijven bepalen, daarna hebben ze een andere tijd.
-  const survivors = restored ? active(tx.get('trips.json.enc')).filter((t) => t.id !== restored.id && t.updatedAt === item.deletedAt).map((t) => t.id) : []
   for (const { path, record } of item.legacy) {
     const current = tx.get(path).find((r) => r.id === record.id)
     if (current && current.deletedAt === record.deletedAt) await put(path, { ...current, deletedAt: null, updatedAt: tx.now })
@@ -57,8 +53,9 @@ export async function restoreTrash(tx: Tx, key: string, relink: readonly string[
     }
     // Datums die de dagen volgen: weer gelijk aan de dagen (bij beide trips).
     await followDays(tx, [trip.id, ...others])
-    // Samenvoegen gaf de andere trip de datums en deelnemers van beide: die krijgt weer alleen zijn eigen (op id).
-    for (const fix of untangleSurvivors(tx, trip as Trip, survivors)) {
+    // Samenvoegen gaf de andere trip de datums en deelnemers van beide: die krijgt weer alleen zijn eigen (op id en
+    // op bewijs, niet op tijd: de andere trip kan intussen bewerkt zijn).
+    for (const fix of untangleSurvivors(tx, trip as Trip)) {
       await put('trips.json.enc', { ...fix.next, updatedAt: tx.now })
     }
   }

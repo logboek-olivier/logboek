@@ -82,7 +82,7 @@ export function violations(reader: Reader): Violation[] {
   // dagen van een andere trip heen lopen, kwamen van samenvoegen (src/model/link-repair.ts).
   const allLegs = reader.get('legs.json.enc')
   const chosen = datesChosen(reader)
-  for (const trip of trips) if (stretchedDates(trip, allLegs, chosen)) out.push(v('trip-langer-dan-dagen', 'trips.json.enc', trip.id))
+  for (const trip of trips) if (stretchedDates(trip, allLegs, trips, chosen)) out.push(v('trip-langer-dan-dagen', 'trips.json.enc', trip.id))
   // Een geïmporteerde trip van meer dan 21 dagen: bijna altijd een verkeerde koppeling (ook in Nakijken).
   for (const long of longImportTrips(reader)) out.push(v('lange-importtrip', 'trips.json.enc', long.trip.id))
   // Een deelnemer hoort bij één trip (op id, nooit op positie).

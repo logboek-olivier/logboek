@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { commit } from '../src/domain/commit'
 import { logboekHerstellen, planSignature } from '../src/domain/herstel'
 import { mijlenImporteren } from '../src/domain/importeren'
-import { deelnemerVerwijderen, samenvoegen, periodeVervangen } from '../src/domain/trips'
+import { dagenNaarTrip, deelnemerVerwijderen, periodeSoortZetten, samenvoegen, periodeVervangen } from '../src/domain/trips'
+import { geschiedenisOpruimen, terugzetten } from '../src/domain/prullenbak'
 import type { Tx } from '../src/domain/tx'
 import { parseMileageCsv } from '../src/import/mileage-csv'
 import { tripRange } from '../src/model/calendar'
@@ -12,6 +13,7 @@ import { backupLinks, compareWithBackup, isEmptyPlan, longImportTrips, planLinkR
 import { movedAway, trashItems } from '../src/model/trash'
 import { followDays } from '../src/model/trip-dates'
 import type { Leg, SyncRecord, Trip } from '../src/model/types'
+import { addDays } from '../src/basis/datum'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
@@ -24,6 +26,7 @@ import { putMany } from './helpers/schrijf'
 // versie die maakte, het voorbeeld, één tik, en ongedaan maken.
 
 const TOKEN = 'github_pat_HERSTEL_0123456789abcdefghijklmnopqrstuvwxyz'
+const T2 = '2026-10-30T10:00:00.000Z'
 let counter = 0
 
 async function store(): Promise<Store> {
@@ -168,19 +171,28 @@ describe('Logboek herstellen: dagen bij de verkeerde trip', () => {
     expect(longImportTrips(s)).toEqual([])
   })
 
-  it('van vóór de vaste id\'s (willekeurige id\'s): de geschiedenis van het terugzetten zegt waar de dag vandaan kwam', async () => {
+  it('de geschiedenis alleen is geen bewijs voor een dag (een eigen verplaatsing of een juist terugzetten ziet er hetzelfde uit)', async () => {
     const s = await store()
     const old = parseMileageCsv(goldenCsv())
     await putMany(s, 'trips.json.enc', old.trips as Trip[])
     await putMany(s, 'legs.json.enc', old.legs as Leg[])
     const trips = ordered(s)
-    const before = relations(s)
     await misplace(s, trips[20]!, [trips[24]!])
     const plan = planLinkRepair(s)
-    expect(plan.legs.length).toBeGreaterThan(0)
-    expect(new Set(plan.legs.map((m) => m.why))).toEqual(new Set(['geschiedenis']))
-    await repaired(s)
-    expect(relations(s)).toEqual(before)
+    expect(plan.legs).toEqual([])
+    expect(plan.stillLong.map((t) => t.id)).toEqual([trips[20]!.id])
+  })
+
+  it('een dag waarvan het vaste id zijn trip bevestigt, blijft altijd staan, ook in een lange trip', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    // Een echte lange trip: de dagen van een latere tocht krijgen dezelfde trip in hun id (zoals een import van één lange tocht).
+    const late = active(s.get('legs.json.enc')).filter((l) => l.tripId === trips[9]!.id)
+    await putMany(s, 'legs.json.enc', late.map((l) => ({ ...l, updatedAt: T2, deletedAt: T2 })))
+    await putMany(s, 'legs.json.enc', late.map((l) => ({ ...l, id: l.id.replace(`import:${trips[9]!.id}:`, `import:${trips[5]!.id}:`), tripId: trips[5]!.id })))
+    expect(longImportTrips(s).map((x) => x.trip.id)).toContain(trips[5]!.id)
+    expect(planLinkRepair(s).legs).toEqual([])
   })
 
   it('zonder bewijs verplaatst het herstel niets: de trip staat dan alleen in Nakijken', async () => {
@@ -238,5 +250,98 @@ describe('Logboek herstellen: dagen bij de verkeerde trip', () => {
     expect(result.applied).toBe(false)
     expect(relations(s)).toEqual(after)
     expect(after).not.toEqual(damaged)
+  })
+})
+
+describe('Logboek herstellen: punten uit de review', () => {
+  it('twee deelnemers dubbel, Olivier haalt er één weg bij de verkeerde trip: de teruggezette trip houdt ze allebei', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    await withPeople(s, [trips[11]!])
+    const people = [
+      { id: 'b-1', firstName: 'Nepb1', curriculumId: 'seed-asa-101', level: 'beginner' as const },
+      { id: 'b-2', firstName: 'Nepb2', curriculumId: 'seed-asa-101', level: 'beginner' as const },
+    ]
+    await putMany(s, 'trips.json.enc', [{ ...trip(s, trips[12]!.id), participants: people }])
+    await putMany(s, 'students.json.enc', people.map((p) => ({ ...p, progress: {}, weekId: trips[12]!.id, updatedAt: T2, deletedAt: null })))
+    const before = relations(s)
+    await samenvoegen(s, trip(s, trips[11]!.id), trip(s, trips[12]!.id))
+    await forgetHistory(s)
+    await oldRestore(s)
+    await deelnemerVerwijderen(s, trip(s, trips[11]!.id), 'b-1')
+    await repaired(s)
+    expect(relations(s).participants).toEqual(before.participants)
+    expect(relations(s).ranges).toEqual(before.ranges)
+    expect(relations(s).legs).toEqual(before.legs)
+  })
+
+  it('datums die Olivier zelf instelde (een trip met eigen dagen over een andere trip heen): het herstel laat ze staan', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    const legs = s.get('legs.json.enc')
+    // Een trip uit de planning, deels in de app gelogd (eigen dagen), loopt over een geïmporteerde tocht heen.
+    const own = active(legs).filter((l) => l.tripId === trips[5]!.id).map((l) => ({ ...l, source: 'manual' as const }))
+    await putMany(s, 'legs.json.enc', own)
+    const later = tripRange(trips[6]!, legs)!
+    await putMany(s, 'trips.json.enc', [{ ...trip(s, trips[5]!.id), startDate: tripRange(trips[5]!, legs)!.start, endDate: addDays(later.end, 2) }])
+    expect(planLinkRepair(s).trips.map((f) => f.trip.id)).not.toContain(trips[5]!.id)
+  })
+
+  it('terugzetten vindt de overblijvende trip ook als die na het samenvoegen nog bewerkt werd', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    await withPeople(s, [trips[11]!, trips[12]!])
+    const before = relations(s)
+    await samenvoegen(s, trip(s, trips[11]!.id), trip(s, trips[12]!.id))
+    await periodeSoortZetten(s, trip(s, trips[11]!.id), 'zelf-cruisen')
+    await forgetHistory(s)
+    const item = trashItems(s).find((i) => i.kind === 'periode')!
+    await terugzetten(s, item.key, movedAway(s, item).map((m) => m.record.id))
+    expect(relations(s)).toEqual(before)
+  })
+
+  it('samengevoegd en daarna de Excel opnieuw geïmporteerd: de deelnemers en studenten gaan naar de nieuwe trip, de datums terug', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    await withPeople(s, [trips[11]!, trips[12]!])
+    const before = relations(s)
+    await samenvoegen(s, trip(s, trips[11]!.id), trip(s, trips[12]!.id))
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const damaged = relations(s)
+    expect(damaged).not.toEqual(before)
+    const plan = planLinkRepair(s)
+    expect(plan.moves.map((m) => m.participant.id)).toEqual(['h-1'])
+    await repaired(s)
+    expect(relations(s)).toEqual(before)
+    expect(isEmptyPlan(planLinkRepair(s))).toBe(true)
+  })
+
+  it('opnieuw importeren laat een dag die Olivier zelf naar een andere trip zette, daar staan', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    const leg = active(s.get('legs.json.enc')).find((l) => l.tripId === trips[3]!.id)!
+    await dagenNaarTrip(s, [leg], trip(s, trips[4]!.id))
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    expect(s.get('legs.json.enc').find((l) => l.id === leg.id)!.tripId).toBe(trips[4]!.id)
+  })
+
+  it('opruimen na 30 dagen loopt nooit vast op de regels die op de geschiedenis leunen', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trips = ordered(s)
+    const legs = s.get('legs.json.enc')
+    // Olivier zette zelf datums over de volgende tocht heen (met regel in de geschiedenis) ...
+    await commit(s, 'periodeBewerken', async (tx: Tx) => {
+      await tx.put('trips.json.enc', { ...trip(s, trips[5]!.id), startDate: tripRange(trips[5]!, legs)!.start, endDate: tripRange(trips[6]!, legs)!.end, updatedAt: tx.now })
+    })
+    // ... en 31 dagen later ruimt de app de geschiedenis op.
+    const old = new Date(Date.now() - 31 * 86_400_000).toISOString()
+    await putMany(s, 'history.json.enc', s.get('history.json.enc').map((e) => ({ ...e, at: old })))
+    await expect(geschiedenisOpruimen(s)).resolves.toBeTypeOf('function')
   })
 })
