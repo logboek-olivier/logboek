@@ -34,6 +34,10 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
   await expect(page.getByRole('dialog').getByText('Onvolledig')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  // Na opslaan weer het tripoverzicht (terug waar je was); sluiten geeft het Logboek.
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await expect(page.getByRole('dialog')).toContainText('Cursus op het meer')
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.trip').first()).toContainText('Cursus op het meer')
   await expect(page.locator('.trip').first().locator('.badge-incomplete')).toHaveText('Onvolledig')

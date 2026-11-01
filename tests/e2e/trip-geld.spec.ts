@@ -64,10 +64,8 @@ test('geen salaris, fooi toevoegen bij de trip, resultaat van de trip en zeilgel
   await expect(sheet.locator('.trip-income')).toContainText('Fooi')
   await expect(sheet.locator('.trip-result')).toContainText('€ 100,00')
   await sheet.getByRole('button', { name: 'Opslaan', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-
-  // Tripoverzicht: het resultaat achter "Toon bedragen".
-  await page.locator('.trip').filter({ hasText: 'Nep trainingsweek' }).getByRole('button').first().click()
+  // Na opslaan weer het tripoverzicht (terug waar je was): het resultaat achter "Toon bedragen".
+  await expect(page.getByRole('dialog')).toHaveCount(1)
   const overview = page.getByRole('dialog')
   await overview.getByRole('button', { name: 'Toon bedragen' }).click()
   await expect(overview.locator('.trip-result')).toContainText('Resultaat van de trip')

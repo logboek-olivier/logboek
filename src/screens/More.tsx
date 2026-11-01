@@ -70,7 +70,7 @@ export function More({ store, onOpen }: { store: Store; onOpen: (screen: MoreScr
 }
 
 /** Terug naar Meer (of de Agenda), boven een scherm dat daar geopend is. */
-export function BackToMore({ onBack, to = 'nav.more' }: { onBack: () => void; to?: 'nav.more' | 'nav.calendar' }) {
+export function BackToMore({ onBack, to = 'nav.more' }: { onBack: () => void; to?: 'nav.more' | 'nav.calendar' | 'common.back' }) {
   return (
     <button className="btn link back-link" onClick={onBack} aria-label={to === 'nav.more' ? t('more.back') : t('common.back')}>
       <Icon icon={ChevronLeft} />

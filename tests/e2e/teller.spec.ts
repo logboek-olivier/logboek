@@ -31,7 +31,7 @@ test('teller per organisatie: twijfel bevestigen, naamvoorstel, beginnummer, kop
   await page.getByLabel('Zeemijlen').fill('12')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
 
   await openLogbook(page)
   const doubt = page.locator('.counter-doubt')

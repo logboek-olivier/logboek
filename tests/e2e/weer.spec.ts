@@ -80,6 +80,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await map.getByLabel(L('map.placeName')).fill('Nepgorda')
       await map.getByRole('button', { name: L('map.choose') }).click()
       await page.getByRole('button', { name: L('common.save') }).click()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
+      await nav.getByRole('button', { name: L('nav.today'), exact: true }).click()
       await expect(page.getByRole('heading', { name: L('nav.today'), level: 1 })).toBeVisible()
 
       const card = page.locator('.weather-card')

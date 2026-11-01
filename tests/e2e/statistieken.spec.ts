@@ -35,14 +35,14 @@ test('statistieken: zeilen, RYA, werk en geld achter Toon bedragen; filters', as
     await page.getByLabel('Zeemijlen').fill(nm)
     await page.getByRole('button', { name: 'Opslaan' }).click()
     await expect(page.getByText('Dag opgeslagen')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+    await expect(page.locator('.add-layer')).toHaveCount(0)
   }
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Inkomsten' }).click()
   await page.getByLabel('Bedrag').fill('140')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 
   await openMore(page, 'Statistieken')

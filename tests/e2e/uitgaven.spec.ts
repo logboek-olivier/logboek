@@ -69,7 +69,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(belongs.getByRole('radio', { name: L('periodKind.reis') })).toBeVisible()
       await shots(page, 'uitgave-reisdag', lang)
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 
       // Eten op een dag zonder periode (20 februari): een nieuwe thuisperiode.
@@ -81,8 +81,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(belongs.getByRole('radio', { name: L('belongsTo.new', { kind: L('periodKind.thuis') }) })).toHaveAttribute('aria-checked', 'true')
       await shots(page, 'uitgave-vrije-dag', lang)
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
+      // Terug waar je was (de agenda, in de maand die openstond): naar februari.
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
+      await page.getByLabel(L('calendar.chooseMonth')).fill('2027-02')
       await expect(day(20)).toHaveClass(/day-thuis/)
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 

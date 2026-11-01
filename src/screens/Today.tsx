@@ -261,10 +261,7 @@ export function Today({
           discreet
           notify={notify}
           onClose={() => setDayOpen(false)}
-          onAdd={(init) => {
-            setDayOpen(false)
-            onAdd(init)
-          }}
+          onAdd={onAdd}
           onReminder={(reminder) => {
             setDayOpen(false)
             setReminderFromDay({ reminder })

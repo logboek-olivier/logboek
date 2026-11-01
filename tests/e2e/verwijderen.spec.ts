@@ -52,6 +52,9 @@ test('overlappende trips zonder melding, tikfout in de naam herstellen, trip met
   await edit.getByLabel('Naam', { exact: true }).fill('Week 44')
   await edit.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.cal-bar').first()).toContainText('Week 44')
+  // Na opslaan weer het tripoverzicht (terug waar je was); sluiten geeft de agenda.
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
   // Een dag loggen in een tweede trip en die trip daarna verwijderen: de dag gaat mee naar Week 44.
   await newTrip(page, 'Nepweek eerder', iso(-20), 3)
@@ -65,8 +68,8 @@ test('overlappende trips zonder melding, tikfout in de naam herstellen, trip met
   // Verwijderen staat alleen onder "⋯" in de kop van de periode, nooit in het bewerkscherm of bij de dagen.
   await page.getByRole('dialog').getByRole('button', { name: 'Bewerken', exact: true }).click()
   await expect(page.getByRole('dialog').getByRole('button', { name: /^(Trip|Periode) verwijderen$/ })).toHaveCount(0)
+  // Sluiten: terug in het tripoverzicht (terug waar je was).
   await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
-  await page.locator('.trip').filter({ hasText: 'Nepweek eerder' }).getByRole('button').first().click()
   await page.getByRole('dialog').getByRole('button', { name: 'Meer bij Nepweek eerder' }).click()
   const menu = page.getByRole('dialog').last()
   await menu.getByRole('button', { name: 'Periode verwijderen' }).click()

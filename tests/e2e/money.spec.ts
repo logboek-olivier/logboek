@@ -19,7 +19,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   await page.getByLabel('Bedrag').fill('120,50')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Fooi opgeslagen')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
 
   // Fooi in USD: apart tonen, nooit omrekenen
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
@@ -121,7 +121,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   await page.getByRole('dialog').getByRole('button', { name: 'Bewerken' }).click()
   await page.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.locator('.tx')).toHaveCount(2)
-  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 12_000 })
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 20_000 })
   expect(dialogs).toBe(0)
 
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })

@@ -161,7 +161,7 @@ test('vervaldatum van de token: vooraf ingevuld uit de header, waarschuwing op V
   await page.getByRole('button', { name: 'Vervangen', exact: true }).click()
   await expect(page.locator('.toast')).toHaveText('Token vervangen', { timeout: 15_000 })
   await page.getByRole('button', { name: 'Vandaag' }).click()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   await expect(page.getByRole('alert')).toHaveCount(0)
   const wire = github.requests.map((r) => `${r.url}\n${r.body ?? ''}`).join('\n')

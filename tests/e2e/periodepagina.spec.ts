@@ -53,7 +53,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await nav.getByRole('button', { name: L('nav.add'), exact: true }).click()
       await page.getByLabel(L('field.to'), { exact: true }).fill('Nephaven')
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 
       // Deze trip: vaste volgorde van de onderdelen.

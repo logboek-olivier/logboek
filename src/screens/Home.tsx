@@ -6,7 +6,7 @@ import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
 import { getRates, loadRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { recordError, setScreen } from '../errors'
-import { onBack } from '../back'
+import { onBack, useBack } from '../back'
 import { onNavigate } from '../navigation'
 import { t } from '../i18n'
 import type { Store } from '../storage/store'
@@ -100,11 +100,14 @@ export function Home({ store }: { store: Store }) {
     setCurriculumPacks(Array.isArray(settings.curriculumPacks) ? settings.curriculumPacks : settings.startedEmpty ? [] : null)
   }, [settingsRecords])
   const [shortcut] = useState(shortcutTab)
-  const [screen, setScreenState] = useState<Screen>(shortcut ? 'toevoegen' : 'vandaag')
+  const [screen, setScreenState] = useState<Screen>('vandaag')
   const screenNow = useRef(screen)
   screenNow.current = screen
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const [addInit, setAddInit] = useState<AddInit | undefined>(undefined)
+  // Toevoegen is een laag over het scherm waar Olivier was: dat scherm (met open bladen) blijft staan, en na Opslaan of
+  // terug is hij er weer (CLAUDE.md, Schermen: Toevoegen).
+  const [adding, setAdding] = useState<{ init?: AddInit; tab: AddTab; key: number } | null>(shortcut ? { tab: shortcut, key: 0 } : null)
+  const scrollBefore = useRef(0)
   // Het Logboek staat onder Meer en is ook vanuit de Agenda te openen; terug gaat naar waar het vandaan kwam.
   const [logbookFrom, setLogbookFrom] = useState<'meer' | 'agenda'>('meer')
   const counter = useRef(0)
@@ -114,6 +117,10 @@ export function Home({ store }: { store: Store }) {
   useEffect(
     () =>
       onNavigate((target) => {
+        if (target.kind === 'toevoegen') {
+          openAdd(target.init, target.tab)
+          return
+        }
         if (target.kind === 'opslag') {
           if (screenNow.current !== 'opslag') remember(screenNow.current)
           setScreenState('opslag')
@@ -138,7 +145,7 @@ export function Home({ store }: { store: Store }) {
     })
   }, [])
 
-  setScreen(SCREEN_NAMES[screen])
+  setScreen(SCREEN_NAMES[adding ? 'toevoegen' : screen])
 
   // Wisselkoersen (public/rates.json, zelfde origin) één keer per sessie laden. Bedragen worden ermee omgerekend bij het
   // tonen; de app schrijft ze nooit vanzelf bij bestaande transacties.
@@ -197,7 +204,6 @@ export function Home({ store }: { store: Store }) {
   const trail = useRef<{ screen: Screen; off: () => void }[]>([])
 
   function show(next: Screen) {
-    if (next !== 'toevoegen') setAddInit(undefined)
     setArchiveStudent(undefined)
     setScreenState(next)
     window.scrollTo(0, 0)
@@ -214,6 +220,12 @@ export function Home({ store }: { store: Store }) {
   }
 
   function select(next: Screen) {
+    if (next === 'toevoegen') {
+      openAdd()
+      return
+    }
+    // Een tabblad kiezen terwijl Toevoegen open is: Toevoegen gaat dicht, zonder op te slaan.
+    setAdding(null)
     if (next === 'logboek' && screen !== 'agenda') setLogbookFrom('meer')
     if (next === 'vandaag') {
       for (const entry of trail.current) entry.off()
@@ -223,21 +235,32 @@ export function Home({ store }: { store: Store }) {
     show(next)
   }
 
-  // Geopend via een snelkoppeling (Toevoegen): terug gaat naar Vandaag.
-  const seeded = useRef(false)
+  function openAdd(init?: AddInit, tab: AddTab = 'dag') {
+    scrollBefore.current = window.scrollY
+    setAdding({ init, tab: init ? 'dag' : tab, key: ++counter.current })
+    window.scrollTo(0, 0)
+  }
+
+  // Na Opslaan, of terug (ook de terugknop van Android): weer op het scherm en de plek waar Olivier was.
+  function closeAdd() {
+    setAdding(null)
+    const y = scrollBefore.current
+    requestAnimationFrame(() => window.scrollTo(0, y))
+  }
+  useBack(!!adding, closeAdd)
+  // Een open blad eronder zet de pagina vast (body.sheet-open); Toevoegen moet wel kunnen scrollen.
   useEffect(() => {
-    if (seeded.current || !shortcut) return
-    seeded.current = true
-    remember('vandaag')
-  }, [shortcut])
+    document.body.classList.toggle('adding', !!adding)
+  }, [adding])
 
   function done(message: string) {
     notify(message)
-    select('vandaag')
+    closeAdd()
   }
 
-  const activeTab: Tab =
-    screen === 'logboek'
+  const activeTab: Tab = adding
+    ? 'toevoegen'
+    : screen === 'logboek'
       ? logbookFrom
       : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes' || screen === 'prullenbak' || screen === 'geschiedenis'
         ? 'meer'
@@ -245,7 +268,7 @@ export function Home({ store }: { store: Store }) {
 
   return (
     <main className="app with-bar">
-      <SyncStatusLine store={store} files={SCREEN_FILES[screen]} onStorage={screen === 'opslag' ? undefined : () => select('opslag')} />
+      <SyncStatusLine store={store} files={SCREEN_FILES[adding ? 'toevoegen' : screen]} onStorage={screen === 'opslag' && !adding ? undefined : () => select('opslag')} />
       {blocked && (
         <div className="notice auto-blocked" role="alert">
           <p>{t('auto.blocked')}</p>
@@ -255,31 +278,30 @@ export function Home({ store }: { store: Store }) {
           </button>
         </div>
       )}
+      {adding && (
+        <section className="add-layer">
+          <BackToMore onBack={closeAdd} to="common.back" />
+          <Suspense fallback={<ScreenLoading />}>
+            <QuickAdd key={adding.key} store={store} onDone={done} init={adding.init} notify={notify} tab={adding.tab} />
+          </Suspense>
+        </section>
+      )}
       <Suspense fallback={<ScreenLoading />}>
+      <div className="screen" hidden={!!adding}>
       {screen === 'vandaag' && (
-        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {
-            select('toevoegen')
-            setAddInit(init)
-          }} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
+        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => openAdd(init)} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
       )}
       {screen === 'week' && (
         <ThisWeek
           store={store}
           notify={notify}
-          onAddDay={(init) => {
-            select('toevoegen')
-            setAddInit(init)
-          }}
         />
       )}
       {screen === 'agenda' && (
         <Agenda
           store={store}
           notify={notify}
-          onAdd={(init) => {
-            select('toevoegen')
-            setAddInit(init)
-          }}
+          onAdd={(init) => openAdd(init)}
           onLogbook={() => {
             setLogbookFrom('agenda')
             select('logboek')
@@ -292,12 +314,11 @@ export function Home({ store }: { store: Store }) {
           <Sailing store={store} notify={notify} />
         </>
       )}
-      {screen === 'toevoegen' && <QuickAdd key={addInit ? `${addInit.date}-${addInit.tripId ?? ''}-${addInit.from ?? ''}-${addInit.to ?? ''}` : 'nieuw'} store={store} onDone={done} init={addInit} notify={notify} tab={addInit ? 'dag' : (shortcut ?? 'dag')} />}
       {screen === 'meer' && <More store={store} onOpen={select} />}
       {screen === 'geld' && (
         <>
           <BackToMore onBack={() => select('meer')} />
-          <Money store={store} notify={notify} onAdd={() => select('toevoegen')} />
+          <Money store={store} notify={notify} onAdd={() => openAdd(undefined, 'inkomsten')} />
         </>
       )}
       {screen === 'termijnen' && (
@@ -384,10 +405,6 @@ export function Home({ store }: { store: Store }) {
           <Periods
             store={store}
             notify={notify}
-            onAddDay={(init) => {
-              select('toevoegen')
-              setAddInit(init)
-            }}
           />
         </>
       )}
@@ -409,6 +426,7 @@ export function Home({ store }: { store: Store }) {
           <Trash store={store} notify={notify} />
         </>
       )}
+      </div>
       </Suspense>
       <Toast message={toast} onDone={clearToast} />
       <BottomBar active={activeTab} onSelect={select} />
