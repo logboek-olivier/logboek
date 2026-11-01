@@ -43,7 +43,8 @@ export function App() {
   const demo = demoState === 'aan' ? demoStore() : null
   useEffect(() => {
     if (state.phase === 'loading') return
-    if (state.phase !== 'unlocked') {
+    // De demo kan ook vanaf het eerste scherm (er is dan nog geen eigen logboek); vergrendeld of herstellen: nooit.
+    if (state.phase !== 'unlocked' && state.phase !== 'setup') {
       if (demoState !== 'uit') void stopDemo()
       return
     }
@@ -99,7 +100,16 @@ export function App() {
       screen = state.blocked ? <Loading text={t('common.blockedByOtherPage')} /> : <Loading />
       break
     case 'setup':
-      screen = <Setup />
+      screen = demo ? (
+        <>
+          <DemoBar />
+          <Home key="demo" store={demo} />
+        </>
+      ) : demoState === 'start' ? (
+        <Loading text={t('demo.starting')} />
+      ) : (
+        <Setup />
+      )
       break
     case 'locked':
       screen = <Unlock fingerprint={state.fingerprint} />

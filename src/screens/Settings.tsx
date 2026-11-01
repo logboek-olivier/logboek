@@ -1,6 +1,7 @@
-import { Anchor, BellRing, ChevronDown, ChevronRight, Cloud, Hash, Target, Fingerprint as FingerprintIcon, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Wallet, X, type LucideIcon } from 'lucide-react'
+import { Anchor, BellRing, Building2, ChevronDown, ChevronRight, Cloud, Fingerprint as FingerprintIcon, Hash, Info, KeyRound, Languages, Lock, Presentation, ShieldCheck, Target, Wallet, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { FirstNumbersSheet, firstNumbersLine } from '../components/CounterSheets'
+import { OrganisationsSheet, organisationsLine } from '../components/OrganisationSheet'
 import { DailyReminderSheet, reminderLine } from '../components/DailyReminderSheet'
 import { GoalSheet, type Notify } from '../components/EditSheets'
 import { SalaryDefaultsSheet, salaryDefaultsLine } from '../components/SalarySheets'
@@ -28,6 +29,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [goalOpen, setGoalOpen] = useState(false)
   const [countersOpen, setCountersOpen] = useState(false)
+  const [orgsOpen, setOrgsOpen] = useState(false)
   const [salaryOpen, setSalaryOpen] = useState(false)
   const [reminderOpen, setReminderOpen] = useState(false)
   const [startOpen, setStartOpen] = useState(false)
@@ -81,6 +83,14 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
             </button>
           </li>
           <li>
+            <button className="settings-row" onClick={() => setOrgsOpen(true)}>
+              <Icon icon={Building2} />
+              <span className="row-main">{t('orgs.title')}</span>
+              <span className="muted">{organisationsLine() || t('orgs.noneShort')}</span>
+              <Icon icon={ChevronRight} className="chevron" />
+            </button>
+          </li>
+          <li>
             <button className="settings-row" onClick={() => setCountersOpen(true)}>
               <Icon icon={Hash} />
               <span className="row-main">{t('counter.title')}</span>
@@ -115,6 +125,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
           {row('language', Languages, t('settings.language'), <LanguagePicker />)}
         </ul>
       </div>
+      {orgsOpen && <OrganisationsSheet store={store} notify={notify} onClose={() => setOrgsOpen(false)} />}
       {countersOpen && <FirstNumbersSheet store={store} onClose={() => setCountersOpen(false)} notify={notify} />}
       {salaryOpen && <SalaryDefaultsSheet store={store} onClose={() => setSalaryOpen(false)} notify={notify} />}
       {reminderOpen && <DailyReminderSheet store={store} onClose={() => setReminderOpen(false)} notify={notify} />}

@@ -23,7 +23,7 @@ import { getRates, subscribeRates } from '../model/rates'
 import { cleanSalary, salaryDefault, tripEnd } from '../model/salary'
 import { weekView } from '../model/weeks'
 import { currentSettings } from '../model/settings'
-import { CURRENCIES, ORGANISATIONS, type Currency, type Organisation, type SalarySource, type Transaction, type Trip } from '../model/types'
+import { CURRENCIES, type Currency, type Organisation, type SalarySource, type Transaction, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -33,6 +33,7 @@ import { useCounters } from './useCounters'
 import { contantGestort, geenSalaris, salarisLaterVragen, salarisOntvangen, salarisZetten, uitbetalingInvoeren } from '../domain/geld'
 import { amountInput, parseAmount, round2 } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Geldpad per trip (src/model/money-path.ts): het salaris als bolletje (grijs verwacht, oranje te ontvangen, groen
 // ontvangen), een uitbetaling per organisatie die de trips in één keer afvinkt, en contante fooien tot ze gestort zijn.
@@ -77,7 +78,7 @@ export function MoneyPathSection({ store, notify }: { store: Store; notify: Noti
   const today = todayIso()
   const [paying, setPaying] = useState(false)
   const [deposit, setDeposit] = useState<{ currency: Currency; amount: number } | null>(null)
-  const open = ORGANISATIONS.map((org) => ({ org, trips: openSalaryTrips(trips, legs, org, today) })).filter((o) => o.trips.length > 0)
+  const open = organisationChoices(trips).map((org) => ({ org, trips: openSalaryTrips(trips, legs, org, today) })).filter((o) => o.trips.length > 0)
   const cash = Object.entries(cashOnHand(transactions)) as [Currency, number][]
   const hasSalary = active(trips).some((x) => x.salary)
   if (!hasSalary && cash.length === 0) return null
@@ -174,8 +175,8 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
   useSyncExternalStore(subscribeRates, getRates)
   const rates = getRates()
   const today = todayIso()
-  const withOpen = ORGANISATIONS.filter((o) => openSalaryTrips(trips, legs, o, today).length > 0)
-  const [org, setOrgState] = useState<Organisation>(initialOrg ?? withOpen[0] ?? 'sailing-virgins')
+  const withOpen = organisationChoices(trips).filter((o) => openSalaryTrips(trips, legs, o, today).length > 0)
+  const [org, setOrgState] = useState<Organisation>(initialOrg ?? withOpen[0] ?? organisationChoices()[0] ?? 'overig')
   const [date, setDate] = useState(today)
   const [chosen, setChosen] = useState<ReadonlySet<string> | null>(preset ? new Set(preset) : null)
   const [typedAmount, setTypedAmount] = useState<string | null>(null)
@@ -225,7 +226,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
         <label>
           {t('week.organisation')}
           <select value={org} onChange={(e) => setOrg(e.target.value as Organisation)}>
-            {ORGANISATIONS.map((o) => (
+            {organisationChoices(trips).map((o) => (
               <option key={o} value={o}>
                 {organisationLabel(o)}
               </option>

@@ -7,6 +7,6 @@ test('toont het eerste-keer-scherm zonder CSP-fouten', async ({ page }) => {
   })
   await page.goto('./')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Eerste keer')
-  await expect(page.getByRole('button', { name: 'Nieuw logboek' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Begin je eigen logboek' })).toBeVisible()
   expect(cspErrors).toEqual([])
 })

@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { BottomBar, type Tab } from '../components/BottomBar'
 import { useIsDemo } from '../components/DemoBar'
 import type { Notify } from '../components/EditSheets'
@@ -18,6 +18,9 @@ import { BackToMore, More, type MoreScreen } from './More'
 import type { AddInit } from './QuickAdd'
 import { Today } from './Today'
 import { todayIso } from '../basis/datum'
+import { organisationsFrom, setOrganisations } from '../basis/organisatie'
+import { setCurriculumPacks } from '../model/curricula'
+import { useCollection } from '../components/useCollection'
 
 // Vandaag laadt direct; de andere schermen pas als ze geopend worden (src/lazy.ts), zodat de app snel opent.
 const Money = lazyComponent(() => import('./Money').then((m) => m.Money))
@@ -88,6 +91,13 @@ function shortcutTab(): AddTab | null {
 }
 
 export function Home({ store }: { store: Store }) {
+  // Organisaties en cursuspakketten van dit logboek (src/basis/organisatie.ts): vóór de schermen, bij elke wijziging.
+  const settingsRecords = useCollection(store, 'settings.json.enc')
+  useMemo(() => {
+    const settings = currentSettings(settingsRecords)
+    setOrganisations(organisationsFrom(settings))
+    setCurriculumPacks(Array.isArray(settings.curriculumPacks) ? settings.curriculumPacks : settings.startedEmpty ? [] : null)
+  }, [settingsRecords])
   const [shortcut] = useState(shortcutTab)
   const [screen, setScreenState] = useState<Screen>(shortcut ? 'toevoegen' : 'vandaag')
   const screenNow = useRef(screen)

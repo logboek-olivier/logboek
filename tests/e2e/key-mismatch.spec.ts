@@ -34,7 +34,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
     test(`meta.json.enc op GitHub hoort bij een andere sleutel: scherm "Sleutel past niet", niets geschreven (${lang})`, async ({ page }) => {
       const errors = collectConsoleErrors(page)
       const github = await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       const status = page.getByRole('status').first()
       await expect(status).toHaveText(L('sync.synced'), { timeout: 15_000 })
 
@@ -73,7 +73,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
     test(`Logboek herstellen: toestand na PR #27, één tik, daarna Gesynct en de ASA-cursussen terug (${lang})`, async ({ page }) => {
       const errors = collectConsoleErrors(page)
       const github = await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
 
       // Zoals op de telefoon: vier bestanden op GitHub en hun lokale kopieën onder een vreemde sleutel.
@@ -118,7 +118,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
     test(`meta.json.enc op GitHub weg of kapot: met de wachtzin zet dit apparaat het logboek terug (${lang})`, async ({ page }) => {
       const errors = collectConsoleErrors(page)
       const github = await mockGithub(page)
-      await createNewLogbook(page, lang)
+      await createNewLogbook(page, lang, { olivier: true })
       const status = page.getByRole('status').first()
       await expect(status).toHaveText(L('sync.synced'), { timeout: 15_000 })
       // Kapotte meta.json.enc op GitHub (geen ander logboek): niets schrijven zonder tik.

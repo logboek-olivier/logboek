@@ -11,7 +11,7 @@ test('fooi, kosten en een dag toevoegen; Geld toont alles in euro (USD tegen de 
   const github = await mockGithub(page)
   await mockRates(page)
   await createNewLogbook(page)
-  await expect(page.getByRole('status')).toHaveText('Gesynct', { timeout: 15_000 })
+  await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
   // Fooi in EUR
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()

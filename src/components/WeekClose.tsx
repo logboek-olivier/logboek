@@ -12,7 +12,7 @@ import { organisationLabel } from '../i18n/labels'
 import { useCounters } from './useCounters'
 import type { CalendarIndex } from '../model/calendar'
 import { canClose, closingFor, LESSON_MAX, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
-import { CURRENCIES, ORGANISATIONS, type Currency, type WeekClosing } from '../model/types'
+import { CURRENCIES, type Currency, type WeekClosing } from '../model/types'
 import { currentSettings } from '../model/settings'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
@@ -23,6 +23,7 @@ import { useCollection } from './useCollection'
 import { weekAfsluitenMetGeld, weekafsluitingVerwijderen } from '../domain/termijnen'
 import { amountInput, parseAmount, parseStand } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Weekafsluiting: op Vandaag op zondag (en op maandag voor de week van gisteren) een kaart met de automatische
 // samenvatting van de week, een cijfer en één zin; opslaan met één tik, daarna is de kaart weg. Terug te lezen (en te
@@ -63,7 +64,7 @@ function useMoneyStep(store: Store, enabled: boolean) {
   const [received, setReceived] = useState<ReadonlySet<string>>(new Set())
   const [deposited, setDeposited] = useState<ReadonlySet<Currency>>(new Set())
   const today = todayIso()
-  const openTrips = ORGANISATIONS.flatMap((org) => openSalaryTrips(trips, legs, org, today)).filter((x) => !hasSalaryIncome(x, transactions))
+  const openTrips = organisationChoices(trips).flatMap((org) => openSalaryTrips(trips, legs, org, today)).filter((x) => !hasSalaryIncome(x, transactions))
   const cash = Object.entries(cashOnHand(transactions)) as [Currency, number][]
   const lang = getLang()
   const parsedStands = accounts.map((a) => ({ account: a, text: stands[a.id] ?? '', value: (stands[a.id] ?? '').trim() === '' ? null : parseStand(stands[a.id]!, lang) }))

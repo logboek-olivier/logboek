@@ -174,7 +174,13 @@ describe('achterwaarts compatibel', () => {
     const trips = store.list('trips.json.enc')
     const kept = trips.find((t) => t.id === 't1')!
     expect(kept.participants?.[0]?.firstName).toBe('Nepcees')
-    expect(store.list('legs.json.enc').filter((l) => l.tripId === 't1').map((l) => l.id).sort()).toEqual(['x', 'y'])
+    // Vaste id's: tocht, datum en volgnummer, zodat opnieuw importeren dezelfde dagen bijwerkt.
+    expect(store.list('legs.json.enc').filter((l) => l.tripId === 't1').map((l) => l.id).sort()).toEqual(['import:t1:2025-07-05:0', 'import:t1:2025-07-07:0'])
+    // Nog een keer hetzelfde bestand: dezelfde id's, niets weggegooid of nieuw.
+    const before = store.get('legs.json.enc').length
+    await mijlenImporteren(store, reimport)
+    expect(store.get('legs.json.enc')).toHaveLength(before)
+    expect(store.list('legs.json.enc').filter((l) => l.tripId === 't1').map((l) => l.id).sort()).toEqual(['import:t1:2025-07-05:0', 'import:t1:2025-07-07:0'])
     expect(trips.some((t) => t.name === 'Andere nepweek')).toBe(true)
     // t2 houdt zijn handmatige dag en blijft bestaan.
     expect(trips.some((t) => t.id === 't2')).toBe(true)

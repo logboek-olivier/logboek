@@ -18,7 +18,7 @@ async function importFixture(page: Page) {
 test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en ongedaan maken', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await importFixture(page)
 
   // Tocht (week) hernoemen: tikken opent het tripoverzicht, het potlood opent Trip bewerken.
@@ -68,7 +68,7 @@ test('tocht hernoemen, dag naar een andere tocht verplaatsen, dag verwijderen en
 
 test('Vandaag: jaardoel instellen met voortgang, en omlaag trekken synchroniseert', async ({ page }) => {
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByLabel('Naar', { exact: true }).fill('Nephaven')

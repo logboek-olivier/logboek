@@ -1,7 +1,7 @@
 import { isEarned, isIncome } from './money'
 import { eurValue, type RatesFile } from './rates'
 import type { Organisation, Transaction, Trip } from './types'
-import { tripOrganisation } from '../basis/organisatie'
+import { organisations, tripOrganisation } from '../basis/organisatie'
 
 // Jaaroverzicht voor de belasting (Meer → Geld): alle inkomsten van één kalenderjaar per organisatie, in euro, met per
 // regel het oorspronkelijke bedrag en de gebruikte koers met datum, zoals overal in de app: het ontvangen eurobedrag,
@@ -48,7 +48,13 @@ export interface TaxYear {
   provisional: boolean
 }
 
-const GROUP_ORDER: readonly TaxGroup[] = ['sailing-virgins', 'yacht-week', 'eigen', 'delivery', 'overig']
+/** Volgorde: de eigen organisaties (zoals ingesteld), dan eigen, delivery en overig; een organisatie die niet meer in de lijst staat, ervoor. */
+function groupRank(group: TaxGroup): number {
+  const tail = ['eigen', 'delivery', 'overig'].indexOf(group)
+  if (tail >= 0) return 1000 + tail
+  const own = organisations().findIndex((o) => o.id === group)
+  return own >= 0 ? own : 500
+}
 
 /** De organisatie van een inkomen of uitgave: van de trip (ook uit de naam), anders de oude bron. */
 export function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxGroup {
@@ -101,7 +107,8 @@ export function taxYear(transactions: readonly Transaction[], trips: readonly Tr
     else total.other[tx.currency] = Math.round(((total.other[tx.currency] ?? 0) + tx.amount) * 100) / 100
     groups.set(group, total)
   }
-  const ordered = GROUP_ORDER.map((g) => groups.get(g)).filter((g): g is TaxGroupTotal => !!g)
+  // Elke groep telt mee, ook een organisatie die niet meer in de lijst staat.
+  const ordered = [...groups.values()].sort((a, b) => groupRank(a.group) - groupRank(b.group))
   return {
     year,
     groups: ordered,

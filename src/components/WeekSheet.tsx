@@ -9,7 +9,7 @@ import { totals } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { newTripName } from '../model/counters'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
-import { BOAT_KINDS, ORGANISATIONS, STUDENT_LEVELS, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
+import { BOAT_KINDS, STUDENT_LEVELS, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
   boatProfile,
   feetToMetres,
@@ -35,6 +35,7 @@ import { parseShip } from '../model/boats'
 import { periodeAfronden, periodeBewerken, periodeMaken } from '../domain/trips'
 import { parseAmount } from '../basis/bedrag'
 import { addDays, todayIso } from '../basis/datum'
+import { organisationChoices } from '../basis/organisatie'
 
 // Nieuwe week starten (één scherm) en een week bewerken. Week afronden: samenvatting en review.
 
@@ -305,7 +306,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
           {t('week.organisation')}
           <select value={organisation} onChange={(e) => setOrganisation(e.target.value as Organisation | '')}>
             <option value="">{t('week.noOrganisation')}</option>
-            {ORGANISATIONS.map((o) => (
+            {organisationChoices(trip ? [trip] : []).map((o) => (
               <option key={o} value={o}>
                 {organisationLabel(o)}
               </option>

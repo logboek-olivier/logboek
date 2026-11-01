@@ -1,5 +1,6 @@
 import type { Organisation, Role, TransactionKind, TransactionSource } from '../model/types'
 import { translate, getLang, type Lang } from '.'
+import { orgName } from '../basis/organisatie'
 
 // Weergavenamen van vaste waarden in het datamodel. De opgeslagen waarden zelf blijven Nederlands (dataformaat).
 
@@ -15,6 +16,11 @@ export function sourceLabel(source: TransactionSource, lang: Lang = getLang()): 
   return translate(lang, `source.${source}`)
 }
 
+/** De naam uit Instellingen → Organisaties; eigen en overig (en een verwijderde bestaande) vertaald. */
 export function organisationLabel(org: Organisation, lang: Lang = getLang()): string {
-  return translate(lang, `organisation.${org}`)
+  const name = orgName(org)
+  if (name) return name
+  if (org === 'eigen' || org === 'overig' || org === 'sailing-virgins' || org === 'yacht-week') return translate(lang, `organisation.${org}`)
+  // Niet (meer) in Instellingen → Organisaties: nooit het interne id tonen.
+  return translate(lang, 'organisation.unknown')
 }

@@ -13,7 +13,7 @@ function isoInDays(days: number): string {
 test('onderbalk Vandaag · Deze trip · + · Agenda · Meer; onder Meer Geld, Cursussen, Studentenarchief, Instellingen; Vandaag toont geen bedragen; bevestiging zonder bedrag; volgende vervaldatum', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page, newGithub({ tokenExpiration: `${isoInDays(40)} 12:00:00 UTC` }))
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   const bar = page.getByRole('navigation', { name: 'Hoofdnavigatie' })
   for (const name of ['Vandaag', 'Deze trip', 'Toevoegen', 'Agenda', 'Meer']) {

@@ -33,6 +33,9 @@ import type { Store } from '../storage/store'
 import { ErrorLine } from './Setup'
 import { useBack } from '../back'
 import { cursusOpslaan, cursusVerwijderen } from '../domain/training'
+import { CURRICULUM_PACKS, curriculumPacks } from '../model/curricula'
+import { currentSettings } from '../model/settings'
+import { instellingenOpslaan } from '../domain/instellingen'
 
 // Cursussen (onder Meer): per bond (ASA, RYA, CWO, eigen) met hun checklist van onderwerpen. Alles is te bewerken,
 // te delen als JSON en te importeren.
@@ -45,6 +48,14 @@ export function Courses({ store, notify }: { store: Store; notify: Notify }) {
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const lang = useLang()
+
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const packs = curriculumPacks()
+  const missingPacks = packs === null ? [] : CURRICULUM_PACKS.filter((p) => !packs.includes(p))
+  async function addPack(pack: string) {
+    const undo = await instellingenOpslaan(store, { curriculumPacks: [...(settings.curriculumPacks ?? []), pack] })
+    notify(t('curriculum.packAdded', { body: pack }), undo)
+  }
 
   const open = curricula.find((c) => c.id === openId)
   useBack(open !== undefined, () => setOpenId(null))
@@ -75,6 +86,20 @@ export function Courses({ store, notify }: { store: Store; notify: Notify }) {
         </button>
       </header>
       <ErrorLine error={error} />
+      {/* Een nieuw logboek begint zonder meegeleverde cursussen: per bond met één tik erbij. */}
+      {missingPacks.length > 0 && (
+        <div className="section stack-sm">
+          <p className="muted small">{t('curriculum.packsIntro')}</p>
+          <div className="row wrap">
+            {missingPacks.map((pack) => (
+              <button key={pack} type="button" className="btn small" onClick={() => void addPack(pack)}>
+                <Icon icon={Plus} />
+                {t('curriculum.addPack', { body: pack })}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {byBody(curricula).map((group) => (
         <div key={group.body} className="section">
           <h2>{group.body === 'eigen' ? t('curriculum.ownCourses') : group.body}</h2>

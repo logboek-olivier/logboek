@@ -8,7 +8,7 @@ test.use({ viewport: { width: 360, height: 740 } })
 test('Cursussen (onder Meer): ASA-cursussen met notitie, onderwerp toevoegen en examenkritisch maken, RYA vullen, eigen cursus, delen en importeren', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   await openMore(page, 'Cursussen')
   await expect(page.getByRole('heading', { name: 'Cursussen', exact: true })).toBeVisible()
   for (const name of ['ASA 101 Basic Keelboat Sailing', 'ASA 103 Basic Coastal Cruising', 'ASA 104 Bareboat Cruising', 'ASA 114 Cruising Catamaran', 'RYA Day Skipper']) {

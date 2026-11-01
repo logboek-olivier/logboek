@@ -30,7 +30,7 @@ test('herladen met verbinding geeft de nieuwste app-pagina, niet die uit de prec
   await context.unroute(/\/logboek\/(\?.*)?$/)
   await context.setOffline(true)
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Nieuw logboek' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Begin je eigen logboek' })).toBeVisible()
   await context.setOffline(false)
 })
 
@@ -47,7 +47,7 @@ test('reset.html: service worker afgemeld en caches gewist, het logboek blijft s
   expect(await page.evaluate(() => caches.has('nep-oude-versie'))).toBe(false)
   // Gegevens staan er nog: geen "Eerste keer", maar het logboek (binnen 5 minuten hervat).
   await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Nieuw logboek' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Begin je eigen logboek' })).toHaveCount(0)
 })
 
 test('reset.html staat niet in de precache en komt nooit uit de navigatie-fallback', async ({ page }) => {

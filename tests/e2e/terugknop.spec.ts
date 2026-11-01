@@ -26,7 +26,7 @@ async function back(page: Page): Promise<void> {
 test('terugknop: een stap terug in de app, op Vandaag eerst de melding, nooit onverwacht sluiten', async ({ page }) => {
   test.setTimeout(120_000)
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
   const hint = page.getByText(L('back.again'))
   const app = page.url()
   await expect(title(page)).toHaveText(L('nav.today'))

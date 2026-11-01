@@ -17,7 +17,7 @@ function iso(offset: number): string {
 test('teller per organisatie: twijfel bevestigen, naamvoorstel, beginnummer, kop, agenda en lijsten', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   // Een trip van vandaag met alleen "SV" in de naam (twijfel), en een dag erin.
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()

@@ -13,7 +13,7 @@ test('waar ik gevaren heb, en een trip delen als afbeelding of PDF zonder namen 
   test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
-  await createNewLogbook(page)
+  await createNewLogbook(page, 'nl', { olivier: true })
 
   // Een trip met een deelnemer en een fooi, en twee dagen Hvar → Vis → Hvar.
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
