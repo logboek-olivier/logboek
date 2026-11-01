@@ -5,6 +5,10 @@ Ontwerp voor één vast model waarin elke situatie past (PR 0 t/m 6, oktober 202
 getoond en bewerkt. Wijkt de code af van dit bestand, dan is de code fout; afwijkingen van het verzoek staan onderaan
 met de reden.
 
+**November 2026:** de vijf uitgangspunten bovenaan CLAUDE.md gaan voor dit bestand. Trips en periodes mogen overlappen
+(geen melding, geen samenvoegen), tripdatums zijn gewone velden (nooit uit de dagen gerekend), en Nakijken vraagt alleen
+naar wat ontbreekt. Zie ook docs/FUNDERING.md, sectie 6.
+
 ## 1. Model
 
 | Soort | Subtype | Gegevens naast id, soort, naam, start, eind, notitie |
@@ -82,8 +86,8 @@ knop die het oplost (met ongedaan maken) en "Klopt zo" (onthouden in `settings.r
 |---|---|
 | Trip zonder zekere soort | Soort kiezen (les geven, skipper charter, delivery, werk overig, training, plezier); bij meer dan één ook "Alle voorstellen overnemen" |
 | Werk zonder organisatie | Organisatie kiezen; voorstel uit de source van zijn inkomsten |
-| Twee periodes op dezelfde dag | Samenvoegen, of de andere korter maken (bestaande keuze voor trips) |
-| Gelogde dag buiten de datums van zijn trip | Naar de trip van die datum, of (hoogstens 3 dagen ernaast) de trip verlengen; verder weg "Dag bewerken" |
+| Twee periodes op dezelfde dag | Sinds november 2026 geen punt meer: overlap is normaal (CLAUDE.md, uitgangspunt 3) |
+| Gelogde dag buiten de datums van zijn trip | Sinds november 2026 geen punt meer: de dag staat apart op de periodepagina, met Dag bewerken |
 | Agendadag (thuis, reis, rust, dagtoestand) binnen een trip | Dag hoort bij de trip |
 | Dagtoestand (onbeschikbaar, optie, beschikbaar) of andere soort binnen een periode aan land | De dag uit de periode halen |
 | Werkdag in de agenda zonder trip | Trip maken over die dagen |
