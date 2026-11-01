@@ -10,7 +10,6 @@ import { tripDayCounts, weekView, type WeekView } from '../model/weeks'
 import { stayPeriod, waterPeriod } from '../model/periods'
 import { PeriodPage } from './PeriodPage'
 import { StaySheet } from './StaySheet'
-import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { boatLine, tripDaysText } from './boat-line'
@@ -145,7 +144,7 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
  * Een trip in een onderblad (uit het Logboek, de agenda, Vandaag, de komende trips en de lijst met periodes): de
  * periodepagina, bewerken via het potlood.
  */
-export function TripOverviewSheet({ store, trip, notify, onClose, onAddDay }: { store: Store; trip: Trip; notify: Notify; onClose: () => void; onAddDay?: (init: AddInit) => void }) {
+export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Store; trip: Trip; notify: Notify; onClose: () => void }) {
   const [editing, setEditing] = useState(false)
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
@@ -157,7 +156,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose, onAddDay }: { 
   return (
     <Sheet title={tripTitle(view, counters.get(current.id))} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="view trip-overview">
-        <PeriodPage store={store} period={waterPeriod(view)} notify={notify} mode="sheet" onAddDay={onAddDay} onDeleted={onClose} />
+        <PeriodPage store={store} period={waterPeriod(view)} notify={notify} mode="sheet" onDeleted={onClose} />
       </div>
     </Sheet>
   )

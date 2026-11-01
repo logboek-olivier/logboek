@@ -244,10 +244,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           date={open}
           notify={notify}
           onClose={() => setOpen(null)}
-          onAdd={(init) => {
-            setOpen(null)
-            onAdd(init)
-          }}
+          onAdd={onAdd}
           onReminder={(r) => {
             setReminder({ reminder: r, date: open })
             setOpen(null)
@@ -271,10 +268,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
         />
       )}
       {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
-      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} onAddDay={(init) => {
-        setViewTrip(null)
-        onAdd(init)
-      }} />}
+      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} />}
       {viewStay && <StayOverviewSheet key={viewStay.id} store={store} stay={viewStay} notify={notify} onClose={() => setViewStay(null)} />}
       {reminder &&
         (reminder.reminder ? (

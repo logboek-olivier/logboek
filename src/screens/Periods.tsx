@@ -18,7 +18,6 @@ import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { type PeriodKind, type StayPeriod, type Transaction, type Trip } from '../model/types'
 import { activeWeek } from '../model/weeks'
-import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { todayIso } from '../basis/datum'
 
@@ -28,7 +27,7 @@ import { todayIso } from '../basis/datum'
 
 const KIND_ICON: Record<PeriodKind, LucideIcon> = { werk: Briefcase, training: GraduationCap, plezier: Sailboat, reis: Plane, thuis: House, vrij: Sun }
 
-export function Periods({ store, notify, onAddDay }: { store: Store; notify: Notify; onAddDay?: (init: AddInit) => void }) {
+export function Periods({ store, notify }: { store: Store; notify: Notify }) {
   const periods = usePeriods(store)
   const legs = useCollection(store, 'legs.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
@@ -91,7 +90,7 @@ export function Periods({ store, notify, onAddDay }: { store: Store; notify: Not
           <Rows store={store} rows={sections.undated} shown={shown} onOpen={open} />
         </div>
       )}
-      {openTrip && <TripOverviewSheet key={openTrip.id} store={store} trip={openTrip} notify={notify} onClose={() => setOpenTrip(null)} onAddDay={onAddDay} />}
+      {openTrip && <TripOverviewSheet key={openTrip.id} store={store} trip={openTrip} notify={notify} onClose={() => setOpenTrip(null)} />}
       {openStay && <StayOverviewSheet key={openStay.id} store={store} stay={openStay} notify={notify} onClose={() => setOpenStay(null)} />}
     </section>
   )

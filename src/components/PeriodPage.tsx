@@ -15,10 +15,9 @@ import { activeStudents } from '../model/students'
 import { type Leg, type Participant, type StayPeriod, type Transaction, type Trip, type WeekType } from '../model/types'
 import { missingDays, needsClosing, planWeek, studentWeek, weekView } from '../model/weeks'
 import { useIsDemo } from './DemoBar'
-import { openStudent } from '../navigation'
+import { openAdd, openStudent } from '../navigation'
 import { PlansView } from '../screens/Planning'
 import { StudentRow, StudentsView } from '../screens/Students'
-import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
 import { ChecklistSheet, NewChecklistButton } from './ChecklistSheet'
 import { TripClaims } from './Claims'
@@ -47,8 +46,6 @@ export interface PeriodPageProps {
   notify: Notify
   /** 'page' = Deze trip (planning en checklists van studenten volledig); 'sheet' = in een onderblad. */
   mode: 'page' | 'sheet'
-  /** Toevoegen → Dag op een datum in deze periode. */
-  onAddDay?: (init: AddInit) => void
   /** Potlood in de kop (in een onderblad staat het potlood in de kop van het blad). */
   onEdit?: () => void
   /** Na "Periode verwijderen" (onder "⋯"): het blad sluiten. */
@@ -66,7 +63,7 @@ export function PeriodPage(props: PeriodPageProps) {
   return props.period.view ? <WaterPeriod {...props} trip={props.period.view.trip} /> : props.period.stay ? <LandPeriod {...props} stay={props.period.stay} /> : null
 }
 
-function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpen = false, studentOpen = false, onPlanDetail, onStudentDetail, trip: given }: PeriodPageProps & { trip: Trip }) {
+function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false, studentOpen = false, onPlanDetail, onStudentDetail, trip: given }: PeriodPageProps & { trip: Trip }) {
   const detail = planOpen || studentOpen
   const lang = useLang()
   const demo = useIsDemo()
@@ -105,10 +102,10 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpe
         <>
           {/* 1. Overzicht */}
           <TripHead view={view} counter={counter} legs={legs} compact={mode === 'sheet'} onEdit={onEdit} menu={<PeriodMenu store={store} notify={notify} trip={trip} onDeleted={onDeleted} />} />
-          {missing.length > 0 && onAddDay && (
+          {missing.length > 0 && (
             <div className="notice">
               <p className="small">{t('trip.missingDays', { n: missing.length })}</p>
-              <button className="btn small primary" onClick={() => onAddDay({ date: missing[0]!, tripId: trip.id })}>
+              <button className="btn small primary" onClick={() => openAdd({ date: missing[0]!, tripId: trip.id })}>
                 {t('trip.logMissing', { date: formatDate(missing[0]!) })}
               </button>
             </div>
@@ -120,12 +117,10 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpe
             <TripRouteSection store={store} view={view} notify={notify} />
             <PeriodDays store={store} legs={inside} notify={notify} nm={view.nm} />
             {outside.length > 0 && <OutsideDays store={store} trip={trip} legs={outside} notify={notify} />}
-            {onAddDay && (
-              <button className="btn" onClick={() => onAddDay({ date: nextDay, tripId: trip.id })}>
-                <Icon icon={Plus} />
-                {t('trip.addDay')}
-              </button>
-            )}
+            <button className="btn" onClick={() => openAdd({ date: nextDay, tripId: trip.id })}>
+              <Icon icon={Plus} />
+              {t('trip.addDay')}
+            </button>
           </div>
 
           {/* 3. Mensen */}

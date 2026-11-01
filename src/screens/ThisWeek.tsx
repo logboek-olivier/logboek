@@ -17,14 +17,13 @@ import { activeWeek, upcomingTrips, weekView } from '../model/weeks'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import { boatLine, TripOverviewSheet } from '../components/TripOverview'
-import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
 import { todayIso } from '../basis/datum'
 
 // Deze trip: de lopende trip op de periodepagina (src/components/PeriodPage.tsx, overal dezelfde), met daaronder de
 // komende trips.
 
-export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: Notify; onAddDay: (init: AddInit) => void }) {
+export function ThisWeek({ store, notify }: { store: Store; notify: Notify }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
@@ -81,7 +80,6 @@ export function ThisWeek({ store, notify, onAddDay }: { store: Store; notify: No
         period={waterPeriod(weekView(week, legs))}
         notify={notify}
         mode="page"
-        onAddDay={onAddDay}
         onEdit={() => setSheet('edit')}
         planOpen={planOpen}
         studentOpen={studentOpen}

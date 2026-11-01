@@ -1258,6 +1258,11 @@ body.sheet-open {
   overflow: hidden;
 }
 
+/* Toevoegen ligt over een scherm met een open blad (dat blijft staan, verborgen): de pagina moet dan wel scrollen. */
+body.sheet-open.adding {
+  overflow: auto;
+}
+
 .sheet-layer {
   position: fixed;
   inset: 0;
