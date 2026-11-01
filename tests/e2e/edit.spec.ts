@@ -84,7 +84,10 @@ test('Vandaag: jaardoel instellen met voortgang, en omlaag trekken synchroniseer
   await expect(page.getByRole('button', { name: /Jaardoel wijzigen/ })).toContainText('25% van 1.000 nm')
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
 
-  // Omlaag trekken bovenaan Vandaag: een nieuwe sync (nieuwe GET's naar GitHub).
+  // Omlaag trekken bovenaan Vandaag: een nieuwe sync (nieuwe GET's naar GitHub). Alleen bovenaan de pagina (op zondag
+  // staan er meer kaarten boven het jaardoel, dus eerst naar boven, zoals Olivier dat ook doet).
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   const before = github.requests.length
   await page.evaluate(() => {
     const target = document.querySelector('.page-header')!

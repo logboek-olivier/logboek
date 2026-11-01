@@ -71,6 +71,10 @@ test('teller per organisatie: twijfel bevestigen, naamvoorstel, beginnummer, kop
 
   // Agenda-balk.
   await page.getByRole('navigation').getByRole('button', { name: 'Agenda', exact: true }).click()
-  await expect(page.locator('.cal-bar').filter({ hasText: 'SV #4 Nepweek' })).toHaveCount(1)
+  // Een trip die op zondag begint, loopt over twee agendaweken (twee balken): elke balk draagt de teller.
+  const bars = page.locator('.cal-bar').filter({ hasText: 'Nepweek' })
+  await expect(bars.first()).toBeVisible()
+  expect(await bars.count()).toBeGreaterThanOrEqual(1)
+  for (const text of await bars.allTextContents()) expect(text).toContain('SV #4 Nepweek')
   expect(errors).toEqual([])
 })

@@ -592,7 +592,7 @@ function LinkRepairSection({ store, notify }: { store: Store; notify: Notify }) 
     <div className="section stack link-repair">
       <h2>{t('links.title')}</h2>
       {empty ? (
-        <p className="notice health-ok" role="status">
+        <p className="notice links-ok" role="status">
           {t('links.ok')}
         </p>
       ) : (
