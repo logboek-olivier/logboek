@@ -4,8 +4,9 @@
 import { active } from '../model/derive'
 import { currentSettings, saveSettings } from '../model/settings'
 import { scrubbed } from '../model/students'
-import { movedAway, trashItems } from '../model/trash'
+import { movedAway, trashItemForTrip, trashItems } from '../model/trash'
 import { followDays } from '../model/trip-dates'
+import { untangleSurvivors } from '../model/link-repair'
 import type { CollectionPath, HistoryEntry, Participant, Student, SyncRecord, Trip } from '../model/types'
 import { HISTORY_DAYS, HISTORY_PATH, revertChange } from './history'
 import { tombstone } from './tombstone'
@@ -29,6 +30,10 @@ export async function restoreTrash(tx: Tx, key: string, relink: readonly string[
     count++
   }
   if (item.entry) return revertEntry(tx, item.entry, item.kind === 'deelnemer')
+  const restored = item.legacy.find((r) => r.path === 'trips.json.enc')?.record as Trip | undefined
+  // De trips die bij hetzelfde verwijderen iets van deze trip kregen (samenvoegen of vervangen gaf ze dezelfde tijd):
+  // vóór het schrijven bepalen, daarna hebben ze een andere tijd.
+  const survivors = restored ? active(tx.get('trips.json.enc')).filter((t) => t.id !== restored.id && t.updatedAt === item.deletedAt).map((t) => t.id) : []
   for (const { path, record } of item.legacy) {
     const current = tx.get(path).find((r) => r.id === record.id)
     if (current && current.deletedAt === record.deletedAt) await put(path, { ...current, deletedAt: null, updatedAt: tx.now })
@@ -52,6 +57,10 @@ export async function restoreTrash(tx: Tx, key: string, relink: readonly string[
     }
     // Datums die de dagen volgen: weer gelijk aan de dagen (bij beide trips).
     await followDays(tx, [trip.id, ...others])
+    // Samenvoegen gaf de andere trip de datums en deelnemers van beide: die krijgt weer alleen zijn eigen (op id).
+    for (const fix of untangleSurvivors(tx, trip as Trip, survivors)) {
+      await put('trips.json.enc', { ...fix.next, updatedAt: tx.now })
+    }
   }
   return count
 }
@@ -138,7 +147,7 @@ export async function restoreEntry(tx: Tx, entryId: string): Promise<number> {
 
 /** De verwijderde trip met deze id uit de prullenbak terugzetten (vanuit Nakijken: dagen zonder trip). */
 export async function restoreTrip(tx: Tx, tripId: string): Promise<number> {
-  const item = trashItems(tx, tx.now).find((i) => i.kind === 'periode' && (i.legacy.some((r) => r.path === 'trips.json.enc' && r.record.id === tripId) || !!i.entry?.changes.some((c) => c.path === 'trips.json.enc' && c.id === tripId && typeof c.after.deletedAt === 'string')))
+  const item = trashItemForTrip(tx, tripId, tx.now)
   return item ? restoreTrash(tx, item.key) : 0
 }
 

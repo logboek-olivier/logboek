@@ -187,6 +187,15 @@ export function trashItems(reader: Reader, now = new Date().toISOString()): Tras
   return [...fromHistory, ...legacyItems(reader, covered, now, since)].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt))
 }
 
+/** Het item in de prullenbak waarmee deze trip (op id) verwijderd werd, of undefined. Nooit op naam. */
+export function trashItemForTrip(reader: Reader, tripId: string, now = new Date().toISOString()): TrashItem | undefined {
+  return trashItems(reader, now).find(
+    (i) =>
+      i.kind === 'periode' &&
+      (i.legacy.some((r) => r.path === 'trips.json.enc' && r.record.id === tripId) || !!i.entry?.changes.some((c) => c.path === 'trips.json.enc' && c.id === tripId && typeof c.after.deletedAt === 'string')),
+  )
+}
+
 /**
  * Bij een periode van vóór de geschiedenis: geld rond de datums van de trip dat nu bij geen trip hoort (een periode aan
  * land of geen periode). Olivier vinkt zelf aan wat er terug moet; niets gaat vanzelf.

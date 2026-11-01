@@ -19,7 +19,7 @@ import { WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } fro
 import type { Store } from '../storage/store'
 import { plaatsenSamenvoegen } from '../domain/plaatsen'
 import { tripTerugzetten } from '../domain/prullenbak'
-import { trashItems } from '../model/trash'
+import { trashItemForTrip } from '../model/trash'
 import { defaultTripName } from '../model/trip-name'
 import { agendadagBijTrip, dagBeginAansluiten, dagenNaarTrip, tripVoorDagen, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 import { organisationChoices } from '../basis/organisatie'
@@ -164,7 +164,8 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
     case 'agendadag-in-trip':
       return [{ label: t('review.belongsTo', { name: item.trip.name }), primary: true, run: () => agendadagBijTrip(store, item.day) }]
     case 'dagen-zonder-trip': {
-      const restorable = !!item.tripName && trashItems(store).some((i) => i.kind === 'periode' && i.title === item.tripName)
+      // Op id: een andere trip met dezelfde naam in de prullenbak telt niet.
+      const restorable = !!item.tripName && !!trashItemForTrip(store, item.tripId)
       return [
         ...(restorable ? [{ label: t('review.restoreTrip', { name: item.tripName! }), primary: true, run: () => tripTerugzetten(store, item.tripId) }] : []),
         ...(item.target ? [{ label: t('review.moveTo', { name: item.target.name }), primary: !restorable, run: () => dagenNaarTrip(store, item.legs, item.target!) }] : []),
