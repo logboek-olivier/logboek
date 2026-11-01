@@ -11,28 +11,24 @@ import { t, useLang } from '../i18n'
 import { allTopics, courseLabel, localized } from '../model/curricula'
 import {
   activeStudents,
-  addStudent,
   archivedStudents,
-  autoArchive,
   criticalOpen,
-  deleteStudents,
   dueForArchive,
   nextStatus,
   progressFor,
   raiseStatus,
-  saveStudents,
-  setArchived,
   statusOf,
-  updateStudent,
   weekEnd,
   weekOf,
   withStatus,
   type StudentInput,
 } from '../model/students'
-import { STUDENT_LEVELS, todayIso, type Curriculum, type Student, type StudentLevel, type Topic, type TopicStatus, type Trip } from '../model/types'
-import { addParticipant, studentWeek } from '../model/weeks'
+import { STUDENT_LEVELS, type Curriculum, type Student, type StudentLevel, type Topic, type TopicStatus, type Trip } from '../model/types'
+import { studentWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
 import { useBack } from '../back'
+import { studentArchiveren, studentBewerken, studentenArchiveren, studentenOpslaan, studentenWissen, studentInTripToevoegen } from '../domain/training'
+import { todayIso } from '../basis/datum'
 
 // Studenten en voortgang. Eén tik op een vinkvak = volgende status. Examenkritische onderwerpen die nog op
 // "nieuw" staan, staan bovenaan. Snel afvinken voor een hele groep. Na 12 maanden automatisch archiveren.
@@ -166,9 +162,7 @@ export function StudentsView({
           defaultStartedAt={scope.kind === 'week' ? scope.week.startDate : undefined}
           onClose={() => setAdding(false)}
           onSave={(input) =>
-            void addStudent(store, input, weekId ?? undefined).then(async (student) => {
-              const week = scope.kind === 'week' ? store.get('trips.json.enc').find((tr) => tr.id === scope.week.id) : undefined
-              if (week) await addParticipant(store, week, student)
+            void studentInTripToevoegen(store, input, weekId).then(() => {
               setAdding(false)
               notify(t('students.added'))
             })
@@ -193,7 +187,7 @@ export function useAutoArchive(store: Store, notify: Notify): void {
     const today = todayIso()
     const due = dueForArchive(store.get('students.json.enc'), today)
     if (due.length > 0) {
-      void autoArchive(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
+      void studentenArchiveren(store, due, today).then(() => notify(t('students.autoArchived', { n: due.length })))
     }
   }, [store, notify, status])
 }
@@ -273,7 +267,7 @@ export function StudentDetail({
   const tick = (topicId: string) => {
     const latest = current()
     const next = nextStatus(statusOf(latest, topicId))
-    void saveStudents(store, [withStatus(latest, topicId, next, new Date().toISOString())])
+    void studentenOpslaan(store, [withStatus(latest, topicId, next, new Date().toISOString())])
   }
 
   /** Hele onderwerpgroep in één tik: alles naar minstens geoefend, en als dat al zo is naar beheerst. */
@@ -281,7 +275,7 @@ export function StudentDetail({
     const now = new Date().toISOString()
     const before = current()
     const next = topics.reduce((s, tp) => raiseStatus(s, tp.id, status, now), before)
-    void saveStudents(store, [next]).then(() => notify(t('students.groupDone', { status: t(`status.${status}`) }), () => saveStudents(store, [before])))
+    void studentenOpslaan(store, [next]).then((undo) => notify(t('students.groupDone', { status: t(`status.${status}`) }), undo))
   }
 
   const box = (topicId: string, title: string) => {
@@ -359,16 +353,16 @@ export function StudentDetail({
           student={student}
           curricula={curricula}
           onClose={() => setEditing(false)}
-          onSave={(input) => void updateStudent(store, student, input).then(() => setEditing(false))}
+          onSave={(input) => void studentBewerken(store, student, input).then(() => setEditing(false))}
           onArchive={() =>
-            void setArchived(store, [student], todayIso()).then(() => {
+            void studentArchiveren(store, [student], todayIso()).then(() => {
               setEditing(false)
               onBack()
               notify(t('students.archived'))
             })
           }
           onDelete={() =>
-            void deleteStudents(store, [student]).then((undo) => {
+            void studentenWissen(store, [student]).then((undo) => {
               setEditing(false)
               onBack()
               notify(t('toast.deleted'), undo)
@@ -420,7 +414,7 @@ export function ArchiveView({
                       {s.archivedAt ? ` · ${t('students.archivedOn', { date: formatDate(s.archivedAt) })}` : ''}
                     </span>
                   </span>
-                  <button className="btn icon" aria-label={t('students.restore', { name: s.firstName })} onClick={() => void setArchived(store, [s], null)}>
+                  <button className="btn icon" aria-label={t('students.restore', { name: s.firstName })} onClick={() => void studentArchiveren(store, [s], null)}>
                     <Icon icon={Undo2} />
                   </button>
                 </li>
@@ -430,7 +424,7 @@ export function ArchiveView({
           <button
             className="btn danger"
             onClick={() =>
-              void deleteStudents(store, students).then((undo) => {
+              void studentenWissen(store, students).then((undo) => {
                 onBack()
                 notify(t('students.archiveCleared'), undo)
               })
@@ -598,7 +592,7 @@ function GroupTickSheet({
         const raised = raiseStatus(s, topicId, status, now)
         return raised === s ? [] : [raised]
       })
-    void saveStudents(store, changed).then(() => {
+    void studentenOpslaan(store, changed).then(() => {
       onClose()
       notify(changed.length === 0 ? t('students.alreadyTicked') : t('students.groupTicked', { n: changed.length }))
     })

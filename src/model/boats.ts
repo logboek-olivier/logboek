@@ -1,4 +1,4 @@
-import type { Store } from '../storage/store'
+import type { Tx, Reader } from '../domain/tx'
 import { active } from './derive'
 import { saveSettings } from './settings'
 import type { BoatKind, Leg, Settings, Trip } from './types'
@@ -130,7 +130,7 @@ export interface BoatInput {
 }
 
 /** Bevestigen: naam, model, lengte en soort op alle trips van elke boot; daarna niet meer vragen. */
-export async function confirmBoats(store: Store, boats: readonly BoatEntry[], inputs: readonly BoatInput[]): Promise<void> {
+export async function confirmBoats(store: Tx, boats: readonly BoatEntry[], inputs: readonly BoatInput[]): Promise<void> {
   const now = new Date().toISOString()
   const trips = store.get('trips.json.enc')
   const changed: Trip[] = []
@@ -161,18 +161,16 @@ export async function confirmBoats(store: Store, boats: readonly BoatEntry[], in
   }
   if (changed.length > 0) await store.putMany('trips.json.enc', changed)
   await saveSettings(store, { boatsChecked: [...checked] })
-  void store.sync()
 }
 
 /** Overslaan: deze boten niet meer vragen (aanvullen kan later via Meer → Boten of de zondagkaart). */
-export async function skipBoats(store: Store, boats: readonly BoatEntry[]): Promise<void> {
+export async function skipBoats(store: Tx, boats: readonly BoatEntry[]): Promise<void> {
   const checked = new Set(currentChecked(store))
   for (const b of boats) checked.add(b.key)
   await saveSettings(store, { boatsChecked: [...checked] })
-  void store.sync()
 }
 
-function currentChecked(store: Store): string[] {
+function currentChecked(store: Reader): string[] {
   return store.get('settings.json.enc').find((s) => s.id === 'settings' && s.deletedAt === null)?.boatsChecked ?? []
 }
 
@@ -191,22 +189,12 @@ function legsOf(legs: readonly Leg[], boat: BoatEntry): Leg[] {
   })
 }
 
-/** Na een wijziging van trips en dagen: alles terugzetten zoals het was (met een latere updatedAt). */
-function restore(store: Store, trips: readonly Trip[], legs: readonly Leg[]): () => Promise<void> {
-  return async () => {
-    const later = (iso: string) => new Date(Math.max(Date.now(), Date.parse(iso) + 1)).toISOString()
-    if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...t, updatedAt: later(t.updatedAt) })))
-    if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, updatedAt: later(l.updatedAt) })))
-    void store.sync()
-  }
-}
-
-function tripsOf(store: Store, boat: BoatEntry): Trip[] {
+function tripsOf(store: Reader, boat: BoatEntry): Trip[] {
   return store.list('trips.json.enc').filter((t) => boat.tripIds.includes(t.id))
 }
 
 /** Een boot weghalen: de trips en dagen houden geen bootgegevens meer (bijvoorbeeld een tikfout als "xxx"). */
-export async function deleteBoat(store: Store, boat: BoatEntry): Promise<() => Promise<void>> {
+export async function deleteBoat(store: Tx, boat: BoatEntry): Promise<void> {
   const now = new Date().toISOString()
   const trips = tripsOf(store, boat)
   const legs = legsOf(store.get('legs.json.enc'), boat)
@@ -217,15 +205,13 @@ export async function deleteBoat(store: Store, boat: BoatEntry): Promise<() => P
   })
   if (nextTrips.length > 0) await store.putMany('trips.json.enc', nextTrips)
   if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, boat: '', updatedAt: now })))
-  void store.sync()
-  return restore(store, trips, legs)
 }
 
 /**
  * Een boot samenvoegen met een andere: de trips en dagen van `from` krijgen de naam, het model, de lengte en de soort van
  * `into`. Daarna is er nog één boot.
  */
-export async function mergeBoat(store: Store, from: BoatEntry, into: BoatEntry): Promise<() => Promise<void>> {
+export async function mergeBoat(store: Tx, from: BoatEntry, into: BoatEntry): Promise<void> {
   const now = new Date().toISOString()
   const trips = tripsOf(store, from)
   const legs = legsOf(store.get('legs.json.enc'), from)
@@ -244,6 +230,4 @@ export async function mergeBoat(store: Store, from: BoatEntry, into: BoatEntry):
   const text = shipText(into.name, into.model)
   if (nextTrips.length > 0) await store.putMany('trips.json.enc', nextTrips)
   if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, boat: text, updatedAt: now })))
-  void store.sync()
-  return restore(store, trips, legs)
 }

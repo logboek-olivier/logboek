@@ -1,8 +1,7 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { allTopics } from './curricula'
-import type { Undo } from './edit'
-import { addDays, mondayOf } from './money'
 import { firstNameOnly, justAfter, newId, type Curriculum, type Student, type StudentExam, type TipFrom, type StudentLevel, type Topic, type TopicStatus } from './types'
+import { addDays, mondayOf } from '../basis/datum'
 
 // Studenten en hun voortgang per onderwerp. Beveiligingsregel 14: alleen voornaam, cursus, niveau, voortgang en
 // examenuitslag; geen contact-, gezondheids- of identiteitsgegevens; nooit in logs of foutdetails. Na 12 maanden
@@ -126,7 +125,7 @@ export function cleanInput(input: StudentInput): StudentInput {
   return out
 }
 
-export async function addStudent(store: Store, input: StudentInput, weekId?: string): Promise<Student> {
+export async function addStudent(store: Tx, input: StudentInput, weekId?: string): Promise<Student> {
   const student: Student = {
     id: newId(),
     ...cleanInput(input),
@@ -137,25 +136,22 @@ export async function addStudent(store: Store, input: StudentInput, weekId?: str
     deletedAt: null,
   }
   await store.put('students.json.enc', student)
-  void store.sync()
   return student
 }
 
-export async function updateStudent(store: Store, student: Student, input: StudentInput): Promise<void> {
+export async function updateStudent(store: Tx, student: Student, input: StudentInput): Promise<void> {
   const { note: _n, exam: _e, ...rest } = student
   void [_n, _e]
   await store.put('students.json.enc', { ...rest, ...cleanInput(input), updatedAt: new Date().toISOString() })
-  void store.sync()
 }
 
-export async function saveStudents(store: Store, students: readonly Student[]): Promise<void> {
+export async function saveStudents(store: Tx, students: readonly Student[]): Promise<void> {
   if (students.length === 0) return
   const now = new Date().toISOString()
   await store.putMany('students.json.enc', students.map((s) => ({ ...s, updatedAt: now })))
-  void store.sync()
 }
 
-export async function setArchived(store: Store, students: readonly Student[], archivedAt: string | null): Promise<void> {
+export async function setArchived(store: Tx, students: readonly Student[], archivedAt: string | null): Promise<void> {
   await saveStudents(store, students.map((s) => ({ ...s, archivedAt })))
 }
 
@@ -163,10 +159,9 @@ export async function setArchived(store: Store, students: readonly Student[], ar
  * Vanzelf archiveren (12 maanden zonder activiteit), net na de vorige versie van elke student: voortgang die een ander
  * apparaat intussen zonder verbinding vastlegde, wint altijd (dan was er activiteit en hoort hij niet in het archief).
  */
-export async function autoArchive(store: Store, students: readonly Student[], today: string): Promise<void> {
+export async function autoArchive(store: Tx, students: readonly Student[], today: string): Promise<void> {
   if (students.length === 0) return
   await store.putMany('students.json.enc', students.map((s) => ({ ...s, archivedAt: today, updatedAt: justAfter(s.updatedAt) })))
-  void store.sync()
 }
 
 /** Tombstone zonder persoonsgegevens: alleen id en tijden blijven in het huidige bestand staan. */
@@ -179,23 +174,14 @@ export function scrubbed(student: Student, now: string): Student {
  * hetzelfde id) en uit een fooi per persoon, zodat voornaam, land en kenmerk nergens blijven staan (regel 14). Ongedaan
  * maken zet alles uit het geheugen terug, alleen binnen de melding.
  */
-export async function deleteStudents(store: Store, students: readonly Student[]): Promise<Undo> {
+export async function deleteStudents(store: Tx, students: readonly Student[]): Promise<void> {
   const now = new Date().toISOString()
   const ids = new Set(students.map((s) => s.id))
-  const originals = students.map((s) => ({ ...s }))
   const trips = store.list('trips.json.enc').filter((t) => t.participants?.some((p) => ids.has(p.id)))
   const tips = store.list('transactions.json.enc').filter((tx) => tx.tipFrom?.kind === 'personen' && tx.tipFrom.participantIds.some((id) => ids.has(id)))
   await store.putMany('students.json.enc', students.map((s) => scrubbed(s, now)))
   if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...t, participants: (t.participants ?? []).filter((p) => !ids.has(p.id)), updatedAt: now })))
   if (tips.length > 0) await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...tx, tipFrom: withoutPeople(tx.tipFrom!, ids), updatedAt: now })))
-  void store.sync()
-  return async () => {
-    const later = new Date().toISOString()
-    await store.putMany('students.json.enc', originals.map((s) => ({ ...s, updatedAt: later, deletedAt: null })))
-    if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...(store.list('trips.json.enc').find((x) => x.id === t.id) ?? t), participants: t.participants, updatedAt: later })))
-    if (tips.length > 0) await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...(store.list('transactions.json.enc').find((x) => x.id === tx.id) ?? tx), tipFrom: tx.tipFrom, updatedAt: later })))
-    void store.sync()
-  }
 }
 
 /** Een fooi per persoon zonder deze deelnemers; blijft er niemand over, dan is de gever onbekend. */

@@ -4,10 +4,10 @@ import { formatMoney, formatMonthShort } from '../format'
 import { t } from '../i18n'
 import { actualCosts } from '../model/actual-costs'
 import { getRates, subscribeRates } from '../model/rates'
-import { todayIso } from '../model/types'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { useCollection } from './useCollection'
+import { todayIso } from '../basis/datum'
 
 /** Geld → Werkelijk: kosten per maand (vaste lasten geboekt, losse kosten, weekschatting). */
 export function ActualCostsSection({ store }: { store: Store }) {

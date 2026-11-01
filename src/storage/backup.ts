@@ -1,15 +1,10 @@
 import { decryptObject, DecryptError, encryptObject, fromBase64, toBase64, utf8, type Bytes } from '../crypto/encrypt'
 import { parseMeta, unlock, type Meta, type Secret } from '../crypto/keys'
-import { scrubbedAccount, scrubbedBalance } from '../model/accounts'
-import { scrubbedCareer } from '../model/career'
-import { scrubbedDocument } from '../model/documents'
-import type { Undo } from '../model/edit'
 import { NewerSchemaError } from '../model/schema'
-import { scrubbed } from '../model/students'
-import { COLLECTION_PATHS, type Account, type Balance, type CareerRecord, type Claim, type CollectionPath, type Collections, type FixedCost, type Student, type SyncRecord, type VaultDocument } from '../model/types'
+import { COLLECTION_PATHS, type CollectionPath, type Collections, type SyncRecord } from '../model/types'
+import type { Tx } from '../domain/tx'
 import type { Store } from './store'
 import { decodeRecords, encodeRecords } from './sync'
-import { scrubbedClaim } from '../model/claims'
 
 // Back-up zonder laptop: één bestand met het hele logboek, dat Olivier zelf deelt (bijvoorbeeld naar Google Drive).
 // Alles is versleuteld onder de hoofdsleutel; de meta (zoals meta.json.enc op GitHub: salts en de verpakte sleutel,
@@ -141,40 +136,18 @@ export function restorePlan(store: Store, backup: OpenedBackup): RestoreItem[] {
 
 /**
  * Zet terug volgens het voorbeeld, opnieuw gecontroleerd tegen wat er nu is (er kan intussen gesynct zijn), met de tijden
- * uit de back-up. Geeft een functie die het ongedaan maakt.
+ * uit de back-up. Alleen na een geslaagde sync. Ongedaan maken regelt de opdracht.
  */
-export async function applyRestore(store: Store, plan: readonly RestoreItem[]): Promise<Undo> {
+export async function applyRestore(store: Tx, plan: readonly RestoreItem[]): Promise<void> {
   if (!store.hasSynced()) throw new RestoreNeedsSyncError()
-  const done: RestoreItem[] = []
   for (const item of plan) {
     const now = new Set(store.get(item.path).map((r) => r.id))
     const back = item.back.filter((r) => !now.has(r.id))
-    if (back.length === 0) continue
-    await putRecords(store, item.path, back)
-    done.push({ ...item, back })
-  }
-  void store.sync()
-  return async () => {
-    for (const item of done) {
-      const gone = item.back.map((r) => {
-        // Altijd later dan de tijd uit de back-up (die kan van een apparaat met een voorlopende klok komen).
-        const later = new Date(Math.max(Date.now(), Date.parse(r.updatedAt) + 1)).toISOString()
-        if (item.path === 'students.json.enc') return scrubbed(r as Student, later)
-        if (item.path === 'documents/index.json.enc') return scrubbedDocument(r as VaultDocument, later)
-        if (item.path === 'career.json.enc') return scrubbedCareer(r as CareerRecord, later)
-        if (item.path === 'accounts.json.enc') return scrubbedAccount(r as Account, later)
-        if (item.path === 'balances.json.enc') return scrubbedBalance(r as Balance, later)
-        if (item.path === 'claims.json.enc') return scrubbedClaim(r as Claim, later)
-        if (item.path === 'fixedcosts.json.enc') return { id: r.id, name: '', currency: (r as FixedCost).currency, amounts: [], updatedAt: later, deletedAt: later }
-        return { ...r, updatedAt: later, deletedAt: later }
-      })
-      await putRecords(store, item.path, gone)
-    }
-    void store.sync()
+    if (back.length > 0) await putRecords(store, item.path, back)
   }
 }
 
-function putRecords(store: Store, path: CollectionPath, records: SyncRecord[]): Promise<void> {
+function putRecords(store: Tx, path: CollectionPath, records: SyncRecord[]): Promise<void> {
   // De records komen uit een gecontroleerd logboekbestand (decodeRecords); hun vorm is die van het pad.
   return store.putMany(path, records as Collections[typeof path][])
 }

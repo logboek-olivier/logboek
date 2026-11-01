@@ -3,27 +3,22 @@ import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatDateShort, formatMoney, formatNm, formatNumber } from '../format'
 import { getLang, t, type MessageKey } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
-import { deleteGoal, deleteSession, deleteSkill } from '../model/edit'
 import {
   GOAL_SUGGESTIONS,
   SKILL_SUGGESTIONS,
   YACHTMASTER_ITEMS,
   defaultTarget,
   goalProgress,
-  logSession,
   measurements,
   newMilestone,
   parseValue,
-  saveGoal,
-  saveSkill,
   skillSessions,
   skillStats,
-  toggleMilestone,
   type GoalData,
   type GoalProgress,
 } from '../model/goals'
 import { getRates, subscribeRates } from '../model/rates'
-import { GOAL_METRICS, ORGANISATIONS, todayIso, type Goal, type GoalMetric, type Milestone, type Organisation, type Skill } from '../model/types'
+import { GOAL_METRICS, ORGANISATIONS, type Goal, type GoalMetric, type Milestone, type Organisation, type Skill } from '../model/types'
 import type { Store } from '../storage/store'
 import { BarChart } from './BarChart'
 import type { Notify } from './EditSheets'
@@ -31,6 +26,8 @@ import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
+import { doelOpslaanMetMeting, doelVerwijderen, mijlpaalAfvinken, sessieLoggen, sessieVerwijderen, skillOpslaan, skillVerwijderen } from '../domain/doelen'
+import { todayIso } from '../basis/datum'
 
 // Doelen en skills: eerst bekijken, dan bewerken (potlood); verwijderen met ongedaan maken. Een doel vult zichzelf uit
 // de app of Olivier meet zelf; een skill heeft sessies, een trend en mijlpalen. Zie src/model/goals.ts.
@@ -113,7 +110,7 @@ export function GoalView({ store, goal, notify, onClose }: { store: Store; goal:
     if (parsed === null || busy) return
     setBusy(true)
     try {
-      await logSession(store, { date, goalId: current.id, value: parsed })
+      await sessieLoggen(store, { date, goalId: current.id, value: parsed })
       setValue('')
       notify(t('goals.measurementSaved'))
     } finally {
@@ -168,7 +165,7 @@ export function GoalView({ store, goal, notify, onClose }: { store: Store; goal:
                       type="button"
                       className="btn icon"
                       aria-label={t('goals.deleteMeasurement', { date: formatDate(s.date) })}
-                      onClick={async () => notify(t('toast.deleted'), await deleteSession(store, s))}
+                      onClick={async () => notify(t('toast.deleted'), await sessieVerwijderen(store, s))}
                     >
                       <Icon icon={Trash2} />
                     </button>
@@ -211,7 +208,9 @@ export function GoalSheet({ store, goal, notify, onClose }: { store: Store; goal
     e.preventDefault()
     if (!ok || parsedTarget === null) return
     setBusy(true)
-    const saved = await saveGoal(store, {
+    await doelOpslaanMetMeting(
+      store,
+      {
       id: goal?.id,
       kind,
       title: kind === 'meting' ? title : '',
@@ -220,16 +219,17 @@ export function GoalSheet({ store, goal, notify, onClose }: { store: Store; goal
         ? { metric, ...(metric === 'trips' && organisation ? { organisation } : {}), ...(metric !== 'yachtmaster' ? { year: Number(goalYear) } : {}) }
         : { ...(unit.trim() ? { unit: unit.trim().slice(0, 20) } : {}), lower: parsedNow !== null ? parsedTarget < parsedNow : lower }),
       doneAt: goal?.doneAt ?? null,
-    })
-    // Een nieuwe meting met "Nu" ingevuld: de eerste meting van vandaag.
-    if (kind === 'meting' && parsedNow !== null) await logSession(store, { date: todayIso(), goalId: saved.id, value: parsedNow })
+      },
+      // Een nieuwe meting met "Nu" ingevuld: de eerste meting van vandaag.
+      kind === 'meting' && parsedNow !== null ? { date: todayIso(), value: parsedNow } : null,
+    )
     onClose()
     notify(t('goals.saved'))
   }
 
   async function remove() {
     if (!goal) return
-    const undo = await deleteGoal(store, goal)
+    const undo = await doelVerwijderen(store, goal)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -420,7 +420,7 @@ export function SkillView({ store, skill, notify, onClose }: { store: Store; ski
             <ul className="rows">
               {current.milestones.map((m) => (
                 <li key={m.id}>
-                  <button type="button" className={`row-button milestone${m.doneAt ? ' done' : ''}`} aria-pressed={!!m.doneAt} onClick={() => void toggleMilestone(store, current, m.id, today)}>
+                  <button type="button" className={`row-button milestone${m.doneAt ? ' done' : ''}`} aria-pressed={!!m.doneAt} onClick={() => void mijlpaalAfvinken(store, current, m.id, today)}>
                     <Icon icon={m.doneAt ? Check : X} />
                     <span className="row-main">
                       <span>{m.title}</span>
@@ -453,7 +453,7 @@ export function SkillView({ store, skill, notify, onClose }: { store: Store; ski
                     type="button"
                     className="btn icon"
                     aria-label={t('goals.deleteSession', { date: formatDate(s.date) })}
-                    onClick={async () => notify(t('toast.deleted'), await deleteSession(store, s))}
+                    onClick={async () => notify(t('toast.deleted'), await sessieVerwijderen(store, s))}
                   >
                     <Icon icon={Trash2} />
                   </button>
@@ -481,14 +481,14 @@ export function SkillSheet({ store, skill, notify, onClose }: { store: Store; sk
     if (!name.trim()) return
     setBusy(true)
     const pending = newMilestoneTitle.trim() ? [...milestones, newMilestone(newMilestoneTitle)] : milestones
-    await saveSkill(store, { id: skill?.id, name, ...(valueUnit.trim() ? { valueUnit: valueUnit.trim().slice(0, 20), best } : {}), milestones: pending })
+    await skillOpslaan(store, { id: skill?.id, name, ...(valueUnit.trim() ? { valueUnit: valueUnit.trim().slice(0, 20), best } : {}), milestones: pending })
     onClose()
     notify(t('goals.skillSaved'))
   }
 
   async function remove() {
     if (!skill) return
-    const undo = await deleteSkill(store, skill)
+    const undo = await skillVerwijderen(store, skill)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -611,7 +611,7 @@ export function SessionForm({ store, fixed, notify, onDone }: { store: Store; fi
     e.preventDefault()
     if (!ok) return
     setBusy(true)
-    await logSession(store, { date, ...(skill ? { skillId: skill.id, minutes: parsedMinutes } : {}), ...(goal ? { goalId: goal.id } : {}), value: parsedValue })
+    await sessieLoggen(store, { date, ...(skill ? { skillId: skill.id, minutes: parsedMinutes } : {}), ...(goal ? { goalId: goal.id } : {}), value: parsedValue })
     setBusy(false)
     setMinutes('')
     setValue('')

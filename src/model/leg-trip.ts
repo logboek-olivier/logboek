@@ -1,8 +1,8 @@
 import { active } from './derive'
 import { datesFollowDays } from './trip-dates'
-import { daysBetween } from './calendar'
 import { weekView } from './weeks'
 import type { Leg, Trip } from './types'
+import { daysBetween } from '../basis/datum'
 
 // Bij welke trip hoort een gelogde dag? Een dag ligt altijd binnen de datums van zijn trip (docs/PERIODEMODEL.md). Zo kon
 // een dag van 28 oktober in SV #1 (18–24 oktober) terechtkomen: een oude "lopende trip" of een trip die vanaf het

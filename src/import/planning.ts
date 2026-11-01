@@ -1,14 +1,15 @@
 import { t } from '../i18n'
 import { datesBetween, followTrip, type CalendarIndex } from '../model/calendar'
 import { suggestType, weekFields, MAX_WEEK_DAYS, type WeekInput } from '../model/weeks'
-import { DAY_TYPES, newId, ORGANISATIONS, todayIso, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type StayKind, type Trip, type WeekType } from '../model/types'
+import { DAY_TYPES, newId, ORGANISATIONS, WEEK_TYPES, type CalendarDay, type DayType, type Organisation, type StayKind, type Trip, type WeekType } from '../model/types'
 import { setStayDays } from '../model/periods'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import type { Lang } from '../i18n'
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { withSalaryDefault } from '../model/salary'
 import { currentSettings } from '../model/settings'
 import { FileFormatError, readRowSources, type SheetCell } from './rows'
+import { todayIso } from '../basis/datum'
 
 // Planning importeren uit CSV (of Excel) met de kolommen start, eind, soort, naam, type, organisatie, boot, gebied,
 // notitie. Datums jjjj-mm-dd; soort = werk|rust|reis|thuis|onbeschikbaar|optie; type = het triptype bij werk. Werk wordt een trip,
@@ -176,7 +177,7 @@ export function hasOverlap(item: PlanItem): boolean {
  * Importeren: regels zonder overlap altijd, overlappende alleen als hun rijnummer in `include` staat. Niets bestaands
  * wordt overschreven: een trip komt ernaast, zelf ingestelde dagen alleen bij aangezette regels.
  */
-export async function applyPlan(store: Store, items: readonly PlanItem[], include: ReadonlySet<number>, lang: Lang): Promise<{ trips: number; days: number }> {
+export async function applyPlan(store: Tx, items: readonly PlanItem[], include: ReadonlySet<number>, lang: Lang): Promise<{ trips: number; days: number }> {
   const settings = currentSettings(store.list('settings.json.enc'))
   const now = new Date().toISOString()
   const trips: Trip[] = []
@@ -214,10 +215,10 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
     }
   }
   // Reis, thuis en rust worden periodes (rust = vrij), zoals in de agenda; dagen in een trip blijven bij de trip.
-  for (const stay of stays) await setStayDays(store, stay.dates, stay.kind, { note: stay.note, name: stay.name }, false)
+  for (const stay of stays) await setStayDays(store, stay.dates, stay.kind, { note: stay.note, name: stay.name })
   if (days.size > 0) {
     // Een dagtoestand hoort bij een dag zonder periode aan land.
-    await setStayDays(store, [...days.keys()], null, {}, false)
+    await setStayDays(store, [...days.keys()], null, {})
     await store.putMany('calendar.json.enc', [...days.values()])
   }
   if (trips.length > 0) {
@@ -225,6 +226,5 @@ export async function applyPlan(store: Store, items: readonly PlanItem[], includ
     // Een aangezette werkregel over zelf ingestelde dagen: de agenda volgt de nieuwe trip.
     for (const trip of trips) await followTrip(store, trip.id, null, { start: trip.startDate!, end: trip.endDate! })
   }
-  void store.sync()
   return { trips: trips.length, days: days.size + stays.reduce((n, st) => n + st.dates.length, 0) }
 }

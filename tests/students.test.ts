@@ -8,15 +8,12 @@ import {
   archivedStudents,
   cleanInput,
   criticalOpen,
-  deleteStudents,
   dueForArchive,
   lastActivity,
   nextStatus,
   progressFor,
   raiseStatus,
-  saveStudents,
   scrubbed,
-  setArchived,
   statusOf,
   weekOf,
   withStatus,
@@ -27,6 +24,8 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx } from './helpers/schrijf'
+import { studentArchiveren, studentenOpslaan, studentenWissen } from '../src/domain/training'
 
 const TOKEN = 'github_pat_STUDENTS_0123456789abcdefghijklmnopqrstuvwxyz'
 const NOW = '2026-10-26T10:00:00.000Z'
@@ -137,8 +136,8 @@ describe('opslag', () => {
     const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'error'), vi.spyOn(console, 'info')]
     const { github, store } = await device()
     expect(store.hasSynced()).toBe(false)
-    const s = await addStudent(store, { ...input, note: 'Notitievlak' })
-    await saveStudents(store, [withStatus(s, topics[0]!.id, 'beheerst', NOW)])
+    const s = await inTx(store, addStudent, { ...input, note: 'Notitievlak' })
+    await studentenOpslaan(store, [withStatus(s, topics[0]!.id, 'beheerst', NOW)])
     await store.sync()
     expect(github.files.has('students.json.enc')).toBe(true)
     expect(store.hasSynced()).toBe(true)
@@ -146,11 +145,11 @@ describe('opslag', () => {
     expect(wire).not.toContain('Fictiva')
     expect(wire).not.toContain('Notitievlak')
 
-    await setArchived(store, store.get('students.json.enc'), '2026-10-26')
+    await studentArchiveren(store, store.get('students.json.enc'), '2026-10-26')
     expect(activeStudents(store.get('students.json.enc'))).toEqual([])
     expect(archivedStudents(store.get('students.json.enc'))).toHaveLength(1)
 
-    const undo = await deleteStudents(store, archivedStudents(store.get('students.json.enc')))
+    const undo = await studentenWissen(store, archivedStudents(store.get('students.json.enc')))
     const tomb = store.get('students.json.enc')[0]!
     expect(tomb.firstName).toBe('')
     expect(tomb.deletedAt).not.toBeNull()
@@ -164,8 +163,8 @@ describe('opslag', () => {
     const github = new FakeGithub()
     const a = await device(github)
     expect(a.store.get('students.json.enc')).toEqual([])
-    const s = await addStudent(a.store, input)
-    await saveStudents(a.store, [withStatus(s, topics[2]!.id, 'geoefend', NOW)])
+    const s = await inTx(a.store, addStudent, input)
+    await studentenOpslaan(a.store, [withStatus(s, topics[2]!.id, 'geoefend', NOW)])
     await a.store.sync()
     const b = await device(github)
     await b.store.sync()

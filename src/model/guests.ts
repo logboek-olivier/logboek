@@ -1,8 +1,9 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { active } from './derive'
-import { eurOf, round2 } from './money'
+import { eurOf } from './money'
 import { weekView } from './weeks'
 import type { Leg, Participant, TipFrom, Transaction, Trip, WeekType } from './types'
+import { round2 } from '../basis/bedrag'
 
 // Gasten en fooi per persoon (regel 14): een deelnemer heeft alleen een voornaam, optioneel een land en optioneel een
 // kort kenmerk (initiaal of bijnaam). Dubbele voornamen binnen een trip worden "Nick B." of "Nick (VS)". Een fooi komt
@@ -112,14 +113,13 @@ export function returningGuests(trip: Trip, trips: readonly Trip[], legs: readon
 }
 
 /** Antwoord op "Is dit dezelfde persoon?": ja koppelt aan de eerdere gast, nee onthoudt dat het iemand anders is. */
-export async function answerReturning(store: Store, tripId: string, participantId: string, same: Participant | null): Promise<void> {
+export async function answerReturning(store: Tx, tripId: string, participantId: string, same: Participant | null): Promise<void> {
   const trip = store.list('trips.json.enc').find((t) => t.id === tripId)
   if (!trip) return
   // Al aan iemand anders in deze trip gekoppeld (twee keer "ja" op dezelfde eerdere gast): niet nog eens koppelen.
   const taken = !!same && (trip.participants ?? []).some((p) => p.id !== participantId && p.guestId === guestKey(same))
   const participants = (trip.participants ?? []).map((p) => (p.id === participantId ? { ...p, guestId: same && !taken ? guestKey(same) : p.id } : p))
   await store.put('trips.json.enc', { ...trip, participants, updatedAt: new Date().toISOString() })
-  void store.sync()
 }
 
 // ---------- Fooi per persoon ----------

@@ -1,6 +1,5 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { deleteStudents, setArchived } from '../src/model/students'
 import type { Transaction, Trip } from '../src/model/types'
 import { cleanParticipants, syncParticipants } from '../src/model/weeks'
 import { cleanInput } from '../src/model/students'
@@ -8,6 +7,8 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put } from './helpers/schrijf'
+import { studentArchiveren, studentenWissen } from '../src/domain/training'
 
 // Fundering: persoonsgegevens van studenten en gasten (regel 14). Alleen een voornaam, en "Archief wissen" wist een
 // student ook als deelnemer van zijn trip (met de verwijzing in een fooi per persoon). Verzonnen data.
@@ -46,13 +47,13 @@ describe('archief wissen', () => {
       updatedAt: now,
       deletedAt: null,
     }
-    await s.put('trips.json.enc', trip)
-    await syncParticipants(s, trip)
+    await put(s, 'trips.json.enc', trip)
+    await inTx(s, syncParticipants, trip)
     const tip: Transaction = { id: 'tip', date: '2025-01-05', kind: 'fooi', amount: 50, currency: 'EUR', amountEur: 50, source: 'overig', tripId: 'trip-1', tipFrom: { kind: 'personen', participantIds: ['p-1', 'p-2'], amounts: { 'p-1': 30, 'p-2': 20 } }, updatedAt: now, deletedAt: null }
-    await s.put('transactions.json.enc', tip)
+    await put(s, 'transactions.json.enc', tip)
     const student = s.list('students.json.enc').find((x) => x.id === 'p-1')!
-    await setArchived(s, [student], '2026-02-01')
-    const undo = await deleteStudents(s, [s.list('students.json.enc').find((x) => x.id === 'p-1')!])
+    await studentArchiveren(s, [student], '2026-02-01')
+    const undo = await studentenWissen(s, [s.list('students.json.enc').find((x) => x.id === 'p-1')!])
     const after = s.list('trips.json.enc')[0]!
     expect(after.participants?.map((p) => p.id)).toEqual(['p-2'])
     expect(JSON.stringify(after)).not.toContain('Nepnick')

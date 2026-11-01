@@ -14,7 +14,6 @@ import {
   applyBlockEdit,
   blocksOn,
   capitalize,
-  deletePlan,
   draftPlan,
   findBlock,
   groupName,
@@ -25,7 +24,6 @@ import {
   planText,
   removeBlock,
   reschedule,
-  savePlan,
   slotLabel,
   sortBlocks,
   splitPlans,
@@ -41,11 +39,13 @@ import {
   type BlockPatch,
   type PlanItem,
 } from '../model/plans'
-import { activeStudents, saveStudents } from '../model/students'
+import { activeStudents } from '../model/students'
 import { dayCountOf, planWeek, weekView } from '../model/weeks'
-import { DAY_SLOTS, STUDENT_LEVELS, todayIso, type Curriculum, type DaySlot, type PlanBlock, type PlanGroup, type Student, type Trip, type WeekPlan } from '../model/types'
+import { DAY_SLOTS, STUDENT_LEVELS, type Curriculum, type DaySlot, type PlanBlock, type PlanGroup, type Student, type Trip, type WeekPlan } from '../model/types'
 import type { Store } from '../storage/store'
 import { useBack } from '../back'
+import { planningOpslaan, planningVerwijderen, studentenOpslaan } from '../domain/training'
+import { todayIso } from '../basis/datum'
 
 // Weekplanning: wizard van drie schermen (dagen → groepen → concept), bewerken met tikken, tonen aan studenten
 // (alleen de planning, volledig scherm), delen als tekst of als PDF via de printfunctie. Exporttaal los van de app-taal.
@@ -198,7 +198,7 @@ function PlanWizard({
 
   const save = () => {
     if (!concept) return
-    void savePlan(store, concept).then(() => onSaved(concept.id))
+    void planningOpslaan(store, concept).then(() => onSaved(concept.id))
   }
 
   return (
@@ -452,13 +452,12 @@ function PlanView({
         renderItem={(b, item) => <TopicTick store={store} notify={notify} plan={plan} block={b} item={item} curricula={curricula} students={students} />}
         onEditBlock={(id) => setEditingBlock(id)}
         onShiftBlock={(id, delta) => {
-          const before = plan
-          void savePlan(store, shiftBlock(plan, id, delta)).then(() => notify(t('plan.moved'), () => savePlan(store, before)))
+          void planningOpslaan(store, shiftBlock(plan, id, delta)).then((undo) => notify(t('plan.moved'), undo))
         }}
         onAddBlock={(date, slot) => {
           // Een nieuw blok geldt standaard voor alle groepen samen.
           const { plan: next, blockId } = addBlock(plan, date, slot, plan.groups.map((g) => g.id))
-          void savePlan(store, next).then(() => setEditingBlock(blockId))
+          void planningOpslaan(store, next).then(() => setEditingBlock(blockId))
         }}
       />
       {block && (
@@ -469,13 +468,12 @@ function PlanView({
           curricula={curricula}
           onClose={() => setEditingBlock(null)}
           onSave={(patch, date, slot, perGroup) => {
-            void savePlan(store, applyBlockEdit(plan, block.block.id, patch, date, slot, perGroup)).then(() => setEditingBlock(null))
+            void planningOpslaan(store, applyBlockEdit(plan, block.block.id, patch, date, slot, perGroup)).then(() => setEditingBlock(null))
           }}
           onDelete={() => {
-            const before = plan
-            void savePlan(store, removeBlock(plan, block.block.id)).then(() => {
+            void planningOpslaan(store, removeBlock(plan, block.block.id)).then((undo) => {
               setEditingBlock(null)
-              notify(t('plan.blockDeleted'), () => savePlan(store, before))
+              notify(t('plan.blockDeleted'), undo)
             })
           }}
         />
@@ -486,9 +484,9 @@ function PlanView({
           plan={plan}
           trips={trips}
           onClose={() => setEditingPlan(false)}
-          onSave={(next) => void savePlan(store, next).then(() => setEditingPlan(false))}
+          onSave={(next) => void planningOpslaan(store, next).then(() => setEditingPlan(false))}
           onDelete={() =>
-            void deletePlan(store, plan).then((undo) => {
+            void planningVerwijderen(store, plan).then((undo) => {
               setEditingPlan(false)
               onBack()
               notify(t('toast.deleted'), undo)
@@ -670,8 +668,7 @@ function TopicTick({
       notify(t('plan.alreadyDone'))
       return
     }
-    const before = latest.filter((s) => changed.some((c) => c.id === s.id))
-    void saveStudents(store, changed).then(() => notify(t('plan.ticked', { n: changed.length }), () => saveStudents(store, before)))
+    void studentenOpslaan(store, changed).then((undo) => notify(t('plan.ticked', { n: changed.length }), undo))
   }
   return (
     <button className={`${item.theme ? 'plan-theme' : 'plan-topic'} tick${done ? ' done' : ''}`} onClick={tick} aria-pressed={done} aria-label={item.theme ? t(done ? 'plan.themeDone' : 'plan.themeOpen', { theme: title }) : t(done ? 'plan.topicDone' : 'plan.topicOpen', { topic: title })}>

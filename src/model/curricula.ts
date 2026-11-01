@@ -1,6 +1,5 @@
 import type { Lang } from '../i18n'
-import type { Store } from '../storage/store'
-import type { Undo } from './edit'
+import type { Tx } from '../domain/tx'
 import { SEED_CURRICULA } from './seed-curricula'
 import { CURRICULUM_BODIES, newId, type Curriculum, type CurriculumBody, type LocalizedText, type Topic, type TopicGroup, type TopicKind } from './types'
 
@@ -48,20 +47,14 @@ export function byBody(list: readonly Curriculum[]): { body: CurriculumBody; cur
   return CURRICULUM_BODIES.map((body) => ({ body, curricula: list.filter((c) => c.body === body) })).filter((g) => g.curricula.length > 0)
 }
 
-export async function saveCurriculum(store: Store, curriculum: Curriculum): Promise<void> {
+export async function saveCurriculum(store: Tx, curriculum: Curriculum): Promise<void> {
   await store.put('curricula.json.enc', { ...curriculum, updatedAt: new Date().toISOString(), deletedAt: null })
-  void store.sync()
 }
 
 /** Verwijdert een cursus (ook een meegeleverde: dan een tombstone met hetzelfde id). Geeft ongedaan maken terug. */
-export async function deleteCurriculum(store: Store, curriculum: Curriculum): Promise<Undo> {
+export async function deleteCurriculum(store: Tx, curriculum: Curriculum): Promise<void> {
   const now = new Date().toISOString()
   await store.put('curricula.json.enc', { ...curriculum, updatedAt: now, deletedAt: now })
-  void store.sync()
-  return async () => {
-    await store.put('curricula.json.enc', { ...curriculum, updatedAt: new Date().toISOString(), deletedAt: null })
-    void store.sync()
-  }
 }
 
 export function newCurriculum(body: CurriculumBody, courseCode: string, name: LocalizedText): Curriculum {
@@ -129,13 +122,6 @@ export function moveTopic(c: Curriculum, topicId: string, delta: -1 | 1): Curric
       const i = g.topics.findIndex((t) => t.id === topicId)
       return i < 0 ? g : { ...g, topics: move(g.topics, i, delta) }
     }),
-  }
-}
-
-export function toggleExamCritical(c: Curriculum, topicId: string): Curriculum {
-  return {
-    ...c,
-    groups: c.groups.map((g) => ({ ...g, topics: g.topics.map((t) => (t.id === topicId ? { ...t, examCritical: !t.examCritical } : t)) })),
   }
 }
 

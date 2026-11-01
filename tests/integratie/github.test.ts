@@ -8,11 +8,13 @@ import { classify } from '../../src/storage/evidence'
 import { GithubClient } from '../../src/storage/github'
 import { openLogboekDb, putObject } from '../../src/storage/idb'
 import { integrityEvents } from '../../src/storage/integrity'
-import { receiveSalary } from '../../src/model/salary'
-import { currentSettings, saveSettings } from '../../src/model/settings'
+import { currentSettings } from '../../src/model/settings'
 import { Store } from '../../src/storage/store'
 import { createVault, parseWordlistForTests } from '../helpers/vault'
 import { branchFetch, createBranch, deleteBranch, eventually, requestCount, target, TOKEN } from './echte-github'
+import { put } from '../helpers/schrijf'
+import { salarisOntvangen } from '../../src/domain/geld'
+import { instellingenOpslaan } from '../../src/domain/instellingen'
 
 // Integratietest tegen de echte GitHub-API (alleen met LOGBOEK_IT_TOKEN, in CI). Twee nep-apparaten met één testsleutel
 // schrijven naar een tijdelijke branch van deze repo: alle bestanden aanmaken, direct teruglezen na schrijven,
@@ -72,8 +74,8 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
 
   it('alle bestanden aanmaken, direct teruglezen, een schoon apparaat leest alles', async () => {
     const a = await device()
-    await a.put('trips.json.enc', { id: 'trip-1', name: 'Neptrip', updatedAt: T(), deletedAt: null } as Trip)
-    await a.put('places.json.enc', { id: 'plaats-1', name: 'Nephaven', lat: 18.4, lon: -64.6, updatedAt: T(), deletedAt: null } as Place)
+    await put(a, 'trips.json.enc', { id: 'trip-1', name: 'Neptrip', updatedAt: T(), deletedAt: null } as Trip)
+    await put(a, 'places.json.enc', { id: 'plaats-1', name: 'Nephaven', lat: 18.4, lon: -64.6, updatedAt: T(), deletedAt: null } as Place)
     await settle(a)
     // Direct na het schrijven teruglezen (GitHub mag een paar seconden achterlopen): leesbaar.
     let back: Awaited<ReturnType<GithubClient['getFile']>> = null
@@ -93,8 +95,8 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
     const b = await device()
     await Promise.all([a.sync(), b.sync()])
     for (let round = 0; round < 3; round++) {
-      await a.put('reminders.json.enc', { id: `a-${round}`, title: 'Nep a', date: '2030-01-01', kind: 'deadline', doneAt: null, updatedAt: T(), deletedAt: null } as Reminder)
-      await b.put('reminders.json.enc', { id: `b-${round}`, title: 'Nep b', date: '2030-01-01', kind: 'deadline', doneAt: null, updatedAt: T(), deletedAt: null } as Reminder)
+      await put(a, 'reminders.json.enc', { id: `a-${round}`, title: 'Nep a', date: '2030-01-01', kind: 'deadline', doneAt: null, updatedAt: T(), deletedAt: null } as Reminder)
+      await put(b, 'reminders.json.enc', { id: `b-${round}`, title: 'Nep b', date: '2030-01-01', kind: 'deadline', doneAt: null, updatedAt: T(), deletedAt: null } as Reminder)
       // Zoals vanzelf na een opslag: alleen het gewijzigde bestand, tegelijk vanaf twee apparaten.
       await Promise.all([a.sync({ changedOnly: true }), b.sync({ changedOnly: true })])
     }
@@ -111,7 +113,7 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
   it('herladen (dezelfde opslag opnieuw openen) en meteen synchroniseren: geen onleesbaar bestand', async () => {
     const a = await device('herladen')
     await settle(a)
-    await a.put('places.json.enc', { id: 'plaats-2', name: 'Nepbaai', lat: 18.3, lon: -64.7, updatedAt: T(), deletedAt: null } as Place)
+    await put(a, 'places.json.enc', { id: 'plaats-2', name: 'Nepbaai', lat: 18.3, lon: -64.7, updatedAt: T(), deletedAt: null } as Place)
     a.lock()
     // Dezelfde opslag opnieuw openen, met de opslag van daarnet nog in de outbox.
     const again = await device('herladen')
@@ -145,7 +147,7 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
     const laptop = await device('geld-laptop')
     const phone = await device('geld-telefoon')
     const trip: Trip = { id: 'it-salaris', name: 'Neptrip salaris', organisation: 'sailing-virgins', startDate: '2026-09-01', endDate: '2026-09-07', salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' }, updatedAt: T(), deletedAt: null }
-    await laptop.put('trips.json.enc', trip)
+    await put(laptop, 'trips.json.enc', trip)
     await settle(laptop)
     // GitHub kan vlak na schrijven nog de vorige versie teruggeven: wachten tot de telefoon de trip ziet.
     await eventually(async () => {
@@ -154,11 +156,11 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
     })
     // Laptop: een instelling en het salaris ontvangen. Telefoon (nog zonder die wijzigingen): een dag loggen onthoudt de
     // boot, en ook daar "salaris ontvangen".
-    await saveSettings(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
-    await receiveSalary(laptop, laptop.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-10')
+    await instellingenOpslaan(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
+    await salarisOntvangen(laptop, laptop.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-10')
     await settle(laptop)
-    await saveSettings(phone, { lastBoat: 'Nepboot telefoon' })
-    await receiveSalary(phone, phone.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-11')
+    await instellingenOpslaan(phone, { lastBoat: 'Nepboot telefoon' })
+    await salarisOntvangen(phone, phone.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-11')
     await settle(phone)
     await settle(laptop)
     for (const store of [laptop, phone]) {

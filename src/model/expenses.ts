@@ -1,11 +1,11 @@
 import { active } from './derive'
-import { addDays } from './money'
 import { isWaterKind, periodAt, setStayDays, type Period } from './periods'
-import type { Store } from '../storage/store'
-import { tripOrganisation } from './counters'
+import type { Tx } from '../domain/tx'
 import { DAYS_TRIP_GRACE } from './trip-dates'
 import { REST_GAP_DAYS } from './calendar'
 import type { CostCategory, StayKind, Transaction, TransactionKind, TransactionSource, Trip } from './types'
+import { addDays } from '../basis/datum'
+import { sourceForPeriod } from '../basis/organisatie'
 
 // Uitgaven in het periodemodel (docs/PERIODEMODEL.md): een soort (reizen, eten en drinken, verblijf, opleiding,
 // uitrusting, overig) en een periode waar de uitgave bij hoort ("Hoort bij"). Opleiding en uitrusting zijn een
@@ -20,17 +20,6 @@ export function kindForCategory(category: CostCategory): TransactionKind {
 export function expenseCategory(tx: Pick<Transaction, 'kind' | 'category'>): CostCategory | null {
   if (tx.category && (tx.kind === 'investering') === (kindForCategory(tx.category) === 'investering')) return tx.category
   return tx.kind === 'investering' ? null : 'overig'
-}
-
-/**
- * De bron die oudere versies (en het jaaroverzicht als terugval) lezen: de organisatie van de trip, ook uit de naam zoals
- * de teller ("Yacht week 7"), delivery bij een delivery, anders overig. Nooit een eerder gekozen bron.
- */
-export function sourceForPeriod(trip: Trip | undefined): TransactionSource {
-  const org = trip ? tripOrganisation(trip) : null
-  if (org) return org
-  if (trip?.type === 'delivery') return 'delivery'
-  return 'overig'
 }
 
 /** Waar een uitgave bij kan horen: een bestaande periode, of een nieuwe periode thuis of vrij op die dag. */
@@ -110,7 +99,7 @@ export function careerInvestment(transactions: readonly Transaction[], eurOf: (t
  * De periode van een gekozen doel: een bestaande periode, of (een nieuwe periode thuis of vrij) die eerst maken op die
  * dag. Een aangrenzende periode van dezelfde soort wordt dan langer.
  */
-export async function resolveTarget(store: Store, target: ExpenseTarget, date: string): Promise<string | undefined> {
+export async function resolveTarget(store: Tx, target: ExpenseTarget, date: string): Promise<string | undefined> {
   if (target.kind === 'periode') return target.period.id
   await setStayDays(store, [date], target.stayKind)
   return active(store.list('periods.json.enc')).find((s) => s.startDate <= date && date <= s.endDate)?.id

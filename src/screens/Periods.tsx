@@ -16,10 +16,11 @@ import { tripResult } from '../model/money-path'
 import { PERIOD_FILTERS, periodSections, type MonthGroup, type PeriodFilter, type PeriodRow } from '../model/period-list'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
-import { todayIso, type PeriodKind, type StayPeriod, type Transaction, type Trip } from '../model/types'
+import { type PeriodKind, type StayPeriod, type Transaction, type Trip } from '../model/types'
 import { activeWeek } from '../model/weeks'
 import type { AddInit } from './QuickAdd'
 import type { Store } from '../storage/store'
+import { todayIso } from '../basis/datum'
 
 // Meer → Periodes: alle periodes (werk, training, plezier, reis, thuis, vrij) in één lijst, Nu · Komend · Afgelopen,
 // komend en afgelopen per maand ingeklapt. Filters en zoeken op naam, boot, plaats of persoon. Per periode één regel:

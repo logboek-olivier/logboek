@@ -61,7 +61,3 @@ export function routeOf(legs: readonly Leg[], places: readonly Place[]): TripRou
   }
 }
 
-/** De punten van de stops met een pin, in volgorde (voor de lijn op de kaart). */
-export function pinnedPoints(route: TripRoute): { lat: number; lon: number }[] {
-  return route.stops.filter((s) => s.place).map((s) => ({ lat: s.place!.lat, lon: s.place!.lon }))
-}

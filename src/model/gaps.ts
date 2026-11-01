@@ -1,10 +1,10 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { parseShip } from './boats'
 import { active, compareLegs } from './derive'
-import { addDays } from './money'
 import { followTrip, tripRange } from './calendar'
 import { DEFAULT_WEEK_DAYS } from './weeks'
 import type { Leg, Trip } from './types'
+import { addDays } from '../basis/datum'
 
 // Niets is verplicht: een trip of dag zonder bootgegevens of plaats wordt gewoon opgeslagen en krijgt de badge
 // "Onvolledig". Op zondag zet Vandaag de lege velden op een rij; Olivier vult ze één voor één aan (of slaat over).
@@ -101,7 +101,7 @@ function mostCommon(values: readonly string[]): string {
 }
 
 /** Een ingevuld veld opslaan. Boot: model of lengte op alle trips met die boot waar het nog ontbreekt. */
-export async function fillGap(store: Store, gap: Gap, value: string | number): Promise<void> {
+export async function fillGap(store: Tx, gap: Gap, value: string | number): Promise<void> {
   const now = new Date().toISOString()
   if (gap.kind === 'boat') {
     const trips = store.get('trips.json.enc').filter((t) => gap.tripIds.includes(t.id) && t.deletedAt === null && !t[gap.field])
@@ -118,7 +118,6 @@ export async function fillGap(store: Store, gap: Gap, value: string | number): P
     const leg = store.get('legs.json.enc').find((l) => l.id === gap.leg.id) ?? gap.leg
     await store.put('legs.json.enc', { ...leg, [gap.field]: value, updatedAt: now })
   }
-  void store.sync()
 }
 
 /** Zondag: de dag van de weekkaart "N dingen aanvullen". */

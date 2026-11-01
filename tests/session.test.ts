@@ -4,6 +4,7 @@ import { daysUntil, Session } from '../src/session'
 import { getSessionKey, openLogboekDb, putSessionKey } from '../src/storage/idb'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // Sessie end-to-end in node: fake-indexeddb en een nagebootste api.github.com via globalThis.fetch.
 // Verzonnen token en wachtzin.
@@ -66,7 +67,7 @@ describe('sessie: hoofdsleutel 5 minuten in IndexedDB (beveiligingsregel 10)', (
     sessions.push(session)
     await session.init()
     await session.finishNewVault(TOKEN_A, null, await createVault(PASSPHRASE, wordlist))
-    await store(session).put('trips.json.enc', { id: 't1', name: 'nep', updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(store(session), 'trips.json.enc', { id: 't1', name: 'nep', updatedAt: new Date().toISOString(), deletedAt: null })
     await settled(session)
     session.flushActivity()
     // De opslag gebeurt op de achtergrond; even laten afronden.
@@ -194,7 +195,7 @@ describe('sessie en token', () => {
     await settled(session)
     const previous = store(session)
     github.forceStatus = 401
-    await previous.put('trips.json.enc', { id: 't1', name: 'wacht', updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(previous, 'trips.json.enc', { id: 't1', name: 'wacht', updatedAt: new Date().toISOString(), deletedAt: null })
     await previous.sync()
     expect(previous.getStatus()).toEqual({ kind: 'error', code: 'token', count: 1 })
     expect(previous.pendingCount()).toBe(1)

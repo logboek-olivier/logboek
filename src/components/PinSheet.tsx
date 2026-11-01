@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { t } from '../i18n'
-import { findPlace, pinPlace, pinQuestion, savePlace, type PinQuestion, type PlaceUse } from '../model/places'
+import { findPlace, pinQuestion, type PinQuestion, type PlaceUse } from '../model/places'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { PinQuestionBox } from './PinQuestion'
 import { SeaMap } from './LazyMap'
 import type { LatLon } from './SeaMap'
 import { Sheet } from './Sheet'
+import { pinZetten, plaatsOpslaan } from '../domain/plaatsen'
 
 const FALLBACK: LatLon = { lat: 18, lon: -63 }
 
@@ -30,7 +31,7 @@ export function PinSheet({ store, use, notify, onClose }: { store: Store; use: P
   async function pin(point: LatLon) {
     if (busy) return
     setBusy(true)
-    const undo = await pinPlace(store, use.name, point)
+    const undo = await pinZetten(store, use.name, point)
     onClose()
     notify(t('places.pinned', { name: use.name }), undo)
   }
@@ -38,8 +39,7 @@ export function PinSheet({ store, use, notify, onClose }: { store: Store; use: P
   async function newPlace(name: string, point: LatLon) {
     if (busy) return
     setBusy(true)
-    const saved = await savePlace(store, name, point)
-    void store.sync()
+    const { result: saved } = await plaatsOpslaan(store, name, point)
     onClose()
     notify(t('places.pinned', { name: saved.name }))
   }

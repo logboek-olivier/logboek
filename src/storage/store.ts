@@ -138,6 +138,8 @@ export function describeStatus(status: SyncStatus): string {
 type Listener = () => void
 /** Zo lang na de laatste opslag start de sync vanzelf. */
 const AUTO_SYNC_MS = 800
+/** Vangnet: zolang er een wijziging wacht, zo vaak opnieuw proberen (zie retryPending). */
+export const RETRY_PENDING_MS = 30_000
 /** Zo vaak controleert de app vanzelf of GitHub en dit apparaat gelijk zijn (Meer → Opslag). */
 export const CHECK_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 /** Zo lang wacht de controle voor hij een gevonden probleem nog één keer bekijkt. */
@@ -158,6 +160,16 @@ function isProblem(file: FileCheck): boolean {
   return file.state === 'verschil' || file.state === 'onleesbaar' || file.state === 'ontbreekt'
 }
 type MetaCheck = 'match' | 'mismatch' | 'missing' | 'unknown'
+
+export type WriteEntries = ReadonlyArray<{ path: CollectionPath; records: readonly SyncRecord[] }>
+
+/** Zie `Store.beginWrite`. */
+export interface WriteHandle {
+  read<P extends CollectionPath>(path: P): readonly Collections[P][]
+  write(entries: WriteEntries): Promise<Array<{ path: CollectionPath; records: SyncRecord[] }>>
+  /** De opdracht is klaar (ook na een fout). */
+  release(): void
+}
 
 export class Store {
   private readonly collections = new Map<CollectionPath, SyncRecord[]>()
@@ -342,42 +354,76 @@ export class Store {
     return this.get(path).filter((r) => r.deletedAt === null)
   }
 
-  put<P extends CollectionPath>(path: P, record: Collections[P]): Promise<void> {
-    return this.putMany(path, [record])
+  /**
+   * Een schrijfhandvat voor één opdracht (alleen voor `src/domain/commit.ts`: elke wijziging gaat via een opdracht).
+   * Alleen te krijgen zolang de app ontgrendeld is, op het moment van de tik. Een opdracht die zo begon (ook een die nog
+   * achter een andere wacht), wordt afgemaakt als er intussen vergrendeld wordt: lezen en schrijven gaan dan verder op
+   * een eigen kopie van het begin, die weg is zodra de laatste opdracht klaar is. Wat zo nog op het apparaat komt, telt
+   * daarna als wachtende wijziging; het geheugen van de vergrendelde Store blijft leeg (regel 10).
+   */
+  beginWrite(): WriteHandle {
+    this.assertUnlocked()
+    this.openWrites++
+    let released = false
+    return {
+      read: <P extends CollectionPath>(path: P) => (this.live().get(path) ?? []) as Collections[P][],
+      write: (entries) => this.commitWrites(entries),
+      release: () => {
+        if (released) return
+        released = true
+        this.openWrites--
+        if (this.openWrites === 0) this.afterLock = null
+      },
+    }
+  }
+
+  /** Opdrachten die begonnen zijn en nog niet klaar. */
+  private openWrites = 0
+  /** Na vergrendelen: de kopie waarop begonnen opdrachten verder werken (zie beginWrite). */
+  private afterLock: Map<CollectionPath, SyncRecord[]> | null = null
+
+  /** De records waarop gelezen en geschreven wordt: na vergrendelen alleen nog door begonnen opdrachten. */
+  private live(): Map<CollectionPath, SyncRecord[]> {
+    if (!this.locked) return this.collections
+    if (!this.afterLock) throw new Error('Vergrendeld')
+    return this.afterLock
   }
 
   /**
-   * Meerdere records in één keer versleutelen en opslaan (bijvoorbeeld een import). Een wijziging is altijd nieuwer dan
-   * de versie die hier al staat: heeft die een tijd in de toekomst (een ander apparaat met een klok die voorloopt, of de
-   * eigen klok sprong terug), dan krijgt de wijziging een tijd net daarna. Zo gaat een bewerking of verwijdering nooit
-   * stil verloren.
+   * Records over meerdere bestanden in één keer opslaan: alle bestanden en de outbox in één IndexedDB-transactie, dus
+   * alles of niets. Een wijziging is altijd nieuwer dan de versie die hier al staat: heeft die een tijd in de toekomst (een
+   * ander apparaat met een klok die voorloopt, of de eigen klok sprong terug), dan krijgt de wijziging een tijd net daarna.
+   * Zo gaat een bewerking of verwijdering nooit stil verloren.
    */
-  async putMany<P extends CollectionPath>(path: P, given: readonly Collections[P][]): Promise<void> {
-    this.assertUnlocked()
+  private async commitWrites(entries: WriteEntries): Promise<Array<{ path: CollectionPath; records: SyncRecord[] }>> {
     // Een lokaal bestand van een nieuwere app: tot bijwerken alleen kijken, nergens wijzigen. Vóór elke wijziging
     // weigeren (ook in andere bestanden), zodat een handeling die meerdere bestanden raakt nooit half wordt opgeslagen.
     if (this.frozen.size > 0) throw new NewerSchemaError(0)
-    const here = new Map((this.collections.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
-    const records = given.map((r) => {
-      const before = here.get(r.id)
-      return before !== undefined && r.updatedAt <= before ? { ...r, updatedAt: justAfter(before) } : r
-    })
-    const ids = new Set(records.map((r) => r.id))
-    const kept = (this.collections.get(path) ?? []).filter((r) => !ids.has(r.id))
-    this.collections.set(path, [...kept, ...records])
-    for (const r of records) {
-      this.outbox = markPending(this.outbox, path, r.id, r.updatedAt)
-      this.unsaved = markPending(this.unsaved, path, r.id, r.updatedAt)
+    const paths: CollectionPath[] = []
+    const stored: Array<{ path: CollectionPath; records: SyncRecord[] }> = []
+    for (const { path, records: given } of entries) {
+      if (given.length === 0) continue
+      const live = this.live()
+      const here = new Map((live.get(path) ?? []).map((r) => [r.id, r.updatedAt]))
+      const records = given.map((r) => {
+        const before = here.get(r.id)
+        return before !== undefined && r.updatedAt <= before ? { ...r, updatedAt: justAfter(before) } : r
+      })
+      const ids = new Set(records.map((r) => r.id))
+      const kept = (live.get(path) ?? []).filter((r) => !ids.has(r.id))
+      live.set(path, [...kept, ...records])
+      for (const r of records) {
+        this.outbox = markPending(this.outbox, path, r.id, r.updatedAt)
+        this.unsaved = markPending(this.unsaved, path, r.id, r.updatedAt)
+      }
+      if (!paths.includes(path)) paths.push(path)
+      stored.push({ path, records })
     }
+    if (paths.length === 0) return stored
     if (this.syncing) this.syncAgain = true
-    await this.persist(path)
-  }
-
-  async remove<P extends CollectionPath>(path: P, id: string): Promise<void> {
-    const current = this.get(path).find((r) => r.id === id)
-    if (!current || current.deletedAt !== null) return
-    const now = new Date().toISOString()
-    await this.put(path, { ...current, updatedAt: now, deletedAt: now })
+    // Wat hier staat, is de vastgelegde versie (een begonnen opslag wordt afgemaakt, ook na vergrendelen).
+    await this.persist(paths)
+    return stored
   }
 
   /** Wachtende wijzigingen: de outbox plus de documentbestanden die nog niet op GitHub staan. */
@@ -430,6 +476,8 @@ export class Store {
 
   /** Wist alle ontsleutelde data uit het geheugen. De Store is daarna onbruikbaar. */
   lock(): void {
+    // Begonnen opdrachten werken verder op een eigen kopie; het geheugen van de Store gaat hieronder leeg.
+    if (this.openWrites > 0 && !this.locked) this.afterLock = new Map(this.collections)
     this.locked = true
     this.offIntegrity?.()
     this.offIntegrity = null
@@ -440,6 +488,13 @@ export class Store {
     this.listeners.clear()
     if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer)
     this.autoSyncTimer = null
+    if (this.retryTimer) clearInterval(this.retryTimer)
+    this.retryTimer = null
+    if (this.onReturn) {
+      ;(globalThis as { document?: EventTarget }).document?.removeEventListener('visibilitychange', this.onReturn)
+      ;(globalThis as { removeEventListener?: EventTarget['removeEventListener'] }).removeEventListener?.('online', this.onReturn)
+      this.onReturn = null
+    }
     this.channel?.close()
   }
 
@@ -447,6 +502,33 @@ export class Store {
   enableAutoSync(): void {
     if (this.demo) return
     this.autoSync = true
+    // Vangnet: zolang er iets wacht en er verbinding is, elke 30 seconden opnieuw, en direct bij terugkomen in de app of
+    // als de verbinding terug is. Een wijziging blijft zo nooit staan tot de volgende handeling.
+    this.retryTimer ??= setInterval(() => this.retryPending(), RETRY_PENDING_MS)
+    if (!this.onReturn) {
+      const doc = (globalThis as { document?: EventTarget & { visibilityState?: string } }).document
+      this.onReturn = () => {
+        if (doc?.visibilityState !== 'hidden') this.retryPending()
+      }
+      doc?.addEventListener('visibilitychange', this.onReturn)
+      ;(globalThis as { addEventListener?: EventTarget['addEventListener'] }).addEventListener?.('online', this.onReturn)
+    }
+  }
+
+  private retryTimer: ReturnType<typeof setInterval> | null = null
+  private onReturn: (() => void) | null = null
+
+  /**
+   * Opnieuw synchroniseren als er iets wacht, er verbinding is en er geen ronde loopt. Niet bij een fout die vanzelf niet
+   * overgaat (token, andere sleutel, nieuwere versie, onleesbaar bestand) of bij de limiet van GitHub (dan maakt
+   * aandringen het erger); die lost de app of Olivier op, en een eigen handeling synct dan gewoon weer.
+   */
+  retryPending(): void {
+    if (this.locked || this.demo || !this.autoSync || this.syncing || this.pendingCount() === 0) return
+    if ((globalThis.navigator as { onLine?: boolean } | undefined)?.onLine === false) return
+    const s = this.status
+    const retry = s.kind === 'pending' || s.kind === 'offline' || s.kind === 'synced' || (s.kind === 'error' && (s.code === 'failed' || (s.code === 'github' && s.github !== 'rateLimit')))
+    if (retry) void this.sync({ changedOnly: true })
   }
 
   /** Volgnummer van de laatste lokale opslag en van de laatste opslag die gesynct is; saved > synced = "Opgeslagen". */
@@ -1140,7 +1222,10 @@ export class Store {
       if (this.locked) return
       await this.putGuarded({ path, blob, sha: result.sha }, outbox)
       if (this.locked) return
-      this.collections.set(path, merged)
+      // Samenvoegen met wat nu in het geheugen staat, niet overschrijven: een opslag tijdens het wegschrijven hierboven
+      // (de awaits) staat al in het geheugen en in de outbox, maar niet in `merged`. Overschrijven gooide hem weg en liet
+      // hem voor altijd wachten ("1 wijziging wacht"). Bij gelijke tijd wint de versie van de sync (GitHub).
+      this.collections.set(path, mergeRecords(this.collections.get(path) ?? [], merged))
       this.outbox = mergeOutbox(outbox, this.unsaved)
     })
     if (this.locked) return
@@ -1184,27 +1269,33 @@ export class Store {
    * opslaan vergrendeld wordt (de app sluit), wordt deze opslag afgemaakt. Wat een ander venster intussen opsloeg, wordt
    * samengevoegd (laatste updatedAt wint), nooit overschreven. Bestand en outbox gaan in één transactie.
    */
-  private async persist(path: CollectionPath): Promise<void> {
-    if (this.frozen.has(path)) return
-    const mine = this.collections.get(path) ?? []
-    const added = { ...(this.unsaved[path] ?? {}) }
+  /** De bestanden in `paths` op het apparaat zetten, samen met de outbox, in één IndexedDB-transactie. */
+  private async persist(given: readonly CollectionPath[]): Promise<void> {
+    const paths = given.filter((p) => !this.frozen.has(p))
+    if (paths.length === 0) return
+    const added = Object.fromEntries(paths.map((p) => [p, { ...(this.unsaved[p] ?? {}) }])) as Outbox
     await exclusive(this.db.name, 'lokaal', async () => {
-      const merged = await this.mergeWithDisk(path, mine)
+      const merged = new Map<CollectionPath, SyncRecord[]>()
+      const objects: StoredObject[] = []
+      for (const path of paths) {
+        const records = await this.mergeWithDisk(path, this.live().get(path) ?? [])
+        merged.set(path, records)
+        const stored = await getObject(this.db, path)
+        objects.push({ path, blob: await encryptRecords(this.masterKey, path, records), sha: stored?.sha ?? null })
+      }
       // De outbox op het apparaat is leidend (een ander venster kan regels al gesynct en weggehaald hebben); alleen wat
       // dit venster nu opslaat komt erbij.
-      const nextOutbox = mergeOutbox(await this.diskOutbox(), { [path]: added })
-      const blob = await encryptRecords(this.masterKey, path, merged)
-      const stored = await getObject(this.db, path)
-      await this.putGuarded({ path, blob, sha: stored?.sha ?? null }, nextOutbox)
-      this.forgetUnsaved(path, added)
+      const nextOutbox = mergeOutbox(await this.diskOutbox(), added)
+      await this.putGuarded(objects, nextOutbox)
+      for (const path of paths) this.forgetUnsaved(path, added[path] ?? {})
       if (this.locked) return
       // Andere vensters en wijzigingen die tijdens het opslaan in het geheugen kwamen, allebei behouden.
-      this.collections.set(path, mergeRecords(merged, this.collections.get(path) ?? []))
+      for (const [path, records] of merged) this.collections.set(path, mergeRecords(records, this.collections.get(path) ?? []))
       this.outbox = mergeOutbox(nextOutbox, this.unsaved)
     })
     if (this.locked) return
     this.savedSeq = ++this.seq
-    this.broadcast(path)
+    for (const path of paths) this.broadcast(path)
     if (this.status.kind !== 'syncing') this.setStatus(this.idleStatus())
     else this.notify()
     this.scheduleSync()
@@ -1311,7 +1402,7 @@ export class Store {
    * transactie, zodat een ander tabblad er niet tussen een ander logboek kan neerzetten. Na vergrendelen hoort een
    * ander logboek op dit apparaat niet meer bij deze opslag: dan stil niets schrijven.
    */
-  private async putGuarded(object: StoredObject, outbox: Outbox): Promise<void> {
+  private async putGuarded(object: StoredObject | readonly StoredObject[], outbox: Outbox): Promise<void> {
     if (this.mismatch) throw new KeyMismatchError('local')
     const local = { name: OUTBOX_NAME, blob: await encryptOutbox(this.masterKey, outbox) }
     if (this.vaultCheck === null) {

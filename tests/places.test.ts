@@ -1,11 +1,13 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { editDistance, findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, mergePlaces, nearestPlace, pinPlace, placeKey, placeUses, samePlace, savePlace, similarKnown, suggestDistance } from '../src/model/places'
+import { editDistance, findPlace, greatCircleNm, knownPlaceNames, mergeCandidates, nearestPlace, placeKey, placeUses, samePlace, savePlace, similarKnown, suggestDistance } from '../src/model/places'
 import type { Leg, Place } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, putMany } from './helpers/schrijf'
+import { pinZetten, plaatsVariantenSamenvoegen } from '../src/domain/plaatsen'
 
 // Afstandsvoorstel uit eerdere dagen op dezelfde route, en plaatsen op de kaart. Alle gegevens zijn verzonnen.
 
@@ -56,8 +58,8 @@ describe('afstandsvoorstel', () => {
 
     const masterKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
     const store = await Store.open(await openLogboekDb('logboek-places-1'), masterKey, new GithubClient('github_pat_PLACES_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
-    const first = await savePlace(store, ' Nephaven ', { lat: 17.123456789, lon: -62.1 })
-    const again = await savePlace(store, 'nephaven', { lat: 17.2, lon: -62.2 })
+    const first = await inTx(store, savePlace, ' Nephaven ', { lat: 17.123456789, lon: -62.1 })
+    const again = await inTx(store, savePlace, 'nephaven', { lat: 17.2, lon: -62.2 })
     expect(again.id).toBe(first.id)
     expect(store.list('places.json.enc')).toHaveLength(1)
     expect(first.lat).toBe(17.12346)
@@ -92,9 +94,9 @@ describe('plaatsnamen uit de historie: spaties, hoofdletters en spelvarianten', 
 
     const masterKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
     const store = await Store.open(await openLogboekDb('logboek-places-merge'), masterKey, new GithubClient('github_pat_PLACES_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
-    await store.putMany('legs.json.enc', history)
-    await savePlace(store, 'Nepalimizana', { lat: 43.1, lon: 16.4 })
-    const undo = await mergePlaces(store, mergeCandidates(placeUses(store.get('legs.json.enc'), store.get('places.json.enc'))).find((c) => c.into.key === 'nepalmizana')!)
+    await putMany(store, 'legs.json.enc', history)
+    await inTx(store, savePlace, 'Nepalimizana', { lat: 43.1, lon: 16.4 })
+    const undo = await plaatsVariantenSamenvoegen(store, mergeCandidates(placeUses(store.get('legs.json.enc'), store.get('places.json.enc'))).find((c) => c.into.key === 'nepalmizana')!)
     expect(store.get('legs.json.enc').find((l) => l.id === '1')?.toPlace).toBe('Nepalmizana')
     // Het punt van de andere schrijfwijze gaat mee.
     expect(findPlace(store.get('places.json.enc'), 'Nepalmizana')).toMatchObject({ lat: 43.1, lon: 16.4 })
@@ -103,7 +105,7 @@ describe('plaatsnamen uit de historie: spaties, hoofdletters en spelvarianten', 
     expect(findPlace(store.get('places.json.enc'), 'Nepalimizana')).not.toBeNull()
 
     // Een plaats uit de import zonder punt vastzetten, en ongedaan maken.
-    const unpin = await pinPlace(store, 'Nepvis', { lat: 43, lon: 16 })
+    const unpin = await pinZetten(store, 'Nepvis', { lat: 43, lon: 16 })
     expect(placeUses(store.get('legs.json.enc'), store.get('places.json.enc')).find((u) => u.key === 'nepvis')?.place).not.toBeNull()
     await unpin()
     expect(findPlace(store.get('places.json.enc'), 'Nepvis')).toBeNull()

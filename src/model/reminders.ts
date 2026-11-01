@@ -1,7 +1,6 @@
-import type { Store } from '../storage/store'
-import type { Undo } from './edit'
-import { addDays } from './money'
-import { newId, nowIso, type Reminder, type ReminderKind, type ReminderRepeat } from './types'
+import type { Tx } from '../domain/tx'
+import { newId, type Reminder, type ReminderKind, type ReminderRepeat } from './types'
+import { addDays, nowIso } from '../basis/datum'
 
 // Termijnen: deadlines ("Vliegticket boeken, uiterlijk over 3 weken") en vervaldatums ("Pinpas verloopt over een jaar")
 // samen, met de vervaldatum van de token en de start van de volgende trip erbij. Vandaag toont de eerstvolgende.
@@ -58,7 +57,7 @@ export interface ReminderInput {
   repeat?: ReminderRepeat
 }
 
-export async function saveReminder(store: Store, input: ReminderInput, existing?: Reminder): Promise<Reminder> {
+export async function saveReminder(store: Tx, input: ReminderInput, existing?: Reminder): Promise<Reminder> {
   const record: Reminder = {
     id: existing?.id ?? newId(),
     title: input.title.trim().slice(0, 120),
@@ -71,7 +70,6 @@ export async function saveReminder(store: Store, input: ReminderInput, existing?
     deletedAt: null,
   }
   await store.put('reminders.json.enc', record)
-  void store.sync()
   return record
 }
 
@@ -84,13 +82,7 @@ export function nextOccurrence(reminder: Pick<Reminder, 'date' | 'repeat'>): str
  * Afronden of weer openzetten, met ongedaan maken. Een terugkerende termijn blijft open en schuift naar de volgende
  * keer.
  */
-export async function setDone(store: Store, reminder: Reminder, done: boolean, today: string): Promise<Undo> {
-  const before = reminder
+export async function setDone(store: Tx, reminder: Reminder, done: boolean, today: string): Promise<void> {
   const next = done && reminder.repeat ? { date: nextOccurrence(reminder), doneAt: null } : { doneAt: done ? today : null }
   await store.put('reminders.json.enc', { ...reminder, ...next, updatedAt: nowIso() })
-  void store.sync()
-  return async () => {
-    await store.put('reminders.json.enc', { ...before, updatedAt: nowIso() })
-    void store.sync()
-  }
 }

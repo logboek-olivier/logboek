@@ -2,13 +2,16 @@ import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { columnChoices, dateOrder, decimalSeparator, detectPreset, guessMapping, MappingIncompleteError, monthlyPoints, parseDate, parseNumber, readBalances, type ColumnMapping } from '../src/import/accounts'
 import { readRowSources, type SheetRow } from '../src/import/rows'
-import { balanceId, deleteAccount, deleteBalance, netWorth, netWorthSeries, pace, parseStand, saveAccount, setBalance, writeBalances } from '../src/model/accounts'
+import { balanceId, netWorth, netWorthSeries, pace, saveAccount, setBalance, writeBalances } from '../src/model/accounts'
 import type { RatesFile } from '../src/model/rates'
 import type { Account, Balance } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx } from './helpers/schrijf'
+import { rekeningVerwijderen, standVerwijderen } from '../src/domain/geld'
+import { parseStand } from '../src/basis/bedrag'
 
 // Rekeningen en netto waarde: standen per maand, importeren uit verzonnen exports in de openbare formaten van ASN,
 // Revolut, BUX en DEGIRO (nog te testen met een echte export), netto waarde, tempo. Alle bedragen en namen verzonnen.
@@ -253,8 +256,8 @@ describe('netto waarde en tempo', () => {
 describe('opslaan', () => {
   it('één stand per maand; een oudere export overschrijft nooit een nieuwere stand, met de hand wint op dezelfde dag', async () => {
     const store = await newStore()
-    const bank = await saveAccount(store, null, { name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR' })
-    await writeBalances(store, bank, [
+    const bank = await inTx(store, saveAccount, null, { name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR' })
+    await inTx(store, writeBalances, bank, [
       { date: '2026-09-02', amount: 800 },
       { date: '2026-09-15', amount: 2300 },
       { date: '2026-10-03', amount: 1600 },
@@ -267,46 +270,46 @@ describe('opslaan', () => {
     )
     // Opnieuw importeren met de juiste kolommen vervangt een stand uit een export van dezelfde dag; precies dezelfde
     // stand wordt niet opnieuw geschreven.
-    expect((await writeBalances(store, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).map((b) => b.amount)).toEqual([2400])
-    expect(await writeBalances(store, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).toEqual([])
+    expect((await inTx(store, writeBalances, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).map((b) => b.amount)).toEqual([2400])
+    expect(await inTx(store, writeBalances, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).toEqual([])
     // Geen standen in de toekomst.
-    expect(await writeBalances(store, bank, [{ date: '2099-01-01', amount: 1 }], 'import')).toEqual([])
-    expect(await setBalance(store, bank, '2099-01-01', 1)).toBeNull()
-    expect(await setBalance(store, bank, '2026-10-20', 1750)).toMatchObject({ amount: 1750, source: 'handmatig' })
+    expect(await inTx(store, writeBalances, bank, [{ date: '2099-01-01', amount: 1 }], 'import')).toEqual([])
+    expect(await inTx(store, setBalance, bank, '2099-01-01', 1)).toBeNull()
+    expect(await inTx(store, setBalance, bank, '2026-10-20', 1750)).toMatchObject({ amount: 1750, source: 'handmatig' })
     // Een export van dezelfde dag vervangt een stand met de hand niet.
-    expect(await writeBalances(store, bank, [{ date: '2026-10-20', amount: 1 }], 'import')).toEqual([])
+    expect(await inTx(store, writeBalances, bank, [{ date: '2026-10-20', amount: 1 }], 'import')).toEqual([])
     // Een oude export (3 oktober) laat de stand van 20 oktober staan; een stand met de hand van eerder ook.
-    expect(await writeBalances(store, bank, [{ date: '2026-10-03', amount: 1600 }], 'import')).toEqual([])
-    expect(await setBalance(store, bank, '2026-10-10', 1)).toBeNull()
-    expect(await setBalance(store, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
+    expect(await inTx(store, writeBalances, bank, [{ date: '2026-10-03', amount: 1600 }], 'import')).toEqual([])
+    expect(await inTx(store, setBalance, bank, '2026-10-10', 1)).toBeNull()
+    expect(await inTx(store, setBalance, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
     // Precies dezelfde stand nog eens: opgeslagen (niet "er staat al een nieuwere stand").
-    expect(await setBalance(store, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
+    expect(await inTx(store, setBalance, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
     expect(store.list('balances.json.enc').filter((b) => b.date.startsWith('2026-10')).map((b) => b.amount)).toEqual([1800])
   })
 
   it('een schuld is altijd negatief; van soort wisselen draait de standen mee, ook terug', async () => {
     const store = await newStore()
-    const duo = await saveAccount(store, null, { name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR' })
-    await setBalance(store, duo, '2026-10-01', 9876.5)
+    const duo = await inTx(store, saveAccount, null, { name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR' })
+    await inTx(store, setBalance, duo, '2026-10-01', 9876.5)
     expect(store.list('balances.json.enc')[0]!.amount).toBe(-9876.5)
     // Per ongeluk Schuld gekozen, daarna Spaar: wat Olivier typte komt terug.
-    await saveAccount(store, duo.id, { name: 'Nepschuld', provider: 'duo', kind: 'spaar', currency: 'EUR' })
+    await inTx(store, saveAccount, duo.id, { name: 'Nepschuld', provider: 'duo', kind: 'spaar', currency: 'EUR' })
     expect(store.list('balances.json.enc')[0]!.amount).toBe(9876.5)
-    const asDebt = await saveAccount(store, duo.id, { name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR' })
+    const asDebt = await inTx(store, saveAccount, duo.id, { name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR' })
     expect(asDebt.kind).toBe('schuld')
     expect(store.list('balances.json.enc')[0]!.amount).toBe(-9876.5)
   })
 
   it('verwijderen: tombstones zonder naam en zonder bedrag; ongedaan maken zet alles terug', async () => {
     const store = await newStore()
-    const bank = await saveAccount(store, null, { name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie' })
-    await setBalance(store, bank, '2026-09-30', 1234.56)
-    await setBalance(store, bank, '2026-10-20', 1500)
-    const undoBalance = await deleteBalance(store, store.list('balances.json.enc').find((b) => b.amount === 1500)!)
+    const bank = await inTx(store, saveAccount, null, { name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie' })
+    await inTx(store, setBalance, bank, '2026-09-30', 1234.56)
+    await inTx(store, setBalance, bank, '2026-10-20', 1500)
+    const undoBalance = await standVerwijderen(store, store.list('balances.json.enc').find((b) => b.amount === 1500)!)
     expect(store.get('balances.json.enc').find((b) => b.deletedAt !== null)).toMatchObject({ amount: 0 })
     await undoBalance()
     expect(store.list('balances.json.enc')).toHaveLength(2)
-    const undo = await deleteAccount(store, bank)
+    const undo = await rekeningVerwijderen(store, bank)
     expect(store.list('accounts.json.enc')).toEqual([])
     expect(store.list('balances.json.enc')).toEqual([])
     expect(store.get('accounts.json.enc')[0]).toMatchObject({ name: '', deletedAt: expect.any(String) })

@@ -1,4 +1,4 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import type { DueItem } from './reminders'
 import { newId, type Application, type ApplicationStatus, type CareerRecord, type Contact, type Project, type ProjectStatus } from './types'
 
@@ -63,7 +63,7 @@ export function cleanProject(input: ProjectInput): Omit<Project, 'id' | 'updated
   return { kind: 'project', name: text(input.name, 80), status: input.status, ...(nextStep ? { nextStep } : {}) }
 }
 
-export async function saveCareer(store: Store, id: string | null, fields: Omit<Application, 'id' | 'updatedAt' | 'deletedAt'> | Omit<Contact, 'id' | 'updatedAt' | 'deletedAt'> | Omit<Project, 'id' | 'updatedAt' | 'deletedAt'>): Promise<CareerRecord> {
+export async function saveCareer(store: Tx, id: string | null, fields: Omit<Application, 'id' | 'updatedAt' | 'deletedAt'> | Omit<Contact, 'id' | 'updatedAt' | 'deletedAt'> | Omit<Project, 'id' | 'updatedAt' | 'deletedAt'>): Promise<CareerRecord> {
   const record = { ...fields, id: id ?? newId(), updatedAt: new Date().toISOString(), deletedAt: null } as CareerRecord
   await store.put('career.json.enc', record)
   return record

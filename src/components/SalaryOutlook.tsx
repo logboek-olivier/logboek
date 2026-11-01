@@ -4,10 +4,10 @@ import { formatMoney, formatMonth, formatMonthShort } from '../format'
 import { t } from '../i18n'
 import { getRates, subscribeRates } from '../model/rates'
 import { salaryOutlook } from '../model/salary'
-import { todayIso } from '../model/types'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { useCollection } from './useCollection'
+import { todayIso } from '../basis/datum'
 
 // Geld → Vooruitblik: per maand het verwachte en het ontvangen salaris, en het totaal tot het einde van de planning.
 // Optioneel een geschatte fooi (gemiddelde per trip van de organisatie), duidelijk apart van het salaris. Alles in

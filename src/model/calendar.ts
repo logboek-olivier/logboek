@@ -1,10 +1,11 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { active, lastMonths, round1, totalNm } from './derive'
-import { addDays, round2, totals } from './money'
+import { totals } from './money'
 import { weekView, type WeekView } from './weeks'
 import { setStayDays } from './periods'
-import { later, undoableIn } from './changes'
-import { keepUnknownFields, todayIso, type CalendarDay, type DayTravel, type DayType, type Leg, type PeriodKind, type Reminder, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
+import { keepUnknownFields, type CalendarDay, type DayTravel, type DayType, type Leg, type PeriodKind, type Reminder, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
+import { round2 } from '../basis/bedrag'
+import { addDays, daysBetween, mondayOf, monthOf, todayIso } from '../basis/datum'
 
 // Agenda: elke dag heeft één dagsoort, die volgt uit de periode van die dag (docs/PERIODEMODEL.md), met deze voorrang:
 //   1. binnen een trip (eerste tot en met laatste dag, ook als er alleen gasten worden afgezet of opgehaald): op het
@@ -98,10 +99,6 @@ function isDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
 
-export function daysBetween(a: string, b: string): number {
-  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
-}
-
 /** Laatste einddatum vóór `date` en eerste startdatum na `date`. */
 function neighbours(index: CalendarIndex, date: string): { prevEnd: string | null; nextStart: string | null } {
   let prevEnd: string | null = null
@@ -133,17 +130,6 @@ export function dayInfo(index: CalendarIndex, date: string, today: string = toda
 }
 
 // ---------- Maandoverzicht ----------
-
-/** "jjjj-mm" van een datum. */
-export function monthOf(date: string): string {
-  return date.slice(0, 7)
-}
-
-export function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split('-').map(Number)
-  const d = new Date(Date.UTC(y!, m! - 1 + delta, 1))
-  return d.toISOString().slice(0, 7)
-}
 
 /** Weken (maandag eerst) die de maand bedekken, met de dagen van de buurmaanden aan de randen. */
 export function monthWeeks(month: string): string[][] {
@@ -244,22 +230,20 @@ function cleanDetails(details: DayDetails): DayDetails {
 /** De velden van een agendadag die deze versie kent (de rest blijft bij bewerken staan, zie keepUnknownFields). */
 const DAY_FIELDS = ['id', 'date', 'type', 'location', 'travel', 'boat', 'note', 'reason', 'updatedAt', 'deletedAt'] as const
 
-export async function setDay(store: Store, date: string, type: DayType, details: DayDetails = {}): Promise<CalendarDay> {
+export async function setDay(store: Tx, date: string, type: DayType, details: DayDetails = {}): Promise<CalendarDay> {
   const previous = store.get('calendar.json.enc').find((d) => d.id === calendarId(date))
   const record = keepUnknownFields<CalendarDay>(previous, { id: calendarId(date), date, type, ...cleanDetails(details), updatedAt: new Date().toISOString(), deletedAt: null }, DAY_FIELDS)
   await store.put('calendar.json.enc', record)
-  void store.sync()
   return record
 }
 
 /** Terug naar automatisch: de eigen instelling vervalt (tombstone); de dag volgt weer uit trips en dagen. */
-export async function clearDay(store: Store, date: string): Promise<void> {
+export async function clearDay(store: Tx, date: string): Promise<void> {
   await store.remove('calendar.json.enc', calendarId(date))
-  void store.sync()
 }
 
 /** Een periode in één keer dezelfde dagsoort geven (periode markeren); bestaande gegevens van die dagen blijven. */
-export async function setDays(store: Store, dates: readonly string[], type: DayType): Promise<void> {
+export async function setDays(store: Tx, dates: readonly string[], type: DayType): Promise<void> {
   const now = new Date().toISOString()
   const existing = new Map(store.list('calendar.json.enc').map((d) => [d.date, d]))
   const records: CalendarDay[] = dates.map((date) => {
@@ -267,7 +251,6 @@ export async function setDays(store: Store, dates: readonly string[], type: DayT
     return { ...(old ?? {}), id: calendarId(date), date, type, updatedAt: now, deletedAt: null }
   })
   if (records.length > 0) await store.putMany('calendar.json.enc', records)
-  void store.sync()
 }
 
 /** Alle datums van `from` tot en met `to`. */
@@ -276,12 +259,6 @@ export function datesBetween(from: string, to: string): string[] {
   const out: string[] = []
   for (let d = a; d <= b; d = addDays(d, 1)) out.push(d)
   return out
-}
-
-/** Maandag van de week van `date`. */
-export function weekStart(date: string): string {
-  const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7
-  return addDays(date, -weekday)
 }
 
 /** Laatste geplande dag: einde van de laatste trip of de laatste zelf ingestelde dag. */
@@ -309,7 +286,7 @@ export interface SeasonWeek {
  */
 export function seasonWeeks(index: CalendarIndex, from: string, to: string, today: string = todayIso()): SeasonWeek[] {
   const weeks: SeasonWeek[] = []
-  for (let start = weekStart(from); start <= to; start = addDays(start, 7)) {
+  for (let start = mondayOf(from); start <= to; start = addDays(start, 7)) {
     const end = addDays(start, 6)
     const items: SeasonItem[] = []
     const seen = new Set<string>()
@@ -448,7 +425,7 @@ const within = (range: DateRange | null, date: string) => !!range && range.start
  * staan, zodat er niets verloren gaat). Op dagen die eraf gaan, vervalt een zelf ingestelde werkdag zonder gegevens
  * (bijvoorbeeld alleen een andere boot), tenzij een andere trip die dag nog dekt.
  */
-export async function followTrip(store: Store, tripId: string, before: DateRange | null, after: DateRange | null): Promise<void> {
+export async function followTrip(store: Tx, tripId: string, before: DateRange | null, after: DateRange | null): Promise<void> {
   if (before && after && before.start === after.start && before.end === after.end) return
   const legs = store.list('legs.json.enc')
   const others = store
@@ -474,7 +451,7 @@ export async function followTrip(store: Store, tripId: string, before: DateRange
   if (after) {
     const added: string[] = []
     for (let d = after.start; d <= after.end && added.length <= 400; d = addDays(d, 1)) if (!within(before, d)) added.push(d)
-    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= after.end && st.endDate >= after.start)) await setStayDays(store, added, null, {}, false)
+    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= after.end && st.endDate >= after.start)) await setStayDays(store, added, null, {})
   }
 }
 
@@ -512,24 +489,15 @@ export function shrinkFor(index: CalendarIndex, date: string, type: DayType): Tr
   return null
 }
 
-/** Trip verlengen of inkorten vanuit de agenda; geeft ongedaan maken terug. */
-export async function resizeTrip(store: Store, change: TripResize): Promise<() => Promise<void>> {
+/** Trip verlengen of inkorten vanuit de agenda. De agenda volgt (zelf ingestelde dagen, periodes aan land). */
+export async function resizeTrip(store: Tx, change: TripResize): Promise<void> {
   const before = store.list('trips.json.enc').find((t) => t.id === change.view.trip.id) ?? change.view.trip
-  const legs = store.list('legs.json.enc')
-  const oldRange = tripRange(before, legs)
+  const oldRange = tripRange(before, store.list('legs.json.enc'))
   // Verlengen of inkorten in de agenda is zelf de datums kiezen: die volgen de dagen daarna niet meer.
   const { datesFromDays: _follows, ...fixed } = before
   void _follows
-  const next: Trip = { ...fixed, startDate: change.start, endDate: change.end, updatedAt: new Date().toISOString() }
-  await store.put('trips.json.enc', next)
-  // De agenda volgt: zelf ingestelde dagen, periodes aan land en het geld dat daarbij meeging komen bij ongedaan maken terug.
-  const undoFollow = await undoableIn(store, ['calendar.json.enc', 'periods.json.enc', 'transactions.json.enc'], () => followTrip(store, before.id, oldRange, { start: change.start, end: change.end }))
-  void store.sync()
-  return async () => {
-    await store.put('trips.json.enc', { ...before, updatedAt: later(next.updatedAt) })
-    await undoFollow()
-    void store.sync()
-  }
+  await store.put('trips.json.enc', { ...fixed, startDate: change.start, endDate: change.end, updatedAt: store.now })
+  await followTrip(store, before.id, oldRange, { start: change.start, end: change.end })
 }
 
 // ---------- Geld per werkdag ----------

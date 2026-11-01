@@ -11,6 +11,7 @@ import { Store } from '../src/storage/store'
 import { decryptRecords } from '../src/storage/sync'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // Sleutel-invariant: de hoofdsleutel in het geheugen hoort altijd bij meta.json.enc. Nagebootst wat op Oliviers
 // telefoon gebeurde: twee app-instanties (een oude versie die nog open stond en een nieuwe) delen één IndexedDB.
@@ -103,7 +104,7 @@ describe('twee instanties, één IndexedDB: een oude instantie met een andere ho
     a.flushActivity()
     const stateA = a.getState()
     if (stateA.phase === 'unlocked') {
-      await stateA.store.put('transactions.json.enc', tip('oud')).catch(() => undefined)
+      await put(stateA.store, 'transactions.json.enc', tip('oud')).catch(() => undefined)
       await stateA.store.sync().catch(() => undefined)
     }
     await new Promise((r) => setTimeout(r, 50))
@@ -175,7 +176,7 @@ describe('invariant vóór schrijven naar GitHub', () => {
     const other = await createVault(OLD_PASSPHRASE, wordlist)
     github.write(META_PATH, toBase64(utf8(serializeMeta(other.meta))))
     const before = github.requests.filter((r) => r.method === 'PUT').length
-    await store.put('transactions.json.enc', tip('t1'))
+    await put(store, 'transactions.json.enc', tip('t1'))
     await store.sync()
     expect(a.getState().phase).toBe('mismatch')
     expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(before)
@@ -189,7 +190,7 @@ describe('invariant vóór schrijven naar GitHub', () => {
     const a = await unlocked(name)
     github.files.delete(META_PATH)
     const before = github.requests.filter((r) => r.method === 'PUT').length
-    await unlockedStore(a).put('transactions.json.enc', tip('t1'))
+    await put(unlockedStore(a), 'transactions.json.enc', tip('t1'))
     await unlockedStore(a).sync()
     expect(a.getState().phase).toBe('mismatch')
     expect(github.requests.filter((r) => r.method === 'PUT').length).toBe(before)
@@ -204,7 +205,7 @@ describe('invariant vóór schrijven naar GitHub', () => {
     expect(a.getState().phase).toBe('mismatch')
     const db = await openLogboekDb(name)
     const before = await getObject(db, 'transactions.json.enc')
-    await expect(store.put('transactions.json.enc', tip('t2'))).rejects.toThrow()
+    await expect(put(store, 'transactions.json.enc', tip('t2'))).rejects.toThrow()
     expect(await getObject(db, 'transactions.json.enc')).toEqual(before)
   }, 60_000)
 })
@@ -219,13 +220,13 @@ describe('invariant in de Store (lokaal)', () => {
     const store = await Store.open(db, ours.masterKey, new GithubClient(TOKEN, github.fetch), ours.meta.check!)
     const seen: string[] = []
     store.onKeyMismatch((e) => seen.push(e.where))
-    await store.put('trips.json.enc', { id: 't1', name: 'Nepweek', updatedAt: NOW, deletedAt: null })
+    await put(store, 'trips.json.enc', { id: 't1', name: 'Nepweek', updatedAt: NOW, deletedAt: null })
     await store.sync()
     const putsBefore = github.requests.filter((r) => r.method === 'PUT').length
     const local = await getObject(db, 'trips.json.enc')
 
     await Store.storeMeta(db, other.meta, null)
-    await expect(store.put('trips.json.enc', { id: 't2', name: 'Nepweek 2', updatedAt: NOW, deletedAt: null })).rejects.toMatchObject({ name: 'KeyMismatchError' })
+    await expect(put(store, 'trips.json.enc', { id: 't2', name: 'Nepweek 2', updatedAt: NOW, deletedAt: null })).rejects.toMatchObject({ name: 'KeyMismatchError' })
     await store.sync()
     expect(seen).toEqual(['local'])
     expect(store.getStatus()).toMatchObject({ kind: 'error', code: 'keyMismatch' })
@@ -248,7 +249,7 @@ describe('dezelfde sleutel, nieuwe meta (review)', () => {
     const name = `logboek-sleutel-${++counter}`
     const { a, vault } = await unlockedWith(name)
     await a.changePassphrase(NEW_PASSPHRASE, 'nep wachtzin na het wijzigen')
-    await unlockedStore(a).put('transactions.json.enc', tip('na-wijzigen'))
+    await put(unlockedStore(a), 'transactions.json.enc', tip('na-wijzigen'))
     await unlockedStore(a).sync()
     a.flushActivity()
     await new Promise((r) => setTimeout(r, 50))
@@ -274,7 +275,7 @@ describe('dezelfde sleutel, nieuwe meta (review)', () => {
     // refreshMeta neemt de nieuwere meta over; daarna mag schrijven gewoon doorgaan.
     await new Promise((r) => setTimeout(r, 100))
     expect((await Store.loadMeta(await openLogboekDb(name)))?.check).toBe(changed.check)
-    await unlockedStore(b).put('transactions.json.enc', tip('na-laptop'))
+    await put(unlockedStore(b), 'transactions.json.enc', tip('na-laptop'))
     await unlockedStore(b).sync()
     b.flushActivity()
     await new Promise((r) => setTimeout(r, 50))
@@ -286,7 +287,7 @@ describe('dezelfde sleutel, nieuwe meta (review)', () => {
   it('GitHub hoort bij een ander logboek: opnieuw koppelen toont de lokale kopieën en wist pas na de keuze', async () => {
     const name = `logboek-sleutel-${++counter}`
     const { a } = await unlockedWith(name)
-    await unlockedStore(a).put('trips.json.enc', { id: 't1', name: 'Nepweek', updatedAt: NOW, deletedAt: null })
+    await put(unlockedStore(a), 'trips.json.enc', { id: 't1', name: 'Nepweek', updatedAt: NOW, deletedAt: null })
     const other = await createVault(OLD_PASSPHRASE, wordlist)
     github.write(META_PATH, toBase64(utf8(serializeMeta(other.meta))))
     await unlockedStore(a).sync()

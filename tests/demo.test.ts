@@ -9,6 +9,7 @@ import { GithubClient, isNetworkBlocked, NetworkError } from '../src/storage/git
 import { DB_NAME, openLogboekDb, type Db } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { put } from './helpers/schrijf'
 
 // PR F: demomodus. Harde regels: tijdens de demo gaat er niets van of naar GitHub (ook niet van de eigen Store, die
 // open blijft), de eigen lokale data wordt niet aangeraakt, en uitzetten brengt de eigen data en taal terug.
@@ -75,7 +76,7 @@ describe('demomodus', () => {
     expect(reviewItems(reviewInput(store))).toEqual([])
     // Opslaan, synchroniseren, vanzelf synchroniseren en controleren: nergens een poging tot netwerk.
     store.enableAutoSync()
-    await store.put('legs.json.enc', { ...store.list('legs.json.enc')[0]!, notes: 'demo edit', updatedAt: new Date().toISOString() })
+    await put(store, 'legs.json.enc', { ...store.list('legs.json.enc')[0]!, notes: 'demo edit', updatedAt: new Date().toISOString() })
     await store.sync()
     await store.sync({ changedOnly: true })
     expect(await store.check(true)).toBeNull()
@@ -88,7 +89,7 @@ describe('demomodus', () => {
   it('tijdens de demo synct ook de eigen Store niet (ook niet vanzelf); na stoppen weer wel, met de eigen data en taal', async () => {
     setLang('nl', false)
     const own = await ownStore('logboek-demo-eigen-1')
-    await own.store.put('trips.json.enc', { id: 'eigen', name: 'Eigen trip', updatedAt: T0, deletedAt: null })
+    await put(own.store, 'trips.json.enc', { id: 'eigen', name: 'Eigen trip', updatedAt: T0, deletedAt: null })
     await own.store.sync()
     own.store.enableAutoSync()
     const before = own.calls.length
@@ -97,7 +98,7 @@ describe('demomodus', () => {
     await startDemo('2026-11-10')
     expect(isNetworkBlocked()).toBe(true)
     // Een opslag start vanzelf een sync (na 0,8 s): ook die komt niet bij GitHub.
-    await own.store.put('trips.json.enc', { id: 'eigen-2', name: 'Eigen trip twee', updatedAt: T0, deletedAt: null })
+    await put(own.store, 'trips.json.enc', { id: 'eigen-2', name: 'Eigen trip twee', updatedAt: T0, deletedAt: null })
     await new Promise((r) => setTimeout(r, 1_200))
     await own.store.sync()
     expect(own.calls.length).toBe(before)
@@ -142,12 +143,12 @@ describe('demomodus', () => {
   it('de eigen database (DB_NAME) blijft byte voor byte gelijk; de demo-database is na stoppen weg', async () => {
     expect(DEMO_DB).not.toBe(DB_NAME)
     const own = await ownStore(DB_NAME)
-    await own.store.put('trips.json.enc', { id: 'eigen', name: 'Eigen trip', updatedAt: T0, deletedAt: null })
+    await put(own.store, 'trips.json.enc', { id: 'eigen', name: 'Eigen trip', updatedAt: T0, deletedAt: null })
     const before = await snapshot(own.db)
 
     await startDemo('2026-11-10')
     const demo = demoStore()!
-    await demo.put('trips.json.enc', { ...demo.list('trips.json.enc')[0]!, name: 'Changed in demo', updatedAt: new Date().toISOString() })
+    await put(demo, 'trips.json.enc', { ...demo.list('trips.json.enc')[0]!, name: 'Changed in demo', updatedAt: new Date().toISOString() })
     for (const path of COLLECTION_PATHS) expect(demo.list(path).some((r) => (r as { name?: string }).name === 'Eigen trip')).toBe(false)
     expect(await snapshot(own.db)).toBe(before)
     expect(own.store.list('trips.json.enc').map((t) => t.name)).toEqual(['Eigen trip'])

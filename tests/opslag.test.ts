@@ -5,7 +5,7 @@ import { META_PATH, parseMeta, serializeMeta, unlock, WrongSecretError, type Met
 import { NewerSchemaError } from '../src/model/schema'
 import { COLLECTION_PATHS, type CollectionPath, type Place, type SyncRecord } from '../src/model/types'
 import { Session } from '../src/session'
-import { applyRestore, encodeBackup, InvalidBackupError, openBackup, RestoreNeedsSyncError, restorePlan } from '../src/storage/backup'
+import { encodeBackup, InvalidBackupError, openBackup, RestoreNeedsSyncError, restorePlan } from '../src/storage/backup'
 import { openLogboekDb, putObject } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
 import { checkHasProblem } from '../src/storage/storage-log'
@@ -15,6 +15,8 @@ import { decryptRecords, encryptRecords } from '../src/storage/sync'
 import { storeToken } from '../src/storage/token'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { backupTerugzetten } from '../src/domain/importeren'
+import { put, remove } from './helpers/schrijf'
 
 // PR A, "Data eerst": opslaan moet gewoon werken. Alle gegevens zijn verzonnen.
 // - Twee vensters van de app (het Chrome-tabblad en de geïnstalleerde app delen dezelfde opslag) overschreven elkaars
@@ -136,9 +138,9 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     const a = await open(name)
     const b = await open(name)
     github.offline = true
-    await store(a).put('places.json.enc', place('a1'))
-    await store(b).put('places.json.enc', place('b1'))
-    await store(a).put('places.json.enc', place('a2'))
+    await put(store(a), 'places.json.enc', place('a1'))
+    await put(store(b), 'places.json.enc', place('b1'))
+    await put(store(a), 'places.json.enc', place('a2'))
     // Beide vensters dicht, daarna opnieuw open met verbinding.
     a.lock()
     b.lock()
@@ -156,7 +158,7 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     const a = await open(name)
     const b = await open(name)
     await Promise.all([store(a).sync(), store(b).sync()])
-    await store(a).put('places.json.enc', place('a1'))
+    await put(store(a), 'places.json.enc', place('a1'))
     // Het andere venster krijgt een bericht en neemt de opslag direct over, zonder sync.
     await expect.poll(() => store(b).list('places.json.enc').map((p) => p.id), { timeout: 5_000 }).toEqual(['a1'])
     // Synct venster a, dan wacht er in venster b ook niets meer (de outbox op het apparaat is leidend).
@@ -164,7 +166,7 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     await store(b).sync()
     expect(store(a).pendingCount()).toBe(0)
     expect(store(b).pendingCount()).toBe(0)
-    await store(b).put('places.json.enc', place('b1'))
+    await put(store(b), 'places.json.enc', place('b1'))
     expect(store(b).pendingCount()).toBe(1)
     await expect.poll(() => store(a).pendingCount(), { timeout: 5_000 }).toBe(1)
     await store(b).sync()
@@ -176,7 +178,7 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     const name = await phone()
     const s = await open(name)
     await store(s).sync()
-    const saving = store(s).put('places.json.enc', place('p1'))
+    const saving = put(store(s), 'places.json.enc', place('p1'))
     s.lock()
     await saving
     const again = await open(name)
@@ -190,7 +192,7 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     const name = await phone()
     const s = await open(name)
     await store(s).sync()
-    await store(s).put('places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p1'))
     const { saved, synced } = store(s).saveState()
     expect(saved).toBeGreaterThan(synced)
     expect(store(s).getStatus()).toMatchObject({ kind: 'pending', count: 1 })
@@ -207,7 +209,7 @@ describe('Opslaan: één schrijver, niets verloren', () => {
     // De weekcontrole na het openen haalt wel alles; daarna begint de meting.
     await expect.poll(() => store(s).storageLog().check, { timeout: 5_000 }).not.toBeNull()
     const before = github.requests.length
-    await store(s).put('places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p1'))
     await expect.poll(() => store(s).getStatus(), { timeout: 5_000 }).toEqual({ kind: 'synced' })
     const paths = new Set(github.requests.slice(before).map((r) => r.url.split('/contents/')[1]))
     expect([...paths].sort()).toEqual([META_PATH, 'places.json.enc'])
@@ -218,12 +220,12 @@ describe('Een nieuw bestand aanmaken: op één plek, na de sleutelcontrole', () 
   it('GitHub geeft vlak na het aanmaken door een ander venster nog 404: geen PUT zonder sha over het bestaande bestand', async () => {
     const name = await phone(['places.json.enc'])
     const a = await open(name)
-    await store(a).put('places.json.enc', place('a1'))
+    await put(store(a), 'places.json.enc', place('a1'))
     await store(a).sync()
     expect(github.files.has('places.json.enc')).toBe(true)
     // Een tweede venster (of apparaat) synct; GitHub loopt nog even achter en geeft bij de eerste blik 404.
     const b = await open(name)
-    await store(b).put('places.json.enc', place('b1'))
+    await put(store(b), 'places.json.enc', place('b1'))
     github.notFoundReads.set('places.json.enc', 1)
     const before = github.requests.length
     await store(b).sync()
@@ -274,7 +276,7 @@ describe('Controleer nu', () => {
   it('na een sync: alles gelijk en leesbaar; de uitkomst bevat alleen paden en aantallen', async () => {
     const name = await phone()
     const s = await open(name)
-    await store(s).put('places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p1'))
     const result = await store(s).check()
     expect(result).not.toBeNull()
     expect(checkHasProblem(result!)).toBe(false)
@@ -288,7 +290,7 @@ describe('Controleer nu', () => {
   it('vindt een verschil, een onleesbaar en een ontbrekend bestand', async () => {
     const name = await phone()
     const s = await open(name)
-    await store(s).put('reminders.json.enc', { id: 'r1', title: 'Neptermijn', date: '2026-11-01', kind: 'deadline', doneAt: null, updatedAt: NOW, deletedAt: null })
+    await put(store(s), 'reminders.json.enc', { id: 'r1', title: 'Neptermijn', date: '2026-11-01', kind: 'deadline', doneAt: null, updatedAt: NOW, deletedAt: null })
     await store(s).sync()
     // Na de sync verandert GitHub buiten de app om.
     const changed: SyncRecord = { ...week, updatedAt: '2026-10-29T09:00:00.000Z' }
@@ -309,11 +311,11 @@ describe('Controleer nu', () => {
     const s = await open(name)
     await store(s).sync()
     github.staleReadsAfterPut = 1
-    await store(s).put('places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p1'))
     await store(s).sync()
     // Na de sync opgeslagen, nog niet gesynct: geen verschil.
     github.offline = true
-    await store(s).put('legs.json.enc', { id: 'l1', tripId: 'w1', date: '2026-10-29', fromPlace: 'A', fromCountry: '', toPlace: 'B', toCountry: '', role: 'schipper', boat: '', nmInland: 0, nmSea: 3, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: NOW, deletedAt: null })
+    await put(store(s), 'legs.json.enc', { id: 'l1', tripId: 'w1', date: '2026-10-29', fromPlace: 'A', fromCountry: '', toPlace: 'B', toCountry: '', role: 'schipper', boat: '', nmInland: 0, nmSea: 3, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: NOW, deletedAt: null })
     github.offline = false
     const result = await store(s).check(false, 10)
     expect(result!.files.filter((f) => f.state !== 'gelijk' && f.state !== 'leeg')).toEqual([])
@@ -323,7 +325,7 @@ describe('Controleer nu', () => {
   it('een gevonden probleem wordt na herstellen opnieuw gecontroleerd; de melding verdwijnt', async () => {
     const name = await phone()
     const s = await open(name)
-    await store(s).put('plans.json.enc', { id: 'pl1', title: 'Nepplan', startDate: '2026-11-01', dayCount: 3, groups: [], days: [], updatedAt: NOW, deletedAt: null })
+    await put(store(s), 'plans.json.enc', { id: 'pl1', title: 'Nepplan', startDate: '2026-11-01', dayCount: 3, groups: [], days: [], updatedAt: NOW, deletedAt: null })
     await store(s).sync()
     github.write('plans.json.enc', toBase64(await encryptRecords(k2.masterKey, 'plans.json.enc', [])))
     await store(s).sync()
@@ -356,7 +358,7 @@ describe('Back-up zonder laptop', () => {
   it('is volledig versleuteld en alleen te openen met de wachtzin of herstelcode', async () => {
     const name = await phone()
     const s = await open(name)
-    await store(s).put('places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p1'))
     const text = await backupOf(s)
     expect(text).not.toContain('Nepplaats')
     expect(text).not.toContain('Nepweek')
@@ -371,10 +373,10 @@ describe('Back-up zonder laptop', () => {
   it('terugzetten brengt alleen terug wat helemaal ontbreekt: zelf verwijderd blijft weg', async () => {
     const name = await phone()
     const s = await open(name)
-    await store(s).put('places.json.enc', place('p1'))
-    await store(s).put('places.json.enc', place('p2'))
+    await put(store(s), 'places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p2'))
     const backup = await openBackup(await backupOf(s), { passphrase: PASSPHRASE })
-    await store(s).remove('places.json.enc', 'p2')
+    await remove(store(s), 'places.json.enc', 'p2')
     const plan = restorePlan(store(s), backup)
     expect(plan.every((item) => item.back.length === 0)).toBe(true)
     expect(plan.find((p) => p.path === 'places.json.enc')).toMatchObject({ inBackup: 2 })
@@ -383,10 +385,10 @@ describe('Back-up zonder laptop', () => {
   it('terugzetten in een leeg logboek toont vooraf wat terugkomt, zet het terug en is ongedaan te maken', async () => {
     const name = await phone()
     const s = await open(name)
-    await store(s).put('places.json.enc', place('p1'))
+    await put(store(s), 'places.json.enc', place('p1'))
     const at = new Date().toISOString()
-    await store(s).put('accounts.json.enc', { id: 'acc1', name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie', updatedAt: at, deletedAt: null })
-    await store(s).put('balances.json.enc', { id: 'stand:acc1:2026-09', accountId: 'acc1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: at, deletedAt: null })
+    await put(store(s), 'accounts.json.enc', { id: 'acc1', name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie', updatedAt: at, deletedAt: null })
+    await put(store(s), 'balances.json.enc', { id: 'stand:acc1:2026-09', accountId: 'acc1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: at, deletedAt: null })
     const text = await backupOf(s)
     s.lock()
     // GitHub en de telefoon zijn het logboek kwijt; Olivier begint opnieuw (een ander logboek, K2) met één eigen plaats.
@@ -402,11 +404,11 @@ describe('Back-up zonder laptop', () => {
     await other.init()
     await other.unlockLocal({ passphrase: 'nep wachtzin van een ander logboek' })
     await store(other).sync()
-    await store(other).put('places.json.enc', place('n1'))
+    await put(store(other), 'places.json.enc', place('n1'))
     const plan = restorePlan(store(other), await openBackup(text, { passphrase: PASSPHRASE }))
     expect(plan.find((p) => p.path === 'places.json.enc')!.back.map((r) => r.id)).toEqual(['p1'])
     expect(plan.find((p) => p.path === 'trips.json.enc')!.back.map((r) => r.id)).toEqual(['w1'])
-    const undo = await applyRestore(store(other), plan)
+    const undo = await backupTerugzetten(store(other), plan)
     expect(store(other).list('places.json.enc').map((p) => p.id).sort()).toEqual(['n1', 'p1'])
     expect(store(other).list('trips.json.enc').map((p) => p.id)).toEqual(['w1'])
     await store(other).sync()
@@ -424,8 +426,8 @@ describe('Back-up zonder laptop', () => {
   it('terugzetten kan pas na een geslaagde sync, en overschrijft nooit wat op GitHub nieuwer is of gewist werd', async () => {
     const name = await phone()
     const a = await open(name)
-    await store(a).put('students.json.enc', { id: 'st1', firstName: 'Nepstudent', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, updatedAt: '2026-10-29T08:01:00.000Z', deletedAt: null })
-    await store(a).put('places.json.enc', { ...place('p1'), updatedAt: '2026-10-29T08:01:00.000Z' })
+    await put(store(a), 'students.json.enc', { id: 'st1', firstName: 'Nepstudent', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, updatedAt: '2026-10-29T08:01:00.000Z', deletedAt: null })
+    await put(store(a), 'places.json.enc', { ...place('p1'), updatedAt: '2026-10-29T08:01:00.000Z' })
     await store(a).sync()
     const text = await backupOf(a)
     // Een tweede apparaat dat al eerder gesynct had (zonder de student en de plaats), zonder verbinding.
@@ -439,7 +441,7 @@ describe('Back-up zonder laptop', () => {
     b.lock()
     const c = await open(name)
     const backup = await openBackup(text, { passphrase: PASSPHRASE })
-    await expect(applyRestore(store(c), restorePlan(store(c), backup))).rejects.toBeInstanceOf(RestoreNeedsSyncError)
+    await expect(backupTerugzetten(store(c), restorePlan(store(c), backup))).rejects.toBeInstanceOf(RestoreNeedsSyncError)
     // Intussen op een ander apparaat: de student gewist, de plaats hernoemd.
     const changed = (await remote('places.json.enc')).map((r) => ({ ...r, name: 'Nepplaats hernoemd', updatedAt: '2026-10-29T09:00:00.000Z' }))
     github.write('places.json.enc', toBase64(await encryptRecords(k1.masterKey, 'places.json.enc', changed)))
@@ -449,7 +451,7 @@ describe('Back-up zonder laptop', () => {
     // Het voorbeeld van vóór de sync zegt nog: terug. Bij de tik is er gesynct, en de tijden uit de back-up winnen nooit.
     const stale = restorePlan(store(c), backup)
     await store(c).sync()
-    await applyRestore(store(c), stale)
+    await backupTerugzetten(store(c), stale)
     await store(c).sync()
     expect(store(c).list('students.json.enc')).toEqual([])
     expect(store(c).list('places.json.enc').map((p) => p.name)).toEqual(['Nepplaats hernoemd'])

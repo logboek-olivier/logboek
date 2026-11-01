@@ -2,19 +2,17 @@ import { CalendarCheck, ChevronDown, ChevronUp, Pencil, Trash2, Wallet } from 'l
 import { useState, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatHours, formatMoney, formatNm } from '../format'
 import { getLang, t } from '../i18n'
-import { balanceOn, liveAccounts, parseStand } from '../model/accounts'
+import { balanceOn, liveAccounts } from '../model/accounts'
 import { nameWithCounter } from '../model/counters'
 import { cashOnHand, hasSalaryIncome, openSalaryTrips } from '../model/money-path'
 import { getRates } from '../model/rates'
-import { applyMoneyStep, isEmptyStep, type MoneyStep } from '../model/week-money'
+import { isEmptyStep, type MoneyStep } from '../model/week-money'
 import { useIsDemo } from './DemoBar'
 import { organisationLabel } from '../i18n/labels'
 import { useCounters } from './useCounters'
 import type { CalendarIndex } from '../model/calendar'
-import { deleteWeekClosing } from '../model/edit'
-import { canClose, closingFor, LESSON_MAX, saveClosing, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
-import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type WeekClosing } from '../model/types'
-import { amountInput, parseAmount } from '../model/money'
+import { canClose, closingFor, LESSON_MAX, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
+import { CURRENCIES, ORGANISATIONS, type Currency, type WeekClosing } from '../model/types'
 import { currentSettings } from '../model/settings'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
@@ -22,6 +20,9 @@ import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
+import { weekAfsluitenMetGeld, weekafsluitingVerwijderen } from '../domain/termijnen'
+import { amountInput, parseAmount, parseStand } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Weekafsluiting: op Vandaag op zondag (en op maandag voor de week van gisteren) een kaart met de automatische
 // samenvatting van de week, een cijfer en één zin; opslaan met één tik, daarna is de kaart weg. Terug te lezen (en te
@@ -167,10 +168,10 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
     try {
       // De geldstap eerst (alleen wat is ingevuld of aangevinkt; één ongedaan maken voor alles daarvan), dan de afsluiting:
       // zodra die er staat, is de kaart weg.
-      const result = isEmptyStep(money.step) ? null : await applyMoneyStep(store, money.step, todayIso(), getRates())
-      await saveClosing(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null })
+      const step = isEmptyStep(money.step) ? null : money.step
+      const { result, undo } = await weekAfsluitenMetGeld(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null }, step, todayIso(), getRates())
       // Zonder koers is een uitbetaling in gemengde valuta niet op te tellen: dan zeggen we dat, zonder te boeken.
-      if (result) onSaved(result.undo, result.skipped.length > 0 ? t('weekMoney.skipped', { orgs: result.skipped.map((o) => organisationLabel(o)).join(', ') }) : undefined)
+      if (step) onSaved(undo, result.skipped.length > 0 ? t('weekMoney.skipped', { orgs: result.skipped.map((o) => organisationLabel(o)).join(', ') }) : undefined)
       else onSaved()
     } finally {
       setBusy(false)
@@ -247,7 +248,7 @@ function WeekClosingSheet({ store, index, date, today, notify, onClose }: { stor
 
   async function remove() {
     if (!closing) return
-    const undo = await deleteWeekClosing(store, closing)
+    const undo = await weekafsluitingVerwijderen(store, closing)
     onClose()
     notify(t('toast.deleted'), undo)
   }

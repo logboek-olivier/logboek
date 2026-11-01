@@ -2,10 +2,8 @@ import { MoveHorizontal, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { formatDateRange, formatDateShort } from '../format'
 import { t, useLang } from '../i18n'
-import { applyPlan, hasOverlap, type PlanItem } from '../import/planning'
-import { datesBetween, extendOptions, resizeTrip, setDays, type CalendarIndex } from '../model/calendar'
-import { setStayDays } from '../model/periods'
-import { bothUndo } from '../model/changes'
+import { hasOverlap, type PlanItem } from '../import/planning'
+import { datesBetween, extendOptions, type CalendarIndex } from '../model/calendar'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { DAY_TYPES, type DayType } from '../model/types'
 import { weekTypeLabel } from './WeekSheet'
@@ -13,6 +11,8 @@ import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { dagsoortenKiezen, landperiodeZetten, periodeDatumsWijzigen } from '../domain/agenda'
+import { planningImporteren } from '../domain/importeren'
 
 // Periode markeren: één dagsoort voor alle dagen van de periode; werk opent "Nieuwe trip" met die datums (met
 // "Herhaal vorige trip" en de route-sjablonen), of verlengt een trip die vlak ervoor eindigt of vlak erna begint.
@@ -49,19 +49,12 @@ export function PeriodSheet({
     // (beschikbaar, optie, onbeschikbaar) hoort bij dagen zonder periode: eerst uit een periode aan land, en niet in een trip.
     const land = STAY_FROM_DAY[type]
     if (land) {
-      const undo = await setStayDays(store, dates, land)
+      const undo = await landperiodeZetten(store, dates, land)
       notify(t('calendar.periodSaved', { n: dates.length }), undo)
     } else {
       const free = dates.filter((d) => !index.views.some((v) => v.startDate <= d && d <= v.endDate))
-      const undoStay = await setStayDays(store, free, null)
-      const before = new Map(store.list('calendar.json.enc').map((d) => [d.date, d]))
-      await setDays(store, free, type)
-      const undoDays = async () => {
-        const now = new Date().toISOString()
-        const back = free.map((d) => before.get(d) ?? store.list('calendar.json.enc').find((x) => x.date === d)).filter((d) => !!d)
-        await store.putMany('calendar.json.enc', back.map((d) => (before.get(d.date) ? { ...d, updatedAt: now } : { ...d, updatedAt: now, deletedAt: now })))
-      }
-      notify(t('calendar.periodSaved', { n: free.length }), bothUndo(undoStay, undoDays))
+      const undo = await dagsoortenKiezen(store, free, type)
+      notify(t('calendar.periodSaved', { n: free.length }), undo)
     }
     onClose()
   }
@@ -76,7 +69,7 @@ export function PeriodSheet({
               type="button"
               className="btn"
               onClick={async () => {
-                const undo = await resizeTrip(store, option)
+                const undo = await periodeDatumsWijzigen(store, option)
                 notify(t('day.tripResized', { name: option.view.trip.name, range: formatDateRange(option.start, option.end) }), undo)
                 onClose()
               }}
@@ -118,7 +111,7 @@ export function PlanningImportSheet({ store, items, notify, onClose }: { store: 
 
   async function confirm() {
     setBusy(true)
-    const result = await applyPlan(store, items, include, lang)
+    const { result } = await planningImporteren(store, items, include, lang)
     notify(t('planning.done', result))
     onClose()
   }

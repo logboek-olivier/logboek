@@ -1,13 +1,14 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex } from '../src/model/calendar'
-import { deleteWeekClosing } from '../src/model/edit'
 import type { CalendarDay, Leg, Student, Trip, WeekClosing } from '../src/model/types'
-import { canClose, cleanClosing, closingFor, mondayOf, saveClosing, sundayOf, weekClosingId, weekKey, weekSummary, weekToClose } from '../src/model/week-close'
+import { canClose, cleanClosing, closingFor, weekClosingId, weekKey, weekSummary, weekToClose } from '../src/model/week-close'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { weekAfsluiten, weekafsluitingVerwijderen } from '../src/domain/termijnen'
+import { mondayOf, sundayOf } from '../src/basis/datum'
 
 // Weekafsluiting: samenvatting van maandag tot en met zondag uit dagen, agenda en studenten; opgeslagen alleen cijfer en
 // zin, één record per ISO-week. Alle gegevens verzonnen.
@@ -113,13 +114,13 @@ describe('samenvatting', () => {
 describe('opslaan', () => {
   it('één record per week: opnieuw opslaan werkt hem bij, een leeg cijfer valt weg; verwijderen met ongedaan maken', async () => {
     const store = await newStore()
-    await saveClosing(store, '2026-10-29', { rating: 8, lesson: 'Nepzin' })
+    await weekAfsluiten(store, '2026-10-29', { rating: 8, lesson: 'Nepzin' })
     expect(store.list('weekreviews.json.enc')).toEqual([expect.objectContaining({ id: 'week:2026-W44', week: '2026-W44', start: '2026-10-26', rating: 8, lesson: 'Nepzin', deletedAt: null })])
-    await saveClosing(store, '2026-11-01', { rating: null, lesson: 'Andere nepzin' })
+    await weekAfsluiten(store, '2026-11-01', { rating: null, lesson: 'Andere nepzin' })
     const [record] = store.list('weekreviews.json.enc')
     expect(record).toMatchObject({ id: 'week:2026-W44', lesson: 'Andere nepzin' })
     expect(record).not.toHaveProperty('rating')
-    const undo = await deleteWeekClosing(store, record!)
+    const undo = await weekafsluitingVerwijderen(store, record!)
     expect(closingFor(store.list('weekreviews.json.enc'), '2026-10-29')).toBeNull()
     await undo()
     expect(closingFor(store.list('weekreviews.json.enc'), '2026-10-29')?.lesson).toBe('Andere nepzin')

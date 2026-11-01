@@ -1,4 +1,4 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { justAfter, type Transaction } from './types'
 
 // Wisselkoersen: ECB-referentiekoersen (vreemde valuta per 1 EUR), door deploy.yml gebouwd als public/rates.json op
@@ -118,7 +118,7 @@ export function finalRateFields(tx: Pick<Transaction, 'currency' | 'amount' | 'd
  * Slaat de gebruikte koers op bij transacties die er nog geen hebben, zodra die definitief bekend is. Eén keer per
  * sessie na een geslaagde sync, zodat een offline apparaat geen wijzigingen van een ander apparaat overschrijft.
  */
-export async function backfillRates(store: Store, file: RatesFile | null = current): Promise<number> {
+export async function backfillRates(store: Tx, file: RatesFile | null = current): Promise<number> {
   if (!file) return 0
   const changed: Transaction[] = []
   for (const tx of store.list('transactions.json.enc')) {
@@ -130,7 +130,6 @@ export async function backfillRates(store: Store, file: RatesFile | null = curre
   }
   if (changed.length > 0) {
     await store.putMany('transactions.json.enc', changed)
-    void store.sync()
   }
   return changed.length
 }

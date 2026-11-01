@@ -1,10 +1,9 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { addClaim, claimCounts, claimsToShow, deleteClaim, markRepaid, markSubmitted, openClaims, receiptFileName, tripClaims, updateClaim } from '../src/model/claims'
+import { addClaim, claimCounts, claimsToShow, openClaims, receiptFileName, tripClaims } from '../src/model/claims'
 import { dayAverages } from '../src/model/costs'
 import { buildIndex } from '../src/model/calendar'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
-import { deleteTripWith, mergeTrips } from '../src/model/trip-ops'
 import { totals } from '../src/model/money'
 import { positionAt } from '../src/model/position'
 import type { Trip } from '../src/model/types'
@@ -12,6 +11,9 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put, putMany } from './helpers/schrijf'
+import { declaratieBewerken, declaratieIngediend, declaratieTerugbetaald, declaratieVerwijderen } from '../src/domain/geld'
+import { periodeVerwijderen, samenvoegen } from '../src/domain/trips'
 
 // Ronde 3 · PR 6: declaraties. Het bonnetje versleuteld in de kluis, de status open → ingediend → terugbetaald, de
 // terugbetaling als inkomen van soort terugbetaling (in het saldo, niet verdiend), open declaraties met een bedrag als
@@ -36,8 +38,8 @@ const jpeg = { bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), mime: '
 describe('declaraties', () => {
   it('bonnetje in de kluis (financieel, offline), declaratie open bij de trip; het bestand ontsleutelt weer', async () => {
     const s = await store()
-    await s.put('trips.json.enc', trip)
-    const claim = await addClaim(s, { date: '2026-10-03', tripId: 'trip-1', note: 'Nepdiesel', amount: 42.5, currency: 'EUR' }, jpeg)
+    await put(s, 'trips.json.enc', trip)
+    const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: 'trip-1', note: 'Nepdiesel', amount: 42.5, currency: 'EUR' }, jpeg)
     expect(claim).toMatchObject({ status: 'open', tripId: 'trip-1', amount: 42.5, currency: 'EUR', note: 'Nepdiesel' })
     const doc = s.list('documents/index.json.enc').find((d) => d.id === claim.documentId)!
     expect(doc).toMatchObject({ category: 'financieel', offline: true, mime: 'image/jpeg' })
@@ -50,16 +52,16 @@ describe('declaraties', () => {
 
   it('ingediend, dan terugbetaald: een inkomen van soort terugbetaling, niet verdiend; een tweede tik boekt niets', async () => {
     const s = await store()
-    await s.put('trips.json.enc', trip)
-    const claim = await addClaim(s, { date: '2026-10-03', tripId: 'trip-1', note: '', amount: 42.5, currency: 'EUR' }, null)
-    await markSubmitted(s, claim, '2026-10-08')
+    await put(s, 'trips.json.enc', trip)
+    const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: 'trip-1', note: '', amount: 42.5, currency: 'EUR' }, null)
+    await declaratieIngediend(s, claim, '2026-10-08')
     expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'ingediend', submittedAt: '2026-10-08' })
     // Open of ingediend met een bedrag: te ontvangen.
     expect(openClaims(s.list('claims.json.enc'))).toHaveLength(1)
     const input = { accounts: [], balances: [], trips: s.list('trips.json.enc'), legs: [], transactions: s.list('transactions.json.enc'), rates: null, claims: s.list('claims.json.enc') }
     expect(positionAt(input, '2026-10-10').totals.receivable.eur).toBe(42.5)
-    const undo = await markRepaid(s, claim, { date: '2026-10-20', amount: 42.5, currency: 'EUR' })
-    await markRepaid(s, claim, { date: '2026-10-20', amount: 42.5, currency: 'EUR' })
+    const undo = await declaratieTerugbetaald(s, claim, { date: '2026-10-20', amount: 42.5, currency: 'EUR' })
+    await declaratieTerugbetaald(s, claim, { date: '2026-10-20', amount: 42.5, currency: 'EUR' })
     const txs = s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)
     // De uitgave (bij het aanmaken) en de terugbetaling: samen nul in het saldo, niet verdiend.
     expect(txs.map((tx) => tx.kind).sort()).toEqual(['kosten', 'terugbetaling'])
@@ -83,16 +85,16 @@ describe('declaraties', () => {
 
   it('bewerken houdt status en bonnetje; verwijderen laat geen notitie of bedrag achter en haalt het bonnetje uit de kluis', async () => {
     const s = await store()
-    const claim = await addClaim(s, { date: '2026-10-03', tripId: null, note: 'Neptaxi', amount: 20, currency: 'USD' }, jpeg)
-    await markSubmitted(s, claim, '2026-10-04')
-    await updateClaim(s, claim, { date: '2026-10-02', tripId: null, note: 'Neptaxi naar haven', amount: 25, currency: 'USD' })
+    const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: null, note: 'Neptaxi', amount: 20, currency: 'USD' }, jpeg)
+    await declaratieIngediend(s, claim, '2026-10-04')
+    await declaratieBewerken(s, claim, { date: '2026-10-02', tripId: null, note: 'Neptaxi naar haven', amount: 25, currency: 'USD' })
     expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'ingediend', documentId: claim.documentId, amount: 25, date: '2026-10-02' })
     // De uitgave volgt het bedrag; het bonnetje in de kluis de datum.
     expect(s.list('transactions.json.enc')).toEqual([expect.objectContaining({ kind: 'kosten', amount: 25, currency: 'USD', claimId: claim.id })])
     expect(s.list('documents/index.json.enc')[0]).toMatchObject({ issuedAt: '2026-10-02' })
-    const undo = await deleteClaim(s, s.list('claims.json.enc')[0]!)
+    const undo = await declaratieVerwijderen(s, s.list('claims.json.enc')[0]!)
     // Een tweede tik op verwijderen doet niets (en raakt het bonnetje niet kwijt bij ongedaan maken).
-    await deleteClaim(s, claim)
+    await declaratieVerwijderen(s, claim)
     expect(s.list('transactions.json.enc')).toEqual([])
     const gone = s.get('claims.json.enc')[0]!
     expect(gone.deletedAt).not.toBeNull()
@@ -111,11 +113,11 @@ describe('declaraties', () => {
   it('declaraties gaan mee bij samenvoegen en verwijderen met meenemen; bij ook verwijderen gaan ze mee weg met het bonnetje', async () => {
     const s = await store()
     const other: Trip = { ...trip, id: 'trip-2', name: 'Nepweek twee', startDate: '2026-10-05', endDate: '2026-10-11' }
-    await s.putMany('trips.json.enc', [trip, other])
-    const claim = await addClaim(s, { date: '2026-10-03', tripId: 'trip-1', note: 'Nephaven', amount: 10, currency: 'EUR' }, jpeg)
-    await mergeTrips(s, other, trip)
+    await putMany(s, 'trips.json.enc', [trip, other])
+    const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: 'trip-1', note: 'Nephaven', amount: 10, currency: 'EUR' }, jpeg)
+    await samenvoegen(s, other, trip)
     expect(s.list('claims.json.enc')[0]!.tripId).toBe('trip-2')
-    const undo = await deleteTripWith(s, s.list('trips.json.enc').find((x) => x.id === 'trip-2')!, null)
+    const undo = await periodeVerwijderen(s, s.list('trips.json.enc').find((x) => x.id === 'trip-2')!, null)
     expect(s.list('claims.json.enc')).toEqual([])
     expect(s.get('claims.json.enc')[0]!.note).toBeUndefined()
     expect(s.list('documents/index.json.enc')).toEqual([])
@@ -126,7 +128,7 @@ describe('declaraties', () => {
 
   it('een gedeclareerde uitgave telt niet mee in het gemiddelde van de losse uitgaven', async () => {
     const s = await store()
-    await addClaim(s, { date: '2026-10-03', tripId: null, note: '', amount: 500, currency: 'EUR' }, null)
+    await inTx(s, addClaim, { date: '2026-10-03', tripId: null, note: '', amount: 500, currency: 'EUR' }, null)
     const a = dayAverages(s.list('transactions.json.enc'), [], buildIndex([], [], []), '2026-10-30', DEFAULT_SETTINGS, null)
     expect(a.thuis.source).toBe('onbekend')
   })

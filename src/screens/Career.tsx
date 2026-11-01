@@ -9,11 +9,11 @@ import { useCollection } from '../components/useCollection'
 import { ViewRows } from '../components/Views'
 import { formatDate } from '../format'
 import { t, type MessageKey } from '../i18n'
-import { applications, cleanApplication, cleanContact, cleanProject, contacts, isOpen, projects, saveCareer, sortApplications, type ApplicationInput, type ContactInput, type ProjectInput } from '../model/career'
-import { deleteCareerRecord } from '../model/edit'
+import { applications, cleanApplication, cleanContact, cleanProject, contacts, isOpen, projects, sortApplications, type ApplicationInput, type ContactInput, type ProjectInput } from '../model/career'
 import { APPLICATION_STATUSES, PROJECT_STATUSES, type Application, type CareerRecord, type Project } from '../model/types'
 import type { Store } from '../storage/store'
 import { dueLabel } from './Deadlines'
+import { carriereOpslaan, carriereVerwijderen } from '../domain/doelen'
 
 // Meer → Carrière: sollicitaties met de volgende actie (die staat ook bij de termijnen), het netwerk (alleen voornaam, rol
 // en waar ontmoet) en de status van andere projecten. Tik = bekijken; bewerken via het potlood; verwijderen met
@@ -176,14 +176,14 @@ function CareerSheet({ store, type, record, notify, onClose }: { store: Store; t
     e.preventDefault()
     if (!ok) return
     setBusy(true)
-    await saveCareer(store, record?.id ?? null, type === 'sollicitatie' ? cleanApplication(a) : type === 'contact' ? cleanContact(c) : cleanProject(p))
+    await carriereOpslaan(store, record?.id ?? null, type === 'sollicitatie' ? cleanApplication(a) : type === 'contact' ? cleanContact(c) : cleanProject(p))
     onClose()
     notify(t('career.saved'))
   }
 
   async function remove() {
     if (!record) return
-    const undo = await deleteCareerRecord(store, record)
+    const undo = await carriereVerwijderen(store, record)
     onClose()
     notify(t('toast.deleted'), undo)
   }

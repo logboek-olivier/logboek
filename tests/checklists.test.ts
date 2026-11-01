@@ -1,15 +1,16 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { addChecklist, checkedItems, checklistsFor, deleteChecklist, effectiveChecklists, saveChecklist, toggleCheck } from '../src/model/checklists'
+import { addChecklist, checkedItems, checklistsFor, effectiveChecklists } from '../src/model/checklists'
 import { sailtime } from '../src/model/sailtime'
 import { SEED_CHECKLISTS } from '../src/model/seed-checklists'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
 import type { Leg, Trip } from '../src/model/types'
-import { closeWeek } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put } from './helpers/schrijf'
+import { checklistAfvinken, checklistOpslaan, checklistVerwijderen, periodeAfronden } from '../src/domain/trips'
 
 // Trip afsluiten, vaste checklists en de export van de zeiltijd. Alle gegevens zijn verzonnen.
 
@@ -40,16 +41,16 @@ describe('vaste checklists', () => {
 
     const store = await device()
     const t1 = trip('t1', { type: 'skipper-charter' })
-    await store.put('trips.json.enc', t1)
+    await put(store, 'trips.json.enc', t1)
     const briefing = all[0]!
-    await toggleCheck(store, t1, briefing.id, briefing.items[0]!.id)
-    await toggleCheck(store, t1, briefing.id, briefing.items[1]!.id)
-    await toggleCheck(store, t1, briefing.id, briefing.items[0]!.id)
+    await checklistAfvinken(store, t1, briefing.id, briefing.items[0]!.id)
+    await checklistAfvinken(store, t1, briefing.id, briefing.items[1]!.id)
+    await checklistAfvinken(store, t1, briefing.id, briefing.items[0]!.id)
     const saved = store.get('trips.json.enc')[0]!
     expect([...checkedItems(saved, briefing)]).toEqual([briefing.items[1]!.id])
 
     // Sjabloon: eerste punt anders (alleen in het Nederlands), tweede weg, nieuw punt erbij.
-    await saveChecklist(store, briefing, { title: 'Nepbriefing', items: [{ id: briefing.items[0]!.id, text: 'Nepvesten' }, { text: 'Nieuw nep-punt' }] }, 'nl')
+    await checklistOpslaan(store, briefing, { title: 'Nepbriefing', items: [{ id: briefing.items[0]!.id, text: 'Nepvesten' }, { text: 'Nieuw nep-punt' }] }, 'nl')
     const edited = effectiveChecklists(store.get('checklists.json.enc'))[0]!
     expect(edited).toMatchObject({ id: 'seed-veiligheid', source: 'seed', title: { nl: 'Nepbriefing', en: 'Guest safety briefing' } })
     expect(edited.items[0]!.text).toEqual({ nl: 'Nepvesten', en: briefing.items[0]!.text.en })
@@ -57,9 +58,9 @@ describe('vaste checklists', () => {
     // Het afgevinkte punt bestaat niet meer: telt niet mee.
     expect(checkedItems(saved, edited).size).toBe(0)
 
-    const own = await addChecklist(store, 'Nep eigen lijst', 'delivery')
+    const own = await inTx(store, addChecklist, 'Nep eigen lijst', 'delivery')
     expect(checklistsFor(effectiveChecklists(store.get('checklists.json.enc')), 'delivery').map((c) => c.id)).toContain(own.id)
-    const undo = await deleteChecklist(store, edited)
+    const undo = await checklistVerwijderen(store, edited)
     expect(effectiveChecklists(store.get('checklists.json.enc')).some((c) => c.id === 'seed-veiligheid')).toBe(false)
     await undo()
     expect(effectiveChecklists(store.get('checklists.json.enc')).some((c) => c.id === 'seed-veiligheid')).toBe(true)
@@ -70,10 +71,10 @@ describe('trip afsluiten', () => {
   it('cijfer en één zin "wat leerde ik" naast de review van gasten', async () => {
     const store = await device()
     const t1 = trip('t1', { startDate: '2026-10-01', endDate: '2026-10-07' })
-    await store.put('trips.json.enc', t1)
-    await closeWeek(store, t1, { quotes: [' '], rating: 8, lesson: '  Nep: eerder reven.  ' }, '2026-10-08', DEFAULT_SETTINGS)
+    await put(store, 'trips.json.enc', t1)
+    await periodeAfronden(store, t1, { quotes: [' '], rating: 8, lesson: '  Nep: eerder reven.  ' }, '2026-10-08', DEFAULT_SETTINGS)
     expect(store.get('trips.json.enc')[0]).toMatchObject({ closedAt: '2026-10-08', review: { quotes: [], rating: 8, lesson: 'Nep: eerder reven.' } })
-    await closeWeek(store, t1, { quotes: [], rating: 11 }, '2026-10-08', DEFAULT_SETTINGS)
+    await periodeAfronden(store, t1, { quotes: [], rating: 11 }, '2026-10-08', DEFAULT_SETTINGS)
     expect(store.get('trips.json.enc')[0]!.review?.rating).toBeUndefined()
   })
 })

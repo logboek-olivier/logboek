@@ -1,16 +1,17 @@
 import 'fake-indexeddb/auto'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toBase64, utf8 } from '../src/crypto/encrypt'
 import { META_PATH, serializeMeta, unlock, parseMeta, type Meta } from '../src/crypto/keys'
 import { COLLECTION_PATHS, type CollectionPath, type SyncRecord } from '../src/model/types'
 import { Session } from '../src/session'
 import { openLogboekDb, putObject, type Db } from '../src/storage/idb'
 import { saveOutbox } from '../src/storage/outbox'
-import type { Store } from '../src/storage/store'
+import { RETRY_PENDING_MS, type Store } from '../src/storage/store'
 import { decryptRecords, encryptRecords } from '../src/storage/sync'
 import { storeToken } from '../src/storage/token'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // Storingstests: na elke reeks moet een schoon apparaat met alleen de wachtzin alles op GitHub kunnen lezen, en de app
 // moet open zijn (geen herstelscherm). Alle gegevens zijn verzonnen.
@@ -144,7 +145,7 @@ describe('Storingstests', () => {
     const { name } = await phone()
     const a = await open(name)
     const b = await open(name)
-    await Promise.all([store(a).put('legs.json.enc', day('a1', '2026-10-27T12:00:00.000Z')), store(b).put('legs.json.enc', day('b1', '2026-10-27T12:00:01.000Z'))])
+    await Promise.all([put(store(a), 'legs.json.enc', day('a1', '2026-10-27T12:00:00.000Z')), put(store(b), 'legs.json.enc', day('b1', '2026-10-27T12:00:01.000Z'))])
     await Promise.all([store(a).sync(), store(b).sync()])
     await store(a).sync()
     await store(b).sync()
@@ -185,8 +186,8 @@ describe('Storingstests', () => {
     const { name } = await phone()
     const s = await open(name)
     await store(s).sync()
-    await store(s).put('legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
-    await store(s).put('trips.json.enc', { ...week, name: 'Nepweek hernoemd', updatedAt: '2026-10-27T12:00:00.000Z' })
+    await put(store(s), 'legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
+    await put(store(s), 'trips.json.enc', { ...week, name: 'Nepweek hernoemd', updatedAt: '2026-10-27T12:00:00.000Z' })
     let puts = 0
     github.beforePut = () => {
       if (++puts === 1) github.offline = true
@@ -207,7 +208,7 @@ describe('Storingstests', () => {
     await store(s).sync()
     let release: () => void = () => undefined
     github.gate = new Promise((resolve) => (release = resolve))
-    const writing = store(s).put('legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
+    const writing = put(store(s), 'legs.json.enc', day('d1', '2026-10-27T12:00:00.000Z'))
     const syncing = store(s).sync()
     // Sluiten: het geheugen wordt gewist terwijl schrijven en sync nog lopen.
     s.lock()
@@ -235,5 +236,86 @@ describe('Storingstests', () => {
     await store(again).sync()
     expect(store(again).getStatus()).toEqual({ kind: 'synced' })
     await cleanDeviceReadsAll()
+  }, 60_000)
+
+  it('opslaan precies terwijl een syncronde hetzelfde bestand lokaal wegschrijft: niets verloren, niets blijft wachten', async () => {
+    // Gevonden in CI ("1 wijziging wacht" bleef staan): de ronde zette na het wegschrijven de verzameling in het geheugen
+    // gelijk aan zijn eigen kopie, zodat een opslag van net daarvoor uit het geheugen viel, niet op het apparaat kwam en
+    // voor altijd in de outbox bleef wachten. Met de geschiedenis (elke opdracht schrijft history.json.enc) gebeurde dat vaak.
+    const { name } = await phone()
+    const s = await open(name)
+    const st = store(s)
+    await st.sync()
+    await put(st, 'legs.json.enc', day('d1', new Date().toISOString()))
+    // Het lokale deel van de ronde voor dagen schrijft weg (één bestand, geen lijst zoals bij een gewone opslag): precies
+    // dan een tweede opslag in dat bestand.
+    const internal = st as unknown as { putGuarded: (objects: unknown, outbox: unknown) => Promise<void> }
+    const original = internal.putGuarded.bind(st)
+    let during: Promise<void> | null = null
+    internal.putGuarded = async (objects, outbox) => {
+      if (!Array.isArray(objects) && (objects as { path: string }).path === 'legs.json.enc' && !during) during = put(st, 'legs.json.enc', day('d2', new Date(Date.now() + 1).toISOString()))
+      return original(objects, outbox)
+    }
+    await st.sync()
+    await during
+    internal.putGuarded = original
+    expect(st.list('legs.json.enc').map((l) => l.id).sort()).toEqual(['d1', 'd2'])
+    await st.sync()
+    expect(st.pendingCount()).toBe(0)
+    expect(st.getStatus()).toEqual({ kind: 'synced' })
+    // Op het apparaat (opnieuw openen) en op GitHub.
+    s.lock()
+    const again = await open(name)
+    expect(store(again).list('legs.json.enc').map((l) => l.id).sort()).toEqual(['d1', 'd2'])
+    const remote = await decryptRecords(k1.masterKey, 'legs.json.enc', Uint8Array.from(Buffer.from(github.files.get('legs.json.enc')!.content, 'base64')))
+    expect(remote.filter((r) => r.deletedAt === null).map((r) => r.id).sort()).toEqual(['d1', 'd2'])
+  }, 60_000)
+})
+
+/** Wacht tot de sync kort na een opslag (0,8 s) zonder verbinding is mislukt. */
+async function settleOffline(st: Store): Promise<void> {
+  await new Promise((r) => setTimeout(r, 1500))
+  await vi.waitFor(() => expect(st.getStatus().kind).toBe('offline'), { timeout: 10_000 })
+}
+
+describe('vangnet: wat wacht, gaat vanzelf alsnog', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as { document?: unknown }).document
+  })
+
+  it('zolang er een wijziging wacht en er verbinding is: elke 30 seconden opnieuw synchroniseren', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const { name } = await phone()
+    const st = store(await open(name))
+    await st.sync()
+    github.offline = true
+    await put(st, 'legs.json.enc', day('v1', new Date().toISOString()))
+    // De sync kort na het opslaan mislukt zonder verbinding; daarna komt de verbinding terug zonder dat Olivier iets doet.
+    await settleOffline(st)
+    github.offline = false
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(st.pendingCount()).toBe(1)
+    // Zonder handeling van Olivier: na 30 seconden.
+    vi.advanceTimersByTime(RETRY_PENDING_MS)
+    await vi.waitFor(() => expect(st.getStatus()).toEqual({ kind: 'synced' }), { timeout: 10_000 })
+    expect(st.pendingCount()).toBe(0)
+  }, 60_000)
+
+  it('bij terugkomen in de app: direct opnieuw synchroniseren als er iets wacht', async () => {
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    Object.defineProperty(globalThis, 'document', { value: doc, configurable: true, writable: true })
+    const { name } = await phone()
+    const st = store(await open(name))
+    await st.sync()
+    github.offline = true
+    await put(st, 'legs.json.enc', day('v2', new Date().toISOString()))
+    await settleOffline(st)
+    github.offline = false
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(st.pendingCount()).toBe(1)
+    doc.dispatchEvent(new Event('visibilitychange'))
+    await vi.waitFor(() => expect(st.getStatus()).toEqual({ kind: 'synced' }), { timeout: 10_000 })
+    expect(st.pendingCount()).toBe(0)
   }, 60_000)
 })

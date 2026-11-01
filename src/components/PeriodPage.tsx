@@ -3,19 +3,18 @@ import { useState, useSyncExternalStore } from 'react'
 import { formatDate, formatDateRange, formatMoney } from '../format'
 import { t, useLang } from '../i18n'
 import { kindLabel } from '../i18n/labels'
-import { addChecklist, checkedItems, checklistsFor, effectiveChecklists } from '../model/checklists'
+import { checkedItems, checklistsFor, effectiveChecklists } from '../model/checklists'
 import { nameWithCounter } from '../model/counters'
 import { courseLabel, effectiveCurricula, localized } from '../model/curricula'
 import { active, totalNm } from '../model/derive'
-import { answerReturning, guestLabel, participantName, returningGuests } from '../model/guests'
+import { guestLabel, participantName, returningGuests } from '../model/guests'
 import { stayName, type Period } from '../model/periods'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
-import { fixLegOutside, legOutsideCanExtend } from '../model/review'
+import { legOutsideCanExtend } from '../model/review'
 import { splitLegs } from '../model/leg-trip'
 import { activeStudents } from '../model/students'
 import { tripOverlaps } from '../model/trip-ops'
-import { daysBetween } from '../model/calendar'
-import { todayIso, type Leg, type Participant, type StayPeriod, type Transaction, type Trip, type WeekType } from '../model/types'
+import { type Leg, type Participant, type StayPeriod, type Transaction, type Trip, type WeekType } from '../model/types'
 import { missingDays, needsClosing, planWeek, studentWeek, weekView } from '../model/weeks'
 import { useIsDemo } from './DemoBar'
 import { openStudent } from '../navigation'
@@ -36,6 +35,8 @@ import { useCounters } from './useCounters'
 import { LegView, ParticipantView, TransactionView } from './Views'
 import { CloseWeekSheet, WeekSheet } from './WeekSheet'
 import { formatNm } from '../format'
+import { checklistToevoegen, dagBuitenPeriodeOplossen, terugkerendeGastBeantwoorden } from '../domain/trips'
+import { daysBetween, todayIso } from '../basis/datum'
 
 // Eén periodepagina, overal hetzelfde (Deze trip, het tripoverzicht uit de agenda, het Logboek, Vandaag en de lijst met
 // periodes), in een vaste volgorde: Overzicht · Route en dagen · Mensen · Planning · Geld · Notities en terugblik. Een
@@ -158,7 +159,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
                       <button
                         className="btn small primary"
                         onClick={async () => {
-                          await answerReturning(store, trip.id, r.participant.id, r.previous)
+                          await terugkerendeGastBeantwoorden(store, trip.id, r.participant.id, r.previous)
                           notify(t('guest.linked', { name }))
                         }}
                       >
@@ -167,7 +168,7 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, planOpen = false, 
                       <button
                         className="btn small"
                         onClick={async () => {
-                          await answerReturning(store, trip.id, r.participant.id, null)
+                          await terugkerendeGastBeantwoorden(store, trip.id, r.participant.id, null)
                           notify(t('guest.notLinked', { name }))
                         }}
                       >
@@ -411,7 +412,7 @@ function OutsideDays({ store, trip, legs, notify }: { store: Store; trip: Trip; 
                 <button
                   type="button"
                   className="btn small primary"
-                  onClick={async () => notify(t('review.fixed'), await fixLegOutside(store, leg, trip, target))}
+                  onClick={async () => notify(t('review.fixed'), await dagBuitenPeriodeOplossen(store, leg, trip, target))}
                 >
                   {target ? t('review.moveTo', { name: target.name }) : t('review.extendTo', { name: trip.name, date: formatDate(leg.date) })}
                 </button>
@@ -453,7 +454,7 @@ function TripChecklists({ store, notify, trip, type, heading: Heading }: { store
           )
         })}
       </ul>
-      <NewChecklistButton onAdd={() => void addChecklist(store, t('checklist.newTitle'), type).then((list) => setOpenId(list.id))} />
+      <NewChecklistButton onAdd={() => void checklistToevoegen(store, t('checklist.newTitle'), type).then(({ result }) => setOpenId(result.id))} />
       {open && <ChecklistSheet store={store} trip={trip} list={open} notify={notify} onClose={() => setOpenId(null)} />}
     </div>
   )

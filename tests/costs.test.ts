@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex } from '../src/model/calendar'
-import { changeFixedCost, costDayType, dayAverages, expectedCosts, fixedAmount, fixedInMonth, MIN_LEARNED_DAYS } from '../src/model/costs'
+import { costDayType, dayAverages, expectedCosts, fixedAmount, fixedInMonth, MIN_LEARNED_DAYS } from '../src/model/costs'
 import { forecast } from '../src/model/position'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
 import type { CalendarDay, FixedCost, Settings, Transaction, WeekClosing } from '../src/model/types'
@@ -9,6 +9,8 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { put } from './helpers/schrijf'
+import { vasteLastWijzigen } from '../src/domain/geld'
 
 // Ronde 3 · PR 5: kosten. Vaste lasten met een bedrag dat vanaf een maand verandert (oude maanden blijven kloppen),
 // variabele kosten per dag per dagsoort (eigen gemiddelde uit uitgaven en de weekschatting, anders het standaardbedrag,
@@ -46,15 +48,19 @@ describe('vaste lasten', () => {
     expect(fixedAmount(c, '2026-10')).toBe(20)
     expect(fixedAmount(c, '2026-12')).toBe(25)
     const s = await store()
-    await s.put('fixedcosts.json.enc', c)
+    await put(s, 'fixedcosts.json.enc', c)
     // Vanaf oktober 30: de wijziging van november vervalt, september blijft.
-    const undo = await changeFixedCost(s, c, { amount: 30, from: '2026-10' })
+    const undo = await vasteLastWijzigen(s, c, { amount: 30, from: '2026-10' })
     const changed = s.list('fixedcosts.json.enc')[0]!
     expect(changed.amounts).toEqual([{ from: '2026-09', amount: 20 }, { from: '2026-10', amount: 30 }])
     expect(fixedAmount(changed, '2026-09')).toBe(20)
     // Stoppen vanaf december.
-    await changeFixedCost(s, changed, { amount: 0, from: '2026-12' })
+    const undoStop = await vasteLastWijzigen(s, changed, { amount: 0, from: '2026-12' })
     expect(fixedAmount(s.list('fixedcosts.json.enc')[0]!, '2027-01')).toBe(0)
+    // De eerste wijziging ongedaan maken overschrijft de latere niet; na het ongedaan maken van de latere wel terug.
+    await undo()
+    expect(fixedAmount(s.list('fixedcosts.json.enc')[0]!, '2027-01')).toBe(0)
+    await undoStop()
     await undo()
     expect(s.list('fixedcosts.json.enc')[0]!.amounts).toEqual(c.amounts)
     expect(fixedInMonth([c, cost([{ from: '2026-01', amount: 100 }], { id: 'f2', currency: 'GBP' })], '2026-12', null)).toEqual({ eur: 25, other: { GBP: 100 } })

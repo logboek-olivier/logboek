@@ -13,6 +13,7 @@ import { encryptRecords } from '../src/storage/sync'
 import { storeToken } from '../src/storage/token'
 import { FakeGithub } from './helpers/fake-github'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 // PR A, diagnose: elk commitbericht in logboek-data is "sync <ISO-tijd> v<versie> d<apparaat-id>" (regel 9). Meer →
 // Opslag toont per bestand welke versie en welk apparaat het laatst schreef, en na elke update controleert de app
@@ -107,7 +108,7 @@ describe('Commitbericht met versie en apparaat', () => {
 
   it('elke schrijfactie naar GitHub gebruikt het nieuwe bericht, zonder inhoud', async () => {
     const s = await phone()
-    await s.put('trips.json.enc', { id: 'w2', name: 'Nepweek twee', updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(s, 'trips.json.enc', { id: 'w2', name: 'Nepweek twee', updatedAt: new Date().toISOString(), deletedAt: null })
     await s.sync()
     const puts = github.requests.filter((r) => r.method === 'PUT')
     expect(puts.length).toBeGreaterThan(0)
@@ -123,7 +124,7 @@ describe('Commitbericht met versie en apparaat', () => {
 describe('Meer → Opslag: wie schreef het laatst', () => {
   it('per bestand de versie en het apparaat van de laatste schrijfactie; een ouder bericht zonder', async () => {
     const s = await phone()
-    await s.put('trips.json.enc', { id: 'w2', name: 'Nepweek twee', updatedAt: new Date().toISOString(), deletedAt: null })
+    await put(s, 'trips.json.enc', { id: 'w2', name: 'Nepweek twee', updatedAt: new Date().toISOString(), deletedAt: null })
     await s.sync()
     // Een ander apparaat met een andere versie schreef de agenda.
     const calendar = await encryptRecords(vault.masterKey, 'calendar.json.enc', [])

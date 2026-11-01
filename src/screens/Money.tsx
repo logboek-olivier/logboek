@@ -24,9 +24,10 @@ import { careerInvestment } from '../model/expenses'
 import { stayName } from '../model/periods'
 import { kindLabel, organisationLabel, sourceLabel } from '../i18n/labels'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
-import { todayIso, type Leg, type Transaction, type Trip, type WeekType } from '../model/types'
+import { type Leg, type Transaction, type Trip, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
 import { t } from '../i18n'
+import { todayIso } from '../basis/datum'
 
 // Geld: alles in euro (ECB-koers van de transactiedatum, of het ontvangen eurobedrag), het originele bedrag klein
 // eronder. Twee weergaven: Werkelijk (Mijn positie, kosten per maand, zeilgeld, uitbetalingen, declaraties, per werkdag,

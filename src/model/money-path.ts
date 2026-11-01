@@ -1,11 +1,13 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { active } from './derive'
-import type { Undo } from './edit'
-import { eurOf, round2 } from './money'
+import { eurOf } from './money'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
-import { countedSalary, salaryEur, salaryIncomeId, salarySource, tripEnd } from './salary'
-import { newId, todayIso, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
+import { countedSalary, salaryEur, salaryIncomeId, tripEnd } from './salary'
+import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
 import { endedFor } from './trip-dates'
+import { round2 } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
+import { sourceForPeriod } from '../basis/organisatie'
 
 // Geldpad per trip: per soort geld een status. Salaris: verwacht (de trip is nog niet voorbij), te ontvangen (voorbij,
 // nog niet betaald) of ontvangen. Fooi: contant of op de bank; contant staat in "Contant" tot hij gestort is, zodat
@@ -137,7 +139,7 @@ export interface Payout {
  * Een uitbetaling opslaan: per trip een inkomen (loon) met hetzelfde payoutId, en elke trip op ontvangen. Zonder trips
  * één inkomen van de organisatie. Ongedaan maken haalt de inkomens weg en zet de trips terug.
  */
-export async function recordPayout(store: Store, payout: Payout, chosen: readonly Trip[], rates: RatesFile | null): Promise<Undo> {
+export async function recordPayout(store: Tx, payout: Payout, chosen: readonly Trip[], rates: RatesFile | null): Promise<void> {
   const legs = store.list('legs.json.enc')
   // De trips zoals ze nu op het apparaat staan; een trip die intussen al ontvangen is (een tweede tik, een ander
   // apparaat), gaat niet nog eens mee. Is er dan niets meer over, dan wordt er niets geboekt.
@@ -147,7 +149,7 @@ export async function recordPayout(store: Store, payout: Payout, chosen: readonl
   const trips = chosen
     .map((x) => latest.find((t) => t.id === x.id) ?? x)
     .filter((x) => x.deletedAt === null && countedSalary(x)?.status === 'verwacht' && !hasSalaryIncome(x, booked))
-  if (chosen.length > 0 && trips.length === 0) return async () => {}
+  if (chosen.length > 0 && trips.length === 0) return
   // Elke trip krijgt minstens één cent: een kleiner bedrag is geen uitbetaling.
   if (round2(payout.amount) < minimumPayout(Math.max(1, trips.length))) throw new Error('Bedrag te klein voor deze trips')
   const now = new Date().toISOString()
@@ -162,7 +164,7 @@ export async function recordPayout(store: Store, payout: Payout, chosen: readonl
       id: trip ? salaryIncomeId(trip.id) : newId(),
       ...base,
       kind: 'loon',
-      source: trip ? salarySource(trip) : orgSource(payout.org),
+      source: trip ? sourceForPeriod(trip) : orgSource(payout.org),
       ...(trip ? { tripId: trip.id } : {}),
       payoutId,
       ...(payout.currency === 'EUR' ? { amountEur: part } : (finalRateFields(base, rates) ?? {})),
@@ -177,19 +179,6 @@ export async function recordPayout(store: Store, payout: Payout, chosen: readonl
   })
   await store.putMany('transactions.json.enc', txs)
   if (updated.length > 0) await store.putMany('trips.json.enc', updated)
-  void store.sync()
-  return async () => {
-    const later = new Date().toISOString()
-    await store.putMany('transactions.json.enc', txs.map((tx) => ({ ...tx, deletedAt: later, updatedAt: later })))
-    // Alleen het salaris terug; wat er intussen aan de trip veranderde, blijft.
-    const restored: Trip[] = []
-    for (const before of trips) {
-      const current = store.list('trips.json.enc').find((t) => t.id === before.id)
-      if (current) restored.push({ ...current, salary: before.salary!, updatedAt: later })
-    }
-    if (restored.length > 0) await store.putMany('trips.json.enc', restored)
-    void store.sync()
-  }
 }
 
 export interface PayoutQuestion {
@@ -241,17 +230,11 @@ export function cashOnHand(transactions: readonly Transaction[]): Partial<Record
 }
 
 /** "Gestort op …": alle contante fooien in deze valuta uit Contant (ze staan nu op de bank). Met ongedaan maken. */
-export async function depositCash(store: Store, currency: Currency, date: string): Promise<Undo> {
+export async function depositCash(store: Tx, currency: Currency, date: string): Promise<void> {
   // Alleen fooien van vóór of op de stortdatum: een latere fooi kan er niet bij zitten.
   const tips = cashTips(store.list('transactions.json.enc')).filter((tx) => tx.currency === currency && tx.date <= date)
   const now = new Date().toISOString()
   await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...tx, depositedAt: date, updatedAt: now })))
-  void store.sync()
-  return async () => {
-    const later = new Date().toISOString()
-    await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...tx, updatedAt: later })))
-    void store.sync()
-  }
 }
 
 /** Bedrag in euro en wat zonder koers per valuta blijft. */

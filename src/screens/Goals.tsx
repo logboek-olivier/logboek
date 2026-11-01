@@ -8,8 +8,9 @@ import { useCollection } from '../components/useCollection'
 import { t } from '../i18n'
 import { active } from '../model/derive'
 import { goalProgress, skillStats } from '../model/goals'
-import { todayIso, type Goal, type Skill } from '../model/types'
+import { type Goal, type Skill } from '../model/types'
 import type { Store } from '../storage/store'
+import { todayIso } from '../basis/datum'
 
 // Meer → Doelen: jaardoelen die zichzelf vullen uit de app en losse doelen die Olivier zelf meet, met voortgang; en
 // skills met sessies, minuten, trend en mijlpalen. Tik = bekijken; bewerken via het potlood. Snel loggen kan ook via

@@ -11,6 +11,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put, remove } from './helpers/schrijf'
 
 // PR 3 van het periodemodel: Geld met Werkelijk en Verwacht. Vaste lasten worden per voorbije maand als echte uitgave
 // geboekt (aan te passen of te verwijderen per maand); losse kosten werkelijk = ingevoerd plus de weekschatting.
@@ -45,14 +46,14 @@ describe('vaste lasten per voorbije maand geboekt', () => {
 
   it('een aangepaste of verwijderde maand boekt de app nooit opnieuw; twee apparaten boeken hetzelfde', async () => {
     const s = await store()
-    await s.put('fixedcosts.json.enc', rent)
+    await put(s, 'fixedcosts.json.enc', rent)
     await s.sync()
-    expect(await bookFixedCosts(s, '2026-11-12')).toBe(3)
+    expect(await inTx(s, bookFixedCosts, '2026-11-12')).toBe(3)
     const sept = s.list('transactions.json.enc').find((x) => x.id === bookingId('huur', '2026-09'))!
-    await s.put('transactions.json.enc', { ...sept, amount: 480, updatedAt: new Date().toISOString() })
+    await put(s, 'transactions.json.enc', { ...sept, amount: 480, updatedAt: new Date().toISOString() })
     const aug = s.list('transactions.json.enc').find((x) => x.id === bookingId('huur', '2026-08'))!
-    await s.remove('transactions.json.enc', aug.id)
-    expect(await bookFixedCosts(s, '2026-11-12')).toBe(0)
+    await remove(s, 'transactions.json.enc', aug.id)
+    expect(await inTx(s, bookFixedCosts, '2026-11-12')).toBe(0)
     expect(s.list('transactions.json.enc').find((x) => x.id === sept.id)?.amount).toBe(480)
     expect(s.list('transactions.json.enc').some((x) => x.id === aug.id)).toBe(false)
     // Een tweede apparaat met dezelfde vaste last maakt precies dezelfde id's.
@@ -61,7 +62,7 @@ describe('vaste lasten per voorbije maand geboekt', () => {
 
   it('een geboekte vaste last is geen losse uitgave en hoort bij geen periode zonder Nakijken', async () => {
     const s = await store()
-    await s.put('transactions.json.enc', tx('vast', { fixedCostId: 'huur', id: bookingId('huur', '2026-09'), date: '2026-09-30', amount: 500 }))
+    await put(s, 'transactions.json.enc', tx('vast', { fixedCostId: 'huur', id: bookingId('huur', '2026-09'), date: '2026-09-30', amount: 500 }))
     expect(reviewItems(reviewInput(s)).some((i) => i.kind === 'geld-zonder-periode')).toBe(false)
     const index = buildIndex([], [], [])
     const averages = dayAverages(s.list('transactions.json.enc'), [], index, '2026-10-10', { ...DEFAULT_SETTINGS, updatedAt: T, deletedAt: null }, null)

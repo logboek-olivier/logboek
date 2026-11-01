@@ -1,11 +1,13 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyMoneyStep, isEmptyStep } from '../src/model/week-money'
+import { geldstapOpslaan } from '../src/domain/geld'
 import type { Account, Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put, putMany } from './helpers/schrijf'
 
 // Ronde 3 · PR 7: de geldstap van de weekafsluiting. De stand per rekening, ontvangen salaris en gestorte contanten in
 // één keer, met één ongedaan maken voor alles. Verzonnen data.
@@ -35,10 +37,10 @@ describe('geldstap van de weekafsluiting', () => {
 
   it('stand, ontvangen salaris en gestorte contanten in één keer; één ongedaan maken zet alles terug', async () => {
     const s = await store()
-    await s.put('accounts.json.enc', account)
-    await s.putMany('trips.json.enc', [trip('a'), trip('b')])
-    await s.put('transactions.json.enc', tip)
-    const { undo, skipped } = await applyMoneyStep(s, { balances: [{ account, amount: 1500 }], received: [trip('a'), trip('b')], deposited: ['EUR'] }, TODAY, null)
+    await put(s, 'accounts.json.enc', account)
+    await putMany(s, 'trips.json.enc', [trip('a'), trip('b')])
+    await put(s, 'transactions.json.enc', tip)
+    const { undo, result: { skipped } } = await geldstapOpslaan(s, { balances: [{ account, amount: 1500 }], received: [trip('a'), trip('b')], deposited: ['EUR'] }, TODAY, null)
     expect(skipped).toEqual([])
     expect(s.list('balances.json.enc')).toEqual([expect.objectContaining({ accountId: 'asn', date: TODAY, amount: 1500 })])
     const loon = s.list('transactions.json.enc').filter((tx) => tx.kind === 'loon')
@@ -57,8 +59,8 @@ describe('geldstap van de weekafsluiting', () => {
   it('zonder koers voor een uitbetaling in een andere valuta: die organisatie wordt overgeslagen, de rest gaat door', async () => {
     const s = await store()
     const usd = { ...trip('u'), salary: { amount: 900, currency: 'USD' as const, status: 'verwacht' as const, source: 'eigen' as const } }
-    await s.putMany('trips.json.enc', [trip('a'), usd])
-    const { skipped } = await applyMoneyStep(s, { balances: [], received: [trip('a'), usd], deposited: [] }, TODAY, null)
+    await putMany(s, 'trips.json.enc', [trip('a'), usd])
+    const { skipped } = await inTx(s, applyMoneyStep, { balances: [], received: [trip('a'), usd], deposited: [] }, TODAY, null)
     expect(skipped).toEqual(['sailing-virgins'])
     expect(s.list('transactions.json.enc')).toEqual([])
   })

@@ -1,18 +1,20 @@
 import { CalendarPlus, Check, RotateCcw, Trash2 } from 'lucide-react'
 import { formatDate } from '../format'
 import { ALARM_CHOICES, buildIcs, DEFAULT_ALARM_DAYS } from '../model/ics'
-import { currentSettings, saveSettings } from '../model/settings'
+import { currentSettings } from '../model/settings'
 import { shareOrDownload } from '../share'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
-import { deleteReminder } from '../model/edit'
-import { dateAfter, nextOccurrence, QUICK_OFFSETS, saveReminder, setDone } from '../model/reminders'
-import { newId, REMINDER_KINDS, REMINDER_REPEATS, todayIso, type Reminder, type ReminderKind, type ReminderRepeat } from '../model/types'
+import { dateAfter, nextOccurrence, QUICK_OFFSETS } from '../model/reminders'
+import { newId, REMINDER_KINDS, REMINDER_REPEATS, type Reminder, type ReminderKind, type ReminderRepeat } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { termijnAfronden, termijnOpslaan, termijnVerwijderen } from '../domain/termijnen'
+import { todayIso } from '../basis/datum'
 
 // Termijn toevoegen of bewerken: wat, deadline of vervaldatum, en wanneer (snelle keuze of datum). Drie velden; herhalen
 // (maandelijks, jaarlijks) en "Zet in agenda" (een .ics-bestand met herinnering vooraf) zijn optioneel.
@@ -35,7 +37,7 @@ export function ReminderSheet({ store, reminder, notify, onClose, initialDate }:
     if (!ok || busy) return
     setBusy(true)
     try {
-      await saveReminder(store, { title, date, kind, note, repeat }, reminder ?? undefined)
+      await termijnOpslaan(store, { title, date, kind, note, repeat }, reminder ?? undefined)
       notify(t('toast.saved'))
       onClose()
     } finally {
@@ -45,7 +47,7 @@ export function ReminderSheet({ store, reminder, notify, onClose, initialDate }:
 
   async function toggleDone() {
     if (!reminder) return
-    const undo = await setDone(store, reminder, !reminder.doneAt, today)
+    const undo = await termijnAfronden(store, reminder, !reminder.doneAt, today)
     onClose()
     if (reminder.repeat && !reminder.doneAt) notify(t('reminder.nextTime', { date: formatDate(nextOccurrence(reminder)) }), undo)
     else notify(t(reminder.doneAt ? 'reminder.reopened' : 'reminder.doneToast'), undo)
@@ -55,8 +57,7 @@ export function ReminderSheet({ store, reminder, notify, onClose, initialDate }:
   async function toCalendar() {
     if (!ok) return
     if (alarmDays !== settings.reminderAlarmDays) {
-      await saveSettings(store, { reminderAlarmDays: alarmDays })
-      void store.sync()
+      await instellingenOpslaan(store, { reminderAlarmDays: alarmDays })
     }
     const ics = buildIcs({ id: reminder?.id ?? newId(), title: title.trim(), date, note: note.trim() || undefined, repeat, alarmDays })
     await shareOrDownload(new File([ics], 'termijn.ics', { type: 'text/calendar' }), title.trim())
@@ -64,7 +65,7 @@ export function ReminderSheet({ store, reminder, notify, onClose, initialDate }:
 
   async function remove() {
     if (!reminder) return
-    const undo = await deleteReminder(store, reminder)
+    const undo = await termijnVerwijderen(store, reminder)
     onClose()
     notify(t('toast.deleted'), undo)
   }

@@ -5,7 +5,6 @@ import {
   addTopic,
   allTopics,
   CurriculumFileError,
-  deleteCurriculum,
   effectiveCurricula,
   exportCurriculum,
   importCurriculum,
@@ -13,8 +12,6 @@ import {
   moveGroup,
   moveTopic,
   removeTopic,
-  saveCurriculum,
-  toggleExamCritical,
   updateTopic,
 } from '../src/model/curricula'
 import { SEED_CURRICULA } from '../src/model/seed-curricula'
@@ -23,6 +20,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { cursusOpslaan, cursusVerwijderen } from '../src/domain/training'
 
 const TOKEN = 'github_pat_CURRICULUM_0123456789abcdefghijklmnopqrstuvwxyz'
 let masterKey: CryptoKey
@@ -90,9 +88,8 @@ describe('bewerken', () => {
     const [first, second] = c.groups[0]!.topics
     c = moveTopic(c, second!.id, -1)
     expect(c.groups[0]!.topics.map((tp) => tp.title.en)).toEqual(['Tides', 'Bearings'])
-    c = toggleExamCritical(c, first!.id)
-    expect(allTopics(c).find((tp) => tp.id === first!.id)?.examCritical).toBe(true)
     c = updateTopic(c, first!.id, { title: { nl: 'Kruispeiling', en: 'Cross bearing' }, kind: 'praktijk', examCritical: true }, safety!.id)
+    expect(allTopics(c).find((tp) => tp.id === first!.id)?.examCritical).toBe(true)
     expect(c.groups[1]!.topics.map((tp) => tp.title.nl)).toEqual(['Kruispeiling'])
     expect(c.groups[0]!.topics).toHaveLength(1)
     c = moveGroup(c, safety!.id, -1)
@@ -103,7 +100,7 @@ describe('bewerken', () => {
 
   it('opslaan van een meegeleverde cursus versleuteld naar GitHub; verwijderen met ongedaan maken', async () => {
     const { github, store } = await device()
-    await saveCurriculum(store, addTopic(asa101(), asa101().groups[0]!.id, { title: { nl: 'Geheimknoop', en: 'Secret knot' }, kind: 'praktijk', examCritical: false }))
+    await cursusOpslaan(store, addTopic(asa101(), asa101().groups[0]!.id, { title: { nl: 'Geheimknoop', en: 'Secret knot' }, kind: 'praktijk', examCritical: false }))
     await store.sync()
     expect(github.files.has('curricula.json.enc')).toBe(true)
     const wire = github.requests.map((r) => r.body ?? '').join('\n')
@@ -111,7 +108,7 @@ describe('bewerken', () => {
     expect(wire).not.toContain('Keelboat')
     const list = effectiveCurricula(store.get('curricula.json.enc'))
     expect(allTopics(list.find((c) => c.id === 'seed-asa-101')!).some((tp) => tp.title.nl === 'Geheimknoop')).toBe(true)
-    const undo = await deleteCurriculum(store, list.find((c) => c.id === 'seed-asa-101')!)
+    const undo = await cursusVerwijderen(store, list.find((c) => c.id === 'seed-asa-101')!)
     expect(effectiveCurricula(store.get('curricula.json.enc')).some((c) => c.id === 'seed-asa-101')).toBe(false)
     await undo()
     expect(effectiveCurricula(store.get('curricula.json.enc')).some((c) => c.id === 'seed-asa-101')).toBe(true)
@@ -121,7 +118,7 @@ describe('bewerken', () => {
     const github = new FakeGithub()
     const a = await device(github)
     expect(a.store.get('curricula.json.enc')).toEqual([])
-    await saveCurriculum(a.store, { ...asa101(), name: { nl: 'Aangepast', en: 'Changed' } })
+    await cursusOpslaan(a.store, { ...asa101(), name: { nl: 'Aangepast', en: 'Changed' } })
     await a.store.sync()
     const b = await device(github)
     await b.store.sync()

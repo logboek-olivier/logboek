@@ -3,19 +3,21 @@ import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatMoney, formatMonth } from '../format'
 import { t } from '../i18n'
 import { buildIndex } from '../model/calendar'
-import { addFixedCost, changeFixedCost, cleanDefaults, dayAverages, deleteFixedCost, fixedAmount, fixedInMonth } from '../model/costs'
+import { cleanDefaults, dayAverages, fixedAmount, fixedInMonth } from '../model/costs'
 import { active } from '../model/derive'
-import { amountInput, parseAmount } from '../model/money'
 import { getRates, subscribeRates } from '../model/rates'
-import { currentSettings, saveSettings } from '../model/settings'
-import { COST_DAY_TYPES, CURRENCIES, todayIso, type CostDayType, type Currency, type FixedCost } from '../model/types'
+import { currentSettings } from '../model/settings'
+import { COST_DAY_TYPES, CURRENCIES, type CostDayType, type Currency, type FixedCost } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
-import { bookFixedCosts } from '../model/fixed-bookings'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
+import { vasteLastenBoeken, vasteLastToevoegen, vasteLastVerwijderen, vasteLastWijzigen } from '../domain/geld'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { amountInput, parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Geld → Kosten (src/model/costs.ts): vaste lasten met een bedrag per maand dat vanaf een maand verandert, en de
 // variabele kosten per dag per dagsoort: het eigen gemiddelde, of het standaardbedrag zolang er te weinig gegevens zijn.
@@ -133,13 +135,13 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
     setBusy(true)
     try {
       if (cost) {
-        const undo = await changeFixedCost(store, cost, { name, amount: parsed, from })
+        const undo = await vasteLastWijzigen(store, cost, { name, amount: parsed, from })
         onClose()
         notify(t('costs.saved'), undo)
       } else {
-        await addFixedCost(store, { name, amount: parsed, currency, from })
+        await vasteLastToevoegen(store, { name, amount: parsed, currency, from })
         // Een vaste last vanaf een voorbije maand: die maanden staan direct als uitgave bij Werkelijk.
-        await bookFixedCosts(store, todayIso())
+        await vasteLastenBoeken(store, todayIso())
         onClose()
         notify(t('costs.saved'))
       }
@@ -150,14 +152,14 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
 
   async function stop() {
     if (!cost || busy) return
-    const undo = await changeFixedCost(store, cost, { amount: 0, from })
+    const undo = await vasteLastWijzigen(store, cost, { amount: 0, from })
     onClose()
     notify(t('costs.stoppedToast', { month: formatMonth(from) }), undo)
   }
 
   async function remove() {
     if (!cost) return
-    const undo = await deleteFixedCost(store, cost)
+    const undo = await vasteLastVerwijderen(store, cost)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -228,8 +230,7 @@ function DefaultsSheet({ store, notify, onClose }: { store: Store; notify: Notif
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (invalid) return
-    await saveSettings(store, { costDefaults: cleanDefaults(parsed) })
-    void store.sync()
+    await instellingenOpslaan(store, { costDefaults: cleanDefaults(parsed) })
     onClose()
     notify(t('costs.saved'))
   }

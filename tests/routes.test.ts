@@ -3,11 +3,13 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
 import { logPlanned, plannedFor, plannedNm, previousTrip, routeLine, routeTemplates, tripRoute } from '../src/model/routes'
 import type { Leg, Trip } from '../src/model/types'
-import { startWeek, updateWeek, type WeekInput } from '../src/model/weeks'
+import { startWeek, type WeekInput } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, putMany } from './helpers/schrijf'
+import { periodeBewerken } from '../src/domain/trips'
 
 // Route-sjablonen uit de historie en "Zoals gepland". Alle plaatsen zijn verzonnen.
 
@@ -60,12 +62,12 @@ describe('route-sjablonen', () => {
 
   it('een trip uit een sjabloon bewaart de planning; bewerken zonder planning laat hem staan, wissen haalt hem weg', async () => {
     const store = await device()
-    await store.putMany('legs.json.enc', legs)
+    await putMany(store, 'legs.json.enc', legs)
     const input: WeekInput = {
       name: '', type: 'skipper-charter', startDate: '2026-10-27', dayCount: 4, boat: 'Nepzon', boatModel: '', boatLengthFt: null, base: 'Nepsplit',
       charter: '', area: 'Nepzee', participants: [], note: '', route: tripRoute(trips[1]!, legs),
     }
-    const created = await startWeek(store, input, 'nl', '2026-10-27')
+    const created = await inTx(store, startWeek, input, 'nl', '2026-10-27')
     expect(created.route).toHaveLength(3)
     // Vandaag (dag 0): Nepsplit → Nepbol, voorstel uit de laatste keren (18 en 22).
     const today = plannedFor(created, store.get('legs.json.enc'), '2026-10-27')!
@@ -75,15 +77,15 @@ describe('route-sjablonen', () => {
     expect(plannedFor(created, legs, '2026-10-29')).toMatchObject({ from: 'Nephvar' })
     expect(plannedFor(created, legs, '2026-10-30')).toBeNull()
 
-    const logged = await logPlanned(store, created, today, '2026-10-27', { ...DEFAULT_SETTINGS, lastWater: 'zee' })
+    const logged = await inTx(store, logPlanned, created, today, '2026-10-27', { ...DEFAULT_SETTINGS, lastWater: 'zee' })
     expect(logged).toMatchObject({ tripId: created.id, fromPlace: 'Nepsplit', toPlace: 'Nepbol', nmSea: 20, role: 'schipper', boat: 'Nepzon', source: 'manual' })
     expect(plannedFor(created, store.get('legs.json.enc'), '2026-10-27')).toBeNull()
 
     const { route: _r, ...withoutRoute } = input
     void _r
-    await updateWeek(store, created, { ...withoutRoute, name: 'Nep hernoemd' }, 'nl')
+    await periodeBewerken(store, created, { ...withoutRoute, name: 'Nep hernoemd' }, 'nl')
     expect(store.get('trips.json.enc').find((t) => t.id === created.id)?.route).toHaveLength(3)
-    await updateWeek(store, store.get('trips.json.enc').find((t) => t.id === created.id)!, { ...withoutRoute, route: [] }, 'nl')
+    await periodeBewerken(store, store.get('trips.json.enc').find((t) => t.id === created.id)!, { ...withoutRoute, route: [] }, 'nl')
     expect(store.get('trips.json.enc').find((t) => t.id === created.id)?.route).toBeUndefined()
   })
 })

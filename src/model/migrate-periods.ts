@@ -1,11 +1,11 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import type { Change } from './changes'
 import { applyChanges } from './changes'
 import { active } from './derive'
-import { addDays } from './money'
 import { waterRanges } from './periods'
 import { saveSettings, currentSettings } from './settings'
 import { justAfter, type CalendarDay, type CollectionPath, type Leg, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
+import { addDays } from '../basis/datum'
 
 // Eenmalige omzetting naar het periodemodel (docs/PERIODEMODEL.md, hoofdstuk 2). Draait na de eerste geslaagde sync van
 // deze versie, één keer per logboek (settings.periodsMigratedAt), alleen als alle betrokken bestanden leesbaar zijn.
@@ -90,17 +90,17 @@ export function migrationChanges(input: MigrationInput, now: string): Change[] {
 }
 
 /** Mag de omzetting nu draaien? Na een geslaagde sync, één keer, met alle betrokken bestanden leesbaar. */
-export function migrationReady(store: Store): boolean {
+export function migrationReady(store: Tx): boolean {
   if (!store.hasSynced()) return false
   if (currentSettings(store.list('settings.json.enc')).periodsMigratedAt) return false
-  const bad = new Set<CollectionPath>([...store.unreadableFiles().map((u) => u.path), ...store.setAside(), ...store.frozenPaths()])
+  const bad = new Set<CollectionPath>(store.unusable())
   return !MIGRATION_FILES.some((p) => bad.has(p))
 }
 
 /** De omzetting uitvoeren (als dat nu mag). Geeft terug of er iets gedaan is. */
-export async function migratePeriods(store: Store): Promise<boolean> {
+export async function migratePeriods(store: Tx): Promise<boolean> {
   if (!migrationReady(store)) return false
-  const now = new Date().toISOString()
+  const now = store.now
   const changes = migrationChanges(
     {
       trips: store.list('trips.json.enc'),
@@ -113,8 +113,7 @@ export async function migratePeriods(store: Store): Promise<boolean> {
   )
   // Niets om te zetten (een nieuw logboek, of alles al omgezet): niets schrijven; de volgende sessie kijkt opnieuw.
   if (changes.length === 0) return false
-  await applyChanges(store, changes, false)
+  await applyChanges(store, changes)
   await saveSettings(store, { periodsMigratedAt: now })
-  void store.sync()
   return true
 }

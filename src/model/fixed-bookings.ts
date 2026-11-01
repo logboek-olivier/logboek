@@ -1,9 +1,10 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { applyChanges } from './changes'
 import { fixedAmount } from './costs'
 import { active } from './derive'
 import { finalRateFields } from './rates'
 import type { FixedCost, Transaction } from './types'
+import { monthEnd, shiftMonth } from '../basis/datum'
 
 // Vaste lasten in Werkelijk (Geld): elke voorbije maand staat als echte uitgave geboekt, één per vaste last per maand, op
 // de laatste dag van die maand. Vast id `vast:<vaste last>:<jjjj-mm>`, zodat twee apparaten hetzelfde boeken; een
@@ -12,17 +13,6 @@ import type { FixedCost, Transaction } from './types'
 
 export function bookingId(costId: string, month: string): string {
   return `vast:${costId}:${month}`
-}
-
-function shiftMonth(m: string, n: number): string {
-  const [y, mm] = m.split('-').map(Number) as [number, number]
-  const d = new Date(Date.UTC(y, mm - 1 + n, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-}
-
-function lastDay(month: string): string {
-  const [y, m] = month.split('-').map(Number) as [number, number]
-  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
 }
 
 /** Hoogstens zoveel maanden terug boeken (een vaste last met een begin ver in het verleden). */
@@ -43,7 +33,7 @@ export function missingBookings(costs: readonly FixedCost[], existing: readonly 
       if (amount <= 0 || known.has(id)) continue
       const tx: Transaction = {
         id,
-        date: lastDay(month),
+        date: monthEnd(month),
         kind: 'kosten',
         amount,
         currency: cost.currency,
@@ -63,7 +53,7 @@ export function missingBookings(costs: readonly FixedCost[], existing: readonly 
 }
 
 /** Ontbrekende maanden van vaste lasten boeken (na een geslaagde sync, zodat dit apparaat weet wat er al staat). */
-export async function bookFixedCosts(store: Store, today: string): Promise<number> {
+export async function bookFixedCosts(store: Tx, today: string): Promise<number> {
   if (!store.hasSynced()) return 0
   const missing = missingBookings(store.list('fixedcosts.json.enc'), store.get('transactions.json.enc'), today, new Date().toISOString())
   if (missing.length === 0) return 0

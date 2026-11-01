@@ -1,10 +1,11 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { currentSettings, saveSettings } from '../src/model/settings'
+import { currentSettings } from '../src/model/settings'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { instellingenOpslaan } from '../src/domain/instellingen'
 
 // Fundering: "laatst gebruikt" (boot, rol, valuta, bron, ...) per apparaat, in een eigen record naast de instellingen.
 // Een dag of uitgave loggen op een telefoon zonder verbinding overschrijft dan nooit een instelling die intussen op de
@@ -28,16 +29,16 @@ describe('laatst gebruikt per apparaat', () => {
     const github = new FakeGithub()
     const laptop = await store(github)
     const phone = await store(github)
-    await saveSettings(laptop, { yearGoalNm: 3000 })
+    await instellingenOpslaan(laptop, { yearGoalNm: 3000 })
     await laptop.sync()
     await phone.sync()
     await tick()
     // Laptop: standaardsalaris instellen, gesynct.
-    await saveSettings(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
+    await instellingenOpslaan(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
     await laptop.sync()
     await tick()
     // Telefoon (nog zonder die wijziging): een dag loggen onthoudt boot en rol.
-    await saveSettings(phone, { lastBoat: 'Nepboot', lastRole: 'instructeur' })
+    await instellingenOpslaan(phone, { lastBoat: 'Nepboot', lastRole: 'instructeur' })
     await phone.sync()
     await laptop.sync()
     for (const s of [laptop, phone]) {

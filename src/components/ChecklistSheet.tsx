@@ -1,13 +1,14 @@
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t, useLang } from '../i18n'
-import { checkedItems, deleteChecklist, saveChecklist, toggleCheck } from '../model/checklists'
+import { checkedItems } from '../model/checklists'
 import { localized } from '../model/curricula'
 import type { Checklist, Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { Sheet } from './Sheet'
+import { checklistAfvinken, checklistOpslaan, checklistVerwijderen } from '../domain/trips'
 
 // Een vaste checklist bij een trip: grote vinkvakken (één tik = afvinken). "Sjabloon bewerken" past de lijst aan
 // voor alle trips: punten wijzigen, toevoegen, weghalen.
@@ -28,7 +29,7 @@ export function ChecklistSheet({ store, trip, list, notify, onClose }: { store: 
             const on = ticked.has(item.id)
             return (
               <li key={item.id}>
-                <button type="button" role="checkbox" aria-checked={on} className={`check-item${on ? ' on' : ''}`} onClick={() => void toggleCheck(store, trip, list.id, item.id)}>
+                <button type="button" role="checkbox" aria-checked={on} className={`check-item${on ? ' on' : ''}`} onClick={() => void checklistAfvinken(store, trip, list.id, item.id)}>
                   <span className="check-box">{on && <Icon icon={Check} />}</span>
                   <span>{localized(item.text, lang)}</span>
                 </button>
@@ -63,7 +64,7 @@ function TemplateForm({ store, list, notify, onDone, onClose }: { store: Store; 
     if (busy) return
     setBusy(true)
     try {
-      await saveChecklist(store, list, { title, items }, lang)
+      await checklistOpslaan(store, list, { title, items }, lang)
       notify(t('toast.saved'))
       onDone()
     } finally {
@@ -72,7 +73,7 @@ function TemplateForm({ store, list, notify, onDone, onClose }: { store: Store; 
   }
 
   async function remove() {
-    const undo = await deleteChecklist(store, list)
+    const undo = await checklistVerwijderen(store, list)
     onClose()
     notify(t('toast.deleted'), undo)
   }

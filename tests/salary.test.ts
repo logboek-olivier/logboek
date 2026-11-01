@@ -1,22 +1,16 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, saveSettings } from '../src/model/settings'
-import {
-  askSalaryLater,
-  defaultChanges,
-  receiveSalary,
-  salaryOutlook,
-  salaryQuestions,
-  saveSalaryDefaults,
-  tipAverages,
-  withSalaryDefault,
-} from '../src/model/salary'
+import { DEFAULT_SETTINGS } from '../src/model/settings'
+import { defaultChanges, salaryOutlook, salaryQuestions, saveSalaryDefaults, tipAverages, withSalaryDefault } from '../src/model/salary'
 import type { RatesFile } from '../src/model/rates'
 import type { Settings, Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { inTx, put, putMany } from './helpers/schrijf'
+import { salarisLaterVragen, salarisOntvangen } from '../src/domain/geld'
+import { instellingenOpslaan } from '../src/domain/instellingen'
 
 // PR C: salaris per trip. Harde regel: een eigen bedrag of een ontvangen salaris wordt nooit automatisch
 // overschreven; een gewijzigd standaardbedrag gaat alleen na "ja" naar trips met het oude bedrag. Verzonnen data.
@@ -88,15 +82,15 @@ describe('standaardbedrag per organisatie', () => {
   it('opslaan: zonder ja blijft het oude bedrag; met ja alleen de trips met het oude standaardbedrag', async () => {
     for (const yes of [false, true]) {
       const s = await store()
-      await saveSettings(s, { salaryDefaults: { 'sailing-virgins': SV } })
-      await s.putMany('trips.json.enc', [
+      await instellingenOpslaan(s, { salaryDefaults: { 'sailing-virgins': SV } })
+      await putMany(s, 'trips.json.enc', [
         trip('old', '2026-12-01', '2026-12-07', { salary: { ...SV, status: 'verwacht', source: 'standaard' } }),
         trip('own', '2026-12-10', '2026-12-17', { salary: { amount: 1250, currency: 'EUR', status: 'verwacht', source: 'eigen' } }),
         trip('got', '2026-11-20', '2026-11-27', { salary: { ...SV, status: 'ontvangen', source: 'standaard' } }),
         trip('none', '2026-12-20', '2026-12-27'),
         trip('pastnone', '2026-10-01', '2026-10-07'),
       ])
-      await saveSalaryDefaults(s, { 'sailing-virgins': { amount: 1300, currency: 'EUR' } }, yes, TODAY)
+      await inTx(s, saveSalaryDefaults, { 'sailing-virgins': { amount: 1300, currency: 'EUR' } }, yes, TODAY)
       expect(get(s, 'old').salary?.amount).toBe(yes ? 1300 : 1200)
       expect(get(s, 'own').salary).toEqual({ amount: 1250, currency: 'EUR', status: 'verwacht', source: 'eigen' })
       expect(get(s, 'got').salary?.amount).toBe(1200)
@@ -112,9 +106,9 @@ describe('salaris ontvangen', () => {
   it('Vandaag vraagt na de einddatum, niet daarvoor en niet na "nog niet"', async () => {
     const s = await store()
     const ended = trip('ended', '2026-11-01', '2026-11-07', { salary: { ...SV, status: 'verwacht', source: 'standaard' } })
-    await s.putMany('trips.json.enc', [ended, trip('running', '2026-11-08', '2026-11-14', { salary: { ...SV, status: 'verwacht', source: 'standaard' } }), trip('endsToday', '2026-11-04', TODAY, { salary: { ...SV, status: 'verwacht', source: 'standaard' } })])
+    await putMany(s, 'trips.json.enc', [ended, trip('running', '2026-11-08', '2026-11-14', { salary: { ...SV, status: 'verwacht', source: 'standaard' } }), trip('endsToday', '2026-11-04', TODAY, { salary: { ...SV, status: 'verwacht', source: 'standaard' } })])
     expect(salaryQuestions(s.list('trips.json.enc'), [], TODAY).map((x) => x.id)).toEqual(['ended'])
-    const undo = await askSalaryLater(s, ended, TODAY)
+    const undo = await salarisLaterVragen(s, ended, TODAY)
     expect(salaryQuestions(s.list('trips.json.enc'), [], TODAY)).toEqual([])
     expect(salaryQuestions(s.list('trips.json.enc'), [], '2026-11-17').map((x) => x.id)).toContain('ended')
     await undo()
@@ -124,8 +118,8 @@ describe('salaris ontvangen', () => {
   it('ja: één inkomen bij de trip (ook met een ander bedrag), status ontvangen; ongedaan maken zet alles terug', async () => {
     const s = await store()
     const t = trip('ended', '2026-11-01', '2026-11-07', { salary: { ...SV, status: 'verwacht', source: 'standaard' } })
-    await s.put('trips.json.enc', t)
-    const undo = await receiveSalary(s, t, TODAY, { amount: 1180.5, currency: 'EUR' })
+    await put(s, 'trips.json.enc', t)
+    const undo = await salarisOntvangen(s, t, TODAY, { amount: 1180.5, currency: 'EUR' })
     const txs = s.list('transactions.json.enc').filter((x) => x.deletedAt === null)
     expect(txs).toHaveLength(1)
     expect(txs[0]).toMatchObject({ kind: 'loon', amount: 1180.5, currency: 'EUR', tripId: 'ended', source: 'sailing-virgins', date: TODAY })

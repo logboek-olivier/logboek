@@ -2,19 +2,19 @@ import { CalendarPlus, ChevronDown } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { formatDateRange } from '../format'
 import { getLang, t } from '../i18n'
-import { daysBetween } from '../model/calendar'
 import { newTripName } from '../model/counters'
 import { currentSettings } from '../model/settings'
-import { addDays } from '../model/money'
 import { tripOverlaps, type Overlap } from '../model/trip-ops'
-import { ORGANISATIONS, todayIso, WEEK_TYPES, type Organisation, type Trip, type WeekType } from '../model/types'
-import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, startWeek, suggestTripName } from '../model/weeks'
+import { ORGANISATIONS, WEEK_TYPES, type Organisation, type Trip, type WeekType } from '../model/types'
+import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, suggestTripName } from '../model/weeks'
+import { periodeMaken } from '../domain/trips'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { OverlapSheet } from './TripSheets'
 import { useCollection } from './useCollection'
 import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
+import { addDays, daysBetween, todayIso } from '../basis/datum'
 
 // Toevoegen → Trip: snel een trip in de planning zetten. Alleen startdatum en einddatum zijn nodig, dan Opslaan.
 // Naam en type krijgen een voorstel uit de vorige trip; organisatie, boot, gebied en deelnemers zijn optioneel en later
@@ -53,7 +53,7 @@ export function TripForm({ store, onDone, notify }: { store: Store; onDone: (mes
     if (!valid || busy) return
     setBusy(true)
     try {
-      const trip = await startWeek(
+      const { result: trip } = await periodeMaken(
         store,
         {
           name: name.trim() || suggestion,

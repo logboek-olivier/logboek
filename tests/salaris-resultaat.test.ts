@@ -3,13 +3,15 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { salaryState, tripResult } from '../src/model/money-path'
 import { forecast, positionAt, type PositionInput } from '../src/model/position'
 import type { RatesFile } from '../src/model/rates'
-import { cleanSalary, countedSalary, salaryOutlook, salaryQuestions, setNoSalary } from '../src/model/salary'
+import { cleanSalary, countedSalary, salaryOutlook, salaryQuestions } from '../src/model/salary'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
 import type { Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
+import { put } from './helpers/schrijf'
+import { geenSalaris } from '../src/domain/geld'
 
 // Salaris en geld per trip: een salaris van 0 en "Geen salaris" tellen nergens als verwacht of te ontvangen; een
 // standaardbedrag op een trip zonder organisatie telt niet (alleen trips van die organisatie); het resultaat per trip is
@@ -68,15 +70,15 @@ describe('"Geen salaris" kiezen', () => {
   it('zet de status op geen, en ongedaan maken zet het verwachte salaris terug; een ontvangen salaris blijft', async () => {
     const store = await Store.open(await openLogboekDb('logboek-geen-salaris'), masterKey, new GithubClient('github_pat_GEEN_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
     const t = trip('yw1', '2026-09-01', '2026-09-07', { organisation: 'yacht-week', salary: { amount: 600, currency: 'EUR', status: 'verwacht', source: 'eigen' } })
-    await store.put('trips.json.enc', t)
-    const undo = await setNoSalary(store, t)
+    await put(store, 'trips.json.enc', t)
+    const undo = await geenSalaris(store, t)
     expect(store.list('trips.json.enc')[0]!.salary).toMatchObject({ status: 'geen', amount: 0 })
     expect(positionAt(input({ trips: store.list('trips.json.enc') }), TODAY).receivable).toEqual([])
     await undo()
     expect(store.list('trips.json.enc')[0]!.salary).toMatchObject({ status: 'verwacht', amount: 600 })
     const received = { ...store.list('trips.json.enc')[0]!, salary: { amount: 600, currency: 'EUR' as const, status: 'ontvangen' as const, source: 'eigen' as const, transactionId: 'x' }, updatedAt: new Date().toISOString() }
-    await store.put('trips.json.enc', received)
-    await setNoSalary(store, received)
+    await put(store, 'trips.json.enc', received)
+    await geenSalaris(store, received)
     expect(store.list('trips.json.enc')[0]!.salary?.status).toBe('ontvangen')
   })
 })

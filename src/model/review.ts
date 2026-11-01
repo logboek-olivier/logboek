@@ -1,18 +1,18 @@
-import type { Store } from '../storage/store'
-import { applyChanges, bothUndo, undoableIn, type Undo } from './changes'
+import type { Tx, Reader } from '../domain/tx'
+import { applyChanges } from './changes'
 import { active, compareLegs } from './derive'
-import { addDays } from './money'
 import { allPeriods, isWaterKind, periodAt, rangeDates, setStayDays, waterRanges, type Period } from './periods'
 import { mergeCandidates, placeKey, placeUses, type PlaceUse } from './places'
 import { saveSettings, currentSettings } from './settings'
 import { tripOverlaps, type Overlap } from './trip-ops'
 import { kindForType, typeForKind } from './trip-kind'
 import { STAY_FROM_DAY, dayHasDetails } from './migrate-periods'
-import { daysBetween, followTrip, tripRange } from './calendar'
+import { followTrip, tripRange } from './calendar'
 import { followDays } from './trip-dates'
 import { defaultWeekName, weekView } from './weeks'
 import type { Lang } from '../i18n'
 import type { CalendarDay, Leg, Organisation, Place, Settings, StayKind, StayPeriod, Transaction, Trip, WeekType } from './types'
+import { addDays, daysBetween } from '../basis/datum'
 
 // Nakijken (Meer → Nakijken): twijfelgevallen en tegenstrijdigheden in het periodemodel, elk met één knop die het
 // oplost (met ongedaan maken) en "Klopt zo" (onthouden in settings.reviewDismissed). Alleen zichtbaar als er iets is.
@@ -190,7 +190,7 @@ function runsOf<T extends { date: string }>(list: readonly T[], value: (item: T)
   return out
 }
 
-export function reviewInput(store: Store): ReviewInput {
+export function reviewInput(store: Reader): ReviewInput {
   return {
     trips: store.list('trips.json.enc'),
     legs: store.list('legs.json.enc'),
@@ -205,14 +205,9 @@ export function reviewInput(store: Store): ReviewInput {
 // ---------- Oplossen ----------
 
 /** "Klopt zo": het punt komt niet meer terug. */
-export async function dismissReview(store: Store, item: ReviewItem): Promise<Undo> {
+export async function dismissReview(store: Tx, item: ReviewItem): Promise<void> {
   const before = currentSettings(store.list('settings.json.enc')).reviewDismissed ?? []
   await saveSettings(store, { reviewDismissed: [...before.filter((k) => k !== item.key), item.key].slice(-500) })
-  void store.sync()
-  return async () => {
-    await saveSettings(store, { reviewDismissed: before })
-    void store.sync()
-  }
 }
 
 function changed<T extends { updatedAt: string }>(record: T, patch: Partial<T>): T {
@@ -220,53 +215,47 @@ function changed<T extends { updatedAt: string }>(record: T, patch: Partial<T>):
 }
 
 /** Soort van een trip vastleggen (met het type dat oudere versies lezen). */
-export function setTripKind(store: Store, trip: Trip, type: WeekType): Promise<Undo> {
+export function setTripKind(store: Tx, trip: Trip, type: WeekType): Promise<void> {
   const kind = kindForType(type)
   return applyChanges(store, [{ path: 'trips.json.enc', before: trip, after: changed(trip, { kind, type: typeForKind(kind, type) }) }])
 }
 
-export function setTripOrganisation(store: Store, trip: Trip, organisation: Organisation): Promise<Undo> {
+export function setTripOrganisation(store: Tx, trip: Trip, organisation: Organisation): Promise<void> {
   return applyChanges(store, [{ path: 'trips.json.enc', before: trip, after: changed(trip, { organisation }) }])
 }
 
 /** Een dag buiten zijn trip: naar de trip van die datum, of (zonder trip op die datum) de trip verlengen tot die dag. */
-export async function fixLegOutside(store: Store, leg: Leg, trip: Trip, target: Trip | null): Promise<Undo> {
+export async function fixLegOutside(store: Tx, leg: Leg, trip: Trip, target: Trip | null): Promise<void> {
   if (target) {
-    const undo = await applyChanges(store, [{ path: 'legs.json.enc', before: leg, after: changed(leg, { tripId: target.id }) }])
+    await applyChanges(store, [{ path: 'legs.json.enc', before: leg, after: changed(leg, { tripId: target.id }) }])
     await followDays(store, [trip.id, target.id])
-    return undo
+    return
   }
   const legs = store.list('legs.json.enc')
   const range = tripRange(trip, legs)
   const start = trip.startDate && leg.date < trip.startDate ? leg.date : trip.startDate!
   const end = trip.endDate && leg.date > trip.endDate ? leg.date : trip.endDate!
-  const tripUndo = await applyChanges(store, [{ path: 'trips.json.enc', before: trip, after: changed(trip, { startDate: start, endDate: end }) }])
-  const follow = await undoFollow(store, () => followTrip(store, trip.id, range, { start, end }))
-  return bothUndo(tripUndo, follow)
-}
-
-function undoFollow(store: Store, action: () => Promise<void>): Promise<Undo> {
-  return undoableIn(store, ['calendar.json.enc', 'periods.json.enc', 'transactions.json.enc'], action)
+  await applyChanges(store, [{ path: 'trips.json.enc', before: trip, after: changed(trip, { startDate: start, endDate: end }) }])
+  await followTrip(store, trip.id, range, { start, end })
 }
 
 /** Een agendadag binnen een trip hoort bij de trip: zonder gegevens vervalt hij, met gegevens wordt hij een werkdag. */
-export function fixDayInTrip(store: Store, day: CalendarDay): Promise<Undo> {
+export function fixDayInTrip(store: Tx, day: CalendarDay): Promise<void> {
   const now = new Date().toISOString()
   const after: CalendarDay = dayHasDetails(day) ? { ...day, type: 'werk', updatedAt: now } : { ...day, updatedAt: now, deletedAt: now }
   return applyChanges(store, [{ path: 'calendar.json.enc', before: day, after }])
 }
 
 /** Werkdagen zonder trip: één trip over die dagen (soort werk, nog zonder organisatie). */
-export async function makeTripFor(store: Store, from: string, to: string, lang: Lang): Promise<Undo> {
+export async function makeTripFor(store: Tx, from: string, to: string, lang: Lang): Promise<void> {
   const now = new Date().toISOString()
   const trip: Trip = { id: crypto.randomUUID(), name: defaultWeekName(from, lang), kind: 'werk', type: 'overig', startDate: from, endDate: to, updatedAt: now, deletedAt: null }
-  const undo = await applyChanges(store, [{ path: 'trips.json.enc', before: null, after: trip }])
-  const follow = await undoFollow(store, () => followTrip(store, trip.id, null, { start: from, end: to }))
-  return bothUndo(undo, follow)
+  await applyChanges(store, [{ path: 'trips.json.enc', before: null, after: trip }])
+  await followTrip(store, trip.id, null, { start: from, end: to })
 }
 
 /** Agendadagen zonder periode: een periode van die soort over die dagen. */
-export function makeStayFor(store: Store, kind: StayKind, from: string, to: string): Promise<Undo> {
+export function makeStayFor(store: Tx, kind: StayKind, from: string, to: string): Promise<void> {
   return setStayDays(store, rangeDates(from, to), kind)
 }
 
@@ -274,31 +263,30 @@ export function makeStayFor(store: Store, kind: StayKind, from: string, to: stri
  * Inkomen of uitgave zonder periode: koppelen aan de periode van de datum; is er geen, dan een thuisperiode op die dag
  * (die een aangrenzende thuisperiode verlengt).
  */
-export async function fixMoneyWithoutPeriod(store: Store, tx: Transaction, target: Period | null): Promise<Undo> {
+export async function fixMoneyWithoutPeriod(store: Tx, tx: Transaction, target: Period | null): Promise<void> {
   if (target) return applyChanges(store, [{ path: 'transactions.json.enc', before: tx, after: changed(tx, { tripId: target.id }) }])
-  const undoStay = await setStayDays(store, [tx.date], 'thuis')
+  await setStayDays(store, [tx.date], 'thuis')
   const periods = allPeriods(store.list('trips.json.enc'), store.list('legs.json.enc'), store.list('periods.json.enc'))
   const now = periodAt(periods, tx.date)
   const current = store.list('transactions.json.enc').find((x) => x.id === tx.id) ?? tx
-  const undoLink = now ? await applyChanges(store, [{ path: 'transactions.json.enc', before: current, after: changed(current, { tripId: now.id }) }]) : async () => {}
-  return bothUndo(undoStay, undoLink)
+  if (now) await applyChanges(store, [{ path: 'transactions.json.enc', before: current, after: changed(current, { tripId: now.id }) }])
 }
 
 /**
  * Periode aan land op dagen van een andere periode: de andere gaat voor. Die dagen gaan uit deze periode (korter,
  * gesplitst of weg); bij twee periodes aan land krijgen ze de soort van de andere (samen als die dezelfde soort hebben).
  */
-export function fixLandOverlap(store: Store, from: string, to: string, other: Period): Promise<Undo> {
+export function fixLandOverlap(store: Tx, from: string, to: string, other: Period): Promise<void> {
   return setStayDays(store, rangeDates(from, to), other.stay ? other.stay.kind : null)
 }
 
 /** Alleen de van van deze dag wordt de naar van de dag ervoor (met het land). */
-export function fixLegStart(store: Store, leg: Leg, previous: Leg): Promise<Undo> {
+export function fixLegStart(store: Tx, leg: Leg, previous: Leg): Promise<void> {
   return applyChanges(store, [{ path: 'legs.json.enc', before: leg, after: changed(leg, { fromPlace: previous.toPlace, fromCountry: previous.toCountry || leg.fromCountry }) }])
 }
 
 /** Een dagtoestand binnen een periode aan land laten gelden: de dag gaat uit de periode (korter of gesplitst). */
-export function fixDayInStay(store: Store, day: CalendarDay): Promise<Undo> {
+export function fixDayInStay(store: Tx, day: CalendarDay): Promise<void> {
   return setStayDays(store, [day.date], null)
 }
 
@@ -311,18 +299,16 @@ export function legOutsideCanExtend(leg: Leg, trip: Trip): boolean {
   return gap <= EXTEND_FIX_DAYS
 }
 
-/** Alle voorstellen voor de soort in één keer overnemen (met één ongedaan maken). */
-export async function acceptAllKinds(store: Store, items: readonly ReviewItem[]): Promise<Undo> {
-  const undos: Undo[] = []
+/** Alle voorstellen voor de soort in één keer overnemen (één opdracht, dus één keer ongedaan maken). */
+export async function acceptAllKinds(store: Tx, items: readonly ReviewItem[]): Promise<void> {
   for (const item of items) {
     if (item.kind !== 'soort') continue
     const current = store.list('trips.json.enc').find((x) => x.id === item.trip.id)
-    if (current) undos.push(await setTripKind(store, current, item.suggestion))
+    if (current) await setTripKind(store, current, item.suggestion)
   }
-  return bothUndo(...undos)
 }
 
 /** Soort van een investering vastleggen (opleiding of uitrusting). */
-export function setInvestmentCategory(store: Store, tx: Transaction, category: 'opleiding' | 'uitrusting'): Promise<Undo> {
+export function setInvestmentCategory(store: Tx, tx: Transaction, category: 'opleiding' | 'uitrusting'): Promise<void> {
   return applyChanges(store, [{ path: 'transactions.json.enc', before: tx, after: changed(tx, { category }) }])
 }

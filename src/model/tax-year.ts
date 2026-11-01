@@ -1,7 +1,7 @@
-import { tripOrganisation } from './counters'
 import { isEarned, isIncome } from './money'
 import { eurValue, type RatesFile } from './rates'
 import type { Organisation, Transaction, Trip } from './types'
+import { tripOrganisation } from '../basis/organisatie'
 
 // Jaaroverzicht voor de belasting (Meer → Geld): alle inkomsten van één kalenderjaar per organisatie, in euro, met per
 // regel het oorspronkelijke bedrag en de gebruikte koers met datum, zoals overal in de app: het ontvangen eurobedrag,

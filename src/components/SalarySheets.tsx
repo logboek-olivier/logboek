@@ -2,11 +2,10 @@ import { Ban, Check, Clock, Pencil, Wallet } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { nameWithCounter } from '../model/counters'
-import { amountInput, parseAmount } from '../model/money'
-import { askSalaryLater, defaultChanges, receiveSalary, salaryQuestions, saveSalaryDefaults, setNoSalary } from '../model/salary'
+import { defaultChanges, salaryQuestions } from '../model/salary'
 import { asksPerTrip, payoutRule } from '../model/money-path'
-import { currentSettings, saveSettings } from '../model/settings'
-import { CURRENCIES, ORGANISATIONS, todayIso, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
+import { currentSettings } from '../model/settings'
+import { CURRENCIES, ORGANISATIONS, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -14,6 +13,10 @@ import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
 import { organisationLabel } from '../i18n/labels'
+import { geenSalaris, salarisLaterVragen, salarisOntvangen, standaardsalarisOpslaan } from '../domain/geld'
+import { instellingenOpslaan } from '../domain/instellingen'
+import { amountInput, parseAmount } from '../basis/bedrag'
+import { todayIso } from '../basis/datum'
 
 // Salaris: standaardbedrag per organisatie (Instellingen), en op Vandaag "Salaris van <trip> ontvangen?" na de
 // einddatum. Vandaag toont geen bedragen; het werkelijke bedrag staat pas in het blad "Ander bedrag".
@@ -65,8 +68,8 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
   async function save(alsoStale: boolean) {
     setBusy(true)
     try {
-      await saveSalaryDefaults(store, next(), alsoStale, todayIso())
-      await saveSettings(store, { payouts: nextPayouts() })
+      await standaardsalarisOpslaan(store, next(), alsoStale, todayIso())
+      await instellingenOpslaan(store, { payouts: nextPayouts() })
       onClose()
       notify(t('salary.saved'))
     } finally {
@@ -189,7 +192,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
                   if (busy) return
                   setBusy(true)
                   try {
-                    const undo = await receiveSalary(store, trip, todayIso())
+                    const undo = await salarisOntvangen(store, trip, todayIso())
                     notify(t('salary.receivedToast'), undo)
                   } finally {
                     setBusy(false)
@@ -207,7 +210,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
                 type="button"
                 className="btn small quiet"
                 onClick={async () => {
-                  const undo = await askSalaryLater(store, trip, todayIso())
+                  const undo = await salarisLaterVragen(store, trip, todayIso())
                   notify(t('salary.laterToast'), undo)
                 }}
               >
@@ -222,7 +225,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
                   if (busy) return
                   setBusy(true)
                   try {
-                    const undo = await setNoSalary(store, trip)
+                    const undo = await geenSalaris(store, trip)
                     notify(t('salary.noneToast'), undo)
                   } finally {
                     setBusy(false)
@@ -257,7 +260,7 @@ function ReceiveSheet({ store, trip, notify, onClose }: { store: Store; trip: Tr
     if (!valid || busy) return
     setBusy(true)
     try {
-      const undo = await receiveSalary(store, trip, todayIso(), { amount: parsed, currency })
+      const undo = await salarisOntvangen(store, trip, todayIso(), { amount: parsed, currency })
       onClose()
       notify(t('salary.receivedToast'), undo)
     } finally {

@@ -10,6 +10,7 @@ import type { Store } from '../src/storage/store'
 import { decryptRecords, encryptRecords } from '../src/storage/sync'
 import { storeToken } from '../src/storage/token'
 import { createVault, parseWordlistForTests } from './helpers/vault'
+import { put } from './helpers/schrijf'
 
 const TOKEN = 'github_pat_GEDRAG_0123456789abcdefghijklmnopqrstuvwxyz'
 const PASSPHRASE = 'nep wachtzin van het logboek'
@@ -155,7 +156,7 @@ describe('GitHub-gedrag: twee vensters na een update', () => {
           if (s.getState().phase !== 'unlocked') return
           const id = `${tag}${i}`
           ids.push(id)
-          await store(s).put('places.json.enc', place(id)).catch(() => undefined)
+          await put(store(s), 'places.json.enc', place(id)).catch(() => undefined)
           if (rand() < 0.5) await store(s).sync().catch(() => undefined)
         }
       }

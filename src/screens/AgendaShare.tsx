@@ -7,9 +7,8 @@ import { weekTypeLabel } from '../components/WeekSheet'
 import { formatDateRange } from '../format'
 import { t } from '../i18n'
 import { availabilityRuns, buildIndex, planningEnd, planningRuns, type Availability, type PlanEntry, type Run } from '../model/calendar'
-import { addDays } from '../model/money'
-import { todayIso } from '../model/types'
 import type { Store } from '../storage/store'
+import { addDays, todayIso } from '../basis/datum'
 
 // Planning delen als PDF via de printfunctie (er gaat niets via de app naar buiten). Twee keuzes:
 // - alleen beschikbaarheid: beschikbaar, bezet of optie, zonder namen, boten of bedragen;

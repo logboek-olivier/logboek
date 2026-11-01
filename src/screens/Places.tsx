@@ -15,8 +15,9 @@ import { PinSheet } from '../components/PinSheet'
 import { Sheet } from '../components/Sheet'
 import { useCollection } from '../components/useCollection'
 import { t } from '../i18n'
-import { deletePlace, findPlace, mergeCandidates, mergePlaceInto, mergePlaces, pinPlace, pinQuestion, placeCountry, placeKey, placeUses, removePin, renamePlace, savePlace, type MergeCandidate, type PinQuestion, type PlaceUse } from '../model/places'
+import { findPlace, mergeCandidates, pinQuestion, placeCountry, placeKey, placeUses, type MergeCandidate, type PinQuestion, type PlaceUse } from '../model/places'
 import type { Store } from '../storage/store'
+import { pinVerwijderen, pinZetten, plaatsenSamenvoegen, plaatsHernoemen, plaatsOpslaan, plaatsVariantenSamenvoegen, plaatsVerwijderen } from '../domain/plaatsen'
 
 // Meer → Plaatsen: alle plaatsen uit de dagen (ook geïmporteerde), meest gebruikt eerst. Plaatsen zonder punt zet
 // Olivier met één tik op de kaart vast; namen die op een spelvariant na gelijk zijn, staan bovenaan als voorstel om
@@ -24,7 +25,7 @@ import type { Store } from '../storage/store'
 
 export function MergeProposal({ store, candidate, notify }: { store: Store; candidate: MergeCandidate; notify: Notify }) {
   async function merge() {
-    const undo = await mergePlaces(store, candidate)
+    const undo = await plaatsVariantenSamenvoegen(store, candidate)
     notify(t('places.merged', { name: candidate.into.name }), undo)
   }
   return (
@@ -200,7 +201,7 @@ function PinAssistant({ store, notify, onClose }: { store: Store; notify: Notify
     }
     setBusy(true)
     try {
-      const undo = await pinPlace(store, use.name, point)
+      const undo = await pinZetten(store, use.name, point)
       notify(t('places.pinned', { name: use.name }), undo)
       next()
     } finally {
@@ -239,8 +240,7 @@ function PinAssistant({ store, notify, onClose }: { store: Store; notify: Notify
                   onConfirm={() => void confirm(point, true)}
                   onOther={() => setManual(use)}
                   onNew={async (name) => {
-                    await savePlace(store, name, point)
-                    void store.sync()
+                    await plaatsOpslaan(store, name, point)
                     notify(t('places.pinned', { name }))
                     next()
                   }}
@@ -299,7 +299,7 @@ function PlaceSheet({ store, use, uses, notify, onClose, onPin }: { store: Store
       onClose()
       return
     }
-    void run(() => renamePlace(store, use, name), t('place.renamed', { name: name.trim() }))
+    void run(() => plaatsHernoemen(store, use, name), t('place.renamed', { name: name.trim() }))
   }
 
   const into = others.find((u) => u.key === target)
@@ -319,7 +319,7 @@ function PlaceSheet({ store, use, uses, notify, onClose, onPin }: { store: Store
           {use.place ? t('place.movePin') : t('place.setPin')}
         </button>
         {use.place && (
-          <button className="btn" type="button" disabled={busy} onClick={() => void run(() => removePin(store, use), t('place.pinRemoved', { name: use.name }))}>
+          <button className="btn" type="button" disabled={busy} onClick={() => void run(() => pinVerwijderen(store, use), t('place.pinRemoved', { name: use.name }))}>
             <Icon icon={MapPinOff} />
             {t('place.removePin')}
           </button>
@@ -336,14 +336,14 @@ function PlaceSheet({ store, use, uses, notify, onClose, onPin }: { store: Store
                 ))}
               </select>
             </label>
-            <button className="btn" type="button" disabled={busy || !into} onClick={() => into && void run(() => mergePlaceInto(store, use, into), t('places.merged', { name: into.name }))}>
+            <button className="btn" type="button" disabled={busy || !into} onClick={() => into && void run(() => plaatsenSamenvoegen(store, use, into), t('places.merged', { name: into.name }))}>
               <Icon icon={Merge} />
               {t('places.merge')}
             </button>
           </div>
         )}
         {use.days === 0 ? (
-          <button className="btn danger" type="button" disabled={busy} onClick={() => void run(() => deletePlace(store, use), t('place.deleted', { name: use.name }))}>
+          <button className="btn danger" type="button" disabled={busy} onClick={() => void run(() => plaatsVerwijderen(store, use), t('place.deleted', { name: use.name }))}>
             <Icon icon={Trash2} />
             {t('place.delete')}
           </button>

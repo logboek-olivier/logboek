@@ -1,7 +1,8 @@
-import { getLang, type Lang } from '../i18n'
 import { active, lastMonths, round1 } from './derive'
 import { eurValue } from './rates'
 import { INCOME_KIND_LIST, type Currency, type Transaction, type TransactionKind, type TransactionSource } from './types'
+import { round2 } from '../basis/bedrag'
+import { addDays, mondayOf } from '../basis/datum'
 
 // Afgeleiden voor zeilgeld, alles in euro: EUR zelf, het ontvangen eurobedrag, de opgeslagen koers of de ECB-koers
 // van de transactiedatum (src/model/rates.ts). Alleen als er helemaal geen koers is, staat een bedrag apart per valuta.
@@ -124,88 +125,11 @@ export function tipsPerWeek(transactions: readonly Transaction[], today: string,
   return result
 }
 
-/** Fooi in de laatste `days` dagen tot en met vandaag: EUR plus andere valuta apart. */
-export function recentTips(transactions: readonly Transaction[], today: string, days = 30): { eur: number; other: Record<string, number> } {
-  const from = addDays(today, -(days - 1))
-  let eur = 0
-  const other: Record<string, number> = {}
-  for (const tx of active(transactions)) {
-    if (tx.kind !== 'fooi' || tx.date < from || tx.date > today) continue
-    const e = eurOf(tx)
-    if (e !== null) eur += e
-    else other[tx.currency] = round2((other[tx.currency] ?? 0) + tx.amount)
-  }
-  return { eur: round2(eur), other }
-}
-
 /** Valuta's die in de transacties voorkomen zonder EUR-waarde. */
 export function otherCurrencies(transactions: readonly Transaction[]): Currency[] {
   const set = new Set<Currency>()
   for (const tx of active(transactions)) if (eurOf(tx) === null) set.add(tx.currency)
   return [...set].sort()
-}
-
-/**
- * Een ingetypte stand: ook nul en negatief (rood staan, ook "€ -80" en "(80)"). "1.234,56" en "1,234.56": het laatste
- * teken is het decimaalteken; één punt met drie cijfers erachter is een duizendtal ("1.234"), één komma een
- * decimaalteken (in het Engels met drie cijfers erachter een duizendtal). Iets anders dan een bedrag ("2-3", "1e5",
- * "1O0") is null, nooit een geraden getal.
- */
-export function parseStand(text: string, lang: 'nl' | 'en' = 'nl'): number | null {
-  let t = text.replace(/[\s\u00a0]/g, '').replace(/\u2212/g, '-').replace(/^(€|EUR|\$|USD|£|GBP)/i, '').replace(/(€|EUR|\$|USD|£|GBP)$/i, '')
-  let negative = false
-  if (/^\(.*\)$/.test(t)) {
-    negative = true
-    t = t.slice(1, -1)
-  }
-  const sign = /^([-+]?)(?:€|EUR|\$|USD|£|GBP)?(\d[\d.,]*)(-?)$/i.exec(t)
-  if (!sign) return null
-  if (sign[1] === '-' || sign[3] === '-') negative = !negative
-  let s = sign[2]!
-  const comma = s.lastIndexOf(',')
-  const dot = s.lastIndexOf('.')
-  const count = (c: string) => s.split(c).length - 1
-  if (comma >= 0 && dot >= 0) s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
-  else if (comma >= 0) s = count(',') > 1 || (lang === 'en' && /,\d{3}$/.test(s)) ? s.replace(/,/g, '') : s.replace(',', '.')
-  else if (dot >= 0 && (count('.') > 1 || /\.\d{3}$/.test(s))) s = s.replace(/\./g, '')
-  if (!/^\d+(\.\d+)?$/.test(s)) return null
-  const n = round2(Number(s))
-  return negative && n !== 0 ? -n : n
-}
-
-/**
- * Een ingetypt bedrag: "12,50", "12.50", "€ 12", "1.250,75" en in het Engels "1,250.75" of "1,250" → het getal; zoals
- * parseStand, met het decimaalteken van de taal. Ongeldig, nul of negatief → null.
- */
-export function parseAmount(text: string, lang: Lang = getLang()): number | null {
-  const n = parseStand(text, lang)
-  return n !== null && n > 0 ? n : null
-}
-
-/**
- * Een bedrag als invoer (voorgevuld veld): zonder duizendtallen, hoogstens twee decimalen, met het decimaalteken van
- * de taal. parseAmount leest het precies zo terug, zodat Opslaan zonder typen nooit een ander bedrag bewaart.
- */
-export function amountInput(n: number, lang: Lang = getLang()): string {
-  const s = round2(n).toFixed(2).replace(/\.00$/, '')
-  return lang === 'nl' ? s.replace('.', ',') : s
-}
-
-export function round2(n: number): number {
-  return Math.round(n * 100) / 100
-}
-
-export function mondayOf(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const date = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1))
-  const weekday = (date.getUTCDay() + 6) % 7
-  return addDays(iso, -weekday)
-}
-
-export function addDays(iso: string, days: number): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const date = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
-  return date.toISOString().slice(0, 10)
 }
 
 export { round1 }

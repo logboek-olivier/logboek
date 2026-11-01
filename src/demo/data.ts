@@ -1,8 +1,8 @@
-import { addDays } from '../model/money'
 import { draftPlan, newGroup } from '../model/plans'
 import { SEED_CURRICULA } from '../model/seed-curricula'
 import type { CalendarDay, CollectionPath, Collections, Leg, Participant, Place, Reminder, Settings, StayPeriod, Student, Transaction, Trip, WeekPlan } from '../model/types'
 import { DEFAULT_SETTINGS } from '../model/settings'
+import { addDays } from '../basis/datum'
 
 // Demomodus: verzonnen voorbeelddata om de app te laten zien. Routes langs openbare plaatsen in de BVI en Kroatië
 // (namen en coördinaten zoals op elke kaart), verzonnen boten, alleen verzonnen voornamen en verzonnen bedragen per

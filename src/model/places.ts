@@ -1,7 +1,8 @@
-import type { Store } from '../storage/store'
+import type { Tx } from '../domain/tx'
 import { distanceToCountryNm } from './countries'
 import { active, compareLegs, round1, totalNm } from './derive'
-import { newId, nowIso, type Leg, type Place } from './types'
+import { newId, type Leg, type Place } from './types'
+import { nowIso } from '../basis/datum'
 
 // Plaatsen en afstanden. Een plaats is een naam met een punt op de kaart (places.json.enc). Het afstandsvoorstel
 // komt uit wat Olivier echt gevaren heeft: het gemiddelde van de laatste vijf dagen met dezelfde route (van en naar,
@@ -129,7 +130,7 @@ export function knownPlaceNames(legs: readonly Leg[], places: readonly Place[]):
 }
 
 /** Slaat een plaats op (nieuw, of een bestaande met dezelfde naam krijgt het nieuwe punt). */
-export async function savePlace(store: Store, name: string, point: { lat: number; lon: number }, country = ''): Promise<Place> {
+export async function savePlace(store: Tx, name: string, point: { lat: number; lon: number }, country = ''): Promise<Place> {
   const clean = name.trim().slice(0, 80)
   const existing = findPlace(store.get('places.json.enc'), clean)
   const place: Place = {
@@ -206,9 +207,9 @@ export function mergeCandidates(uses: readonly PlaceUse[]): MergeCandidate[] {
 
 /**
  * Samenvoegen: alle dagen met een van de andere schrijfwijzen krijgen de naam van `into`; heeft alleen een andere
- * schrijfwijze een punt op de kaart, dan krijgt `into` dat punt. Geeft een functie terug die het ongedaan maakt.
+ * schrijfwijze een punt op de kaart, dan krijgt `into` dat punt.
  */
-export async function mergePlaces(store: Store, candidate: MergeCandidate): Promise<() => Promise<void>> {
+export async function mergePlaces(store: Tx, candidate: MergeCandidate): Promise<void> {
   const keys = new Set(candidate.others.map((o) => o.key))
   const name = candidate.into.name
   const now = nowIso()
@@ -224,25 +225,11 @@ export async function mergePlaces(store: Store, candidate: MergeCandidate): Prom
   const placeChanges: Place[] = places.map((p, i) => (!intoPlace && i === 0 ? { ...p, name, updatedAt: now } : { ...p, updatedAt: now, deletedAt: now }))
   if (changed.length > 0) await store.putMany('legs.json.enc', changed)
   if (placeChanges.length > 0) await store.putMany('places.json.enc', placeChanges)
-  void store.sync()
-  return async () => {
-    const later = nowIso()
-    if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, updatedAt: later })))
-    if (places.length > 0) await store.putMany('places.json.enc', places.map((p) => ({ ...p, updatedAt: later })))
-    void store.sync()
-  }
 }
 
-/** Een plaats zonder punt met één tik vastzetten; ongedaan maken haalt het punt weer weg. */
-export async function pinPlace(store: Store, name: string, point: { lat: number; lon: number }): Promise<() => Promise<void>> {
-  const before = findPlace(store.get('places.json.enc'), name)
-  const saved = await savePlace(store, name, point)
-  void store.sync()
-  return async () => {
-    const later = nowIso()
-    await store.put('places.json.enc', before ? { ...before, updatedAt: later } : { ...saved, updatedAt: later, deletedAt: later })
-    void store.sync()
-  }
+/** Een plaats zonder punt met één tik vastzetten. */
+export async function pinPlace(store: Tx, name: string, point: { lat: number; lon: number }): Promise<void> {
+  await savePlace(store, name, point)
 }
 
 /** Een getypte naam die nog niet voorkomt maar lijkt op een bekende plaats: "Bedoel je …?". */
@@ -252,25 +239,11 @@ export function similarKnown(uses: readonly PlaceUse[], name: string): PlaceUse 
   return uses.find((u) => looksAlike(key, u.key)) ?? null
 }
 
-/** Een tijd later dan `iso` en dan nu, voor ongedaan maken. */
-function laterThan(iso: string): string {
-  return new Date(Math.max(Date.now(), Date.parse(iso) + 1)).toISOString()
-}
-
-function undoFor(store: Store, legs: readonly Leg[], places: readonly Place[], created: readonly Place[] = []): () => Promise<void> {
-  return async () => {
-    if (legs.length > 0) await store.putMany('legs.json.enc', legs.map((l) => ({ ...l, updatedAt: laterThan(l.updatedAt) })))
-    const back = [...places.map((p) => ({ ...p, updatedAt: laterThan(p.updatedAt) })), ...created.map((p) => ({ ...p, updatedAt: laterThan(p.updatedAt), deletedAt: laterThan(p.updatedAt) }))]
-    if (back.length > 0) await store.putMany('places.json.enc', back)
-    void store.sync()
-  }
-}
-
 /**
  * Hernoemen: alle dagen met deze plaats en het punt op de kaart krijgen de nieuwe naam. Bestaat de nieuwe naam al, dan
  * is het samenvoegen (zie mergePlaceInto).
  */
-export async function renamePlace(store: Store, use: PlaceUse, name: string): Promise<() => Promise<void>> {
+export async function renamePlace(store: Tx, use: PlaceUse, name: string): Promise<void> {
   const clean = name.trim().slice(0, 80)
   const existing = placeUses(store.get('legs.json.enc'), store.get('places.json.enc')).find((u) => u.key === placeKey(clean) && u.key !== use.key)
   if (existing) return mergePlaceInto(store, use, existing)
@@ -285,29 +258,25 @@ export async function renamePlace(store: Store, use: PlaceUse, name: string): Pr
   const places = active(store.get('places.json.enc')).filter((p) => placeKey(p.name) === use.key)
   if (changed.length > 0) await store.putMany('legs.json.enc', changed)
   if (places.length > 0) await store.putMany('places.json.enc', places.map((p) => ({ ...p, name: clean, updatedAt: now })))
-  void store.sync()
-  return undoFor(store, legs, places)
 }
 
 /** Samenvoegen met een gekozen plaats: de dagen krijgen de naam van `into`; heeft alleen `use` een punt, dan krijgt `into` dat. */
-export function mergePlaceInto(store: Store, use: PlaceUse, into: PlaceUse): Promise<() => Promise<void>> {
+export function mergePlaceInto(store: Tx, use: PlaceUse, into: PlaceUse): Promise<void> {
   return mergePlaces(store, { into, others: [use] })
 }
 
 /** Het punt weghalen: de plaats blijft als naam (in de dagen en de suggesties), zonder punt op de kaart. */
-export async function removePin(store: Store, use: PlaceUse): Promise<() => Promise<void>> {
+export async function removePin(store: Tx, use: PlaceUse): Promise<void> {
   const now = nowIso()
   const places = active(store.get('places.json.enc')).filter((p) => placeKey(p.name) === use.key)
   if (places.length > 0) await store.putMany('places.json.enc', places.map((p) => ({ ...p, updatedAt: now, deletedAt: now })))
-  void store.sync()
-  return undoFor(store, [], places)
 }
 
 /**
  * Een plaats verwijderen kan alleen als geen enkele dag hem gebruikt (anders zou een gelogde dag zijn plaats verliezen):
  * dan verdwijnt het punt en daarmee de plaats. Komt hij in dagen voor, dan hernoemen of samenvoegen.
  */
-export async function deletePlace(store: Store, use: PlaceUse): Promise<() => Promise<void>> {
+export async function deletePlace(store: Tx, use: PlaceUse): Promise<void> {
   if (use.days > 0) throw new Error('Plaats komt voor in dagen')
   return removePin(store, use)
 }
