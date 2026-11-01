@@ -446,8 +446,8 @@ export async function followTrip(store: Tx, tripId: string, before: DateRange | 
     }
   }
   if (changed.length > 0) await store.putMany('calendar.json.enc', changed)
-  // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land (geld op die datum gaat mee
-  // naar de trip).
+  // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land. Geld op die datum blijft bij
+  // zijn periode (nooit stil naar de trip); hoort het nergens meer bij, dan staat het in Nakijken.
   if (after) {
     const added: string[] = []
     for (let d = after.start; d <= after.end && added.length <= 400; d = addDays(d, 1)) if (!within(before, d)) added.push(d)

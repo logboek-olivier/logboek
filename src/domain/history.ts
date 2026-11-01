@@ -78,6 +78,9 @@ export function historyEntry(command: string, at: string, written: ReadonlyArray
   return { id: newId(), at, command, device: deviceId(), changes, undoneAt: null, updatedAt: at, deletedAt: null }
 }
 
+/** Een record dat zoveel later gewijzigd is dan de opdracht die hem maakte, is daarna bewerkt (een opdracht schrijft alles binnen een tel). */
+const LATER_MS = 5_000
+
 /**
  * Een record terug zoals vóór de regel: per veld de waarde vooraf, alleen waar nog de waarde erna staat (een latere
  * wijziging blijft staan). Een record dat de regel nieuw maakte, wordt verwijderd. Null: niets terug te zetten.
@@ -88,12 +91,15 @@ export function revertChange(
   now: string,
   /** Hoe een record weggaat (persoonlijke gegevens zonder inhoud, src/domain/tombstone.ts). */
   gone: (path: string, record: SyncRecord, now: string) => SyncRecord = (_path, record, at) => ({ ...record, updatedAt: at, deletedAt: at }),
+  /** Tijd van de opdracht: wat hij nieuw maakte en daarna nog gewijzigd werd, blijft staan (een latere bewerking gaat nooit stil verloren). */
+  entryAt?: string,
 ): SyncRecord | null {
   const next: Record<string, unknown> = { ...current }
   if (change.before === null) {
     // Nieuw als tombstone: weer zichtbaar; nieuw: weer weg.
     if (change.after.deletedAt) return current.deletedAt === change.after.deletedAt ? ({ ...current, deletedAt: null, updatedAt: now } as SyncRecord) : null
     if (current.deletedAt !== null) return null
+    if (entryAt && Date.parse(current.updatedAt) - Date.parse(entryAt) > LATER_MS) return null
     return gone(change.path, current, now)
   }
   let changed = false

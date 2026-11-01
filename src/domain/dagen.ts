@@ -18,6 +18,8 @@ export interface LogDayInput {
   date: string
   /** De gekozen trip; null = een nieuwe trip. */
   tripId: string | null
+  /** Olivier koos de trip zelf (src/model/leg-trip.ts, placeLeg). */
+  explicit?: boolean
   /** Naam als er een nieuwe trip komt. */
   newTripName: string
   fromPlace: string
@@ -38,7 +40,7 @@ export interface LogDayInput {
 export async function logDay(tx: Tx, input: LogDayInput): Promise<Leg> {
   const trips = tx.get('trips.json.enc')
   const legs = tx.get('legs.json.enc')
-  const place = placeLeg(trips, legs, input.tripId, input.date)
+  const place = placeLeg(trips, legs, input.tripId, input.date, input.explicit)
   let id = place.tripId ?? undefined
   if (id && place.extend) {
     const trip = active(trips).find((x) => x.id === id)

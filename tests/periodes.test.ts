@@ -108,7 +108,7 @@ describe('periodes aan land', () => {
     ])
   })
 
-  it('een trip over een thuisperiode maakt die korter; geld op die dagen gaat mee naar de trip', async () => {
+  it('een trip over een thuisperiode maakt die korter; geld blijft bij zijn periode (nooit stil verhuizen)', async () => {
     const s = await store()
     await landperiodeZetten(s, ['2027-03-01', '2027-03-02', '2027-03-03', '2027-03-04', '2027-03-05'], 'thuis')
     const home = s.list('periods.json.enc')[0]!
@@ -117,7 +117,8 @@ describe('periodes aan land', () => {
     const input: WeekInput = { name: 'Nepweek', type: 'skipper-charter', startDate: '2027-03-04', dayCount: 3, boat: '', boatModel: '', boatLengthFt: null, base: '', charter: '', area: '', participants: [], note: '' }
     const created = await inTx(s, startWeek, input, 'nl', '2027-01-01')
     expect(s.list('periods.json.enc').map((p) => [p.startDate, p.endDate])).toEqual([['2027-03-01', '2027-03-03']])
-    expect(s.list('transactions.json.enc').find((x) => x.id === 't1')?.tripId).toBe(created.id)
+    expect(created.id).toBeTruthy()
+    expect(s.list('transactions.json.enc').find((x) => x.id === 't1')?.tripId).toBe(home.id)
     expect(s.list('transactions.json.enc').find((x) => x.id === 't2')?.tripId).toBe(home.id)
     // De agenda: thuis tot de trip, daarna op het water.
     const index = buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc'))
@@ -162,7 +163,7 @@ describe('migratie naar het periodemodel', () => {
     stays: [],
   }
 
-  it('agendadagen worden aaneengesloten periodes, geld komt aan de periode van zijn datum (eerst rood: zonder migratie geen periodes)', () => {
+  it('agendadagen worden aaneengesloten periodes; geld koppelt de omzetting niet (eerst rood: zonder migratie geen periodes)', () => {
     const changes = migrationChanges(input, T)
     const stays = changes.filter((c) => c.path === 'periods.json.enc').map((c) => c.after as StayPeriod)
     expect(stays.map((p) => [p.id, p.kind, p.startDate, p.endDate])).toEqual([
@@ -175,9 +176,8 @@ describe('migratie naar het periodemodel', () => {
     const days = changes.filter((c) => c.path === 'calendar.json.enc').map((c) => c.after as CalendarDay)
     expect(days.map((d) => d.date).sort()).toEqual(['2026-10-05', '2026-10-07', '2026-10-20'])
     expect(days.every((d) => d.deletedAt !== null && d.type)).toBe(true)
-    const linked = new Map(changes.filter((c) => c.path === 'transactions.json.enc').map((c) => [c.after.id, (c.after as Transaction).tripId]))
-    // Alleen uitgaven op een dag aan land; op een tripdatum en bij inkomsten niets vanzelf (dat staat in Nakijken).
-    expect(Object.fromEntries(linked)).toEqual({ thuis: stayId('thuis', '2026-10-05'), vrij: stayId('vrij', '2026-10-20') })
+    // Geld zonder periode blijft zo (nooit stil koppelen); Nakijken stelt de periode van zijn datum voor.
+    expect(changes.filter((c) => c.path === 'transactions.json.enc')).toEqual([])
   })
 
   it('twee apparaten maken hetzelfde; een tweede keer verandert niets', () => {
@@ -288,7 +288,7 @@ describe('Nakijken', () => {
 })
 
 describe('reviewpunten periodes', () => {
-  it('verlengen ongedaan maken zet ook de periode aan land en het geld terug', async () => {
+  it('verlengen ongedaan maken zet ook de periode aan land terug; het geld bleef al staan', async () => {
     const { tripRange } = await import('../src/model/calendar')
     const { weekView } = await import('../src/model/weeks')
     const s = await store()
@@ -299,26 +299,26 @@ describe('reviewpunten periodes', () => {
     const view = weekView(s.list('trips.json.enc')[0]!, [])
     const undo = await periodeDatumsWijzigen(s, { view, start: '2027-06-01', end: '2027-06-06' })
     expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-07' })
-    expect(s.list('transactions.json.enc')[0]!.tripId).toBe('w')
+    // Het geld blijft bij de thuisperiode (nooit stil verhuizen).
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe(home.id)
     await undo()
     expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-06', endDate: '2027-06-10' })
     expect(s.list('transactions.json.enc')[0]!.tripId).toBe(home.id)
     expect(tripRange(s.list('trips.json.enc')[0]!, [])).toEqual({ start: '2027-06-01', end: '2027-06-05' })
   })
 
-  it('een inkomen gaat niet vanzelf naar een trip als die over de thuisperiode komt', async () => {
+  it('geld gaat nooit vanzelf naar een trip of uit zijn periode, ook niet als die dag uit de thuisperiode gaat', async () => {
     const s = await store()
     await landperiodeZetten(s, ['2027-07-01', '2027-07-02'], 'thuis')
     const home = s.list('periods.json.enc')[0]!
     await put(s, 'transactions.json.enc', tx('loon', '2027-07-02', { kind: 'loon', tripId: home.id }))
     await put(s, 'trips.json.enc', trip('w', { type: 'skipper-charter', startDate: '2027-07-02', endDate: '2027-07-04' }))
     await landperiodeZetten(s, ['2027-07-02'], null)
-    expect(s.list('transactions.json.enc')[0]!.tripId).toBeUndefined()
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe(home.id)
   })
 
-  it('overlappende periodes aan land: geld van de opgegane periode gaat mee', () => {
+  it('overlappende periodes aan land: de opgegane periode verdwijnt', () => {
     const plan = planStayDays([stay('a', 'thuis', '2026-11-01', '2026-11-10'), stay('b', 'vrij', '2026-11-05', '2026-11-07')], ['2026-11-06'], 'reis', () => false, T, () => 'nieuw')
-    expect(plan.previous.get('2026-11-06')).toEqual(new Set(['a', 'b']))
     expect(plan.changes.find((c) => c.after.id === 'b')?.after.deletedAt).not.toBeNull()
   })
 

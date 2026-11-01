@@ -187,9 +187,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('status').first().click()
     await expectSynced(page)
     const puts = (path: string) => github.requests.filter((r) => r.method === 'PUT' && r.url.includes(path)).length
-    // Periodemodel (docs/PERIODEMODEL.md): na de eerste geslaagde sync zet de app de agenda en het geld één keer om. De
-    // reisdag van het voorbeeld (met gegevens: blijft staan) en de thuis- en rustdagen worden periodes; de uitgave op
-    // een thuisdag komt aan die thuisperiode.
+    // Periodemodel (docs/PERIODEMODEL.md): na de eerste geslaagde sync zet de app de agenda één keer om. De reisdag van
+    // het voorbeeld (met gegevens: blijft staan) en de thuis- en rustdagen worden periodes; geld verhuist niet mee.
     await expect.poll(() => github.files.has('periods.json.enc'), { timeout: 30_000 }).toBe(true)
     await expectSynced(page)
     {
@@ -202,7 +201,11 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       expect(calendar.find((r) => r.id === 'dag:2026-10-25')?.deletedAt).toBeNull()
       expect(calendar.find((r) => r.id === 'dag:2026-11-10')?.deletedAt).not.toBeNull()
       const transactions = await read('transactions.json.enc')
-      expect((transactions.find((r) => r.id === 'upg-tx-thuis') as { tripId?: string } | undefined)?.tripId).toBe('periode:thuis:2026-11-10')
+      // Geld koppelt deze versie bij de omzetting niet vanzelf (nooit stil koppelen): het staat in Nakijken met een
+      // voorstel. Een vorige release mét periodemodel kan het bij zijn eigen omzetting al aan de thuisperiode gehangen
+      // hebben; dat laat deze versie staan (ook nooit stil ontkoppelen). Vanaf een release zonder periodemodel (job
+      // upgrade-ouder) blijft het dus ongekoppeld.
+      expect([undefined, 'periode:thuis:2026-11-10']).toContain((transactions.find((r) => r.id === 'upg-tx-thuis') as { tripId?: string } | undefined)?.tripId)
     }
     // Na de update controleert de app vanzelf (Controleer nu), met de schrijver per bestand uit de commits.
     await expect.poll(() => github.requests.some((r) => r.method === 'GET' && r.url.includes('/commits?path=')), { timeout: 30_000 }).toBe(true)

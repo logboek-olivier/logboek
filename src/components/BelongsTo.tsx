@@ -18,7 +18,11 @@ export function usePeriods(store: Store): Period[] {
   return useMemo(() => allPeriods(trips.filter((x) => x.deletedAt === null), legs.filter((x) => x.deletedAt === null), stays.filter((x) => x.deletedAt === null)), [trips, legs, stays])
 }
 
-export function useBelongsTo(store: Store, date: string, category: CostCategory, preset?: string) {
+/**
+ * `editing`: een bestaande uitgave. Hoort die bij geen (bestaande) periode, dan staat "Zonder periode" bovenaan en is die
+ * gekozen: opslaan verhuist hem nooit stil naar de periode van de datum.
+ */
+export function useBelongsTo(store: Store, date: string, category: CostCategory, preset?: string, editing = false) {
   const periods = usePeriods(store)
   const calendar = useCollection(store, 'calendar.json.enc')
   // Een zelf ingestelde dagtoestand (optie, onbeschikbaar, beschikbaar) op die dag.
@@ -28,15 +32,17 @@ export function useBelongsTo(store: Store, date: string, category: CostCategory,
     // Een vooraf gekozen periode (vanaf de periodepagina, of de huidige bij bewerken) staat er altijd bij.
     const given = preset ? periods.find((p) => p.id === preset) : undefined
     if (given && !result.options.some((o) => o.kind === 'periode' && o.period.id === given.id)) result.options.unshift({ kind: 'periode', period: given })
+    if (editing && !given) result.options.unshift({ kind: 'zonder', keep: preset ?? null })
     return result
-  }, [periods, date, category, preset, dayState])
-  const [chosen, setChosen] = useState<string | null>(preset ?? null)
+  }, [periods, date, category, preset, dayState, editing])
+  const [chosen, setChosen] = useState<string | null>(editing && !(preset && periods.some((p) => p.id === preset)) ? 'zonder' : (preset ?? null))
   const key = chosen && options.some((o) => targetKey(o) === chosen) ? chosen : targetKey(fallback)
   const current = options.find((o) => targetKey(o) === key) ?? fallback
   return { options, key, choose: setChosen, current }
 }
 
 export function targetLabel(target: ExpenseTarget, counter?: (period: Period) => string): string {
+  if (target.kind === 'zonder') return t('belongsTo.none')
   if (target.kind === 'nieuw') return t('belongsTo.new', { kind: t(`periodKind.${target.stayKind}`) })
   const p = target.period
   const name = counter ? counter(p) : p.name

@@ -1,15 +1,16 @@
-import { CalendarRange, ClipboardCheck, Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, Target, Trash2, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, History as HistoryIcon, Target, Trash2, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { t, type MessageKey } from '../i18n'
 import { useReviewItems } from '../components/ReviewNotice'
 import { useTrashItems } from './Trash'
+import { useHistoryRows } from './History'
 import type { Store } from '../storage/store'
 
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
 // hier ook.
 
-export type MoreScreen = 'periodes' | 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen' | 'nakijken' | 'prullenbak'
+export type MoreScreen = 'periodes' | 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen' | 'nakijken' | 'prullenbak' | 'geschiedenis'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
   { id: 'periodes', label: 'periods.title', hint: 'more.periodsHint', icon: CalendarRange },
@@ -38,7 +39,12 @@ export function More({ store, onOpen }: { store: Store; onOpen: (screen: MoreScr
   const base = demo ? ITEMS.filter((item) => item.id !== 'opslag' && item.id !== 'kluis' && item.id !== 'rekeningen') : ITEMS
   // De prullenbak alleen als er iets in ligt, onderaan (vóór Instellingen).
   const trash = useTrashItems(store).length
-  const withTrash = trash > 0 ? [...base.slice(0, -1), { id: 'prullenbak' as const, label: 'trash.title' as const, hint: 'more.trashHint' as const, icon: Trash2 }, ...base.slice(-1)] : base
+  const history = useHistoryRows(store).length > 0
+  const extra = [
+    ...(history ? [{ id: 'geschiedenis' as const, label: 'history.title' as const, hint: 'more.historyHint' as const, icon: HistoryIcon }] : []),
+    ...(trash > 0 ? [{ id: 'prullenbak' as const, label: 'trash.title' as const, hint: 'more.trashHint' as const, icon: Trash2 }] : []),
+  ]
+  const withTrash = [...base.slice(0, -1), ...extra, ...base.slice(-1)]
   const items = review > 0 && !demo ? [{ id: 'nakijken' as const, label: 'review.title' as const, hint: 'more.reviewHint' as const, icon: ClipboardCheck }, ...withTrash] : withTrash
   return (
     <section className="stack-lg">

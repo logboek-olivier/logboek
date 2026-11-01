@@ -22,20 +22,32 @@ export interface LegPlacement {
 
 /**
  * De trip voor een dag op `date`, uitgaande van de gekozen trip (null = nieuwe trip):
- * 1. de gekozen trip als de datum erin valt, of als hij zijn dagen volgt;
+ * 1. de gekozen trip als de datum erin valt, of als hij zijn dagen volgt en Olivier hem zelf koos (`explicit`);
  * 2. anders de trip waarin de datum valt (bij een wisseldag de laatst begonnen);
- * 3. anders de gekozen trip verlengd, als de datum hoogstens drie dagen ernaast ligt;
- * 4. anders een nieuwe trip.
+ * 3. anders de gekozen trip die zijn dagen volgt, als de datum hoogstens drie dagen naast zijn dagen ligt (een
+ *    voorgevulde trip slokt nooit een dag van weken later op);
+ * 4. anders de gekozen trip (met vaste datums) verlengd, als de datum hoogstens drie dagen ernaast ligt;
+ * 5. anders een nieuwe trip.
  */
-export function placeLeg(trips: readonly Trip[], legs: readonly Leg[], chosenId: string | null, date: string): LegPlacement {
+export function placeLeg(trips: readonly Trip[], legs: readonly Leg[], chosenId: string | null, date: string, explicit = false): LegPlacement {
   const live = active(trips)
   const chosen = chosenId ? live.find((x) => x.id === chosenId) : undefined
   const views = live.map((trip) => weekView(trip, legs)).filter((v) => v.startDate && v.endDate)
   const inside = (v: { startDate: string; endDate: string }) => v.startDate <= date && date <= v.endDate
   const chosenView = chosen ? weekView(chosen, legs) : null
-  if (chosen && (datesFollowDays(chosen) || (chosenView && inside(chosenView)))) return { tripId: chosen.id }
-  const containing = views.filter(inside).sort((a, b) => (a.startDate < b.startDate ? -1 : 1)).at(-1)
+  if (chosen && chosenView?.startDate && chosenView.endDate && inside(chosenView as { startDate: string; endDate: string })) return { tripId: chosen.id }
+  // Een trip die zijn dagen volgt, groeit mee met elke dag die Olivier er zelf in zet (de agenda toont een overlap).
+  const follows = !!chosen && datesFollowDays(chosen)
+  if (chosen && follows && explicit) return { tripId: chosen.id }
+  const containing = views.filter((v) => v.trip.id !== chosen?.id && inside(v)).sort((a, b) => (a.startDate < b.startDate ? -1 : 1)).at(-1)
   if (containing) return { tripId: containing.trip.id, ...(chosen ? { moved: true } : {}) }
+  // Vanzelf (een voorgevulde trip) alleen met een dag vlak naast zijn dagen: een tikfout in de datum rekt hem nooit
+  // maanden op, over periodes aan land en andere trips heen.
+  if (chosen && follows) {
+    const own = legs.filter((l) => l.tripId === chosen.id && l.deletedAt === null).map((l) => l.date).sort()
+    if (own.length === 0 || (daysBetween(own.at(-1)!, date) <= LEG_EXTEND_DAYS && daysBetween(date, own[0]!) <= LEG_EXTEND_DAYS)) return { tripId: chosen.id }
+    return { tripId: null, moved: true }
+  }
   if (chosen && chosenView?.startDate && chosenView.endDate) {
     const gap = date < chosenView.startDate ? daysBetween(date, chosenView.startDate) : daysBetween(chosenView.endDate, date)
     if (gap <= LEG_EXTEND_DAYS) return { tripId: chosen.id, extend: { start: date < chosenView.startDate ? date : chosenView.startDate, end: date > chosenView.endDate ? date : chosenView.endDate } }
