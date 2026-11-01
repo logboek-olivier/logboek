@@ -1,7 +1,6 @@
 import type { Tx } from '../domain/tx'
 import { parseShip } from './boats'
 import { active, compareLegs } from './derive'
-import { followTrip, tripRange } from './calendar'
 import { DEFAULT_WEEK_DAYS } from './weeks'
 import type { Leg, Trip } from './types'
 import { addDays } from '../basis/datum'
@@ -110,10 +109,6 @@ export async function fillGap(store: Tx, gap: Gap, value: string | number): Prom
     const trip = store.get('trips.json.enc').find((t) => t.id === gap.trip.id) ?? gap.trip
     const next = { ...trip, [gap.field]: value, ...(gap.field === 'startDate' && !trip.endDate ? { endDate: addDays(value as string, DEFAULT_WEEK_DAYS - 1) } : {}), updatedAt: now }
     await store.put('trips.json.enc', next)
-    if (gap.field === 'startDate') {
-      const legs = store.list('legs.json.enc')
-      await followTrip(store, trip.id, tripRange(trip, legs), tripRange(next, legs))
-    }
   } else {
     const leg = store.get('legs.json.enc').find((l) => l.id === gap.leg.id) ?? gap.leg
     await store.put('legs.json.enc', { ...leg, [gap.field]: value, updatedAt: now })

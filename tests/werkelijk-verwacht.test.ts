@@ -6,7 +6,7 @@ import { dayAverages } from '../src/model/costs'
 import { bookFixedCosts, bookingId, missingBookings } from '../src/model/fixed-bookings'
 import { reviewInput, reviewItems } from '../src/model/review'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
-import type { FixedCost, Transaction, WeekClosing } from '../src/model/types'
+import type { FixedCost, Transaction } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
@@ -65,14 +65,13 @@ describe('vaste lasten per voorbije maand geboekt', () => {
     await put(s, 'transactions.json.enc', tx('vast', { fixedCostId: 'huur', id: bookingId('huur', '2026-09'), date: '2026-09-30', amount: 500 }))
     expect(reviewItems(reviewInput(s)).some((i) => i.kind === 'geld-zonder-periode')).toBe(false)
     const index = buildIndex([], [], [])
-    const averages = dayAverages(s.list('transactions.json.enc'), [], index, '2026-10-10', { ...DEFAULT_SETTINGS, updatedAt: T, deletedAt: null }, null)
+    const averages = dayAverages(s.list('transactions.json.enc'), index, '2026-10-10', { ...DEFAULT_SETTINGS, updatedAt: T, deletedAt: null })
     expect(averages.thuis.days).toBe(0)
   })
 })
 
 describe('kosten werkelijk per maand', () => {
-  it('vast, los (zonder declaraties en investeringen) en de weekschatting verdeeld over de dagen van de week', () => {
-    const closing: WeekClosing = { id: 'week:2026-W44', week: '2026-W44', start: '2026-10-26', spent: { amount: 70, currency: 'EUR' }, updatedAt: T, deletedAt: null }
+  it('vast en los (zonder declaraties en investeringen)', () => {
     const rows = actualCosts(
       [
         tx('v', { fixedCostId: 'huur', date: '2026-10-31', amount: 550, amountEur: 550 }),
@@ -80,14 +79,8 @@ describe('kosten werkelijk per maand', () => {
         tx('d', { amount: 99, amountEur: 99, claimId: 'c' }),
         tx('i', { kind: 'investering', amount: 300, amountEur: 300 }),
       ],
-      [closing],
       '2026-11-03',
-      null,
     )
-    // 26 okt t/m 1 nov: zes dagen in oktober, één in november.
-    expect(rows).toEqual([
-      { month: '2026-11', fixedEur: 0, looseEur: 0, weekEur: 10, totalEur: 10, other: {} },
-      { month: '2026-10', fixedEur: 550, looseEur: 20, weekEur: 60, totalEur: 630, other: {} },
-    ])
+    expect(rows).toEqual([{ month: '2026-10', fixedEur: 550, looseEur: 20, totalEur: 570, other: {} }])
   })
 })

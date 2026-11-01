@@ -107,9 +107,8 @@ function fromEntry(reader: Reader, entry: HistoryEntry): TrashItem | null {
     const gone = was.filter((p) => !now.some((q) => q.id === p.id))
     if (!trip || gone.length === 0) return null
     const current = find(reader, 'trips.json.enc', trip.id) as Trip | undefined
-    // Al terug, of al bij een (andere) trip (een deelnemer hoort bij één trip), of de trip is weg: niet meer in de prullenbak.
-    const placed = new Set(active(reader.get('trips.json.enc')).flatMap((t) => (t.participants ?? []).map((q) => q.id)))
-    if (!current || current.deletedAt !== null || gone.every((p) => placed.has(p.id))) return null
+    // Al terug (of de trip is weg): niet meer in de prullenbak.
+    if (!current || current.deletedAt !== null || gone.every((p) => current.participants?.some((q) => q.id === p.id))) return null
     return item(`${gone.map((p) => p.firstName).join(', ')} · ${current.name}`, null)
   }
   if (kind === 'boot') {

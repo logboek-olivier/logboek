@@ -69,10 +69,11 @@ describe('nooit stil verhuizen', () => {
     expect(s.list('transactions.json.enc')[0]!.tripId).toBe(merged[0]!.id)
   })
 
-  it('een trip die zijn dagen volgt, slokt geen dag op die weken verderop ligt', () => {
+  it('een voorgevulde trip slokt nooit een dag op die erbuiten ligt; de datums veranderen niet', () => {
     const follow = trip('volgt', { startDate: '2026-10-10', endDate: '2026-10-11', datesFromDays: true })
     const legs: Leg[] = [{ id: 'l1', tripId: 'volgt', date: '2026-10-10', fromPlace: '', fromCountry: '', toPlace: '', toCountry: '', role: 'schipper', boat: '', nmInland: 0, nmSea: 0, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T0, deletedAt: null }]
-    expect(placeLeg([follow], legs, 'volgt', '2026-10-12').tripId).toBe('volgt')
+    expect(placeLeg([follow], legs, 'volgt', '2026-10-11').tripId).toBe('volgt')
+    expect(placeLeg([follow], legs, 'volgt', '2026-10-12')).toEqual({ tripId: null, moved: true })
     expect(placeLeg([follow], legs, 'volgt', '2026-12-01')).toEqual({ tripId: null, moved: true })
   })
 })
@@ -120,7 +121,7 @@ describe('geschiedenis', () => {
     await dagLoggen(s, { date: '2026-10-11', tripId: null, newTripName: 'Nep nieuw', fromPlace: 'Nephaven', toPlace: 'Nepbaai', role: 'schipper', boat: '', water: 'zee', nm: 5, nightHours: 0, wind: '', notes: '' })
     const created = historyRows(s).find((r) => r.entry.command === 'dagLoggen')!
     const tripId = s.list('trips.json.enc')[0]!.id
-    await dagLoggen(s, { date: '2026-10-12', tripId, newTripName: '', fromPlace: 'Nepbaai', toPlace: 'Nephaven', role: 'schipper', boat: '', water: 'zee', nm: 5, nightHours: 0, wind: '', notes: '' })
+    await dagLoggen(s, { date: '2026-10-12', tripId, explicit: true, newTripName: '', fromPlace: 'Nepbaai', toPlace: 'Nephaven', role: 'schipper', boat: '', water: 'zee', nm: 5, nightHours: 0, wind: '', notes: '' })
     await geschiedenisTerugzetten(s, created.entry.id)
     expect(s.list('trips.json.enc').map((x) => x.id)).toEqual([tripId])
     expect(s.list('legs.json.enc').map((l) => [l.date, l.tripId])).toEqual([['2026-10-12', tripId]])

@@ -4,25 +4,22 @@ import { formatDateRange } from '../format'
 import { getLang, t } from '../i18n'
 import { newTripName } from '../model/counters'
 import { currentSettings } from '../model/settings'
-import { tripOverlaps, type Overlap } from '../model/trip-ops'
-import { WEEK_TYPES, type Organisation, type Trip, type WeekType } from '../model/types'
+import { WEEK_TYPES, type Organisation, type WeekType } from '../model/types'
 import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, suggestTripName } from '../model/weeks'
 import { periodeMaken } from '../domain/trips'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
-import { OverlapSheet } from './TripSheets'
 import { useCollection } from './useCollection'
-import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
+import { organisationLabel, weekTypeLabel } from './WeekSheet'
 import { addDays, daysBetween, todayIso } from '../basis/datum'
 import { organisationChoices } from '../basis/organisatie'
 
 // Toevoegen → Trip: snel een trip in de planning zetten. Alleen startdatum en einddatum zijn nodig, dan Opslaan.
 // Naam en type krijgen een voorstel uit de vorige trip; organisatie, boot, gebied en deelnemers zijn optioneel en later
-// aan te vullen (Deze trip, Logboek of de agenda). Overlapt de nieuwe trip een bestaande, dan dezelfde keuze als bij
-// overlappende trips: samenvoegen, vervangen of de datums aanpassen.
+// aan te vullen (Deze trip, Logboek of de agenda). Trips mogen overlappen: geen melding, geen keuze.
 
-export function TripForm({ store, onDone, notify }: { store: Store; onDone: (message: string) => void; notify: Notify }) {
+export function TripForm({ store, onDone }: { store: Store; onDone: (message: string) => void; notify?: Notify }) {
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const today = todayIso()
@@ -45,8 +42,6 @@ export function TripForm({ store, onDone, notify }: { store: Store; onDone: (mes
   const suggestion = newTripName(trips, legs, settings, organisation, start, area, suggestTripName(previous, start, getLang()))
   const [people, setPeople] = useState('')
   const [busy, setBusy] = useState(false)
-  const [overlap, setOverlap] = useState<Overlap | null>(null)
-  const [editing, setEditing] = useState<Trip | null>(null)
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && end >= start && daysBetween(start, end) < MAX_WEEK_DAYS
 
   async function save(e: FormEvent) {
@@ -54,7 +49,7 @@ export function TripForm({ store, onDone, notify }: { store: Store; onDone: (mes
     if (!valid || busy) return
     setBusy(true)
     try {
-      const { result: trip } = await periodeMaken(
+      await periodeMaken(
         store,
         {
           name: name.trim() || suggestion,
@@ -74,28 +69,10 @@ export function TripForm({ store, onDone, notify }: { store: Store; onDone: (mes
         },
         getLang(),
       )
-      const found = tripOverlaps(store.list('trips.json.enc'), store.list('legs.json.enc')).find((o) => o.a.id === trip.id || o.b.id === trip.id)
-      if (found) setOverlap(found)
-      else onDone(t('week.started'))
+      onDone(t('week.started'))
     } finally {
       setBusy(false)
     }
-  }
-
-  if (editing) return <WeekSheet store={store} trip={editing} notify={notify} onClose={() => onDone(t('week.started'))} />
-  if (overlap) {
-    return (
-      <OverlapSheet
-        store={store}
-        overlap={overlap}
-        notify={notify}
-        onClose={() => onDone(t('week.started'))}
-        onEditTrip={(trip) => {
-          setOverlap(null)
-          setEditing(trip)
-        }}
-      />
-    )
   }
 
   return (

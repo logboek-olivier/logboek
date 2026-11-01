@@ -10,10 +10,8 @@ import { active, totalNm } from '../model/derive'
 import { guestLabel, participantName, returningGuests } from '../model/guests'
 import { stayName, type Period } from '../model/periods'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
-import { legOutsideCanExtend } from '../model/review'
 import { splitLegs } from '../model/leg-trip'
 import { activeStudents } from '../model/students'
-import { tripOverlaps } from '../model/trip-ops'
 import { type Leg, type Participant, type StayPeriod, type Transaction, type Trip, type WeekType } from '../model/types'
 import { missingDays, needsClosing, planWeek, studentWeek, weekView } from '../model/weeks'
 import { useIsDemo } from './DemoBar'
@@ -27,16 +25,15 @@ import { TripClaims } from './Claims'
 import { LegSheet, type Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { PeriodMoneyAddSheet, type MoneyAdd } from './PeriodMoneyAdd'
-import { OverlapNotices } from './TripSheets'
 import { TripHead, TripRouteSection } from './TripOverview'
 import { PeriodMenu } from './PeriodMenu'
 import { TripMoneySection } from './TripMoney'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
 import { LegView, ParticipantView, TransactionView } from './Views'
-import { CloseWeekSheet, WeekSheet } from './WeekSheet'
+import { CloseWeekSheet } from './WeekSheet'
 import { formatNm } from '../format'
-import { checklistToevoegen, dagBuitenPeriodeOplossen, terugkerendeGastBeantwoorden } from '../domain/trips'
+import { checklistToevoegen, terugkerendeGastBeantwoorden } from '../domain/trips'
 import { daysBetween, todayIso } from '../basis/datum'
 
 // Eén periodepagina, overal hetzelfde (Deze trip, het tripoverzicht uit de agenda, het Logboek, Vandaag en de lijst met
@@ -81,7 +78,6 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpe
   const curricula = effectiveCurricula(useCollection(store, 'curricula.json.enc'))
   const counters = useCounters(store)
   const [participant, setParticipant] = useState<Participant | null>(null)
-  const [otherTrip, setOtherTrip] = useState<Trip | null>(null)
   const [closing, setClosing] = useState(false)
   const [adding, setAdding] = useState<MoneyAdd | null>(null)
   const trip = trips.find((x) => x.id === given.id) ?? given
@@ -109,7 +105,6 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpe
         <>
           {/* 1. Overzicht */}
           <TripHead view={view} counter={counter} legs={legs} compact={mode === 'sheet'} onEdit={onEdit} menu={<PeriodMenu store={store} notify={notify} trip={trip} onDeleted={onDeleted} />} />
-          <OverlapNotices store={store} overlaps={tripOverlaps(trips, legs).filter((o) => o.a.id === trip.id || o.b.id === trip.id)} notify={notify} onEditTrip={setOtherTrip} />
           {missing.length > 0 && onAddDay && (
             <div className="notice">
               <p className="small">{t('trip.missingDays', { n: missing.length })}</p>
@@ -249,7 +244,6 @@ function WaterPeriod({ store, notify, mode, onAddDay, onEdit, onDeleted, planOpe
         </>
       )}
       {participant && <ParticipantView store={store} trip={trip} participant={participant} notify={notify} onClose={() => setParticipant(null)} onOpenStudent={openStudent} />}
-      {otherTrip && <WeekSheet key={otherTrip.id} store={store} trip={otherTrip} notify={notify} onClose={() => setOtherTrip(null)} />}
       {closing && <CloseWeekSheet store={store} trip={trip} notify={notify} onClose={() => setClosing(false)} />}
       {adding && <PeriodMoneyAddSheet store={store} what={adding} periodId={trip.id} title={nameWithCounter(trip, counter)} onClose={() => setAdding(null)} notify={notify} />}
     </div>
@@ -397,38 +391,23 @@ export function PeriodDays({ store, legs, notify, nm }: { store: Store; legs: re
   )
 }
 
-/** Dagen van deze trip die buiten zijn datums vallen: met één tik naar de trip van die datum (of de trip verlengen). */
+/** Dagen van deze trip die buiten zijn datums vallen: alleen ter informatie, te bewerken; de app verplaatst niets. */
 function OutsideDays({ store, trip, legs, notify }: { store: Store; trip: Trip; legs: readonly Leg[]; notify: Notify }) {
-  const trips = useCollection(store, 'trips.json.enc')
-  const all = useCollection(store, 'legs.json.enc')
   const [edit, setEdit] = useState<Leg | null>(null)
   return (
-    <div className="notice outside-days" role="alert">
-      <p className="small">{t('period.outsideDays', { n: legs.length, range: trip.startDate && trip.endDate ? formatDateRange(trip.startDate, trip.endDate) : '' })}</p>
+    <div className="stack-sm outside-days">
+      <p className="muted small">{t('period.outsideDays', { n: legs.length, range: trip.startDate && trip.endDate ? formatDateRange(trip.startDate, trip.endDate) : '' })}</p>
       <ul className="plain-list">
-        {legs.map((leg) => {
-          const target = active(trips).find((x) => x.id !== trip.id && weekView(x, all).startDate <= leg.date && leg.date <= weekView(x, all).endDate) ?? null
-          const canExtend = legOutsideCanExtend(leg, trip)
-          return (
-            <li key={leg.id} className="row wrap">
-              <span className="grow small">
-                {formatDate(leg.date)} · {[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ') || '–'}
-              </span>
-              {target || canExtend ? (
-                <button
-                  type="button"
-                  className="btn small primary"
-                  onClick={async () => notify(t('review.fixed'), await dagBuitenPeriodeOplossen(store, leg, trip, target))}
-                >
-                  {target ? t('review.moveTo', { name: target.name }) : t('review.extendTo', { name: trip.name, date: formatDate(leg.date) })}
-                </button>
-              ) : null}
-              <button type="button" className="btn small" onClick={() => setEdit(leg)}>
-                {t('review.editDay')}
-              </button>
-            </li>
-          )
-        })}
+        {legs.map((leg) => (
+          <li key={leg.id} className="row wrap">
+            <span className="grow small">
+              {formatDate(leg.date)} · {[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ') || '–'}
+            </span>
+            <button type="button" className="btn small" onClick={() => setEdit(leg)}>
+              {t('review.editDay')}
+            </button>
+          </li>
+        ))}
       </ul>
       {edit && <LegSheet store={store} leg={edit} notify={notify} onClose={() => setEdit(null)} />}
     </div>

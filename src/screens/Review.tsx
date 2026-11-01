@@ -3,30 +3,23 @@ import { useState } from 'react'
 import { useReviewItems } from '../components/ReviewNotice'
 import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
-import { OverlapNotices } from '../components/TripSheets'
-import { organisationLabel, WeekSheet, weekTypeLabel } from '../components/WeekSheet'
+import { organisationLabel, weekTypeLabel } from '../components/WeekSheet'
 import { formatDate, formatDateRange } from '../format'
 import { t, useLang, type Lang } from '../i18n'
 import { kindLabel } from '../i18n/labels'
 import type { Undo } from '../model/changes'
-import { LegSheet } from '../components/EditSheets'
-import { stayName } from '../model/periods'
-import {
-  legOutsideCanExtend,
-  type ReviewItem,
-} from '../model/review'
-import { WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } from '../model/types'
+import type { ReviewItem } from '../model/review'
+import { WORK_TYPES, type Organisation, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
-import { plaatsenSamenvoegen } from '../domain/plaatsen'
 import { tripTerugzetten } from '../domain/prullenbak'
 import { trashItemForTrip } from '../model/trash'
-import { openStorage } from '../navigation'
 import { defaultTripName } from '../model/trip-name'
-import { agendadagBijTrip, dagBeginAansluiten, dagenNaarTrip, tripVoorDagen, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
+import { tripVoorDagen, geldKoppelen, investeringssoortZetten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 import { organisationChoices } from '../basis/organisatie'
 
-// Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): twijfelgevallen en tegenstrijdigheden, elk met één knop die het
-// oplost (met ongedaan maken) en "Klopt zo". Zonder punten staat het scherm niet in Meer.
+// Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): vragen over wat ontbreekt (soort, organisatie, periode), elk met één
+// knop (met ongedaan maken) en "Klopt zo". Nooit een voorstel om iets uit de import te verbeteren, trips samen te voegen
+// of dagen te verplaatsen. Zonder punten staat het scherm niet in Meer.
 
 /** Soort als knop: werk met subtype, training of plezier. */
 const KIND_CHOICES: readonly WeekType[] = [...WORK_TYPES, 'zelf-trainen', 'zelf-cruisen']
@@ -42,8 +35,6 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
   const lang = useLang()
   const items = useReviewItems(store)
   const [busy, setBusy] = useState(false)
-  const [editTrip, setEditTrip] = useState<Trip | null>(null)
-  const [editLeg, setEditLeg] = useState<Leg | null>(null)
 
   async function run(action: () => Promise<Undo>, message = t('review.fixed')) {
     if (busy) return
@@ -56,8 +47,6 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
     }
   }
 
-  const overlaps = items.flatMap((i) => (i.kind === 'overlap-trips' ? [i.overlap] : []))
-  const rest = items.filter((i) => i.kind !== 'overlap-trips')
   const kinds = items.filter((i) => i.kind === 'soort')
 
   return (
@@ -77,26 +66,23 @@ export function Review({ store, notify }: { store: Store; notify: Notify }) {
           {t('review.acceptAllKinds', { n: kinds.length })}
         </button>
       )}
-      <OverlapNotices store={store} overlaps={overlaps} notify={notify} onEditTrip={setEditTrip} />
       <ul className="rows review-list">
-        {rest.map((item) => (
+        {items.map((item) => (
           <li key={item.key} className="card card-body review-item">
             <p>{describe(item)}</p>
             <div className="review-actions">
               {fixes(store, item, lang).map((fix) => (
-                <button key={fix.label} type="button" className={`btn small${fix.primary ? ' primary' : ''}`} disabled={busy} onClick={() => (fix.go ? fix.go() : fix.edit ? setEditLeg(fix.edit) : void run(fix.run))}>
+                <button key={fix.label} type="button" className={`btn small${fix.primary ? ' primary' : ''}`} disabled={busy} onClick={() => void run(fix.run)}>
                   {fix.label}
                 </button>
               ))}
               <button type="button" className="btn small link" disabled={busy} onClick={() => void run(() => nakijkenKloptZo(store, item), t('review.dismissed'))}>
-                {item.kind === 'aansluiting' || item.kind === 'plaatsen' ? t('review.notSame') : t('review.ok')}
+                {t('review.ok')}
               </button>
             </div>
           </li>
         ))}
       </ul>
-      {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
-      {editLeg && <LegSheet store={store} leg={editLeg} notify={notify} onClose={() => setEditLeg(null)} />}
     </section>
   )
 }
@@ -108,12 +94,6 @@ function describe(item: ReviewItem): string {
       return t('review.kindQuestion', { name: item.trip.name, range: range(item.trip.startDate, item.trip.endDate) })
     case 'organisatie':
       return t('review.orgQuestion', { name: item.trip.name, range: range(item.trip.startDate, item.trip.endDate) })
-    case 'overlap-land':
-      return t('review.landOverlap', { name: item.stay.name || t(`periodKind.${item.stay.kind}`), other: item.other.name, range: formatDateRange(item.from, item.to) })
-    case 'dag-buiten':
-      return t('review.legOutside', { date: formatDate(item.leg.date), route: [item.leg.fromPlace, item.leg.toPlace].filter(Boolean).join(' → ') || '–', trip: item.trip.name, range: range(item.trip.startDate, item.trip.endDate) })
-    case 'agendadag-in-trip':
-      return t('review.dayInTrip', { date: formatDate(item.day.date), type: t(`dayType.${item.day.type}`), trip: item.trip.name })
     case 'werkdag-zonder-trip':
       return t('review.workWithoutTrip', { range: formatDateRange(item.from, item.to) })
     case 'dag-zonder-periode':
@@ -122,18 +102,8 @@ function describe(item: ReviewItem): string {
       return t('review.daysWithoutTrip', { n: item.legs.length, range: formatDateRange(item.legs[0]!.date, item.legs.at(-1)!.date), name: item.tripName ?? t('review.unknownTrip') })
     case 'geld-zonder-periode':
       return t('review.moneyWithoutPeriod', { kind: kindLabel(item.tx.kind), date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
-    case 'plaatsen':
-      return t('review.placesSpelling', { a: item.from.name, b: item.into.name })
-    case 'aansluiting':
-      return t('review.placesJoin', { date: formatDate(item.leg.date), a: item.leg.fromPlace, b: item.previous.toPlace })
     case 'investering-soort':
       return t('review.investmentKind', { date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
-    case 'agendadag-in-periode':
-      return t('review.dayInStay', { date: formatDate(item.day.date), type: t(`dayType.${item.day.type}`), name: stayName(item.stay) })
-    case 'lange-trip':
-      return t('review.longTrip', { name: item.trip.name, range: formatDateRange(item.start, item.end), n: item.days })
-    case 'overlap-trips':
-      return ''
   }
 }
 
@@ -141,7 +111,7 @@ function range(start?: string, end?: string): string {
   return start && end ? formatDateRange(start, end) : start ? formatDate(start) : t('review.noDates')
 }
 
-type Fix = { label: string; primary?: boolean } & ({ run: () => Promise<Undo>; edit?: undefined; go?: undefined } | { edit: Leg; run?: undefined; go?: undefined } | { go: () => void; run?: undefined; edit?: undefined })
+type Fix = { label: string; primary?: boolean; run: () => Promise<Undo> }
 
 function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
   switch (item.kind) {
@@ -151,28 +121,12 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
       const order: Organisation[] = item.suggestion ? [item.suggestion, ...organisationChoices().filter((o) => o !== item.suggestion)] : organisationChoices()
       return order.map((org, i) => ({ label: organisationLabel(org), primary: i === 0 && !!item.suggestion, run: () => periodeOrganisatieZetten(store, item.trip, org) }))
     }
-    case 'overlap-land':
-      return [{ label: t('review.otherWins', { name: item.other.name }), primary: true, run: () => landperiodeInkorten(store, item.from, item.to, item.other) }]
-    case 'dag-buiten':
-      // Ver buiten de trip is de datum vast fout: dan de dag bewerken, nooit weken verlengen met één tik.
-      if (!item.target && !legOutsideCanExtend(item.leg, item.trip)) return [{ label: t('review.editDay'), primary: true, edit: item.leg }]
-      return [
-        {
-          label: item.target ? t('review.moveTo', { name: item.target.name }) : t('review.extendTo', { name: item.trip.name, date: formatDate(item.leg.date) }),
-          primary: true,
-          run: () => dagBuitenPeriodeOplossen(store, item.leg, item.trip, item.target),
-        },
-        { label: t('review.editDay'), edit: item.leg },
-      ]
-    case 'agendadag-in-trip':
-      return [{ label: t('review.belongsTo', { name: item.trip.name }), primary: true, run: () => agendadagBijTrip(store, item.day) }]
     case 'dagen-zonder-trip': {
       // Op id: een andere trip met dezelfde naam in de prullenbak telt niet.
       const restorable = !!item.tripName && !!trashItemForTrip(store, item.tripId)
       return [
         ...(restorable ? [{ label: t('review.restoreTrip', { name: item.tripName! }), primary: true, run: () => tripTerugzetten(store, item.tripId) }] : []),
-        ...(item.target ? [{ label: t('review.moveTo', { name: item.target.name }), primary: !restorable, run: () => dagenNaarTrip(store, item.legs, item.target!) }] : []),
-        { label: t('review.newTripForDays'), primary: !restorable && !item.target, run: () => tripVoorDagen(store, item.legs, item.tripName ?? defaultTripName(item.legs[0]!.boat || t('field.trip'), item.legs[0]!.date)) },
+        { label: t('review.newTripForDays'), primary: !restorable, run: () => tripVoorDagen(store, item.legs, item.tripName ?? defaultTripName(item.legs[0]!.boat || t('field.trip'), item.legs[0]!.date)) },
       ]
     }
     case 'werkdag-zonder-trip':
@@ -181,21 +135,7 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
       return [{ label: t('review.makePeriod'), primary: true, run: () => landperiodeMaken(store, item.stayKind, item.from, item.to) }]
     case 'geld-zonder-periode':
       return [{ label: item.target ? t('review.linkTo', { name: item.target.name }) : t('review.makeHome'), primary: true, run: () => geldKoppelen(store, item.tx, item.target) }]
-    case 'plaatsen':
-      return [{ label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), primary: true, run: () => plaatsenSamenvoegen(store, item.from, item.into) }]
-    case 'aansluiting':
-      // Eerst alleen deze dag; overal samenvoegen raakt ook andere trips en staat er daarom met het aantal dagen bij.
-      return [
-        { label: t('review.startAt', { name: item.previous.toPlace }), primary: true, run: () => dagBeginAansluiten(store, item.leg, item.previous) },
-        { label: t('review.mergeInto', { name: item.into.name, n: item.from.days }), run: () => plaatsenSamenvoegen(store, item.from, item.into) },
-      ]
     case 'investering-soort':
       return (['opleiding', 'uitrusting'] as const).map((c) => ({ label: t(`costCategory.${c}`), run: () => investeringssoortZetten(store, item.tx, c) }))
-    case 'agendadag-in-periode':
-      return [{ label: t('review.dayWins', { type: t(`dayType.${item.day.type}`) }), primary: true, run: () => dagtoestandUitLandperiode(store, item.day) }]
-    case 'lange-trip':
-      return [{ label: t('review.openRepair'), primary: true, go: openStorage }]
-    case 'overlap-trips':
-      return []
   }
 }

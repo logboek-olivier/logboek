@@ -86,9 +86,9 @@ describe('weken', () => {
     expect(cleanClosing({ rating: 7.5, lesson: 'x'.repeat(300) }).lesson).toHaveLength(200)
     expect(closingFor([closing('2026-10-30', { rating: 6 })], '2026-11-01')?.rating).toBe(6)
     expect(closingFor([closing('2026-10-30', { rating: 6 })], '2026-11-02')).toBeNull()
-    // Alleen "los uitgegeven", of alleen de geldstap (een lege afsluiting): ook afgesloten, zodat de kaart weg is.
-    expect(closingFor([closing('2026-10-30', { spent: { amount: 40, currency: 'EUR' } })], '2026-11-01')).not.toBeNull()
-    expect(weekToClose('2026-11-01', [closing('2026-10-30', { spent: { amount: 40, currency: 'EUR' } })])).toBeNull()
+    // Alleen de geldstap (een lege afsluiting), of een oude afsluiting met alleen "los uitgegeven": ook afgesloten.
+    expect(closingFor([closing('2026-10-30', {})], '2026-11-01')).not.toBeNull()
+    expect(weekToClose('2026-11-01', [closing('2026-10-30', {})])).toBeNull()
     expect(closingFor([{ ...closing('2026-10-30', { rating: 6 }), deletedAt: NOW }], '2026-11-01')).toBeNull()
   })
 })

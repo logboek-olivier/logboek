@@ -20,8 +20,6 @@ const WITHOUT_HISTORY: ReadonlySet<string> = new Set([
   'test',
   'demoVullen',
   'ongedaanMaken',
-  'koersenVastleggen',
-  'vasteLastenBoeken',
   'periodemodelMigreren',
   'studentenArchiveren',
   'studentenWissen',

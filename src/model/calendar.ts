@@ -2,7 +2,6 @@ import type { Tx } from '../domain/tx'
 import { active, lastMonths, round1, totalNm } from './derive'
 import { totals } from './money'
 import { weekView, type WeekView } from './weeks'
-import { setStayDays } from './periods'
 import { keepUnknownFields, type CalendarDay, type DayTravel, type DayType, type Leg, type PeriodKind, type Reminder, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, daysBetween, mondayOf, monthOf, todayIso } from '../basis/datum'
@@ -413,47 +412,7 @@ export function tripRange(trip: Trip, legs: readonly Leg[]): DateRange | null {
   return isDate(view.startDate) && isDate(view.endDate) && view.startDate <= view.endDate ? { start: view.startDate, end: view.endDate } : null
 }
 
-function hasDetails(day: CalendarDay): boolean {
-  return !!(day.note || day.location || day.travel?.from || day.travel?.to || day.travel?.flight)
-}
 
-const within = (range: DateRange | null, date: string) => !!range && range.start <= date && date <= range.end
-
-/**
- * Een trip maken, verlengen of verplaatsen werkt de agenda direct bij. Op dagen die er nieuw bij komen, maakt een zelf
- * ingestelde andere dagsoort plaats voor de trip (met een notitie, plaats of reisgegevens blijft de dag als werk
- * staan, zodat er niets verloren gaat). Op dagen die eraf gaan, vervalt een zelf ingestelde werkdag zonder gegevens
- * (bijvoorbeeld alleen een andere boot), tenzij een andere trip die dag nog dekt.
- */
-export async function followTrip(store: Tx, tripId: string, before: DateRange | null, after: DateRange | null): Promise<void> {
-  if (before && after && before.start === after.start && before.end === after.end) return
-  const legs = store.list('legs.json.enc')
-  const others = store
-    .list('trips.json.enc')
-    .filter((t) => t.id !== tripId)
-    .map((t) => tripRange(t, legs))
-    .filter((r): r is DateRange => r !== null)
-  const now = new Date().toISOString()
-  const changed: CalendarDay[] = []
-  for (const day of store.list('calendar.json.enc')) {
-    const added = within(after, day.date) && !within(before, day.date)
-    const dropped = within(before, day.date) && !within(after, day.date)
-    if (added) {
-      if (day.type !== 'werk' && hasDetails(day)) changed.push({ ...day, type: 'werk', updatedAt: now })
-      else if (!hasDetails(day) && (day.type !== 'werk' || !day.boat)) changed.push({ ...day, updatedAt: now, deletedAt: now })
-    } else if (dropped && day.type === 'werk' && !hasDetails(day) && !others.some((r) => within(r, day.date))) {
-      changed.push({ ...day, updatedAt: now, deletedAt: now })
-    }
-  }
-  if (changed.length > 0) await store.putMany('calendar.json.enc', changed)
-  // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land. Geld op die datum blijft bij
-  // zijn periode (nooit stil naar de trip); hoort het nergens meer bij, dan staat het in Nakijken.
-  if (after) {
-    const added: string[] = []
-    for (let d = after.start; d <= after.end && added.length <= 400; d = addDays(d, 1)) if (!within(before, d)) added.push(d)
-    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= after.end && st.endDate >= after.start)) await setStayDays(store, added, null, {})
-  }
-}
 
 /** Trips die met werk op `from`–`to` langer kunnen worden: eindigen hoogstens 3 dagen ervoor of beginnen hoogstens 3 dagen erna. */
 export const EXTEND_GAP_DAYS = 3
@@ -474,30 +433,12 @@ export function extendOptions(index: CalendarIndex, from: string, to: string): T
   return out
 }
 
-/**
- * Een andere dagsoort op de eerste of laatste dag van een trip: de trip wordt een dag korter (de eerste en laatste dag
- * van een trip zijn altijd werk). Niet bij een trip van één dag of als die dag een gelogde etappe van de trip heeft.
- */
-export function shrinkFor(index: CalendarIndex, date: string, type: DayType): TripResize | null {
-  if (type === 'werk') return null
-  const legs = index.legsByDate.get(date) ?? []
-  for (const view of index.views) {
-    if (view.startDate === view.endDate || legs.some((l) => l.tripId === view.trip.id)) continue
-    if (view.endDate === date) return { view, start: view.startDate, end: addDays(date, -1) }
-    if (view.startDate === date) return { view, start: addDays(date, 1), end: view.endDate }
-  }
-  return null
-}
-
-/** Trip verlengen of inkorten vanuit de agenda. De agenda volgt (zelf ingestelde dagen, periodes aan land). */
+/** Trip verlengen vanuit de agenda (een knop met de nieuwe datum): alleen begin en eind van de trip veranderen. */
 export async function resizeTrip(store: Tx, change: TripResize): Promise<void> {
   const before = store.list('trips.json.enc').find((t) => t.id === change.view.trip.id) ?? change.view.trip
-  const oldRange = tripRange(before, store.list('legs.json.enc'))
-  // Verlengen of inkorten in de agenda is zelf de datums kiezen: die volgen de dagen daarna niet meer.
   const { datesFromDays: _follows, ...fixed } = before
   void _follows
   await store.put('trips.json.enc', { ...fixed, startDate: change.start, endDate: change.end, updatedAt: store.now })
-  await followTrip(store, before.id, oldRange, { start: change.start, end: change.end })
 }
 
 // ---------- Geld per werkdag ----------

@@ -10,7 +10,7 @@ import { RouteMap } from './LazyMap'
 import { boatLine } from './boat-line'
 import { useCounters } from './useCounters'
 import { ViewRows } from './Views'
-import { dayInfo, dayLabelKey, extendOptions, shrinkFor, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
+import { dayInfo, dayLabelKey, extendOptions, stayTravel, type CalendarIndex, type TripResize } from '../model/calendar'
 import { stayName } from '../model/periods'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { kindLabel } from '../i18n/labels'
@@ -95,17 +95,16 @@ export function DaySheet({
       return
     }
     setWater(false)
-    const shrink = shrinkFor(index, date, next)
-    // Midden in een trip hoort de dag bij de trip (één periode per dag): alleen de eerste of laatste dag kan eraf.
-    if (info.trips.length > 0 && !shrink) {
+    // Een dag in een trip hoort bij de trip: de app maakt een trip nooit zelf korter. Andere datums kies je in Trip
+    // bewerken.
+    if (info.trips.length > 0) {
       notify(t('day.inTrip', { name: info.trips.at(-1)!.trip.name }))
       return
     }
-    // De eerste of laatste dag van een trip is altijd werk: een andere dagsoort maakt de trip een dag korter. Reis,
-    // thuis of vrij: de dag komt in een periode van die soort (een aangrenzende wordt langer); een dagtoestand
+    // Reis, thuis of vrij: de dag komt in een periode van die soort (een aangrenzende wordt langer); een dagtoestand
     // (beschikbaar, optie, onbeschikbaar) hoort bij een dag zonder periode.
-    const undo = await dagsoortKiezen(store, date, next, details(next), next === 'reis' ? { travel: { from, to } } : {}, shrink, STAY_FROM_DAY[next] ?? null)
-    notify(shrink ? resized(shrink) : t('day.kindSaved', { kind: t(`dayType.${next}`) }), undo)
+    const undo = await dagsoortKiezen(store, date, next, details(next), next === 'reis' ? { travel: { from, to } } : {}, STAY_FROM_DAY[next] ?? null)
+    notify(t('day.kindSaved', { kind: t(`dayType.${next}`) }), undo)
   }
 
   async function extendTrip(option: TripResize) {

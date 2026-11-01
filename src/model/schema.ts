@@ -17,7 +17,9 @@ export const SCHEMA_VERSION = 1
 // 4: organisaties in de instellingen (`organisation` is elk id uit Instellingen → Organisaties). Een oudere build kent
 // alleen Sailing Virgins en Yacht Week en zou het salaris, de uitbetaling en de beginnummers van een eigen organisatie
 // bij het opslaan weggooien.
-export const WRITER_VERSION = 4
+// 5: start- en einddatum van een trip zijn gewone velden (CLAUDE.md, uitgangspunten 1, 2 en 5). Een oudere build rekent
+// ze uit de dagen, verlengt of verkort trips vanzelf en zet koppelingen "terug"; dat mag niet meer over deze bestanden.
+export const WRITER_VERSION = 5
 
 let writer = WRITER_VERSION
 

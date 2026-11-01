@@ -73,18 +73,8 @@ describe('verwijderen en ongedaan maken', () => {
     expect(s.list('transactions.json.enc')[0]!.updatedAt > T0).toBe(true)
   })
 
-  it('de laatste dag van een tocht neemt de tocht mee; ongedaan maken zet beide terug', async () => {
-    const s = await store()
-    await putMany(s, 'trips.json.enc', [trip('a', 'Tocht A')])
-    await putMany(s, 'legs.json.enc', [leg('l1', 'a', '2026-05-01')])
-    const undo = await dagVerwijderen(s, s.list('legs.json.enc')[0]!)
-    expect(s.list('trips.json.enc')).toHaveLength(0)
-    await undo()
-    expect(s.list('trips.json.enc')).toHaveLength(1)
-    expect(s.list('legs.json.enc')).toHaveLength(1)
-  })
 
-  it('de laatste dag van een trip waar iets aan hangt (fooi, deelnemers, eigen salaris) of met eigen datums: de trip blijft', async () => {
+  it('de laatste dag van een trip verwijderen: de trip blijft altijd staan (de app verwijdert nooit vanzelf een trip)', async () => {
     const s = await store()
     // Een trip die de dagen volgt, met een fooi; een met deelnemers; een met een eigen salaris; een met eigen datums.
     await putMany(s, 'trips.json.enc', [

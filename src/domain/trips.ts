@@ -1,16 +1,15 @@
-// Opdrachten voor trips: maken, bewerken, afronden, deelnemers, samenvoegen en verwijderen, teller, checklists, boten en Nakijken. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
+// Opdrachten voor trips: maken, bewerken, afronden, deelnemers en verwijderen, teller, checklists, boten en Nakijken. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
 import { confirmBoats, deleteBoat, mergeBoat, skipBoats } from '../model/boats'
 import { addChecklist, deleteChecklist, saveChecklist, toggleCheck } from '../model/checklists'
 import { answerDoubt, saveFirstNumbers } from '../model/counters'
 import { renameTrip } from '../model/edit'
 import { answerReturning } from '../model/guests'
-import { acceptAllKinds, dismissReview, fixDayInStay, fixDayInTrip, fixLandOverlap, fixLegOutside, fixLegStart, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, moveLegsTo, setInvestmentCategory, setTripKind, setTripOrganisation, tripForLegs } from '../model/review'
-import { changeParticipant, deleteTripWith, mergeTrips, removeParticipant, replaceTrip } from '../model/trip-ops'
+import { acceptAllKinds, dismissReview, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, setInvestmentCategory, setTripKind, setTripOrganisation, tripForLegs } from '../model/review'
+import { changeParticipant, deleteTripWith, removeParticipant } from '../model/trip-ops'
 import { addParticipant, closeWeek, startWeek, updateWeek } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
 
-export const agendadagBijTrip = opdracht('agendadagBijTrip', fixDayInTrip)
 export const bootVerwijderen = opdracht('bootVerwijderen', deleteBoat)
 export const botenBevestigen = opdracht('botenBevestigen', confirmBoats)
 export const botenOverslaan = opdracht('botenOverslaan', skipBoats)
@@ -19,15 +18,11 @@ export const checklistAfvinken = opdracht('checklistAfvinken', toggleCheck)
 export const checklistOpslaan = opdracht('checklistOpslaan', saveChecklist)
 export const checklistToevoegen = opdrachtMet('checklistToevoegen', addChecklist)
 export const checklistVerwijderen = opdracht('checklistVerwijderen', deleteChecklist)
-export const dagBeginAansluiten = opdracht('dagBeginAansluiten', fixLegStart)
-export const dagBuitenPeriodeOplossen = opdracht('dagBuitenPeriodeOplossen', fixLegOutside)
-export const dagtoestandUitLandperiode = opdracht('dagtoestandUitLandperiode', fixDayInStay)
 export const deelnemerToevoegen = opdracht('deelnemerToevoegen', addParticipant)
 export const deelnemerVerwijderen = opdracht('deelnemerVerwijderen', removeParticipant)
 export const deelnemerWijzigen = opdracht('deelnemerWijzigen', changeParticipant)
 export const geldKoppelen = opdracht('geldKoppelen', fixMoneyWithoutPeriod)
 export const investeringssoortZetten = opdracht('investeringssoortZetten', setInvestmentCategory)
-export const landperiodeInkorten = opdracht('landperiodeInkorten', fixLandOverlap)
 export const landperiodeMaken = opdracht('landperiodeMaken', makeStayFor)
 export const nakijkenKloptZo = opdracht('nakijkenKloptZo', dismissReview)
 export const organisatieBeantwoorden = opdracht('organisatieBeantwoorden', answerDoubt)
@@ -38,11 +33,8 @@ export const periodeMaken = opdrachtMet('periodeMaken', startWeek)
 export const periodeMakenOverDagen = opdracht('periodeMakenOverDagen', makeTripFor)
 export const periodeOrganisatieZetten = opdracht('periodeOrganisatieZetten', setTripOrganisation)
 export const periodeSoortZetten = opdracht('periodeSoortZetten', setTripKind)
-export const periodeVervangen = opdracht('periodeVervangen', replaceTrip)
 export const periodeVerwijderen = opdracht('periodeVerwijderen', deleteTripWith)
-export const samenvoegen = opdracht('samenvoegen', mergeTrips)
 export const soortenOvernemen = opdracht('soortenOvernemen', acceptAllKinds)
 export const tellerBeginnummersOpslaan = opdracht('tellerBeginnummersOpslaan', saveFirstNumbers)
 export const terugkerendeGastBeantwoorden = opdracht('terugkerendeGastBeantwoorden', answerReturning)
-export const dagenNaarTrip = opdracht('dagenNaarTrip', moveLegsTo)
 export const tripVoorDagen = opdracht('tripVoorDagen', tripForLegs)

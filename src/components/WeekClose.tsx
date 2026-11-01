@@ -12,8 +12,7 @@ import { organisationLabel } from '../i18n/labels'
 import { useCounters } from './useCounters'
 import type { CalendarIndex } from '../model/calendar'
 import { canClose, closingFor, LESSON_MAX, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
-import { CURRENCIES, type Currency, type WeekClosing } from '../model/types'
-import { currentSettings } from '../model/settings'
+import type { Currency, WeekClosing } from '../model/types'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -21,7 +20,7 @@ import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { weekAfsluitenMetGeld, weekafsluitingVerwijderen } from '../domain/termijnen'
-import { amountInput, parseAmount, parseStand } from '../basis/bedrag'
+import { parseStand } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
 import { organisationChoices } from '../basis/organisatie'
 
@@ -150,27 +149,21 @@ function useMoneyStep(store: Store, enabled: boolean) {
 }
 
 function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: string; initial: WeekClosing | null; onSaved: (undo?: () => Promise<void>, message?: string) => void }) {
-  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   // De geldstap hoort bij het afsluiten, niet bij het later bewerken van een afsluiting.
   const money = useMoneyStep(store, initial === null)
   const [busy, setBusy] = useState(false)
   const [rating, setRating] = useState<number | null>(initial?.rating ?? null)
   const [lesson, setLesson] = useState(initial?.lesson ?? '')
-  // Eén getal: ongeveer los uitgegeven deze week (telt als variabele kosten van die week). Leeg = niet ingevuld.
-  const [spent, setSpent] = useState(initial?.spent ? amountInput(initial.spent.amount) : '')
-  const [currency, setCurrency] = useState<Currency>(initial?.spent?.currency ?? settings.lastCurrency)
-  const spentValue = spent.trim() === '' ? null : parseAmount(spent)
-  const spentInvalid = spent.trim() !== '' && spentValue === null
 
   async function save(e: FormEvent) {
     e.preventDefault()
-    if (spentInvalid || money.invalid || busy) return
+    if (money.invalid || busy) return
     setBusy(true)
     try {
       // De geldstap eerst (alleen wat is ingevuld of aangevinkt; één ongedaan maken voor alles daarvan), dan de afsluiting:
       // zodra die er staat, is de kaart weg.
       const step = isEmptyStep(money.step) ? null : money.step
-      const { result, undo } = await weekAfsluitenMetGeld(store, date, { rating, lesson, spent: spentValue !== null ? { amount: spentValue, currency } : null }, step, todayIso(), getRates())
+      const { result, undo } = await weekAfsluitenMetGeld(store, date, { rating, lesson }, step, todayIso(), getRates())
       // Zonder koers is een uitbetaling in gemengde valuta niet op te tellen: dan zeggen we dat, zonder te boeken.
       if (step) onSaved(undo, result.skipped.length > 0 ? t('weekMoney.skipped', { orgs: result.skipped.map((o) => organisationLabel(o)).join(', ') }) : undefined)
       else onSaved()
@@ -195,24 +188,8 @@ function WeekCloseForm({ store, date, initial, onSaved }: { store: Store; date: 
         {t('weekClose.lesson')}
         <input type="text" autoComplete="off" autoCapitalize="sentences" maxLength={LESSON_MAX} placeholder={t('weekClose.lessonPlaceholder')} value={lesson} onChange={(e) => setLesson(e.target.value)} />
       </label>
-      <div className="row">
-        <label className="grow">
-          {t('weekClose.spent')}
-          <input type="text" inputMode="decimal" autoComplete="off" value={spent} onChange={(e) => setSpent(e.target.value)} />
-        </label>
-        <label>
-          {t('field.currency')}
-          <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
       {money.view}
-      <button type="submit" className="btn primary" disabled={busy || spentInvalid || money.invalid || (rating === null && lesson.trim() === '' && spentValue === null && isEmptyStep(money.step))}>
+      <button type="submit" className="btn primary" disabled={busy || money.invalid || (rating === null && lesson.trim() === '' && isEmptyStep(money.step))}>
         <Icon icon={CalendarCheck} />
         {t('weekClose.save')}
       </button>

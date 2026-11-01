@@ -216,15 +216,14 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
  */
 function ForecastSection({ store, input, settings, index, period }: { store: Store; input: PositionInput; settings: Settings; index: CalendarIndex; period: Period }) {
   const fixed = useCollection(store, 'fixedcosts.json.enc')
-  const closings = useCollection(store, 'weekreviews.json.enc')
   const counters = useCounters(store)
   const today = todayIso()
   // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten. Alleen
   // opnieuw rekenen als de gegevens veranderen (de vooruitblik loopt over alle trips, dagen en transacties).
   const f = useMemo(() => {
-    const averages = dayAverages(input.transactions, closings, index, today, settings, input.rates)
+    const averages = dayAverages(input.transactions, index, today, settings)
     return forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index }, period)
-  }, [input, closings, index, today, settings, fixed, period])
+  }, [input, index, today, settings, fixed, period])
   if (f.items.length === 0 && f.months.every((m) => m.eur === null)) return null
   // Maanden zonder gegevens aan het begin laten we weg (vóór de eerste stand is er niets te tekenen).
   const first = f.months.findIndex((m) => m.eur !== null)

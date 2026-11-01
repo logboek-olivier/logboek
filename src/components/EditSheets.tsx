@@ -1,7 +1,6 @@
 import { BelongsTo, useBelongsTo } from './BelongsTo'
 import { expenseCategory, kindForCategory, sourceOnSave } from '../model/expenses'
 import { placeLeg } from '../model/leg-trip'
-import { weekView } from '../model/weeks'
 import { PlacementHint } from './PlacementHint'
 import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -295,7 +294,6 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
     const [nmInland, nmSea, nmTidal, nightHours] = numbers as number[]
     setBusy(true)
     try {
-      const extendTrip = placement.extend && placement.tripId ? trips.find((x) => x.id === placement.tripId) : undefined
       await dagBewerkenMetTrip(
         store,
         leg,
@@ -317,7 +315,6 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
           notes: notes.trim(),
         },
         target(),
-        extendTrip && placement.extend ? { view: weekView(extendTrip, legs), start: placement.extend.start, end: placement.extend.end } : null,
       )
       onClose()
       notify(t('toast.saved'))

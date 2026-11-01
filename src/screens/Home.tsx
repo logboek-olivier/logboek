@@ -1,9 +1,9 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BottomBar, type Tab } from '../components/BottomBar'
 import { useIsDemo } from '../components/DemoBar'
 import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
-import { getRates, loadRates, subscribeRates } from '../model/rates'
+import { getRates, loadRates } from '../model/rates'
 import { Toast, type ToastMessage } from '../components/Toast'
 import { recordError, setScreen } from '../errors'
 import { onBack } from '../back'
@@ -140,11 +140,9 @@ export function Home({ store }: { store: Store }) {
 
   setScreen(SCREEN_NAMES[screen])
 
-  // Wisselkoersen (public/rates.json, zelfde origin) één keer per sessie laden; de gebruikte koers opslaan bij
-  // transacties zodra die definitief is, pas na een geslaagde sync.
+  // Wisselkoersen (public/rates.json, zelfde origin) één keer per sessie laden. Bedragen worden ermee omgerekend bij het
+  // tonen; de app schrijft ze nooit vanzelf bij bestaande transacties.
   const status = useSyncStatus(store)
-  const rates = useSyncExternalStore(subscribeRates, getRates)
-  const backfilled = useRef(false)
   useEffect(() => {
     if (!getRates()) void loadRates()
   }, [])
@@ -166,22 +164,17 @@ export function Home({ store }: { store: Store }) {
         // Kaarten offline zetten is een extraatje: een mislukte poging komt de volgende sessie terug.
       })
   }, [store, demo, tripsVersion])
-  useEffect(() => {
-    if (backfilled.current || !rates || !store.hasSynced()) return
-    backfilled.current = true
-    void import('../domain/geld').then((m) => m.koersenVastleggen(store, rates))
-  }, [store, rates, status])
   // Periodemodel: de agenda en het geld één keer omzetten, na de eerste geslaagde sync (src/model/migrate-periods.ts).
   const migrating = useRef(false)
   useEffect(() => {
     if (migrating.current || demo || !store.hasSynced()) return
     migrating.current = true
     // De opdrachten pas laden als ze nodig zijn (snel openen: alleen Vandaag laadt direct).
-    void Promise.all([import('../domain/agenda'), import('../domain/geld'), import('../domain/prullenbak')])
-      .then(async ([agenda, geld, prullenbak]) => {
+    void Promise.all([import('../domain/agenda'), import('../domain/prullenbak')])
+      .then(async ([agenda, prullenbak]) => {
+        // Alleen een noodzakelijke omzetting van het dataformaat (één keer) en opruimen na 30 dagen (regel 14). Verder
+        // verandert de app niets zonder een tik (CLAUDE.md, uitgangspunt 5).
         await agenda.periodemodelMigreren(store)
-        // Vaste lasten: elke voorbije maand als echte uitgave (Geld → Werkelijk).
-        await geld.vasteLastenBoeken(store, todayIso())
         // Na 30 dagen definitief: de geschiedenis en de prullenbak verliezen hun inhoud.
         await prullenbak.geschiedenisOpruimen(store)
       })

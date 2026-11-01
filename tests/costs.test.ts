@@ -4,7 +4,7 @@ import { buildIndex } from '../src/model/calendar'
 import { costDayType, dayAverages, expectedCosts, fixedAmount, fixedInMonth, MIN_LEARNED_DAYS } from '../src/model/costs'
 import { forecast } from '../src/model/position'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
-import type { CalendarDay, FixedCost, Settings, Transaction, WeekClosing } from '../src/model/types'
+import type { CalendarDay, FixedCost, Settings, Transaction } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
@@ -75,22 +75,20 @@ describe('variabele kosten per dagsoort', () => {
   })
 
   it('eigen gemiddelde met genoeg dagen; anders het standaardbedrag; anders onbekend', () => {
-    // Vier weken thuis met elke week een schatting van 140 (20 per dag) en een uitgave van 14 op een maandag.
+    // Vier weken thuis met elke week een uitgave van 14 op een maandag.
     const calendar: CalendarDay[] = []
-    const closings: WeekClosing[] = []
     const transactions: Transaction[] = []
     const monday = '2026-09-28'
     for (let w = 0; w < 4; w++) {
       const start = addDays(monday, w * 7)
       for (let i = 0; i < 7; i++) calendar.push(day(addDays(start, i), 'thuis'))
-      closings.push({ id: `week:${w}`, week: `2026-W${41 + w}`, start, spent: { amount: 140, currency: 'EUR' }, updatedAt: T0, deletedAt: null })
       transactions.push(kosten(`k${w}`, start, 14))
     }
     const index = buildIndex(calendar, [], [])
-    const a = dayAverages(transactions, closings, index, TODAY, settings({ costDefaults: { reis: 45 } }), null)
+    const a = dayAverages(transactions, index, TODAY, settings({ costDefaults: { reis: 45 } }))
     expect(a.thuis.source).toBe('geleerd')
     expect(a.thuis.days).toBeGreaterThanOrEqual(MIN_LEARNED_DAYS)
-    expect(a.thuis.perDay).toBe(22)
+    expect(a.thuis.perDay).toBe(2)
     expect(a.reis).toEqual({ perDay: 45, source: 'standaard', days: 0 })
     expect(a.werk).toEqual({ perDay: 0, source: 'onbekend', days: 0 })
   })

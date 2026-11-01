@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { geschiedenisOpruimen, geschiedenisTerugzetten, terugzetten, tripTerugzetten } from '../src/domain/prullenbak'
 import { termijnAfronden } from '../src/domain/termijnen'
 import { reviewInput, reviewItems } from '../src/model/review'
-import { bootVerwijderen, deelnemerToevoegen, deelnemerVerwijderen, periodeVervangen, periodeVerwijderen } from '../src/domain/trips'
+import { bootVerwijderen, deelnemerToevoegen, deelnemerVerwijderen, periodeVerwijderen } from '../src/domain/trips'
 import { dagVerwijderen } from '../src/domain/dagen'
 import { studentenWissen } from '../src/domain/training'
 import { boatList } from '../src/model/boats'
@@ -172,17 +172,6 @@ describe('van vóór de geschiedenis', () => {
     expect(s.list('legs.json.enc').filter((l) => l.tripId === 'sv2').map((l) => l.id)).toEqual(['eigen'])
   })
 
-  it('vervangen (overlap) staat in de prullenbak; terugzetten splitst de dagen weer', async () => {
-    const s = await filled()
-    await put(s, 'trips.json.enc', trip('b', { startDate: '2026-10-14', endDate: '2026-10-20' }))
-    await periodeVervangen(s, s.list('trips.json.enc').find((t) => t.id === 'b')!, s.list('trips.json.enc').find((t) => t.id === 'a')!)
-    expect(s.list('legs.json.enc').every((l) => l.tripId === 'b')).toBe(true)
-    const [item] = trashItems(s)
-    expect(item).toMatchObject({ kind: 'periode', title: 'Neptrip a', counts: { days: 2, money: 1 } })
-    await terugzetten(s, item!.key)
-    expect(s.list('legs.json.enc').every((l) => l.tripId === 'a')).toBe(true)
-    expect(s.list('transactions.json.enc')[0]!.tripId).toBe('a')
-  })
 
   it('een import vervangt zijn dagen: dat is geen verwijdering door Olivier en staat niet in de prullenbak', async () => {
     const s = await store()
@@ -239,7 +228,7 @@ describe('punten uit de review', () => {
     expect(s.list('reminders.json.enc')[0]).toHaveProperty('doneAt', null)
   })
 
-  it('bij terugzetten met dagen terug van een andere trip, volgen de datums van die trip weer zijn dagen', async () => {
+  it('bij terugzetten met dagen terug van een andere trip veranderen de datums van die trip niet (gewone velden)', async () => {
     const s = await store()
     const at = new Date(Date.now() - 3 * 86_400_000).toISOString()
     await put(s, 'trips.json.enc', { ...trip('b'), name: 'Nep B', startDate: '2026-10-01', endDate: '2026-10-12', datesFromDays: true })
@@ -247,6 +236,7 @@ describe('punten uit de review', () => {
     await putMany(s, 'legs.json.enc', [leg('b1', 'b', '2026-10-01'), leg('b2', 'b', '2026-10-05'), { ...leg('m1', 'b', '2026-10-10'), updatedAt: at }, { ...leg('m2', 'b', '2026-10-12'), updatedAt: at }])
     const [item] = trashItems(s)
     await terugzetten(s, item!.key, ['m1', 'm2'])
-    expect(s.list('trips.json.enc').find((x) => x.id === 'b')).toMatchObject({ startDate: '2026-10-01', endDate: '2026-10-05' })
+    expect(s.list('legs.json.enc').filter((l) => l.tripId === 'a').map((l) => l.id).sort()).toEqual(['m1', 'm2'])
+    expect(s.list('trips.json.enc').find((x) => x.id === 'b')).toMatchObject({ startDate: '2026-10-01', endDate: '2026-10-12' })
   })
 })

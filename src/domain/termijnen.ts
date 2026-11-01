@@ -3,7 +3,7 @@
 import { deleteReminder, deleteWeekClosing } from '../model/edit'
 import type { RatesFile } from '../model/rates'
 import { saveReminder, setDone } from '../model/reminders'
-import type { Currency, Organisation } from '../model/types'
+import type { Organisation } from '../model/types'
 import { saveClosing } from '../model/week-close'
 import { applyMoneyStep, type MoneyStep } from '../model/week-money'
 import type { Store } from '../storage/store'
@@ -15,7 +15,7 @@ import type { Tx } from './tx'
 export async function closeWeekWithMoney(
   tx: Tx,
   date: string,
-  closing: { rating: number | null; lesson: string; spent?: { amount: number; currency: Currency } | null },
+  closing: { rating: number | null; lesson: string },
   step: MoneyStep | null,
   today: string,
   rates: RatesFile | null,

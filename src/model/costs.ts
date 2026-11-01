@@ -3,7 +3,7 @@ import { dayInfo, type CalendarIndex } from './calendar'
 import { active } from './derive'
 import { eurOf } from './money'
 import { rateFor, type RatesFile } from './rates'
-import { COST_DAY_TYPES, newId, type CostDayType, type Currency, type DayType, type FixedCost, type Settings, type Transaction, type WeekClosing } from './types'
+import { COST_DAY_TYPES, newId, type CostDayType, type Currency, type DayType, type FixedCost, type Settings, type Transaction } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, daysInMonth, mondayOf, shiftMonth } from '../basis/datum'
 
@@ -91,12 +91,11 @@ export interface DayAverage {
 }
 
 /**
- * Variabele kosten per dag per dagsoort, uit de laatste twaalf weken tot en met gisteren. Alleen weken met gegevens
- * tellen (een week met de schatting "los uitgegeven" of minstens één uitgave): daarin telt elke uitgave (soort kosten,
- * geen investering) op de dagsoort van haar datum, en de weekschatting gelijk verdeeld over de zeven dagen. Met minder
+ * Variabele kosten per dag per dagsoort, uit de laatste twaalf weken tot en met gisteren. Alleen weken met minstens één
+ * uitgave tellen: daarin telt elke uitgave (soort kosten, geen investering) op de dagsoort van haar datum. Met minder
  * dan 14 dagen van een soort: het standaardbedrag, anders onbekend.
  */
-export function dayAverages(transactions: readonly Transaction[], closings: readonly WeekClosing[], index: CalendarIndex, today: string, settings: Settings, rates: RatesFile | null): Record<CostDayType, DayAverage> {
+export function dayAverages(transactions: readonly Transaction[], index: CalendarIndex, today: string, settings: Settings): Record<CostDayType, DayAverage> {
   const end = addDays(today, -1)
   const start = addDays(today, -WINDOW_DAYS)
   const spend = new Map<string, number>()
@@ -109,17 +108,6 @@ export function dayAverages(transactions: readonly Transaction[], closings: read
     if (v === null) continue
     spend.set(tx.date, (spend.get(tx.date) ?? 0) + v)
     observed.add(mondayOf(tx.date))
-  }
-  for (const c of active(closings)) {
-    if (!c.spent || c.spent.amount <= 0) continue
-    const v = eur(c.spent.amount, c.spent.currency, c.start, rates)
-    if (v === null) continue
-    observed.add(c.start)
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(c.start, i)
-      if (d < start || d > end) continue
-      spend.set(d, (spend.get(d) ?? 0) + v / 7)
-    }
   }
   const totals: Record<CostDayType, { spend: number; days: number }> = { thuis: { spend: 0, days: 0 }, reis: { spend: 0, days: 0 }, werk: { spend: 0, days: 0 }, rust: { spend: 0, days: 0 } }
   for (let d = start; d <= end; d = addDays(d, 1)) {

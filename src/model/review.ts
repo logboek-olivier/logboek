@@ -1,19 +1,14 @@
 import type { Tx, Reader } from '../domain/tx'
 import { applyChanges } from './changes'
-import { longImportTripsOf } from './link-repair'
 import { active, compareLegs } from './derive'
-import { allPeriods, isWaterKind, periodAt, rangeDates, setStayDays, waterRanges, type Period } from './periods'
-import { mergeCandidates, placeKey, placeUses, type PlaceUse } from './places'
+import { allPeriods, periodAt, rangeDates, setStayDays, waterRanges, type Period } from './periods'
 import { saveSettings, currentSettings } from './settings'
-import { tripOverlaps, type Overlap } from './trip-ops'
 import { kindForType, typeForKind } from './trip-kind'
-import { STAY_FROM_DAY, dayHasDetails } from './migrate-periods'
-import { followTrip, tripRange } from './calendar'
-import { followDays } from './trip-dates'
+import { STAY_FROM_DAY } from './migrate-periods'
 import { defaultWeekName, weekView } from './weeks'
 import type { Lang } from '../i18n'
 import type { CalendarDay, Leg, Organisation, Place, Settings, StayKind, StayPeriod, Transaction, Trip, WeekType } from './types'
-import { addDays, daysBetween } from '../basis/datum'
+import { addDays } from '../basis/datum'
 
 // Nakijken (Meer → Nakijken): twijfelgevallen en tegenstrijdigheden in het periodemodel, elk met één knop die het
 // oplost (met ongedaan maken) en "Klopt zo" (onthouden in settings.reviewDismissed). Alleen zichtbaar als er iets is.
@@ -23,16 +18,6 @@ export type ReviewItem =
   | { key: string; kind: 'soort'; trip: Trip; suggestion: WeekType }
   /** Werk zonder organisatie, met een voorstel uit de source van zijn inkomsten. */
   | { key: string; kind: 'organisatie'; trip: Trip; suggestion: Organisation | null }
-  /** Twee trips op dezelfde dagen. */
-  | { key: string; kind: 'overlap-trips'; overlap: Overlap }
-  /** Een periode aan land op dagen van een trip, of twee periodes aan land op dezelfde dag. */
-  | { key: string; kind: 'overlap-land'; stay: StayPeriod; other: Period; from: string; to: string }
-  /** Een gelogde dag buiten de datums van zijn trip: naar de periode van die datum, of de trip verlengen. */
-  | { key: string; kind: 'dag-buiten'; leg: Leg; trip: Trip; target: Trip | null }
-  /** Een zelf ingestelde agendadag (rust, thuis, reis, ...) binnen een trip. */
-  | { key: string; kind: 'agendadag-in-trip'; day: CalendarDay; trip: Trip }
-  /** Een zelf ingestelde dagtoestand (of een andere soort) binnen een periode aan land: de periode verbergt hem. */
-  | { key: string; kind: 'agendadag-in-periode'; day: CalendarDay; stay: StayPeriod }
   /** Werkdagen in de agenda zonder trip. */
   | { key: string; kind: 'werkdag-zonder-trip'; from: string; to: string }
   /** Agendadagen thuis, reis of rust zonder periode (bijvoorbeeld van een oudere versie op een ander apparaat). */
@@ -42,19 +27,10 @@ export type ReviewItem =
   /** Inkomen of uitgave zonder periode. */
   | { key: string; kind: 'geld-zonder-periode'; tx: Transaction; target: Period | null }
   /**
-   * Gelogde dagen waarvan de trip weg is (verwijderd met "Geld en dagen behouden zonder periode"): de trip terugzetten,
-   * naar de trip van die datum, of een nieuwe trip voor deze dagen. Nooit vanzelf.
+   * Gelogde dagen waarvan de trip weg is (verwijderd met "Geld en dagen behouden zonder periode"): de trip terugzetten of
+   * een nieuwe trip voor deze dagen. Nooit vanzelf, en nooit voorgesteld naar een andere trip.
    */
-  | { key: string; kind: 'dagen-zonder-trip'; tripId: string; tripName: string | null; legs: Leg[]; target: Trip | null }
-  /** Een geïmporteerde trip van meer dan 21 dagen: bijna altijd een verkeerde koppeling (Meer → Opslag → Logboek herstellen). */
-  | { key: string; kind: 'lange-trip'; trip: Trip; start: string; end: string; days: number }
-  /** Twee plaatsnamen die dezelfde plaats lijken: `from` gaat op in `into`. */
-  | { key: string; kind: 'plaatsen'; from: PlaceUse; into: PlaceUse; reason: 'spelling' }
-  /**
-   * Een dag die begint in een andere plaats dan waar de dag ervoor eindigde, met één van de twee zonder pin: misschien
-   * dezelfde plaats onder een andere naam ("Sint Barths" en "Gustavia"). Eerste fix: alleen de van van deze dag.
-   */
-  | { key: string; kind: 'aansluiting'; leg: Leg; previous: Leg; from: PlaceUse; into: PlaceUse }
+  | { key: string; kind: 'dagen-zonder-trip'; tripId: string; tripName: string | null; legs: Leg[] }
 
 export interface ReviewInput {
   trips: readonly Trip[]
@@ -92,51 +68,10 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     }
   }
 
-  // Overlap.
-  for (const overlap of tripOverlaps(trips, legs)) items.push({ key: `overlap:${[overlap.a.id, overlap.b.id].sort().join('+')}`, kind: 'overlap-trips', overlap })
-  const stays = periods.filter((p) => p.stay)
-  for (const p of stays) {
-    for (const other of periods) {
-      if (other.id === p.id || !other.start || !other.end) continue
-      // Twee periodes aan land: één keer melden.
-      if (other.stay && other.id < p.id) continue
-      const from = p.start > other.start ? p.start : other.start
-      const to = p.end < other.end ? p.end : other.end
-      if (from > to) continue
-      items.push({ key: `overlap:${p.id}+${other.id}`, kind: 'overlap-land', stay: p.stay!, other, from, to })
-    }
-  }
-
-  // Geïmporteerde trips van meer dan 21 dagen. De sleutel bevat begin en eind: wordt hij nog langer, dan komt hij terug.
-  for (const long of longImportTripsOf(trips, legs)) items.push({ key: `lange-trip:${long.trip.id}:${long.start}:${long.end}`, kind: 'lange-trip', ...long })
-
-  // Dagen buiten hun trip (alleen trips met eigen datums: die van Toevoegen → Dag volgen hun dagen).
-  const byId = new Map(trips.map((trip) => [trip.id, trip]))
-  for (const view of views) {
-    const trip = view.trip
-    if (trip.datesFromDays || !trip.startDate || !trip.endDate) continue
-    for (const leg of view.legs) {
-      if (leg.date >= trip.startDate && leg.date <= trip.endDate) continue
-      const target = periodAt(periods, leg.date)
-      const targetTrip = target && isWaterKind(target.kind) && target.id !== trip.id ? (byId.get(target.id) ?? null) : null
-      items.push({ key: `dag-buiten:${leg.id}`, kind: 'dag-buiten', leg, trip, target: targetTrip })
-    }
-  }
-
   // Agenda.
   const own = active(input.calendar).sort((a, b) => (a.date < b.date ? -1 : 1))
-  for (const day of own) {
-    if (day.type === 'werk' || !inWater(day.date)) continue
-    const trip = periodAt(periods, day.date)
-    if (trip?.view) items.push({ key: `agendadag:${day.id}`, kind: 'agendadag-in-trip', day, trip: trip.view.trip })
-  }
+  const stays = periods.filter((p) => p.stay)
   const inStay = (d: string) => stays.some((p) => p.start <= d && d <= p.end)
-  for (const day of own) {
-    if (inWater(day.date)) continue
-    const stay = stays.find((p) => p.start <= day.date && day.date <= p.end)?.stay
-    // Een dag met gegevens van dezelfde soort is gewoon een dag van die periode.
-    if (stay && STAY_FROM_DAY[day.type] !== stay.kind) items.push({ key: `agendadag:${day.id}`, kind: 'agendadag-in-periode', day, stay })
-  }
   for (const run of runsOf(own.filter((d) => d.type === 'werk' && !inWater(d.date)), () => 'werk')) items.push({ key: `werkdag:${run.from}`, kind: 'werkdag-zonder-trip', from: run.from, to: run.to })
   for (const run of runsOf(own.filter((d) => STAY_FROM_DAY[d.type] && !inWater(d.date) && !inStay(d.date)), (d) => STAY_FROM_DAY[d.type]!)) {
     items.push({ key: `landdag:${run.from}`, kind: 'dag-zonder-periode', stayKind: run.value as StayKind, from: run.from, to: run.to })
@@ -150,56 +85,19 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     items.push({ key: `geld:${tx.id}`, kind: 'geld-zonder-periode', tx, target: periodAt(periods, tx.date) })
   }
 
-  // Dagen zonder trip: per verdwenen trip één punt.
+  // Dagen zonder trip: per verdwenen trip één punt (terugzetten of een nieuwe trip; nooit naar een andere trip voorgesteld).
+  const byId = new Map(trips.map((trip) => [trip.id, trip]))
   const orphans = new Map<string, Leg[]>()
   for (const leg of legs) if (!byId.has(leg.tripId)) orphans.set(leg.tripId, [...(orphans.get(leg.tripId) ?? []), leg])
   for (const [tripId, list] of orphans) {
     const sorted = [...list].sort(compareLegs)
-    const at = periodAt(periods, sorted[0]!.date)
-    const target = at && isWaterKind(at.kind) ? (byId.get(at.id) ?? null) : null
     const tripName = input.removedTrips?.find((x) => x.id === tripId)?.name ?? null
-    items.push({ key: `dagen-zonder-trip:${tripId}`, kind: 'dagen-zonder-trip', tripId, tripName, legs: sorted, target })
+    items.push({ key: `dagen-zonder-trip:${tripId}`, kind: 'dagen-zonder-trip', tripId, tripName, legs: sorted })
   }
 
   // Investeringen zonder soort (van vóór het periodemodel).
   for (const tx of active(input.transactions)) if (tx.kind === 'investering' && tx.category !== 'opleiding' && tx.category !== 'uitrusting') items.push({ key: `investering:${tx.id}`, kind: 'investering-soort', tx })
 
-  // Plaatsen die dubbel lijken: spelvarianten, en een van die niet aansluit op de naar van de dag ervoor.
-  const uses = placeUses(legs, input.places)
-  const useOf = new Map(uses.map((u) => [u.key, u]))
-  const seen = new Set<string>()
-  const pair = (a: PlaceUse, b: PlaceUse, reason: 'spelling') => {
-    const id = [a.key, b.key].sort().join('+')
-    if (seen.has(id)) return
-    seen.add(id)
-    // De naam met een pin (anders de meest gebruikte) blijft.
-    const [into, from] = (b.place && !a.place) || (!!b.place === !!a.place && b.days > a.days) ? [b, a] : [a, b]
-    items.push({ key: `plaatsen:${id}`, kind: 'plaatsen', from, into, reason })
-  }
-  void pair
-  for (const c of mergeCandidates(uses)) for (const o of c.others) pair(c.into, o, 'spelling')
-  const byTrip = new Map<string, Leg[]>()
-  for (const leg of legs) byTrip.set(leg.tripId, [...(byTrip.get(leg.tripId) ?? []), leg])
-  for (const list of byTrip.values()) {
-    const sorted = [...list].sort(compareLegs)
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i - 1]!
-      const next = sorted[i]!
-      const a = useOf.get(placeKey(prev.toPlace))
-      const b = useOf.get(placeKey(next.fromPlace))
-      if (!a || !b || a.key === b.key) continue
-      // Alleen opeenvolgende dagen, en alleen als een van de twee geen pin heeft: twee plaatsen met een pin zijn echt
-      // verschillend (een dag die op een andere plek begon), en tussen twee dagen met een gat kan de boot verhuisd zijn.
-      if (a.place && b.place) continue
-      if (next.date !== prev.date && next.date !== addDays(prev.date, 1)) continue
-      const id = [a.key, b.key].sort().join('+')
-      if (seen.has(id)) continue
-      seen.add(id)
-      // De naam met een pin blijft; zonder pins de naam van de dag ervoor.
-      const [into, from] = b.place && !a.place ? [b, a] : [a, b]
-      items.push({ key: `aansluiting:${next.id}`, kind: 'aansluiting', leg: next, previous: prev, from, into })
-    }
-  }
   return items.filter((item) => !dismissed.has(item.key))
 }
 
@@ -249,53 +147,28 @@ export function setTripOrganisation(store: Tx, trip: Trip, organisation: Organis
   return applyChanges(store, [{ path: 'trips.json.enc', before: trip, after: changed(trip, { organisation }) }])
 }
 
-/** Een dag buiten zijn trip: naar de trip van die datum, of (zonder trip op die datum) de trip verlengen tot die dag. */
-export async function fixLegOutside(store: Tx, leg: Leg, trip: Trip, target: Trip | null): Promise<void> {
-  if (target) {
-    await applyChanges(store, [{ path: 'legs.json.enc', before: leg, after: changed(leg, { tripId: target.id }) }])
-    await followDays(store, [trip.id, target.id])
-    return
-  }
-  const legs = store.list('legs.json.enc')
-  const range = tripRange(trip, legs)
-  const start = trip.startDate && leg.date < trip.startDate ? leg.date : trip.startDate!
-  const end = trip.endDate && leg.date > trip.endDate ? leg.date : trip.endDate!
-  await applyChanges(store, [{ path: 'trips.json.enc', before: trip, after: changed(trip, { startDate: start, endDate: end }) }])
-  await followTrip(store, trip.id, range, { start, end })
-}
-
-/** Een agendadag binnen een trip hoort bij de trip: zonder gegevens vervalt hij, met gegevens wordt hij een werkdag. */
-export function fixDayInTrip(store: Tx, day: CalendarDay): Promise<void> {
-  const now = new Date().toISOString()
-  const after: CalendarDay = dayHasDetails(day) ? { ...day, type: 'werk', updatedAt: now } : { ...day, updatedAt: now, deletedAt: now }
-  return applyChanges(store, [{ path: 'calendar.json.enc', before: day, after }])
-}
-
 /** Werkdagen zonder trip: één trip over die dagen (soort werk, nog zonder organisatie). */
 export async function makeTripFor(store: Tx, from: string, to: string, lang: Lang): Promise<void> {
   const now = new Date().toISOString()
   const trip: Trip = { id: crypto.randomUUID(), name: defaultWeekName(from, lang), kind: 'werk', type: 'overig', startDate: from, endDate: to, updatedAt: now, deletedAt: null }
   await applyChanges(store, [{ path: 'trips.json.enc', before: null, after: trip }])
-  await followTrip(store, trip.id, null, { start: from, end: to })
 }
 
-/** Dagen zonder trip naar een bestaande trip (de trip van hun datum). */
+/** Dagen naar een trip (de datums van die trip veranderen niet). */
 export async function moveLegsTo(store: Tx, legs: readonly Leg[], target: Trip): Promise<void> {
   const current = store.list('legs.json.enc')
   await applyChanges(store, legs.flatMap((leg) => {
     const now = current.find((l) => l.id === leg.id)
     return now ? [{ path: 'legs.json.enc' as const, before: now, after: changed(now, { tripId: target.id }) }] : []
   }))
-  await followDays(store, [target.id])
 }
 
-/** Dagen zonder trip: een nieuwe trip die hun dagen volgt (met de naam van de verdwenen trip als die bekend is). */
+/** Dagen zonder trip: een nieuwe trip van hun eerste tot hun laatste dag (met de naam van de verdwenen trip als die bekend is). */
 export async function tripForLegs(store: Tx, legs: readonly Leg[], name: string): Promise<void> {
   const sorted = [...legs].sort(compareLegs)
-  const trip: Trip = { id: crypto.randomUUID(), name, startDate: sorted[0]!.date, endDate: sorted.at(-1)!.date, datesFromDays: true, updatedAt: store.now, deletedAt: null }
+  const trip: Trip = { id: crypto.randomUUID(), name, startDate: sorted[0]!.date, endDate: sorted.at(-1)!.date, updatedAt: store.now, deletedAt: null }
   await applyChanges(store, [{ path: 'trips.json.enc', before: null, after: trip }])
   await moveLegsTo(store, legs, trip)
-  await followTrip(store, trip.id, null, { start: trip.startDate!, end: trip.endDate! })
 }
 
 /** Agendadagen zonder periode: een periode van die soort over die dagen. */
@@ -314,33 +187,6 @@ export async function fixMoneyWithoutPeriod(store: Tx, tx: Transaction, target: 
   const now = periodAt(periods, tx.date)
   const current = store.list('transactions.json.enc').find((x) => x.id === tx.id) ?? tx
   if (now) await applyChanges(store, [{ path: 'transactions.json.enc', before: current, after: changed(current, { tripId: now.id }) }])
-}
-
-/**
- * Periode aan land op dagen van een andere periode: de andere gaat voor. Die dagen gaan uit deze periode (korter,
- * gesplitst of weg); bij twee periodes aan land krijgen ze de soort van de andere (samen als die dezelfde soort hebben).
- */
-export function fixLandOverlap(store: Tx, from: string, to: string, other: Period): Promise<void> {
-  return setStayDays(store, rangeDates(from, to), other.stay ? other.stay.kind : null)
-}
-
-/** Alleen de van van deze dag wordt de naar van de dag ervoor (met het land). */
-export function fixLegStart(store: Tx, leg: Leg, previous: Leg): Promise<void> {
-  return applyChanges(store, [{ path: 'legs.json.enc', before: leg, after: changed(leg, { fromPlace: previous.toPlace, fromCountry: previous.toCountry || leg.fromCountry }) }])
-}
-
-/** Een dagtoestand binnen een periode aan land laten gelden: de dag gaat uit de periode (korter of gesplitst). */
-export function fixDayInStay(store: Tx, day: CalendarDay): Promise<void> {
-  return setStayDays(store, [day.date], null)
-}
-
-/** Zoveel dagen mag Nakijken een trip met één tik verlengen voor een dag die erbuiten valt; verder weg is de datum vast fout. */
-export const EXTEND_FIX_DAYS = 3
-
-export function legOutsideCanExtend(leg: Leg, trip: Trip): boolean {
-  if (!trip.startDate || !trip.endDate) return false
-  const gap = leg.date < trip.startDate ? daysBetween(leg.date, trip.startDate) : daysBetween(trip.endDate, leg.date)
-  return gap <= EXTEND_FIX_DAYS
 }
 
 /** Alle voorstellen voor de soort in één keer overnemen (één opdracht, dus één keer ongedaan maken). */

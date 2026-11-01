@@ -7,7 +7,7 @@ import { deleteTransaction, updateTransaction, type TransactionPatch } from '../
 import { resolveTarget, sourceOnSave, type ExpenseTarget } from '../model/expenses'
 import { bookFixedCosts } from '../model/fixed-bookings'
 import { depositCash, recordPayout } from '../model/money-path'
-import { backfillRates, finalRateFields } from '../model/rates'
+import { finalRateFields } from '../model/rates'
 import { askSalaryLater, receiveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { saveSettings } from '../model/settings'
 import { newId, type Account, type Balance, type Settings, type Transaction, type Trip } from '../model/types'
@@ -72,7 +72,6 @@ export const geldBewerken = opdracht('geldBewerken', updateTransaction)
 export const geldToevoegen = opdrachtMet('geldToevoegen', addMoney)
 export const geldVerwijderen = opdracht('geldVerwijderen', deleteTransaction)
 export const geldstapOpslaan = opdrachtMet('geldstapOpslaan', applyMoneyStep)
-export const koersenVastleggen = opdrachtMet('koersenVastleggen', backfillRates)
 export const rekeningOpslaan = opdrachtMet('rekeningOpslaan', saveAccount)
 export const rekeningVerwijderen = opdracht('rekeningVerwijderen', deleteAccount)
 export const salarisLaterVragen = opdracht('salarisLaterVragen', askSalaryLater)

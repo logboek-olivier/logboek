@@ -26,7 +26,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
     const L = (key: Parameters<typeof translate>[1], params?: unknown) => (translate as (l: Lang, k: string, p?: unknown) => string)(lang, key, params)
     const money = (n: number) => (lang === 'nl' ? `€ ${n},00` : `€${n}.00`)
 
-    test(`geld: werkelijk en verwacht, vaste lasten per voorbije maand geboekt (${lang})`, async ({ page }) => {
+    test(`geld: werkelijk en verwacht, vaste lasten per voorbije maand geboekt na een tik (${lang})`, async ({ page }) => {
       test.setTimeout(120_000)
       // Maandag 15 februari 2027. De tijd loopt door.
       await page.clock.setSystemTime(new Date('2027-02-15T10:00:00'))
@@ -50,7 +50,15 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(sheet).toHaveCount(0)
       await shots(page, 'verwacht', lang)
 
-      // Werkelijk: december en januari geboekt (februari loopt nog).
+      // Niets vanzelf (uitgangspunt 5): december en januari staan pas als uitgave na een tik (februari loopt nog).
+      await page.getByRole('tab', { name: L('money.actual') }).click()
+      await expect(page.locator('.tx', { hasText: 'Nephuur' })).toHaveCount(0)
+      await page.getByRole('tab', { name: L('money.expected') }).click()
+      await costs.getByRole('button', { name: L('costs.book', { n: 2 }) }).click()
+      await expect(page.getByText(L('costs.booked', { n: 2 }))).toBeVisible()
+      await expect(costs.getByRole('button', { name: L('costs.book', { n: 2 }) })).toHaveCount(0)
+
+      // Werkelijk: december en januari geboekt.
       await page.getByRole('tab', { name: L('money.actual') }).click()
       const table = page.locator('.actual-costs')
       await expect(table.locator('tbody tr')).toHaveCount(2)
