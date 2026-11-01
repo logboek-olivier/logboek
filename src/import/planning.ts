@@ -153,41 +153,30 @@ export interface PlanItem {
   /** Werk wordt een trip; de andere soorten worden zelf ingestelde dagen. */
   creates: 'trip' | 'days'
   days: number
-  /** Bestaande trips die in dezelfde periode vallen. */
-  overlapTrips: string[]
-  /** Dagen die al een eigen instelling hebben (bij werk: ook dagen in een bestaande trip). */
-  overlapDays: number
+  /** Dagen aan land (reis, thuis, vrij, een eigen dagsoort) die Olivier al zelf instelde; alleen bij die soorten. */
+  ownDays: number
   /** Precies deze trip staat er al (zelfde naam en startdatum): standaard overslaan. */
   duplicate: boolean
 }
 
-/** Het voorbeeld: wat er gemaakt wordt en wat overlapt. Schrijft niets. */
+/** Het voorbeeld: wat er gemaakt wordt. Schrijft niets. Overlap met trips is normaal (CLAUDE.md, uitgangspunt 3). */
 export function planImport(rows: readonly PlanningRow[], index: CalendarIndex): PlanItem[] {
   return rows.map((row) => {
     const dates = datesBetween(row.start, row.end)
-    const overlapping = index.views.filter((v) => v.startDate <= row.end && row.start <= v.endDate)
-    // Zelf ingestelde dagen en dagen in een periode aan land (reis, thuis, vrij).
-    const ownDays = dates.filter((d) => index.own.has(d) || index.stays.some((st) => st.startDate <= d && d <= st.endDate)).length
-    const tripDays = dates.filter((d) => overlapping.some((v) => v.startDate <= d && d <= v.endDate)).length
-    const duplicate = row.kind === 'werk' && overlapping.some((v) => v.startDate === row.start && v.trip.name.trim().toLowerCase() === (row.name || '').trim().toLowerCase())
-    return {
-      row,
-      creates: row.kind === 'werk' ? 'trip' : 'days',
-      days: dates.length,
-      overlapTrips: overlapping.map((v) => v.trip.name),
-      overlapDays: row.kind === 'werk' ? ownDays : Math.max(ownDays, tripDays),
-      duplicate,
-    }
+    const ownDays = row.kind === 'werk' ? 0 : dates.filter((d) => index.own.has(d) || index.stays.some((st) => st.startDate <= d && d <= st.endDate)).length
+    const duplicate = row.kind === 'werk' && index.views.some((v) => v.startDate === row.start && v.trip.name.trim().toLowerCase() === (row.name || '').trim().toLowerCase())
+    return { row, creates: row.kind === 'werk' ? 'trip' : 'days', days: dates.length, ownDays, duplicate }
   })
 }
 
-export function hasOverlap(item: PlanItem): boolean {
-  return item.duplicate || item.overlapTrips.length > 0 || item.overlapDays > 0
+/** Een regel die er al staat, of die dagen verandert die Olivier zelf instelde, gaat alleen mee als hij hem aanzet. */
+export function needsChoice(item: PlanItem): boolean {
+  return item.duplicate || item.ownDays > 0
 }
 
 /**
- * Importeren: regels zonder overlap altijd, overlappende alleen als hun rijnummer in `include` staat. Niets bestaands
- * wordt overschreven: een trip komt ernaast, zelf ingestelde dagen alleen bij aangezette regels.
+ * Importeren: gewone regels altijd, regels die een keuze vragen alleen als hun rijnummer in `include` staat. Een trip
+ * komt ernaast (ook als hij een andere overlapt), zelf ingestelde dagen veranderen alleen bij aangezette regels.
  */
 export async function applyPlan(store: Tx, items: readonly PlanItem[], include: ReadonlySet<number>, lang: Lang): Promise<{ trips: number; days: number }> {
   const settings = currentSettings(store.list('settings.json.enc'))
@@ -196,7 +185,7 @@ export async function applyPlan(store: Tx, items: readonly PlanItem[], include: 
   const days = new Map<string, CalendarDay>()
   const stays: { dates: string[]; kind: StayKind; note: string; name: string }[] = []
   for (const item of items) {
-    if (hasOverlap(item) && !include.has(item.row.row)) continue
+    if (needsChoice(item) && !include.has(item.row.row)) continue
     const { row } = item
     if (row.kind === 'werk') {
       const input: WeekInput = {

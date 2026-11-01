@@ -32,7 +32,8 @@ export interface LogDayInput {
 
 /**
  * Een dag loggen (Toevoegen → Dag): bij de gekozen trip of de trip van de datum, anders een nieuwe trip met die dag als
- * begin en eind (src/model/leg-trip.ts). De datums van een bestaande trip veranderen nooit.
+ * begin en eind (src/model/leg-trip.ts). Alleen wat het formulier vóór het opslaan zei ("Opslaan verlengt <trip> tot
+ * <datum>") verandert de datums van een bestaande trip.
  */
 export async function logDay(tx: Tx, input: LogDayInput): Promise<Leg> {
   const trips = tx.get('trips.json.enc')
@@ -40,11 +41,12 @@ export async function logDay(tx: Tx, input: LogDayInput): Promise<Leg> {
   const place = placeLeg(trips, legs, input.tripId, input.date, input.explicit)
   let id = place.tripId ?? undefined
   if (!id) {
-    // Een nieuwe trip vanuit Dag: deze dag is begin en eind (gewone velden; later zelf te wijzigen).
-    const trip: Trip = { id: newId(), name: input.newTripName, startDate: input.date, endDate: input.date, updatedAt: tx.now, deletedAt: null }
+    // Een nieuwe trip vanuit Dag: deze dag is begin en eind (gewone velden; later zelf te wijzigen). `datesFromDays`:
+    // hij blijft drie dagen na zijn laatste dag lopend, zodat hij 's ochtends vóór het loggen in Deze trip staat.
+    const trip: Trip = { id: newId(), name: input.newTripName, startDate: input.date, endDate: input.date, datesFromDays: true, updatedAt: tx.now, deletedAt: null }
     await tx.put('trips.json.enc', trip)
     id = trip.id
-  }
+  } else if (place.extend) await extendTrip(tx, id, place.extend)
   // Landen: van de plaats zelf (punt of eerdere dagen), anders het land van de vorige dag in deze trip; nooit van een
   // dag uit een andere trip (anders krijgt een dag in de BVI het land van een dag in Engeland).
   const places = tx.get('places.json.enc')
@@ -77,9 +79,19 @@ export async function logDay(tx: Tx, input: LogDayInput): Promise<Leg> {
   return leg
 }
 
-/** Een dag bewerken, ook naar een andere of een nieuwe trip; de datums van de trips veranderen niet. */
-export async function editDay(tx: Tx, leg: Leg, patch: LegPatch, trip: { id: string } | { newName: string }): Promise<void> {
+/**
+ * Een dag bewerken, ook naar een andere of een nieuwe trip. De datums van een trip veranderen alleen als het formulier
+ * dat vóór het opslaan zei (`extend`, src/model/leg-trip.ts).
+ */
+export async function editDay(tx: Tx, leg: Leg, patch: LegPatch, trip: { id: string } | { newName: string }, extend?: { start: string; end: string }): Promise<void> {
+  if (extend && 'id' in trip) await extendTrip(tx, trip.id, extend)
   await updateLeg(tx, leg, patch, trip)
+}
+
+/** De gekozen trip verlengen tot de datums die het formulier toonde; een trip uit Toevoegen → Dag houdt zijn soort. */
+async function extendTrip(tx: Tx, tripId: string, extend: { start: string; end: string }): Promise<void> {
+  const trip = tx.list('trips.json.enc').find((x) => x.id === tripId)
+  if (trip) await tx.put('trips.json.enc', { ...trip, startDate: extend.start, endDate: extend.end, updatedAt: tx.now })
 }
 
 export const aanvullen = opdracht('aanvullen', fillGap)

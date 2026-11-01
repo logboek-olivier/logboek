@@ -37,12 +37,17 @@ describe('een dag hoort bij de trip van zijn datum', () => {
     expect(placeLeg([sv1, sv2], [], 'sv1', '2026-10-20')).toEqual({ tripId: 'sv1' })
   })
 
-  it('de dag komt bij de zelf gekozen trip of de trip van de datum; anders een nieuwe trip; de app verlengt nooit', () => {
-    // Vlak naast een voorgevulde trip: niet verlengen, maar een nieuwe trip.
-    expect(placeLeg([sv1], [], 'sv1', '2026-10-26')).toEqual({ tripId: null, moved: true })
+  it('de dag komt bij de zelf gekozen trip of de trip van de datum; anders een nieuwe trip; verlengen alleen met de tik op Opslaan', () => {
+    // Hoogstens drie dagen naast de gekozen trip: het formulier zegt "Opslaan verlengt …" (extend); verder weg een
+    // nieuwe trip.
+    expect(placeLeg([sv1], [], 'sv1', '2026-10-26')).toEqual({ tripId: 'sv1', extend: { start: '2026-10-18', end: '2026-10-26' } })
+    expect(placeLeg([sv1], [], 'sv1', '2026-10-28')).toEqual({ tripId: null, moved: true })
     expect(placeLeg([sv1], [], 'sv1', '2026-11-20')).toEqual({ tripId: null, moved: true })
-    // Zelf gekozen: daar, ook buiten de datums (de datums blijven staan).
+    // De trip van de datum gaat voor verlengen van de voorgevulde trip.
+    expect(placeLeg([sv1, sv2], [], 'sv1', '2026-10-26')).toEqual({ tripId: 'sv2', moved: true })
+    // Zelf gekozen: daar, ook buiten de datums (de datums blijven staan, behalve vlak ernaast: dan verlengt Opslaan).
     expect(placeLeg([sv1], [], 'sv1', '2026-11-20', true)).toEqual({ tripId: 'sv1' })
+    expect(placeLeg([sv1, sv2], [], 'sv1', '2026-10-26', true)).toEqual({ tripId: 'sv1', extend: { start: '2026-10-18', end: '2026-10-26' } })
     // Een voorgevulde trip die niet past: de trip van de datum.
     const later = trip('dag', { startDate: '2026-11-01', endDate: '2026-11-01' })
     expect(placeLeg([later, sv1], [], 'dag', '2026-10-20')).toEqual({ tripId: 'sv1', moved: true })

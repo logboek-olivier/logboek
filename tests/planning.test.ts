@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { applyPlan, hasOverlap, parsePlanning, planImport, PlanningError } from '../src/import/planning'
+import { applyPlan, needsChoice, parsePlanning, planImport, PlanningError } from '../src/import/planning'
 import { availabilityRuns, buildIndex, dayInfo, planningRuns, seasonWeeks } from '../src/model/calendar'
 import type { CalendarDay, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
@@ -64,41 +64,45 @@ describe('planning lezen', () => {
 })
 
 describe('voorbeeld en importeren', () => {
-  it('overlappingen met bestaande trips en eigen dagen; niets overschrijven zonder aanzetten', async () => {
+  it('overlap met een trip is normaal; een regel die er al staat of eigen dagen verandert, alleen na aanzetten', async () => {
     const s = await store()
     await put(s, 'trips.json.enc', trip('bestaand', { startDate: '2027-03-12', endDate: '2027-03-14' }))
     await dagsoortenZetten(s, ['2027-03-25'], 'reis')
     const rows = parsePlanning(fixture())
     const items = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc')))
-    expect(items.map((i) => [i.row.row, i.creates, hasOverlap(i)])).toEqual([
-      [2, 'trip', true],
-      [3, 'days', true],
+    // Rij 2 (werk) en 3 (rust) overlappen de bestaande trip: gewoon mee (uitgangspunt 3). Rij 6 (thuis) raakt de eigen
+    // reisdag van 25 maart: alleen na aanzetten.
+    expect(items.map((i) => [i.row.row, i.creates, needsChoice(i)])).toEqual([
+      [2, 'trip', false],
+      [3, 'days', false],
       [4, 'trip', false],
       [5, 'days', false],
       [6, 'days', true],
       [7, 'days', false],
     ])
-    expect(items[0]!.overlapTrips).toEqual(['Nep bestaand'])
 
     const result = await inTx(s, applyPlan, items, new Set([6]), 'nl')
-    // Rij 2 en 3 overlappen en zijn niet aangezet; rij 6 wel (thuis, ook over de eigen reisdag).
-    expect(result).toEqual({ trips: 1, days: 2 + 7 + 8 })
-    expect(s.list('trips.json.enc').map((t) => t.name).sort()).toEqual(['Nep bestaand', 'Nepcursus Twee'])
+    expect(result).toEqual({ trips: 2, days: 1 + 2 + 7 + 8 })
+    expect(s.list('trips.json.enc').map((t) => t.name).sort()).toEqual(['Nep bestaand', 'Nepcursus Twee', 'Nepweek Een'])
+    // De bestaande trip blijft zoals hij was.
+    expect(s.list('trips.json.enc').find((t) => t.id === 'bestaand')).toMatchObject({ startDate: '2027-03-12', endDate: '2027-03-14' })
     const cursus = s.list('trips.json.enc').find((t) => t.name === 'Nepcursus Twee')!
     expect(cursus).toMatchObject({ startDate: '2027-03-15', endDate: '2027-03-21', type: 'training-geven', organisation: 'sailing-virgins', boat: 'Nepboot Zes', area: 'Nepgebied Zuid' })
     const own = new Map(s.list('calendar.json.enc').map((d) => [d.date, d.type]))
-    expect(own.get('2027-03-14')).toBeUndefined()
     // Thuis wordt een periode (periodemodel); de eigen reisdag zonder gegevens gaat erin op.
     expect(own.get('2027-03-25')).toBeUndefined()
     const after = buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc'))
     expect(dayInfo(after, '2027-03-25', '2027-01-01')).toMatchObject({ type: 'thuis', source: 'periode' })
     expect(own.get('2027-04-03')).toBe('optie')
 
-    // Opnieuw importeren: alles staat er al of overlapt; zonder aanzetten verandert er niets.
+    // Opnieuw importeren: alles staat er al of raakt eigen dagen (behalve de rustdag in de trip, die bij de trip blijft);
+    // zonder aanzetten verandert er niets.
     const again = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'), [], s.get('periods.json.enc')))
     expect(again.find((i) => i.row.row === 4)!.duplicate).toBe(true)
-    expect(again.every(hasOverlap)).toBe(true)
-    expect(await inTx(s, applyPlan, again, new Set(), 'nl')).toEqual({ trips: 0, days: 0 })
+    expect(again.filter((i) => !needsChoice(i)).map((i) => i.row.row)).toEqual([3])
+    const snapshot = JSON.stringify([s.list('trips.json.enc'), s.list('periods.json.enc'), s.list('calendar.json.enc')])
+    await inTx(s, applyPlan, again, new Set(), 'nl')
+    expect(JSON.stringify([s.list('trips.json.enc'), s.list('periods.json.enc'), s.list('calendar.json.enc')])).toBe(snapshot)
   })
 })
 

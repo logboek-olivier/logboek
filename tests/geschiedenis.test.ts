@@ -69,11 +69,11 @@ describe('nooit stil verhuizen', () => {
     expect(s.list('transactions.json.enc')[0]!.tripId).toBe(merged[0]!.id)
   })
 
-  it('een voorgevulde trip slokt nooit een dag op die erbuiten ligt; de datums veranderen niet', () => {
+  it('een voorgevulde trip slokt nooit een dag op die ver weg ligt; vlak ernaast zegt het formulier dat Opslaan verlengt', () => {
     const follow = trip('volgt', { startDate: '2026-10-10', endDate: '2026-10-11', datesFromDays: true })
     const legs: Leg[] = [{ id: 'l1', tripId: 'volgt', date: '2026-10-10', fromPlace: '', fromCountry: '', toPlace: '', toCountry: '', role: 'schipper', boat: '', nmInland: 0, nmSea: 0, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T0, deletedAt: null }]
     expect(placeLeg([follow], legs, 'volgt', '2026-10-11').tripId).toBe('volgt')
-    expect(placeLeg([follow], legs, 'volgt', '2026-10-12')).toEqual({ tripId: null, moved: true })
+    expect(placeLeg([follow], legs, 'volgt', '2026-10-12')).toEqual({ tripId: 'volgt', extend: { start: '2026-10-10', end: '2026-10-12' } })
     expect(placeLeg([follow], legs, 'volgt', '2026-12-01')).toEqual({ tripId: null, moved: true })
   })
 })

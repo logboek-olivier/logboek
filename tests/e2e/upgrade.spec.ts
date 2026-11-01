@@ -238,11 +238,13 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     }
     // Na de update controleert de app vanzelf (Controleer nu), met de schrijver per bestand uit de commits.
     await expect.poll(() => github.requests.some((r) => r.method === 'GET' && r.url.includes('/commits?path=')), { timeout: 30_000 }).toBe(true)
-    // Een trip uit Toevoegen → Dag: een dag erbij, de datums volgen (trips.json.enc, nieuw veld datesFromDays).
+    // Een trip uit Toevoegen → Dag (datesFromDays): een dag vlak erna; het formulier zegt "Opslaan verlengt …" en de tik op
+    // Opslaan verlengt hem (nooit vanzelf, CLAUDE.md uitgangspunt 2).
     await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
     await page.getByLabel(L('field.date'), { exact: true }).fill('2026-10-13')
     await page.getByRole('combobox', { name: L('field.week'), exact: true }).selectOption({ label: 'Nepdag upgrade' })
     await page.getByLabel(L('field.to'), { exact: true }).fill('Nephaven')
+    await expect(page.locator('.placement-hint')).toContainText('Nepdag upgrade')
     const legPuts = puts('legs.json.enc')
     await page.getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('legs.json.enc'), { timeout: 20_000 }).toBeGreaterThan(legPuts)
@@ -431,6 +433,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
+    const legs = await decryptRecords(key, 'legs.json.enc', Uint8Array.from(Buffer.from(github.files.get('legs.json.enc')!.content, 'base64')))
+    expect(legs).toEqual(expect.arrayContaining([expect.objectContaining({ tripId: 'upg-trip-dag', date: '2026-10-13', deletedAt: null })]))
     // Het salaris is ontvangen (eigen bedrag blijft), met het inkomen bij de trip.
     const salaryTrip = trips.find((t) => t.id === 'upg-trip-salaris') as { salary?: { transactionId?: string } } | undefined
     expect(salaryTrip).toMatchObject({ salary: { amount: 1200, currency: 'EUR', status: 'ontvangen', source: 'eigen' } })

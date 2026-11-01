@@ -83,7 +83,7 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
           </button>
         ))}
       </div>
-      {tab === 'trip' && <TripForm store={store} onDone={onDone} notify={notify} />}
+      {tab === 'trip' && <TripForm store={store} onDone={onDone} />}
       {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} notify={notify} />}
       {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
       {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}
@@ -425,7 +425,7 @@ function DayForm({ store, onDone, init, notify }: { store: Store; onDone: (messa
   const current = requested ?? activeWeek(trips, settings)
   const sameTripDefault = !!lastTrip && !!lastLeg && lastLeg.date >= addDays(today, -3)
   // Een dag hoort bij de trip van zijn datum (docs/PERIODEMODEL.md): de lopende of meegegeven trip alleen als de datum
-  // erin valt (of vlak ernaast: dan wordt hij langer).
+  // erin valt, of hoogstens drie dagen ernaast (dan staat er "Opslaan verlengt …" en verlengt de tik op Opslaan hem).
   const defaultTripId = placeLeg(trips, legs, current?.id ?? (sameTripDefault && lastTrip ? lastTrip.id : null), init?.date ?? today).tripId ?? NEW_WEEK
   // Van: de vorige bestemming binnen deze trip; de eerste dag van een trip begint op de basis van de boot.
   const startDate = init?.date ?? today

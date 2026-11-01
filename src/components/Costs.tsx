@@ -12,6 +12,7 @@ import { COST_DAY_TYPES, CURRENCIES, type CostDayType, type Currency, type Fixed
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { useSyncStatus } from './SyncStatusLine'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
@@ -40,15 +41,19 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
   const [defaults, setDefaults] = useState(false)
   const thisMonth = today.slice(0, 7)
   const perMonth = fixedInMonth(fixed, thisMonth, rates)
-  // Voorbije maanden van een vaste last komen pas als uitgave in Werkelijk na een tik (nooit vanzelf).
-  const missing = missingBookings(fixed, transactions, today, today).length
+  // Voorbije maanden van een vaste last komen pas als uitgave in Werkelijk na een tik (nooit vanzelf), en pas na een
+  // geslaagde sync: anders zou een maand terugkomen die een ander apparaat al verwijderde. Geen ongedaan maken: een
+  // weggehaalde maand wordt nooit opnieuw geboekt, dus de knop zou niet terugkomen; een maand is los te verwijderen.
+  useSyncStatus(store)
+  const missing = store.hasSynced() ? missingBookings(fixed, transactions, today, today).length : 0
   const [booking, setBooking] = useState(false)
 
   async function book() {
     if (booking) return
     setBooking(true)
     try {
-      notify(t('costs.booked', { n: missing }), (await vasteLastenBoeken(store, today)).undo)
+      const { result } = await vasteLastenBoeken(store, today)
+      if (result > 0) notify(t('costs.booked', { n: result }))
     } finally {
       setBooking(false)
     }

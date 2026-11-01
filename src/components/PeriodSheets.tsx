@@ -3,7 +3,7 @@ import { describeError } from '../session'
 import { useState } from 'react'
 import { formatDateRange, formatDateShort } from '../format'
 import { t, useLang } from '../i18n'
-import { hasOverlap, type PlanItem } from '../import/planning'
+import { needsChoice, type PlanItem } from '../import/planning'
 import { datesBetween, extendOptions, type CalendarIndex } from '../model/calendar'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import { DAY_TYPES, type DayType } from '../model/types'
@@ -101,7 +101,7 @@ export function PlanningImportSheet({ store, items, notify, onClose }: { store: 
   const lang = useLang()
   const [include, setInclude] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
-  const count = items.filter((i) => !hasOverlap(i) || include.has(i.row.row)).length
+  const count = items.filter((i) => !needsChoice(i) || include.has(i.row.row)).length
 
   function toggle(row: number) {
     const next = new Set(include)
@@ -128,7 +128,7 @@ export function PlanningImportSheet({ store, items, notify, onClose }: { store: 
         <p className="muted small">{t('planning.intro')}</p>
         <ul className="rows planning-rows">
           {items.map((item) => {
-            const overlap = hasOverlap(item)
+            const overlap = needsChoice(item)
             const { row } = item
             return (
               <li key={row.row} className={`row-item${overlap ? ' overlap' : ''}`}>
@@ -142,8 +142,7 @@ export function PlanningImportSheet({ store, items, notify, onClose }: { store: 
                       : t('planning.createsDays', { n: item.days })}
                   </span>
                   {item.duplicate && <span className="warning small">{t('planning.duplicate')}</span>}
-                  {!item.duplicate && item.overlapTrips.length > 0 && <span className="warning small">{t('planning.overlap', { names: item.overlapTrips.join(', ') })}</span>}
-                  {!item.duplicate && item.overlapTrips.length === 0 && item.overlapDays > 0 && <span className="warning small">{t('planning.overlapDays', { n: item.overlapDays })}</span>}
+                  {!item.duplicate && item.ownDays > 0 && <span className="warning small">{t('planning.overlapDays', { n: item.ownDays })}</span>}
                 </span>
                 {overlap && (
                   <label className="check-inline">

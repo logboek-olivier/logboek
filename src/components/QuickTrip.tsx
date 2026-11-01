@@ -8,7 +8,6 @@ import { WEEK_TYPES, type Organisation, type WeekType } from '../model/types'
 import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, suggestTripName } from '../model/weeks'
 import { periodeMaken } from '../domain/trips'
 import type { Store } from '../storage/store'
-import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { useCollection } from './useCollection'
 import { organisationLabel, weekTypeLabel } from './WeekSheet'
@@ -19,7 +18,7 @@ import { organisationChoices } from '../basis/organisatie'
 // Naam en type krijgen een voorstel uit de vorige trip; organisatie, boot, gebied en deelnemers zijn optioneel en later
 // aan te vullen (Deze trip, Logboek of de agenda). Trips mogen overlappen: geen melding, geen keuze.
 
-export function TripForm({ store, onDone }: { store: Store; onDone: (message: string) => void; notify?: Notify }) {
+export function TripForm({ store, onDone }: { store: Store; onDone: (message: string) => void }) {
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const today = todayIso()

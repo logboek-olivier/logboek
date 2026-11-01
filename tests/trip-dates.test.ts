@@ -73,17 +73,21 @@ describe('Datums zijn gewone velden', () => {
     expect(s.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['a', 'b'])
   })
 
-  it('een dag loggen buiten elke trip maakt een nieuwe trip met die dag als begin en eind; gekozen trip: daar, zonder te verlengen', async () => {
+  it('een dag loggen: buiten elke trip een nieuwe trip met die dag als begin en eind; vlak naast de trip verlengt de tik op Opslaan hem', async () => {
     const s = await store()
     await put(s, 'trips.json.enc', trip('a', { startDate: '2026-11-01', endDate: '2026-11-03' }))
     const base = { fromPlace: 'Nephaven', toPlace: 'Nepdorp', role: 'schipper' as const, boat: 'Nepboot', water: 'zee' as const, nm: 10, nightHours: 0, wind: '', notes: '', newTripName: 'Nieuwe neptrip' }
-    // Vlak na de trip, de trip voorgevuld (niet zelf gekozen): een nieuwe trip, de oude blijft zoals hij is.
-    const { result: later } = await dagLoggen(s, { ...base, date: '2026-11-04', tripId: 'a' })
-    expect(later.tripId).not.toBe('a')
-    expect(get(s, later.tripId)).toMatchObject({ startDate: '2026-11-04', endDate: '2026-11-04' })
-    expect(get(s, later.tripId).datesFromDays).toBeUndefined()
-    // Zelf gekozen: bij die trip, en de datums blijven staan.
-    const { result: chosen } = await dagLoggen(s, { ...base, date: '2026-11-05', tripId: 'a', explicit: true })
+    // Ver na de trip: een nieuwe trip met die dag als begin en eind; de oude blijft zoals hij is.
+    const { result: far } = await dagLoggen(s, { ...base, date: '2026-11-20', tripId: 'a' })
+    expect(far.tripId).not.toBe('a')
+    expect(get(s, far.tripId)).toMatchObject({ startDate: '2026-11-20', endDate: '2026-11-20', datesFromDays: true })
+    expect(get(s, 'a')).toMatchObject({ startDate: '2026-11-01', endDate: '2026-11-03' })
+    // De volgende dag in de nieuwe trip (zoals elke dag met Toevoegen → Dag): het formulier zei "Opslaan verlengt …".
+    const { result: next } = await dagLoggen(s, { ...base, date: '2026-11-21', tripId: far.tripId })
+    expect(next.tripId).toBe(far.tripId)
+    expect(get(s, far.tripId)).toMatchObject({ startDate: '2026-11-20', endDate: '2026-11-21', datesFromDays: true })
+    // Zelf gekozen, ver buiten de datums: bij die trip, en de datums blijven staan.
+    const { result: chosen } = await dagLoggen(s, { ...base, date: '2026-11-10', tripId: 'a', explicit: true })
     expect(chosen.tripId).toBe('a')
     expect(get(s, 'a')).toMatchObject({ startDate: '2026-11-01', endDate: '2026-11-03' })
   })

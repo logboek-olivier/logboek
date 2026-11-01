@@ -315,6 +315,7 @@ export function LegSheet({ store, leg, onClose, notify }: { store: Store; leg: L
           notes: notes.trim(),
         },
         target(),
+        placement.extend,
       )
       onClose()
       notify(t('toast.saved'))

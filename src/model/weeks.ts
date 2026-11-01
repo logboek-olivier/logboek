@@ -371,6 +371,7 @@ export function planWeek(plan: WeekPlan, trips: readonly Trip[], legs: readonly 
  */
 export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
   const students = store.get('students.json.enc')
+  const liveTrips = new Set(store.list('trips.json.enc').map((x) => x.id))
   const now = new Date().toISOString()
   const changed: Student[] = []
   for (const p of trip.participants ?? []) {
@@ -390,7 +391,10 @@ export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
         deletedAt: null,
       })
     } else if (existing.deletedAt === null) {
-      const next = { ...existing, firstName: p.firstName, curriculumId: p.curriculumId, level: p.level ?? existing.level, weekId: trip.id }
+      // Een deelnemer mag in meerdere trips staan (uitgangspunt 4): de student blijft bij zijn trip. Alleen zonder trip
+      // (of met een verwijderde trip) hoort hij voortaan bij deze.
+      const linked = !!existing.weekId && liveTrips.has(existing.weekId)
+      const next = { ...existing, firstName: p.firstName, curriculumId: p.curriculumId, level: p.level ?? existing.level, weekId: linked ? existing.weekId : trip.id }
       if (JSON.stringify(next) !== JSON.stringify(existing)) changed.push({ ...next, updatedAt: now })
     }
   }
