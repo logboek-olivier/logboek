@@ -131,6 +131,12 @@ test('bewerken, verwijderen, prullenbak en geschiedenis: je blijft waar je was; 
   const legs = sheet.locator('.leg-button')
   await expect(legs).toHaveCount(2)
 
+  // Trip bewerken en opslaan: terug in het tripoverzicht.
+  await sheet.getByRole('button', { name: L('common.edit') }).first().click()
+  await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await expect(sheet.getByRole('button', { name: L('trip.addDay') })).toBeVisible()
+
   // Een dag bewerken en opslaan: terug in het tripoverzicht.
   await legs.first().click()
   await page.getByRole('dialog').last().getByRole('button', { name: L('common.edit') }).click()

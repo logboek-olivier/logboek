@@ -50,7 +50,10 @@ async function salaryOf(page: Page, name: string): Promise<string> {
   const sheet = page.getByRole('dialog')
   await sheet.getByRole('button', { name: /^Salaris/ }).click()
   const value = await sheet.getByLabel('Salaris (bedrag)').inputValue()
+  // Sluiten: eerst terug in het tripoverzicht (terug waar je was), dan dat ook dicht.
   await sheet.getByRole('button', { name: 'Sluiten' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   return value
 }
 

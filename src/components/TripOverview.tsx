@@ -151,7 +151,8 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
   const counters = useCounters(store)
   const current = trips.find((x) => x.id === trip.id)
   if (!current || current.deletedAt !== null) return null
-  if (editing) return <WeekSheet store={store} trip={current} notify={notify} onClose={onClose} />
+  // Na opslaan (of sluiten) van Trip bewerken weer het tripoverzicht: terug waar Olivier was.
+  if (editing) return <WeekSheet store={store} trip={current} notify={notify} onClose={() => setEditing(false)} />
   const view = weekView(current, legs)
   return (
     <Sheet title={tripTitle(view, counters.get(current.id))} onClose={onClose} onEdit={() => setEditing(true)}>
@@ -167,7 +168,7 @@ export function StayOverviewSheet({ store, stay, notify, onClose }: { store: Sto
   const [editing, setEditing] = useState(false)
   const current = useCollection(store, 'periods.json.enc').find((x) => x.id === stay.id)
   if (!current || current.deletedAt !== null) return null
-  if (editing) return <StaySheet store={store} stay={current} notify={notify} onClose={onClose} />
+  if (editing) return <StaySheet store={store} stay={current} notify={notify} onClose={() => setEditing(false)} />
   const period = stayPeriod(current)
   return (
     <Sheet title={period.name} onClose={onClose} onEdit={() => setEditing(true)}>
