@@ -31,6 +31,8 @@ test('dagen en gelogde dagen in de tripkop, zonder nachten', async ({ page }) =>
   await page.getByLabel('Zeemijlen').fill('7')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByText('Dag opgeslagen')).toBeVisible()
+  // Terug waar je was (Deze trip); Vandaag toont de lopende trip.
+  await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
   await expect(page.locator('.today-trip')).toContainText('6 dagen · 1 gelogd')
 
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()

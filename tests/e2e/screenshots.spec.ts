@@ -126,6 +126,8 @@ for (const { width, scheme, lang } of RUNS) {
       await page.getByLabel(L('field.weekName')).fill('Overtocht naar de Nepbaai met een lange naam')
       await shot('toevoegen-dag')
       await button('common.save').click()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
+      await button('nav.today').click()
 
       await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })

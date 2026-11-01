@@ -57,6 +57,7 @@ test('Vandaag: de lopende trip groot bovenaan, tik opent het tripoverzicht, de d
   await page.getByLabel('Zeemijlen').fill('14')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.add-layer')).toHaveCount(0)
+  await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
 
   const card = page.locator('.today-trip')
   await expect(card).toContainText('SV #1 · Nepweek Vandaag')
