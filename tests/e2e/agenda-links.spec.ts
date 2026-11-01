@@ -99,7 +99,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
       await page.getByLabel(L('field.amount')).fill('300')
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
       await expect(page.locator('.agenda-income')).not.toContainText('300')
       await page.getByRole('button', { name: L('week.showAmounts') }).click()

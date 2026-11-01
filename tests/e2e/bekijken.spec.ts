@@ -34,7 +34,7 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
     await page.getByLabel('Zeemijlen').fill(nm)
     await page.getByRole('button', { name: 'Opslaan' }).click()
     await expect(page.getByText('Dag opgeslagen')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+    await expect(page.locator('.add-layer')).toHaveCount(0)
   }
 
   // Deze trip: kop met teller, gebied, periode en model; plaatsen zonder pin staan onder de kaart.

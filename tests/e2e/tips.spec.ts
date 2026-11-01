@@ -91,7 +91,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.getByLabel(L('field.amount'), { exact: true })).toHaveValue('60')
       await shots(page, 'van-wie', lang)
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
 
       // Fooi van de hele groep.
       await nav.getByRole('button', { name: L('nav.add'), exact: true }).click()
@@ -99,7 +99,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByLabel(L('field.amount'), { exact: true }).fill('30')
       await page.getByRole('button', { name: L('tip.group') }).click()
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
 
       // Fooi in de eerdere trip (de trip volgt de datum) van Nick.
       await nav.getByRole('button', { name: L('nav.add'), exact: true }).click()
@@ -108,7 +108,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByLabel(L('field.date')).fill('2027-02-03')
       await page.getByRole('button', { name: 'Nick', exact: true }).click()
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
 
       // Overzichten onder Geld: Nick (VS) samen over twee trips: 40 + 10 + 15 = 65.
       await openMore(page, L('nav.money'), L('nav.more'))

@@ -64,7 +64,7 @@ for (const { width, scheme, lang } of RUNS) {
         await page.getByLabel(L('field.amount')).fill(amount)
         await page.getByLabel(L('field.date')).fill(isoDaysAgo(daysAgo))
         await button('common.save').click()
-        await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+        await expect(page.locator('.add-layer')).toHaveCount(0)
       }
 
       await mockGithub(page)

@@ -33,7 +33,7 @@ test('waar ik gevaren heb, en een trip delen als afbeelding of PDF zonder namen 
     await page.getByLabel('Naar', { exact: true }).fill(to)
     await page.getByLabel('Zeemijlen').fill(nm)
     await page.getByRole('button', { name: 'Opslaan' }).click()
-    await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+    await expect(page.locator('.add-layer')).toHaveCount(0)
   }
   await page.getByRole('navigation').getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Inkomsten' }).click()

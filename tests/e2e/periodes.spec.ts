@@ -72,7 +72,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByLabel(L('field.amount')).fill('12')
       await page.getByLabel(L('field.date'), { exact: true }).fill('2027-02-10')
       await page.getByRole('button', { name: L('common.save') }).click()
-      await expect(page.getByRole('heading', { name: L('nav.today') })).toBeVisible()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
       const notice = page.locator('.review-notice')
       await expect(notice).toContainText(L('review.notice', { n: 1 }))
       // Vandaag toont geen bedragen.

@@ -31,7 +31,7 @@ test('trip via Dag krijgt datums uit de dagen; commitberichten met versie en app
     if (date === iso(-1)) await page.getByLabel('Naam van de trip').fill('Nepweek via dag')
     await page.getByRole('button', { name: 'Opslaan' }).click()
     await expect(page.getByText('Dag opgeslagen')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+    await expect(page.locator('.add-layer')).toHaveCount(0)
   }
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
   const head = page.locator('.trip-head')

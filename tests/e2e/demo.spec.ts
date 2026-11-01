@@ -108,7 +108,7 @@ test('demomodus: voorbeelddata in het Engels, nooit een verzoek naar GitHub, sto
   await page.getByRole('navigation').getByRole('button', { name: 'Add', exact: true }).click()
   await page.getByLabel('To', { exact: true }).fill('Norman Island')
   await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
   await page.waitForTimeout(2_000)
   expect(github.requests.length).toBe(requestsAtStart)
 

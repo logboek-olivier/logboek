@@ -51,7 +51,7 @@ test('Vaste checklists per trip, sjabloon bewerken; trip afsluiten in een minuut
   await page.getByLabel('Naar', { exact: true }).fill('Nephaven')
   await page.getByLabel('Zeemijlen').fill('24')
   await page.getByRole('button', { name: 'Opslaan' }).click()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
   await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
   await page.locator('.trip-head').getByRole('button', { name: /^Trip bewerken/ }).click()
   sheet = page.getByRole('dialog')

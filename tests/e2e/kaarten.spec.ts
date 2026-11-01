@@ -93,7 +93,7 @@ test('het gebied van de lopende trip gaat vanzelf offline', async ({ page }) => 
   await map.getByLabel('Naam van de plaats').fill('Nepgorda')
   await map.getByRole('button', { name: 'Kiezen' }).click()
   await page.getByRole('button', { name: 'Opslaan' }).click()
-  await expect(page.getByRole('heading', { name: 'Vandaag' })).toBeVisible()
+  await expect(page.locator('.add-layer')).toHaveCount(0)
   await expect.poll(() => cachedOsm(page, 'bovenwinds'), { timeout: 60_000 }).toBeGreaterThan(10)
   await openMore(page, 'Kaarten')
   const bvi = page.locator('.map-area', { hasText: 'Bovenwindse Eilanden en BVI' })
