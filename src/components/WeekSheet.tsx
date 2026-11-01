@@ -17,6 +17,7 @@ import {
   DEFAULT_WEEK_DAYS,
   defaultWeekName,
   MAX_WEEK_DAYS,
+  nextDayToLog,
   suggestions,
   weekView,
   type ParticipantInput,
@@ -30,6 +31,8 @@ import { Sheet } from './Sheet'
 import { SalaryFields, useSalaryDraft } from './SalaryFields'
 import { TripIncomeFields } from './TripMoney'
 import { PeriodDays } from './PeriodPage'
+import { useCollection } from './useCollection'
+import { openAdd } from '../navigation'
 import { kindForType, typeForKind } from '../model/trip-kind'
 import { parseShip } from '../model/boats'
 import { periodeAfronden, periodeBewerken, periodeMaken } from '../domain/trips'
@@ -51,7 +54,8 @@ export { organisationLabel }
  */
 export function WeekSheet({ store, trip, notify, onClose, initial }: { store: Store; trip: Trip | null; notify: Notify; onClose: () => void; initial?: { startDate: string; dayCount: number } }) {
   const lang = useLang()
-  const legs = store.get('legs.json.enc')
+  // Reactief: een dag die via Dag toevoegen bijkomt, staat er meteen bij.
+  const legs = useCollection(store, 'legs.json.enc')
   const view = trip ? weekView(trip, legs) : null
   const curricula = effectiveCurricula(store.get('curricula.json.enc'))
   const trips = store.get('trips.json.enc')
@@ -313,8 +317,26 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </select>
         </label>
-        {kindForType(type) === 'werk' && <SalaryFields {...salary.props} />}
-        {trip && <TripIncomeFields store={store} trip={trip} notify={notify} />}
+        {shownRoute.length > 0 && (
+          <div className="notice-quiet route-plan">
+            <span className="small">
+              {t('route.planned', { n: shownRoute.length })}: {routeLine(shownRoute)}
+            </span>
+            <button type="button" className="btn link small" onClick={() => setRoute([])}>
+              {t('route.clear')}
+            </button>
+          </div>
+        )}
+        {trip && (
+          <div className="stack-sm">
+            <PeriodDays store={store} legs={legs.filter((l) => l.tripId === trip.id && l.deletedAt === null)} notify={notify} />
+            {/* Dag toevoegen: Toevoegen opent als laag erover; na Opslaan staat Trip bewerken er weer (src/navigation.ts). */}
+            <button type="button" className="btn" onClick={() => openAdd({ date: nextDayToLog(weekView(trip, legs)), tripId: trip.id })}>
+              <Icon icon={Plus} />
+              {t('trip.addDay')}
+            </button>
+          </div>
+        )}
         <fieldset className="participants">
           <legend>{t('week.participants')}</legend>
           <p className="muted small">{t('week.participantsHint')}</p>
@@ -384,17 +406,8 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </datalist>
         </fieldset>
-        {shownRoute.length > 0 && (
-          <div className="notice-quiet route-plan">
-            <span className="small">
-              {t('route.planned', { n: shownRoute.length })}: {routeLine(shownRoute)}
-            </span>
-            <button type="button" className="btn link small" onClick={() => setRoute([])}>
-              {t('route.clear')}
-            </button>
-          </div>
-        )}
-        {trip && <PeriodDays store={store} legs={store.list('legs.json.enc').filter((l) => l.tripId === trip.id)} notify={notify} />}
+        {kindForType(type) === 'werk' && <SalaryFields {...salary.props} />}
+        {trip && <TripIncomeFields store={store} trip={trip} notify={notify} />}
         <NoteField label={t('field.note')} value={note} onChange={setNote} />
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={busy}>

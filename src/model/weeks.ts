@@ -155,6 +155,11 @@ export function upcomingTrips(trips: readonly Trip[], today: string = todayIso()
     .sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))
 }
 
+/** De dag die "Dag toevoegen" voorstelt: de eerste vergeten dag, anders vandaag (na de trip: zijn laatste dag). */
+export function nextDayToLog(view: WeekView, today: string = todayIso()): string {
+  return missingDays(view, today)[0] ?? (view.endDate && today > view.endDate ? view.endDate : today)
+}
+
 /** Dagen binnen de trip (tot en met vandaag) zonder gelogde dag, oudste eerst. */
 export function missingDays(view: WeekView, today: string = todayIso()): string[] {
   if (!view.startDate || !view.endDate) return []

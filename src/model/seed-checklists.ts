@@ -72,7 +72,7 @@ export const SEED_CHECKLISTS: Checklist[] = [
     ['Zonnebrand, pet en zonnebril', 'Sunscreen, cap and sunglasses'],
     ['Hoofdlamp en powerbank', 'Head torch and power bank'],
   ]),
-  list('seed-paklijst-tocht', { nl: 'Paklijst delivery en tocht', en: 'Packing list delivery and passage' }, ['delivery', 'zelf-cruisen', 'zelf-trainen'], [
+  list('seed-paklijst-tocht', { nl: 'Paklijst delivery en tocht', en: 'Packing list delivery and passage' }, ['delivery', 'zelf-cruisen'], [
     ['Paspoort en vaarbewijzen', 'Passport and certificates'],
     ['Offshore-kleding en laarzen', 'Offshore clothing and boots'],
     ['Reddingsvest met harnas en lifeline', 'Lifejacket with harness and tether'],
