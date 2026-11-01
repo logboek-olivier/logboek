@@ -8,7 +8,7 @@ import type { Tx } from '../src/domain/tx'
 import { parseMileageCsv } from '../src/import/mileage-csv'
 import { tripRange } from '../src/model/calendar'
 import { active } from '../src/model/derive'
-import { isEmptyPlan, longImportTrips, planLinkRepair } from '../src/model/link-repair'
+import { backupLinks, compareWithBackup, isEmptyPlan, longImportTrips, planLinkRepair } from '../src/model/link-repair'
 import { movedAway, trashItems } from '../src/model/trash'
 import { followDays } from '../src/model/trip-dates'
 import type { Leg, SyncRecord, Trip } from '../src/model/types'
@@ -195,6 +195,34 @@ describe('Logboek herstellen: dagen bij de verkeerde trip', () => {
     const plan = planLinkRepair(s)
     expect(plan.legs).toEqual([])
     expect(plan.stillLong.map((t) => t.id)).toEqual([trips[20]!.id])
+  })
+
+  it('met een back-up van vóór de schade als bewijs: ook dagen zonder vast id of geschiedenis gaan terug', async () => {
+    const s = await store()
+    const old = parseMileageCsv(goldenCsv())
+    await putMany(s, 'trips.json.enc', old.trips as Trip[])
+    await putMany(s, 'legs.json.enc', old.legs as Leg[])
+    const trips = ordered(s)
+    const before = relations(s)
+    // De back-up van toen (alleen in het geheugen).
+    const files = new Map<string, SyncRecord[]>([
+      ['trips.json.enc', [...s.get('trips.json.enc')]],
+      ['legs.json.enc', [...s.get('legs.json.enc')]],
+    ])
+    const victims = new Set([trips[24]!.id])
+    await putMany(s, 'legs.json.enc', active(s.get('legs.json.enc')).filter((l) => victims.has(l.tripId)).map((l) => ({ ...l, tripId: trips[20]!.id })))
+    const damaged = relations(s)
+    // Vergelijken: de dagen staan nu bij een andere trip; er wordt niets geschreven.
+    const comparison = compareWithBackup(s, files)
+    expect(comparison.legs).toBeGreaterThan(0)
+    expect(comparison.ranges.map((r) => r.trip.id)).toEqual(expect.arrayContaining([trips[20]!.id, trips[24]!.id]))
+    expect(relations(s)).toEqual(damaged)
+    const links = backupLinks(files)
+    const plan = planLinkRepair(s, undefined, links)
+    expect(new Set(plan.legs.map((m) => m.why))).toEqual(new Set(['back-up']))
+    const { result } = await logboekHerstellen(s, planSignature(plan), links)
+    expect(result.applied).toBe(true)
+    expect(relations(s)).toEqual(before)
   })
 
   it('het voorbeeld klopt niet meer bij de tik (een ander apparaat): niets geschreven', async () => {

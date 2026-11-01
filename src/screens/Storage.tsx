@@ -21,6 +21,9 @@ import { deviceId } from '../storage/device'
 import { describeStatus, type RepairResult, type Store } from '../storage/store'
 import { violations, type Rule, type Violation } from '../domain/invariants'
 import { canFix, gezondheidHerstellen } from '../domain/gezondheid'
+import { logboekHerstellen, planSignature } from '../domain/herstel'
+import { backupLinks, compareWithBackup, planLinkRepair, type LinkRepairPlan } from '../model/link-repair'
+import { formatDateRange } from '../format'
 import { ErrorLine } from './Setup'
 import { backupTerugzetten } from '../domain/importeren'
 import { todayIso } from '../basis/datum'
@@ -222,6 +225,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
       </div>
 
       <Backup store={store} notify={notify} />
+      <LinkRepairSection store={store} notify={notify} />
       <HealthSection store={store} notify={notify} />
       <ExportSection store={store} />
     </section>
@@ -358,29 +362,10 @@ function Backup({ store, notify }: { store: Store; notify: Notify }) {
 
 /** Wachtzin of herstelcode van toen, dan het voorbeeld, dan één tik op "Terugzetten" (met ongedaan maken). */
 function RestoreBackup({ store, text, notify, onClose }: { store: Store; text: string; notify: Notify; onClose: () => void }) {
-  const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
-  const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<OpenedBackup | null>(null)
   const [plan, setPlan] = useState<RestoreItem[] | null>(null)
-
-  async function open(e: FormEvent) {
-    e.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      const backup = await openBackup(text, mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret, wordlist: await loadWordlist() })
-      setSecret('')
-      setOpened(backup)
-      setPlan(restorePlan(store, backup))
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   async function apply() {
     if (!plan || busy) return
@@ -396,32 +381,66 @@ function RestoreBackup({ store, text, notify, onClose }: { store: Store; text: s
     }
   }
 
-  if (opened && plan) {
-    const total = plan.reduce((n, item) => n + item.back.length, 0)
+  if (!opened || !plan) {
     return (
-      <div className="stack backup-preview">
-        <h3>{t('backup.preview', { when: formatMoment(opened.createdAt) })}</h3>
-        <ul className="rows">
-          {plan.map((item) => (
-            <li key={item.path} className="row-item">
-              <span className="row-main">{t(FILE_NAME[item.path])}</span>
-              <span className="muted small num">{t('backup.previewLine', { back: formatNumber(item.back.length), inBackup: formatNumber(item.inBackup) })}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="muted small">{total === 0 ? t('backup.nothing') : t('backup.explain')}</p>
-        {total > 0 && !store.hasSynced() && <p className="notice">{t('backup.syncFirst')}</p>}
-        <ErrorLine error={error} />
-        {total > 0 && (
-          <button type="button" className="btn primary" disabled={busy || !store.hasSynced()} onClick={() => void apply()}>
-            {t('backup.apply', { n: total })}
-          </button>
-        )}
-        <button type="button" className="btn link" onClick={onClose}>
-          {t('common.cancel')}
-        </button>
-      </div>
+      <BackupSecretForm
+        text={text}
+        onOpened={(backup) => {
+          setOpened(backup)
+          setPlan(restorePlan(store, backup))
+        }}
+        onClose={onClose}
+      />
     )
+  }
+  const total = plan.reduce((n, item) => n + item.back.length, 0)
+  return (
+    <div className="stack backup-preview">
+      <h3>{t('backup.preview', { when: formatMoment(opened.createdAt) })}</h3>
+      <ul className="rows">
+        {plan.map((item) => (
+          <li key={item.path} className="row-item">
+            <span className="row-main">{t(FILE_NAME[item.path])}</span>
+            <span className="muted small num">{t('backup.previewLine', { back: formatNumber(item.back.length), inBackup: formatNumber(item.inBackup) })}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="muted small">{total === 0 ? t('backup.nothing') : t('backup.explain')}</p>
+      {total > 0 && !store.hasSynced() && <p className="notice">{t('backup.syncFirst')}</p>}
+      <ErrorLine error={error} />
+      {total > 0 && (
+        <button type="button" className="btn primary" disabled={busy || !store.hasSynced()} onClick={() => void apply()}>
+          {t('backup.apply', { n: total })}
+        </button>
+      )}
+      <button type="button" className="btn link" onClick={onClose}>
+        {t('common.cancel')}
+      </button>
+    </div>
+  )
+}
+
+/** Wachtzin of herstelcode van toen: opent een back-up in het geheugen (er wordt niets geschreven). */
+function BackupSecretForm({ text, onOpened, onClose }: { text: string; onOpened: (backup: OpenedBackup) => void; onClose: () => void }) {
+  const [mode, setMode] = useState<'passphrase' | 'recovery'>('passphrase')
+  const [secret, setSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function open(e: FormEvent) {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const backup = await openBackup(text, mode === 'passphrase' ? { passphrase: secret } : { recoveryCode: secret, wordlist: await loadWordlist() })
+      setSecret('')
+      onOpened(backup)
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -504,7 +523,7 @@ function HealthSection({ store, notify }: { store: Store; notify: Notify }) {
             <li key={rule} className="row-item">
               <span className="row-main">
                 <span>{t(`health.rule.${rule}`, { n: list.length })}</span>
-                <span className="muted small">{t(list[0]!.severity === 'fout' ? 'health.error' : canFix(list[0]!) ? 'health.fixable' : 'health.review')}</span>
+                <span className="muted small">{t(LINK_RULES.has(rule) ? 'health.linkRepair' : list[0]!.severity === 'fout' ? 'health.error' : canFix(list[0]!) ? 'health.fixable' : 'health.review')}</span>
               </span>
               {canFix(list[0]!) && (
                 <button type="button" className="btn small" disabled={busy} onClick={() => void fix(list)}>
@@ -516,5 +535,188 @@ function HealthSection({ store, notify }: { store: Store; notify: Notify }) {
         </ul>
       )}
     </div>
+  )
+}
+
+/** Overtredingen die Logboek herstellen (hierboven) oplost. */
+const LINK_RULES: ReadonlySet<Rule> = new Set<Rule>(['trip-langer-dan-dagen', 'lange-importtrip', 'deelnemer-dubbel'])
+
+/**
+ * Logboek herstellen: dagen, deelnemers en studenten die bij de verkeerde trip staan, en trips die over een andere trip
+ * heen lopen (src/model/link-repair.ts). Eerst het voorbeeld (nu en na herstellen), dan één tik; ongedaan te maken.
+ */
+function LinkRepairSection({ store, notify }: { store: Store; notify: Notify }) {
+  const trips = useCollection(store, 'trips.json.enc')
+  const legs = useCollection(store, 'legs.json.enc')
+  const students = useCollection(store, 'students.json.enc')
+  const history = useCollection(store, 'history.json.enc')
+  // Optioneel: een back-up van vóór de schade als extra bewijs (alleen in het geheugen; er wordt niets uit teruggezet).
+  const [backupText, setBackupText] = useState<string | null>(null)
+  const [backup, setBackup] = useState<OpenedBackup | null>(null)
+  const [backupError, setBackupError] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const links = useMemo(() => (backup ? backupLinks(backup.files) : undefined), [backup])
+  const plan = useMemo(() => planLinkRepair(store, undefined, links), [store, trips, legs, students, history, links])
+  const comparison = useMemo(() => (backup ? compareWithBackup(store, backup.files) : null), [store, backup, trips, legs])
+  const [busy, setBusy] = useState(false)
+  const empty = plan.legs.length + plan.trips.length + plan.students.length + plan.participants.length === 0
+
+  async function chosen(file: File | undefined) {
+    if (!file) return
+    setBackupError(null)
+    try {
+      const content = await file.text()
+      readBackupMeta(content)
+      setBackupText(content)
+    } catch (err) {
+      setBackupError(describeError(err))
+    }
+  }
+
+  async function repair() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const { result, undo } = await logboekHerstellen(store, planSignature(plan), links)
+      if (result.applied) notify(t('links.done'), undo, { long: true })
+      else notify(t('links.changed'))
+    } catch (error) {
+      recordError(error)
+      notify(describeError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="section stack link-repair">
+      <h2>{t('links.title')}</h2>
+      {empty ? (
+        <p className="notice health-ok" role="status">
+          {t('links.ok')}
+        </p>
+      ) : (
+        <>
+          <p>{t('links.intro')}</p>
+          <LinkRepairPreview store={store} plan={plan} />
+          <button type="button" className="btn primary" disabled={busy} onClick={() => void repair()}>
+            <Icon icon={Wrench} />
+            {t('links.button')}
+          </button>
+        </>
+      )}
+      {plan.alreadyHome.length > 0 && (
+        <p className="muted small">{t('links.alreadyHome', { people: plan.alreadyHome.map((h) => `${h.participant.firstName} (${tripName(store, h.at)})`).join(', ') })}</p>
+      )}
+      {plan.stillLong.length > 0 && <p className="muted small">{t('links.stillLong', { names: plan.stillLong.map((x) => x.name).join(', ') })}</p>}
+      {backup && comparison ? (
+        <div className="stack-sm">
+          <p>{t('links.compared', { when: formatMoment(backup.createdAt), ranges: comparison.ranges.length, legs: comparison.legs, participants: comparison.participants })}</p>
+          {comparison.ranges.length > 0 && (
+            <ul className="rows">
+              {comparison.ranges.slice(0, 12).map((r) => (
+                <li key={r.trip.id} className="row-item">
+                  <span className="row-main">
+                    <span>{r.trip.name}</span>
+                    <span className="muted small">{t('links.thenNow', { then: r.then ? formatDateRange(r.then.start, r.then.end) : '–', now: r.now ? formatDateRange(r.now.start, r.now.end) : '–' })}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {comparison.ranges.length > 12 && <p className="muted small">{t('links.more', { n: comparison.ranges.length - 12 })}</p>}
+          <p className="muted small">{t('links.compareHint')}</p>
+          <button type="button" className="btn link" onClick={() => setBackup(null)}>
+            {t('links.closeBackup')}
+          </button>
+        </div>
+      ) : backupText ? (
+        <BackupSecretForm
+          text={backupText}
+          onOpened={(opened) => {
+            setBackup(opened)
+            setBackupText(null)
+          }}
+          onClose={() => setBackupText(null)}
+        />
+      ) : (
+        <button type="button" className="btn" onClick={() => fileInput.current?.click()}>
+          <Icon icon={FileSearch} />
+          {t('links.compare')}
+        </button>
+      )}
+      <input
+        ref={fileInput}
+        type="file"
+        hidden
+        aria-label={t('links.compare')}
+        onChange={(e) => {
+          void chosen(e.target.files?.[0])
+          e.target.value = ''
+        }}
+      />
+      <ErrorLine error={backupError} />
+    </div>
+  )
+}
+
+function tripName(store: Store, id: string | null): string {
+  return (id && store.get('trips.json.enc').find((x) => x.id === id)?.name) || t('links.noTrip')
+}
+
+function datesRange(dates: string[]): string {
+  const sorted = [...dates].sort()
+  return formatDateRange(sorted[0]!, sorted.at(-1)!)
+}
+
+/** Per trip: wat er nu staat en wat er na herstellen staat. */
+function LinkRepairPreview({ store, plan }: { store: Store; plan: LinkRepairPlan }) {
+  const ids = new Set<string>([
+    ...plan.trips.map((f) => f.trip.id),
+    ...plan.legs.flatMap((m) => [m.from, m.to]),
+    ...plan.students.map((m) => m.to),
+    ...plan.participants.map((b) => b.to),
+  ])
+  const legRange = (tripId: string) => {
+    const dates = store.list('legs.json.enc').filter((l) => l.tripId === tripId).map((l) => l.date)
+    return dates.length > 0 ? datesRange(dates) : ''
+  }
+  return (
+    <ul className="rows">
+      {[...ids].map((id) => {
+        const fix = plan.trips.find((f) => f.trip.id === id)
+        const out = plan.legs.filter((m) => m.from === id)
+        const into = plan.legs.filter((m) => m.to === id)
+        const lines: string[] = []
+        if (fix?.dates) lines.push(`${t('links.before')}: ${formatDateRange(fix.dates.before.start, fix.dates.before.end)} → ${t('links.after')}: ${fix.dates.after ? formatDateRange(fix.dates.after.start, fix.dates.after.end) : t('links.fromDays')}`)
+        else if (out.length > 0) lines.push(`${t('links.before')}: ${legRange(id)}`)
+        const targets = [...new Set(out.map((m) => m.to))]
+        for (const to of targets) {
+          const list = out.filter((m) => m.to === to)
+          lines.push(t('links.legs', { n: list.length, range: datesRange(list.map((m) => m.leg.date)), to: tripName(store, to) }))
+        }
+        const sources = [...new Set(into.map((m) => m.from))]
+        for (const from of sources) {
+          const list = into.filter((m) => m.from === from)
+          lines.push(t('links.legsIn', { n: list.length, range: datesRange(list.map((m) => m.leg.date)), from: tripName(store, from) }))
+        }
+        if (fix && fix.removedParticipants.length > 0) lines.push(t('links.dupes', { people: fix.removedParticipants.map((p) => p.firstName).join(', ') }))
+        for (const m of plan.students.filter((x) => x.to === id)) lines.push(t('links.student', { name: m.student.firstName, to: tripName(store, id) }))
+        for (const b of plan.participants.filter((x) => x.to === id)) lines.push(t('links.participant', { name: b.participant.firstName }))
+        if (lines.length === 0) return null
+        return (
+          <li key={id} className="row-item">
+            <span className="row-main">
+              <span>{tripName(store, id)}</span>
+              {lines.map((line, i) => (
+                <span key={i} className="muted small">
+                  {line}
+                </span>
+              ))}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

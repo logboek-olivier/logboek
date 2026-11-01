@@ -94,3 +94,25 @@ het herstel bij onleesbare bestanden. De ombouw zit tussen de schermen en de Sto
   kwijt, ongedaan maken precies terug, beide apparaten na syncen gelijk. Meer → Opslag → Gezondheid toont de zachte
   overtredingen met een fix van één tik.
 - **Voor iedereen.** Organisaties staan in de instellingen (`src/basis/organisatie.ts`); een nieuw logboek begint leeg.
+
+## 5. Relaties veranderen niet, tenzij bedoeld (november 2026)
+
+Na het mergen van PR 0 tot en met 6 liepen geïmporteerde trips in Oliviers logboek maanden door ("Amorgos trainingsweek
+13 apr – 16 okt 2024"), telden de statistieken elke maand van 2024 als vol op het water, en stonden deelnemers bij de
+verkeerde trip. Oorzaak (nagebouwd met de gouden dataset, eerst rood in `tests/gouden.test.ts`): **terugzetten uit de
+prullenbak van een trip die vóór de geschiedenis werd samengevoegd of vervangen**. Samenvoegen gaf de overblijvende trip
+vaste datums over beide trips heen en de deelnemers van beide; terugzetten haalde de dagen en studenten terug, maar liet
+die datums en deelnemers staan. Een geïmporteerde trip heeft geen eigen datums, dus de vaste datums van samenvoegen
+bleven als enige over. Geen code koppelde op index of volgorde (gezocht in de hele codebase); wel zocht Nakijken een trip
+in de prullenbak op naam (nu op id).
+
+- **Terugzetten** geeft de overblijvende trip weer alleen zijn eigen datums en deelnemers (`untangleSurvivors` in
+  `src/model/link-repair.ts`). Een deelnemer die al bij een andere trip staat, komt niet dubbel terug.
+- **Logboek herstellen** (Meer → Opslag): herstelt wat al beschadigd is, alleen met bewijs (vast import-id,
+  geschiedenis, student), met een voorbeeld vooraf, één tik en ongedaan maken (`src/domain/herstel.ts`).
+- **Proef op een kopie** (`src/domain/relaties.ts`, in `commit`): een automatische stap die een bestaande koppeling
+  verandert of een nieuwe overtreding maakt, schrijft niets; een import mag geen bestaande koppeling veranderen.
+- **Nieuwe invarianten**: een trip loopt niet over de dagen van een andere trip heen met datums die Olivier niet zelf
+  koos; een geïmporteerde trip is hoogstens 21 dagen (anders Nakijken); een deelnemer staat in één trip.
+- **Gouden dataset** (`tests/helpers/gouden-dataset.ts`) in de tests van elke migratie (`tests/migraties-gouden.test.ts`:
+  relaties en totalen gelijk, twee keer = één keer) en in de upgradetest (relaties na het bijwerken).

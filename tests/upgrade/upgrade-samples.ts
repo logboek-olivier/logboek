@@ -17,12 +17,23 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-trip-plezier', name: 'Nepplezier upgrade', kind: 'plezier', type: 'zelf-cruisen', startDate: '2026-09-10', endDate: '2026-09-12', updatedAt: T, deletedAt: null },
     // Organisaties in de instellingen (schrijfversie 4): een trip bij een eigen organisatie.
     { id: 'upg-trip-eigen-org', name: 'Nep eigen organisatie', organisation: 'org:upg-nep', startDate: '2026-07-01', endDate: '2026-07-03', updatedAt: T, deletedAt: null },
+    // Gouden regel (relaties veranderen niet): twee geïmporteerde tochten met dezelfde naam, zonder datums, elk met een
+    // deelnemer (en student). Na de upgrade hoort elke dag en deelnemer nog bij dezelfde tocht, en loopt geen van beide
+    // over de ander heen.
+    { id: 'upg-gouden-a', name: 'Nep zeilweekend', participants: [{ id: 'upg-gouden-pa', firstName: 'Nepgouda', curriculumId: 'upg-course-1', level: 'beginner' }], updatedAt: T, deletedAt: null },
+    { id: 'upg-gouden-b', name: 'Nep zeilweekend', participants: [{ id: 'upg-gouden-pb', firstName: 'Nepgoudb' }], updatedAt: T, deletedAt: null },
     { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [
     { id: 'upg-leg-dag', tripId: 'upg-trip-dag', date: '2026-10-12', fromPlace: 'Nepbaai', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', nmInland: 0, nmSea: 8, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T, deletedAt: null },
     // Mijlenimport met vaste id's (import:<trip>:<datum>:<n>): opnieuw importeren werkt dezelfde dag bij.
     { id: 'import:upg-trip-1:2026-10-18:0', tripId: 'upg-trip-1', date: '2026-10-18', fromPlace: 'Nepdorp', fromCountry: 'NL', toPlace: 'Nephaven', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', nmInland: 0, nmSea: 12, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T, deletedAt: null },
+    // Gouden regel: per tocht dagen met vaste id's, twee etappes op één dag en een geschatte datum (lege datum in Excel).
+    { id: 'import:upg-gouden-a:2024-05-03:0', tripId: 'upg-gouden-a', date: '2024-05-03', fromPlace: 'Nephaven', fromCountry: 'NL', toPlace: 'Nepbaai', toCountry: 'NL', role: 'schipper', boat: 'Nepboot A (Nepmodel 33)', nmInland: 0, nmSea: 11, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T, deletedAt: null },
+    { id: 'import:upg-gouden-a:2024-05-03:1', tripId: 'upg-gouden-a', date: '2024-05-03', fromPlace: 'Nepbaai', fromCountry: 'NL', toPlace: 'Neppunt', toCountry: 'NL', role: 'schipper', boat: 'Nepboot A (Nepmodel 33)', nmInland: 0, nmSea: 4, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T, deletedAt: null },
+    { id: 'import:upg-gouden-a:2024-05-04:0', tripId: 'upg-gouden-a', date: '2024-05-04', fromPlace: 'Neppunt', fromCountry: 'NL', toPlace: 'Nephaven', toCountry: 'NL', role: 'schipper', boat: 'Nepboot A (Nepmodel 33)', nmInland: 0, nmSea: 9, nmTidal: 0, nightHours: 0, dateEstimated: true, source: 'import', updatedAt: T, deletedAt: null },
+    { id: 'import:upg-gouden-b:2024-09-20:0', tripId: 'upg-gouden-b', date: '2024-09-20', fromPlace: 'Nepdorp', fromCountry: 'NL', toPlace: 'Nepzand', toCountry: 'NL', role: 'co-schipper', boat: 'Nepboot B (Nepmodel 36)', nmInland: 6, nmSea: 0, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T, deletedAt: null },
+    { id: 'import:upg-gouden-b:2024-09-21:0', tripId: 'upg-gouden-b', date: '2024-09-21', fromPlace: 'Nepzand', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'co-schipper', boat: 'Nepboot B (Nepmodel 36)', nmInland: 7, nmSea: 0, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T, deletedAt: null },
     { id: 'upg-leg-1', tripId: 'upg-trip-1', date: '2026-10-19', fromPlace: 'Nephaven', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', windBft: '3-4', nmInland: 0, nmSea: 21.5, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T, deletedAt: null },
   ],
   'transactions.json.enc': [
@@ -54,6 +65,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-course-1', body: 'eigen', courseCode: 'NEP 1', name: { nl: 'Nepcursus', en: 'Fake course' }, groups: [{ id: 'g1', title: { nl: 'Nepdeel', en: 'Fake part' }, topics: [{ id: 't1', title: { nl: 'Nepknoop', en: 'Fake knot' }, kind: 'praktijk', examCritical: true }] }], source: 'eigen', updatedAt: T, deletedAt: null },
   ],
   'students.json.enc': [
+    { id: 'upg-gouden-pa', firstName: 'Nepgouda', curriculumId: 'upg-course-1', level: 'beginner', progress: {}, startedAt: '2024-05-03', weekId: 'upg-gouden-a', updatedAt: T, deletedAt: null },
     { id: 'upg-student-1', firstName: 'Nepanna', curriculumId: 'upg-course-1', level: 'beginner', progress: { t1: { status: 'geoefend', updatedAt: T } }, startedAt: '2026-10-18', weekId: 'upg-trip-1', updatedAt: T, deletedAt: null },
   ],
   'plans.json.enc': [

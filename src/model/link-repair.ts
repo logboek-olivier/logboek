@@ -34,8 +34,32 @@ export interface LegMove {
   leg: Leg
   from: string
   to: string
-  /** Bewijs: het vaste id van de import, of de geschiedenis van het terugzetten. */
-  why: 'import' | 'geschiedenis'
+  /** Bewijs: het vaste id van de import, de geschiedenis van het terugzetten, of de back-up die Olivier koos. */
+  why: 'import' | 'geschiedenis' | 'back-up'
+}
+
+/** Uit een back-up van vóór de schade (alleen ter vergelijking; er wordt niets uit teruggezet): wie waar hoorde. */
+export interface BackupLinks {
+  /** Per dag (id) de trip in de back-up. */
+  legTrip: ReadonlyMap<string, string>
+  /** Per deelnemer (id) de trip in de back-up. */
+  participantTrip: ReadonlyMap<string, string>
+}
+
+/** De koppelingen uit de bestanden van een geopende back-up. */
+export function backupLinks(files: ReadonlyMap<string, readonly SyncRecordLike[]>): BackupLinks {
+  const legTrip = new Map<string, string>()
+  for (const r of files.get('legs.json.enc') ?? []) if (r.deletedAt === null && typeof r.tripId === 'string') legTrip.set(r.id, r.tripId)
+  const participantTrip = new Map<string, string>()
+  for (const r of files.get('trips.json.enc') ?? []) if (r.deletedAt === null) for (const p of (r.participants ?? []) as Participant[]) participantTrip.set(p.id, r.id)
+  return { legTrip, participantTrip }
+}
+
+interface SyncRecordLike {
+  id: string
+  deletedAt: string | null
+  tripId?: unknown
+  participants?: unknown
 }
 
 export interface StudentMove {
@@ -98,13 +122,28 @@ function importOnly(trip: Trip, legs: readonly Leg[]): boolean {
   return !trip.datesFromDays && own.length > 0 && own.every((l) => l.source === 'import')
 }
 
+/** Opdrachten die datums van een trip zetten zonder dat Olivier ze koos (samenvoegen neemt beide trips samen). */
+const NOT_CHOSEN: ReadonlySet<string> = new Set(['samenvoegen', 'periodeVervangen', ...SUSPECT_COMMANDS])
+
+/**
+ * Trips waarvan Olivier de datums zelf instelde: de laatste opdracht in de geschiedenis die begin of eind veranderde, was
+ * een eigen keuze (Trip bewerken, verlengen in de agenda, ...), niet samenvoegen of terugzetten. Die datums blijven altijd.
+ */
+export function datesChosen(reader: Reader): Set<string> {
+  const last = new Map<string, string>()
+  for (const e of [...active(reader.get(HISTORY_PATH))].filter((x) => !x.undoneAt).sort((a, b) => a.at.localeCompare(b.at))) {
+    for (const c of e.changes) if (c.path === 'trips.json.enc' && ('startDate' in c.after || 'endDate' in c.after)) last.set(c.id, e.command)
+  }
+  return new Set([...last].filter(([, command]) => !NOT_CHOSEN.has(command)).map(([id]) => id))
+}
+
 /**
  * De eigen datums van een trip die over de dagen van een andere trip heen lopen, terwijl zijn eigen dagen daar niet
  * liggen (samenvoegen gaf hem de datums van beide). Dan weer de eigen dagen; een geïmporteerde trip zonder eigen datums.
- * Een trip zonder dagen (vooruit gepland) blijft zoals hij is.
+ * Een trip zonder dagen (vooruit gepland) en datums die Olivier zelf koos (`chosen`) blijven zoals ze zijn.
  */
-export function stretchedDates(trip: Trip, legs: readonly Leg[]): TripFix['dates'] | null {
-  if (!trip.startDate || !trip.endDate) return null
+export function stretchedDates(trip: Trip, legs: readonly Leg[], chosen: ReadonlySet<string> = new Set()): TripFix['dates'] | null {
+  if (!trip.startDate || !trip.endDate || chosen.has(trip.id)) return null
   const range = legRange(trip.id, legs)
   if (!range) return null
   if (trip.startDate >= addDays(range.start, -SLACK_DAYS) && trip.endDate <= addDays(range.end, SLACK_DAYS)) return null
@@ -125,7 +164,7 @@ function withDates(trip: Trip, after: { start: string; end: string } | null): Tr
  * terug, dan staan ze dubbel. Ze gaan weg uit de trip die alles van de andere ook heeft (de samengevoegde); hebben beide
  * ook eigen deelnemers, dan beslist de student (weekId). Zonder bewijs blijft het staan.
  */
-export function duplicateParticipants(trips: readonly Trip[], students: readonly Student[]): Map<string, Participant[]> {
+export function duplicateParticipants(trips: readonly Trip[], students: readonly Student[], backup?: BackupLinks): Map<string, Participant[]> {
   const live = active(trips)
   const studentTrip = new Map(active(students).map((s) => [s.id, s.weekId ?? null]))
   const ids = new Map(live.map((t) => [t.id, new Set((t.participants ?? []).map((p) => p.id))]))
@@ -141,7 +180,7 @@ export function duplicateParticipants(trips: readonly Trip[], students: readonly
     // De trip met de kleinste lijst die helemaal in een andere zit: dat is het origineel; de grotere lijsten verliezen hem.
     const sorted = [...list].sort((a, b) => ids.get(a.id)!.size - ids.get(b.id)!.size)
     const origin = sorted.find((small) => sorted.some((big) => big !== small && [...ids.get(small.id)!].every((id) => ids.get(big.id)!.has(id))))
-    const home = studentTrip.get(pid)
+    const home = studentTrip.get(pid) ?? backup?.participantTrip.get(pid)
     const keep = origin ?? (home ? list.find((t) => t.id === home) : undefined)
     if (!keep) continue
     for (const t of list) if (t.id !== keep.id) drop(t, pid)
@@ -160,16 +199,21 @@ function recentEntries(reader: Reader, now: string): HistoryEntry[] {
  * Waar hoort een dag die nu bij `current` staat? Het vaste import-id noemt de trip van de import; anders de trip van
  * vóór het laatste terugzetten dat hem verplaatste. Alleen een bestaande andere trip telt.
  */
-function evidenceFor(leg: Leg, moves: ReadonlyMap<string, string>, live: ReadonlySet<string>): { to: string; why: LegMove['why'] } | null {
+function evidenceFor(leg: Leg, moves: ReadonlyMap<string, string>, live: ReadonlySet<string>, backup?: BackupLinks): { to: string; why: LegMove['why'] } | null {
   const fromId = importTripOf(leg.id)
   if (fromId && fromId !== leg.tripId && live.has(fromId)) return { to: fromId, why: 'import' }
   const before = moves.get(leg.id)
   if (before && before !== leg.tripId && live.has(before)) return { to: before, why: 'geschiedenis' }
+  const saved = backup?.legTrip.get(leg.id)
+  if (saved && saved !== leg.tripId && live.has(saved)) return { to: saved, why: 'back-up' }
   return null
 }
 
-/** Het herstelplan: wat verkeerd gekoppeld is en hoe het terug gaat. Rekent alleen. */
-export function planLinkRepair(reader: Reader, now = new Date().toISOString()): LinkRepairPlan {
+/**
+ * Het herstelplan: wat verkeerd gekoppeld is en hoe het terug gaat. Rekent alleen. `backup`: koppelingen uit een
+ * back-up die Olivier koos, als extra bewijs (een dag of deelnemer gaat alleen terug naar een trip die er nog is).
+ */
+export function planLinkRepair(reader: Reader, now = new Date().toISOString(), backup?: BackupLinks): LinkRepairPlan {
   const trips = active(reader.get('trips.json.enc'))
   const live = new Set(trips.map((t) => t.id))
   const allLegs = reader.get('legs.json.enc')
@@ -198,7 +242,7 @@ export function planLinkRepair(reader: Reader, now = new Date().toISOString()): 
   const legMoves: LegMove[] = []
   for (const leg of legs) {
     if (!long.has(leg.tripId)) continue
-    const ev = evidenceFor(leg, moved, live)
+    const ev = evidenceFor(leg, moved, live, backup)
     if (!ev) continue
     legMoves.push({ leg, from: leg.tripId, to: ev.to, why: ev.why })
   }
@@ -208,13 +252,14 @@ export function planLinkRepair(reader: Reader, now = new Date().toISOString()): 
 
   // 2. Deelnemers die dubbel staan.
   const students = reader.get('students.json.enc')
-  const dupes = duplicateParticipants(trips, students)
+  const dupes = duplicateParticipants(trips, students, backup)
 
   // 3. Trips: datums terug naar de eigen dagen; trips die de dagen volgen, weer gelijk aan hun dagen.
   const touched = new Set([...legMoves.map((m) => m.from), ...legMoves.map((m) => m.to)])
+  const chosen = datesChosen(reader)
   const tripFixes: TripFix[] = []
   for (const trip of trips) {
-    let dates = stretchedDates(trip, nextLegs)
+    let dates = stretchedDates(trip, nextLegs, chosen)
     if (!dates && touched.has(trip.id) && trip.datesFromDays && trip.startDate && trip.endDate) {
       const r = legRange(trip.id, nextLegs)
       if (r && (r.start !== trip.startDate || r.end !== trip.endDate)) dates = { before: { start: trip.startDate, end: trip.endDate }, after: r }
@@ -234,8 +279,10 @@ export function planLinkRepair(reader: Reader, now = new Date().toISOString()): 
   const studentMoves: StudentMove[] = []
   for (const s of active(students)) {
     const at = holder.get(s.id)
-    if (!at || at.length !== 1) continue
-    if ((s.weekId ?? null) !== at[0]) studentMoves.push({ student: s, from: s.weekId ?? null, to: at[0]! })
+    // Alleen een student die aan een andere trip hangt dan zijn deelnemer (een oudere student zonder weekId hoort bij
+    // de trip van zijn begindatum en blijft zo).
+    if (!at || at.length !== 1 || !s.weekId || s.archivedAt) continue
+    if (s.weekId !== at[0]) studentMoves.push({ student: s, from: s.weekId, to: at[0]! })
   }
 
   // 5. Deelnemers in de prullenbak (verwijderd uit een trip waar ze verkeerd stonden): terug naar hun eigen trip.
@@ -255,7 +302,7 @@ export function planLinkRepair(reader: Reader, now = new Date().toISOString()): 
         alreadyHome.push({ participant: p, at: now[0]! })
         continue
       }
-      const home = studentTrip.get(p.id)
+      const home = studentTrip.get(p.id) ?? backup?.participantTrip.get(p.id)
       if (home && home !== change.id && nextTrips.has(home) && !back.some((b) => b.participant.id === p.id)) back.push({ participant: p, from: change.id, to: home })
     }
   }
@@ -277,10 +324,11 @@ export function untangleSurvivors(reader: Reader, restored: Trip, survivors: rea
   const legs = reader.get('legs.json.enc')
   const theirs = new Set((restored.participants ?? []).map((p) => p.id))
   const fixes: TripFix[] = []
+  const chosen = datesChosen(reader)
   for (const id of survivors) {
     const trip = active(reader.get('trips.json.enc')).find((t) => t.id === id)
     if (!trip) continue
-    const dates = stretchedDates(trip, legs)
+    const dates = stretchedDates(trip, legs, chosen)
     const removed = (trip.participants ?? []).filter((p) => theirs.has(p.id))
     if (!dates && removed.length === 0) continue
     let next: Trip = dates ? withDates(trip, dates.after) : { ...trip }
@@ -290,11 +338,22 @@ export function untangleSurvivors(reader: Reader, restored: Trip, survivors: rea
   return fixes
 }
 
-/** Een geïmporteerde trip die langer loopt dan `LONG_TRIP_DAYS` (Nakijken). */
-export function longImportTrips(reader: Reader): Array<{ trip: Trip; start: string; end: string; days: number }> {
-  const legs = active(reader.get('legs.json.enc'))
-  const out: Array<{ trip: Trip; start: string; end: string; days: number }> = []
-  for (const trip of active(reader.get('trips.json.enc'))) {
+export interface LongTrip {
+  trip: Trip
+  start: string
+  end: string
+  days: number
+}
+
+/** Een geïmporteerde trip die langer loopt dan `LONG_TRIP_DAYS` (Nakijken en Gezondheid). */
+export function longImportTrips(reader: Reader): LongTrip[] {
+  return longImportTripsOf(reader.get('trips.json.enc'), reader.get('legs.json.enc'))
+}
+
+export function longImportTripsOf(allTrips: readonly Trip[], allLegs: readonly Leg[]): LongTrip[] {
+  const legs = active(allLegs)
+  const out: LongTrip[] = []
+  for (const trip of active(allTrips)) {
     if (!legs.some((l) => l.tripId === trip.id && l.source === 'import')) continue
     const r = legRange(trip.id, legs)
     const start = trip.startDate && r && trip.startDate < r.start ? trip.startDate : r?.start
@@ -306,3 +365,38 @@ export function longImportTrips(reader: Reader): Array<{ trip: Trip; start: stri
   return out
 }
 
+
+/** Vergelijking met een back-up (alleen lezen): wat er nu anders gekoppeld is dan toen. */
+export interface BackupComparison {
+  /** Trips (in beide) met nu een ander begin of eind. */
+  ranges: Array<{ trip: Trip; then: { start: string; end: string } | null; now: { start: string; end: string } | null }>
+  /** Dagen (in beide) die nu bij een andere trip staan. */
+  legs: number
+  /** Deelnemers (in beide) die nu bij een andere trip staan, of erbij kwamen in een tweede trip. */
+  participants: number
+}
+
+export function compareWithBackup(reader: Reader, files: ReadonlyMap<string, readonly SyncRecordLike[]>): BackupComparison {
+  const thenTrips = new Map(((files.get('trips.json.enc') ?? []) as unknown as Trip[]).filter((t) => t.deletedAt === null).map((t) => [t.id, t]))
+  const thenLegs = ((files.get('legs.json.enc') ?? []) as unknown as Leg[]).filter((l) => l.deletedAt === null)
+  const nowLegs = reader.get('legs.json.enc')
+  const range = (trip: Trip, legs: readonly Leg[]) => {
+    const r = legRange(trip.id, legs)
+    const start = trip.startDate ?? r?.start
+    const end = trip.endDate ?? r?.end
+    return start && end ? { start, end } : null
+  }
+  const ranges: BackupComparison['ranges'] = []
+  for (const trip of active(reader.get('trips.json.enc'))) {
+    const then = thenTrips.get(trip.id)
+    if (!then) continue
+    const a = range(then, thenLegs)
+    const b = range(trip, nowLegs)
+    if (a?.start !== b?.start || a?.end !== b?.end) ranges.push({ trip, then: a, now: b })
+  }
+  const links = backupLinks(files)
+  const legs = active(nowLegs).filter((l) => links.legTrip.has(l.id) && links.legTrip.get(l.id) !== l.tripId).length
+  let participants = 0
+  for (const trip of active(reader.get('trips.json.enc'))) for (const p of trip.participants ?? []) if (links.participantTrip.has(p.id) && links.participantTrip.get(p.id) !== trip.id) participants++
+  return { ranges, legs, participants }
+}

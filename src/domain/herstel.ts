@@ -2,7 +2,7 @@
 // id, volgens het plan uit src/model/link-repair.ts. Pas na een tik, met het voorbeeld vooraf; met geschiedenis, dus
 // ongedaan te maken (melding en Meer → Geschiedenis). Elke wijziging is een benoemde opdracht via `commit`.
 
-import { planLinkRepair, type LinkRepairPlan } from '../model/link-repair'
+import { planLinkRepair, type BackupLinks, type LinkRepairPlan } from '../model/link-repair'
 import type { Trip } from '../model/types'
 import { opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
@@ -24,9 +24,10 @@ export type RepairOutcome = { applied: true; plan: LinkRepairPlan } | { applied:
 /**
  * Het herstel uitvoeren. `expected`: de vingerafdruk van het voorbeeld dat Olivier zag; is het plan bij de tik anders
  * (een ander apparaat synchroniseerde intussen), dan gebeurt er niets en toont het scherm het nieuwe voorbeeld.
+ * `backup`: koppelingen uit een gekozen back-up als extra bewijs (er wordt niets uit de back-up teruggezet).
  */
-export async function repairLinks(tx: Tx, expected: string): Promise<RepairOutcome> {
-  const plan = planLinkRepair(tx, tx.now)
+export async function repairLinks(tx: Tx, expected: string, backup?: BackupLinks): Promise<RepairOutcome> {
+  const plan = planLinkRepair(tx, tx.now, backup)
   if (planSignature(plan) !== expected) return { applied: false, plan }
   for (const m of plan.legs) {
     const current = tx.list('legs.json.enc').find((l) => l.id === m.leg.id)

@@ -47,3 +47,8 @@ export function totals(s: Reader): { trips: number; legs: number; nm: number; pa
     students: active(s.get('students.json.enc')).length,
   }
 }
+
+/** Per transactie de periode (trip of periode aan land) waar hij aan hangt. */
+export function moneyLinks(s: Reader): Map<string, string | null> {
+  return new Map(active(s.get('transactions.json.enc')).map((tx) => [tx.id, tx.tripId ?? null]))
+}

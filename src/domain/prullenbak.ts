@@ -104,7 +104,9 @@ export async function revertEntry(tx: Tx, entry: HistoryEntry, participants = fa
     if (participants && change.path === 'trips.json.enc') {
       const trip = current as Trip
       const was = (change.before?.participants ?? []) as Participant[]
-      const back = was.filter((p) => !(change.after.participants as Participant[] | undefined)?.some((q) => q.id === p.id) && !trip.participants?.some((q) => q.id === p.id))
+      // Een deelnemer hoort bij één trip (op id): staat hij intussen bij een andere trip, dan komt hij hier niet dubbel terug.
+      const elsewhere = new Set(active(tx.get('trips.json.enc')).flatMap((t) => (t.participants ?? []).map((q) => q.id)))
+      const back = was.filter((p) => !(change.after.participants as Participant[] | undefined)?.some((q) => q.id === p.id) && !elsewhere.has(p.id))
       if (back.length > 0) {
         await tx.put('trips.json.enc', { ...trip, participants: [...(trip.participants ?? []), ...back], updatedAt: tx.now })
         count++

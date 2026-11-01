@@ -17,6 +17,7 @@ import { lazyComponent } from '../lazy'
 import { BackToMore, More, type MoreScreen } from './More'
 import type { AddInit } from './QuickAdd'
 import { Today } from './Today'
+import { CopyErrorDetails } from '../components/ErrorDetails'
 import { todayIso } from '../basis/datum'
 import { organisationsFrom, setOrganisations } from '../basis/organisatie'
 import { setCurriculumPacks } from '../model/curricula'
@@ -113,6 +114,12 @@ export function Home({ store }: { store: Store }) {
   useEffect(
     () =>
       onNavigate((target) => {
+        if (target.kind === 'opslag') {
+          if (screenNow.current !== 'opslag') remember(screenNow.current)
+          setScreenState('opslag')
+          window.scrollTo(0, 0)
+          return
+        }
         if (screenNow.current !== 'archief') remember(screenNow.current)
         setArchiveStudent(target.studentId)
         setScreenState('archief')
@@ -182,8 +189,12 @@ export function Home({ store }: { store: Store }) {
         // Lukt het nu niet (bijvoorbeeld vergrendeld), dan de volgende keer opnieuw.
         migrating.current = false
         recordError(error)
+        // De proef op een kopie zag dat een automatische stap een koppeling of regel zou breken: er is niets geschreven
+        // (src/domain/relaties.ts). Dat staat in beeld, met de foutdetails; de volgende sessie probeert het opnieuw.
+        if (error instanceof Error && (error.name === 'RelationError' || error.name === 'InvariantError')) setBlocked(true)
       })
   }, [store, status, demo])
+  const [blocked, setBlocked] = useState(false)
 
   // De weg terug voor de terugknop van Android (src/back.ts): de schermen waar Olivier vandaan kwam, elk een stap terug.
   // Vandaag is het begin; teruggaan naar het vorige scherm (ook met "‹ Meer") haalt het van de weg af.
@@ -239,6 +250,15 @@ export function Home({ store }: { store: Store }) {
   return (
     <main className="app with-bar">
       <SyncStatusLine store={store} files={SCREEN_FILES[screen]} onStorage={screen === 'opslag' ? undefined : () => select('opslag')} />
+      {blocked && (
+        <div className="notice auto-blocked" role="alert">
+          <p>{t('auto.blocked')}</p>
+          <CopyErrorDetails />
+          <button type="button" className="btn link small" onClick={() => setBlocked(false)}>
+            {t('common.close')}
+          </button>
+        </div>
+      )}
       <Suspense fallback={<ScreenLoading />}>
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => {

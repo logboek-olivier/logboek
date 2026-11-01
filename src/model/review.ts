@@ -1,5 +1,6 @@
 import type { Tx, Reader } from '../domain/tx'
 import { applyChanges } from './changes'
+import { longImportTripsOf } from './link-repair'
 import { active, compareLegs } from './derive'
 import { allPeriods, isWaterKind, periodAt, rangeDates, setStayDays, waterRanges, type Period } from './periods'
 import { mergeCandidates, placeKey, placeUses, type PlaceUse } from './places'
@@ -45,6 +46,8 @@ export type ReviewItem =
    * naar de trip van die datum, of een nieuwe trip voor deze dagen. Nooit vanzelf.
    */
   | { key: string; kind: 'dagen-zonder-trip'; tripId: string; tripName: string | null; legs: Leg[]; target: Trip | null }
+  /** Een geïmporteerde trip van meer dan 21 dagen: bijna altijd een verkeerde koppeling (Meer → Opslag → Logboek herstellen). */
+  | { key: string; kind: 'lange-trip'; trip: Trip; start: string; end: string; days: number }
   /** Twee plaatsnamen die dezelfde plaats lijken: `from` gaat op in `into`. */
   | { key: string; kind: 'plaatsen'; from: PlaceUse; into: PlaceUse; reason: 'spelling' }
   /**
@@ -103,6 +106,9 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
       items.push({ key: `overlap:${p.id}+${other.id}`, kind: 'overlap-land', stay: p.stay!, other, from, to })
     }
   }
+
+  // Geïmporteerde trips van meer dan 21 dagen. De sleutel bevat begin en eind: wordt hij nog langer, dan komt hij terug.
+  for (const long of longImportTripsOf(trips, legs)) items.push({ key: `lange-trip:${long.trip.id}:${long.start}:${long.end}`, kind: 'lange-trip', ...long })
 
   // Dagen buiten hun trip (alleen trips met eigen datums: die van Toevoegen → Dag volgen hun dagen).
   const byId = new Map(trips.map((trip) => [trip.id, trip]))
