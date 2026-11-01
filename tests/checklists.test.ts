@@ -37,6 +37,11 @@ describe('vaste checklists', () => {
     expect(all).toHaveLength(SEED_CHECKLISTS.length)
     expect(checklistsFor(all, 'skipper-charter').map((c) => c.id)).toEqual(['seed-veiligheid', 'seed-check-in', 'seed-check-out', 'seed-paklijst-charter'])
     expect(checklistsFor(all, 'delivery').map((c) => c.id)).toEqual(['seed-paklijst-tocht'])
+    // Alleen lijsten die bij de soort passen: geen paklijst voor delivery en oversteek bij een training (zelf leren) of
+    // bij les geven.
+    expect(checklistsFor(all, 'zelf-trainen').map((c) => c.id)).toEqual([])
+    expect(checklistsFor(all, 'training-geven').map((c) => c.id)).toEqual(['seed-veiligheid', 'seed-check-in', 'seed-check-out', 'seed-paklijst-training'])
+    expect(checklistsFor(all, 'zelf-cruisen').map((c) => c.id)).toEqual(['seed-check-in', 'seed-check-out', 'seed-paklijst-tocht'])
     expect(SEED_CHECKLISTS.every((c) => c.items.every((i) => i.text.nl && i.text.en))).toBe(true)
 
     const store = await device()

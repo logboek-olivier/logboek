@@ -13,7 +13,7 @@ import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { splitLegs } from '../model/leg-trip'
 import { activeStudents } from '../model/students'
 import { type Leg, type Participant, type StayPeriod, type Transaction, type Trip, type WeekType } from '../model/types'
-import { missingDays, needsClosing, planWeek, studentWeek, weekView } from '../model/weeks'
+import { missingDays, needsClosing, nextDayToLog, planWeek, studentWeek, weekView } from '../model/weeks'
 import { useIsDemo } from './DemoBar'
 import { openAdd, openStudent } from '../navigation'
 import { PlansView } from '../screens/Planning'
@@ -88,7 +88,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
   const people = trip.participants ?? []
   const returning = returningGuests(trip, trips, legs)
   const missing = missingDays(view, today)
-  const nextDay = missing[0] ?? (view.endDate && today > view.endDate ? view.endDate : today)
+  const nextDay = nextDayToLog(view, today)
   const teaching = view.kind === 'werk' && view.type === 'training-geven'
   const tripStudents = activeStudents(students).filter((st) => studentWeek(st, trips, legs) === trip.id)
   const ownPlans = plans.filter((p) => p.deletedAt === null && planWeek(p, trips, legs) === trip.id)
@@ -214,7 +214,8 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
               </ul>
             </div>
           )}
-          <TripChecklists store={store} notify={notify} trip={trip} type={view.type} heading={Heading} />
+          {/* Alleen bij een vastgelegde soort: nooit lijsten op basis van een gok uit de naam. */}
+          {!view.typeSuggested && <TripChecklists store={store} notify={notify} trip={trip} type={view.type} heading={Heading} />}
 
           {/* 5. Geld */}
           <div className="stack-sm period-money">
