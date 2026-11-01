@@ -72,6 +72,9 @@ for (const { width, scheme, lang } of RUNS) {
       await page.goto('./')
       await expect(page.getByRole('heading', { name: L('setup.title') })).toBeVisible()
       await shot('eerste-keer')
+      // Begin je eigen logboek: eerst wat er bij GitHub nodig is.
+      await button('setup.own').click()
+      await shot('eerste-keer-uitleg')
 
       await createNewLogbook(page, lang, { olivier: true })
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
@@ -243,6 +246,8 @@ for (const { width, scheme, lang } of RUNS) {
       await shot('prullenbak-terugzetten')
       await page.getByRole('dialog').getByRole('button', { name: L('trash.restore') }).click()
       await expect(page.locator('.trash .settings-row')).toHaveCount(0)
+      await openMore(page, L('history.title'), L('nav.more'))
+      await shot('geschiedenis')
       await openMore(page, L('nav.storage'), L('nav.more'))
       await button('storage.checkNow').click()
       await expect(button('storage.checking')).toHaveCount(0, { timeout: 30_000 })
@@ -250,6 +255,9 @@ for (const { width, scheme, lang } of RUNS) {
       await shot('opslag')
       await openMore(page, L('nav.settings'), L('nav.more'))
       await shot('instellingen')
+      await page.getByRole('button', { name: new RegExp(`^${L('orgs.title')}`) }).click()
+      await shot('organisaties')
+      await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
       await button('settings.lock').click()
       await expect(button('unlock.unlock')).toBeVisible()
       await shot('ontgrendelen')
