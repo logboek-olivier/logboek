@@ -13,7 +13,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
-import { goldenCsv } from './helpers/gouden-dataset'
+import { goldenCsv, goldenDate, goldenTrips } from './helpers/gouden-dataset'
 import { moneyLinks, relations, totals } from './helpers/relaties'
 import { putMany } from './helpers/schrijf'
 import type { Tx } from '../src/domain/tx'
@@ -134,7 +134,15 @@ describe('gouden dataset: elke migratie houdt relaties en totalen, en is idempot
       for (const st of STEPS) {
         const written = await step(s, st)
         if (st.name === 'periodemodelMigreren') migrated = written.length > 0
-        expect(relations(s), `${st.name} (zaad ${seed})`).toEqual(before)
+        // Excel importeren geeft elke geïmporteerde trip het begin en eind van zijn blok (uitgangspunt 1); verder blijft
+        // elke relatie gelijk.
+        if (st.name === 'mijlenImporteren') {
+          expect({ ...relations(s), ranges: [] }, `${st.name} (zaad ${seed})`).toEqual({ ...before, ranges: [] })
+          for (const golden of goldenTrips()) {
+            const trip = active(s.get('trips.json.enc')).find((t) => t.startDate === goldenDate(golden, 0))
+            expect(trip?.endDate, `${golden.name} (zaad ${seed})`).toBe(goldenDate(golden, golden.days.length - 1))
+          }
+        } else expect(relations(s), `${st.name} (zaad ${seed})`).toEqual(before)
         expect(totals(s), `${st.name} (zaad ${seed})`).toEqual(sums)
         // Elke transactie houdt zijn periode (nieuwe, zoals geboekte vaste lasten, tellen niet).
         const after = moneyLinks(s)

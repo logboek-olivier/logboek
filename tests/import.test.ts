@@ -66,7 +66,12 @@ describe('import mijlenregistratie', () => {
   it('corrigeert een onmogelijke dag met een melding en markeert de datum als geschat', () => {
     const typo = fixture('mijlen-nep.csv').replace('11-06-2024;Oosteiland', '31-06-2024;Oosteiland')
     const r = parseMileageCsv(typo, NOW)
-    expect(r.warnings).toEqual(['Rij 12: dag bestaat niet in die maand; laatste dag van de maand genomen (geschat)'])
+    // De verkeerde dag ligt nu ook ver van de dagen ervoor en erna: het voorbeeld zegt het (de Excel aanpassen).
+    expect(r.warnings).toEqual([
+      'Rij 12: dag bestaat niet in die maand; laatste dag van de maand genomen (geschat)',
+      'Rij 12: 20 dagen van de vorige dag in dezelfde tocht. Klopt de datum?',
+      'Rij 13: 18 dagen van de vorige dag in dezelfde tocht. Klopt de datum?',
+    ])
     const leg = r.legs.find((l) => l.fromPlace === 'Oosteiland')
     expect(leg).toMatchObject({ date: '2024-06-30', dateEstimated: true })
     expect(result.warnings).toEqual([])

@@ -1,4 +1,4 @@
-import { CalendarRange, Coins, FileText, MapPin, RotateCcw, Route, Sailboat, Users, type LucideIcon } from 'lucide-react'
+import { CalendarRange, Coins, FileSpreadsheet, FileText, MapPin, RotateCcw, Route, Sailboat, Users, type LucideIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
@@ -22,6 +22,7 @@ const ICON: Record<TrashKind, LucideIcon> = {
   plaats: MapPin,
   boot: Sailboat,
   document: FileText,
+  import: FileSpreadsheet,
 }
 
 /** De prullenbak, opnieuw berekend zodra een van de betrokken bestanden verandert. */
@@ -113,7 +114,7 @@ function RestoreSheet({ store, item, notify, onClose }: { store: Store; item: Tr
     <Sheet title={item.title || t(`trash.kind.${item.kind}`)} onClose={onClose}>
       <div className="stack">
         <p className="muted small">{[t(`trash.kind.${item.kind}`), item.date ? formatDate(item.date) : ''].filter(Boolean).join(' · ')}</p>
-        <p>{counts ? t('trash.comesBack', { parts: counts }) : t('trash.comesBackAlone')}</p>
+        <p>{item.kind === 'import' ? t('trash.importBack') : counts ? t('trash.comesBack', { parts: counts }) : t('trash.comesBackAlone')}</p>
         {moved.length > 0 && (
           <fieldset className="stack-sm">
             <legend>{t('trash.movedBack', { name: tripName(moved[0]!.tripId) })}</legend>

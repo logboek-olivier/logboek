@@ -38,6 +38,7 @@ const COMMAND: Record<string, MessageKey> = {
   dagenNaarTrip: 'history.cmd.dagenNaarTrip',
   dagBuitenPeriodeOplossen: 'history.cmd.dagenNaarTrip',
   terugzetten: 'history.cmd.terugzetten',
+  mijlenImporteren: 'history.cmd.mijlenImporteren',
   tripTerugzetten: 'history.cmd.terugzetten',
   geschiedenisTerugzetten: 'history.cmd.terugzetten',
   ongedaanMaken: 'history.cmd.terugzetten',
