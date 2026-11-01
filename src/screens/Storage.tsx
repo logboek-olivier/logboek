@@ -14,6 +14,7 @@ import { COLLECTION_PATHS, type CollectionPath } from '../model/types'
 import { describeError } from '../session'
 import { shareOrDownload } from '../share'
 import { ExportSection } from '../components/ExportSection'
+import { useMileageImport } from '../components/MileageImport'
 import { backupFileName, openBackup, readBackupMeta, restorePlan, type OpenedBackup, type RestoreItem } from '../storage/backup'
 import type { FileEvidence, Verdict, VersionEvidence } from '../storage/evidence'
 import { checkHasProblem, type FileCheck, type FileState } from '../storage/storage-log'
@@ -82,6 +83,8 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
   // Wat de laatste sync op GitHub onleesbaar vond, ook als de ronde om een andere reden stopte (dan blijft "Alles
   // herstellen" staan).
   const unreadableNow = status.kind === 'demo' ? [] : store.unreadableFiles().map((f) => f.path)
+  // Excel opnieuw importeren: het voorbeeld is een eigen scherm (src/components/MileageImport.tsx).
+  const mileage = useMileageImport(store, () => notify(t('import.done')))
 
   async function runCheck() {
     setBusy(true)
@@ -126,6 +129,7 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
 
   const evidence = new Map<CollectionPath, FileEvidence>((log.evidence ?? []).map((e) => [e.path, e]))
   const byPath = new Map<CollectionPath, FileCheck>((check?.files ?? []).map((f) => [f.path, f]))
+  if (mileage.preview) return mileage.preview
   return (
     <section className="stack-lg">
       <header className="page-header">
@@ -222,6 +226,11 @@ export function Storage({ store, notify }: { store: Store; notify: Notify }) {
       </div>
 
       <Backup store={store} notify={notify} />
+      <div className="section card card-body stack-sm reimport">
+        <h2>{t('storage.reimport')}</h2>
+        <p className="muted small">{t('storage.reimportHint')}</p>
+        {mileage.trigger(t('storage.reimport'))}
+      </div>
       <HealthSection store={store} notify={notify} />
       <ExportSection store={store} />
     </section>

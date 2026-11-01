@@ -9,7 +9,7 @@ import type { CollectionPath, HistoryChange, HistoryEntry, Leg, Participant, Syn
 // Alles komt uit de geschiedenis (history.json.enc): één regel per verwijderopdracht. Wat verwijderd werd vóór de
 // geschiedenis bestond, komt uit de tombstones (die houden hun inhoud): die van dezelfde opdracht hebben dezelfde tijd.
 
-export type TrashKind = 'periode' | 'dag' | 'geld' | 'deelnemer' | 'plaats' | 'boot' | 'document'
+export type TrashKind = 'periode' | 'dag' | 'geld' | 'deelnemer' | 'plaats' | 'boot' | 'document' | 'import'
 
 export interface TrashItem {
   key: string
@@ -42,6 +42,8 @@ const DELETE_COMMANDS: Record<string, TrashKind> = {
   plaatsVerwijderen: 'plaats',
   bootVerwijderen: 'boot',
   documentVerwijderen: 'document',
+  // Excel importeren vervangt geïmporteerde trips en dagen: terugzetten zet het logboek terug zoals vóór die import.
+  mijlenImporteren: 'import',
 }
 
 const DAY_MS = 86_400_000
@@ -93,6 +95,14 @@ function fromEntry(reader: Reader, entry: HistoryEntry): TrashItem | null {
     entry,
     legacy: [],
   })
+  if (kind === 'import') {
+    // Alleen als de import iets weghaalde dat nog weg is, en alleen de laatste import: een eerdere terugzetten na een
+    // nieuwere import zou trips dubbel maken.
+    if (!removed.some((c) => find(reader, c.path, c.id)?.deletedAt != null)) return null
+    if (reader.get(HISTORY_PATH).some((e) => e.command === entry.command && e.deletedAt === null && e.at > entry.at)) return null
+    const names = removed.filter((c) => c.path === 'trips.json.enc').map((c) => String(before(reader, c).name ?? ''))
+    return item(names.length > 3 ? `${names.slice(0, 3).join(', ')} …` : names.join(', '), entry.at.slice(0, 10))
+  }
   if (kind === 'periode') {
     const main = removed.find((c) => c.path === 'trips.json.enc' || c.path === 'periods.json.enc')
     if (!main || find(reader, main.path, main.id)?.deletedAt == null) return null

@@ -1,5 +1,5 @@
-import { CalendarPlus, FileText, FileSpreadsheet, LoaderCircle, Upload } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { CalendarPlus, FileText, FileSpreadsheet } from 'lucide-react'
+import { useState } from 'react'
 import { BarChart } from '../components/BarChart'
 import type { Notify } from '../components/EditSheets'
 import { RouteThumb } from '../components/RouteThumb'
@@ -11,25 +11,20 @@ import { tripIncomplete } from '../model/gaps'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
-import { formatDateRangeShort, formatHours, formatMonth, formatMonthShort, formatNm, formatNumber } from '../format'
-import { recordError } from '../errors'
-import { ImportError, parseMileageFile, type ImportResult } from '../import/mileage-csv'
-import { nmPerMonth, summarize, summarizeTrips, type SailingSummary, type TripSummary } from '../model/derive'
-import { roleLabel } from '../i18n/labels'
-import { ROLES, type Place, type Trip } from '../model/types'
+import { formatDateRangeShort, formatHours, formatMonth, formatMonthShort, formatNm } from '../format'
+import { SummaryGrid, useMileageImport } from '../components/MileageImport'
+import { nmPerMonth, summarize, summarizeTrips, type TripSummary } from '../model/derive'
+import type { Place, Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import { CounterDoubtNotice } from '../components/CounterSheets'
-import { ErrorLine } from './Setup'
 import { BoatCheck } from './Boats'
 import { SailingExport } from './SailingExport'
 import { boatList, uncheckedBoats } from '../model/boats'
 import { currentSettings } from '../model/settings'
 import { t } from '../i18n'
 import { useBack } from '../back'
-import { mijlenImporteren } from '../domain/importeren'
-import { describeError } from '../session'
 import { todayIso } from '../basis/datum'
 
 // Zeilen: totalen bovenaan, nm per maand, tochten per maand (nieuwste eerst, uitklapbaar naar dagen), Importeren.
@@ -42,13 +37,8 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   const legs = useCollection(store, 'legs.json.enc')
   const places = useCollection(store, 'places.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
-  const [pending, setPending] = useState<ImportResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [reading, setReading] = useState(false)
   const [checking, setChecking] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   // Boten uit de import (ook eerder geïmporteerde data) die Olivier nog niet bevestigd of overgeslagen heeft.
   const unchecked = uncheckedBoats(boatList(trips, legs), settings)
@@ -57,44 +47,10 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
   const tripSummaries = summarizeTrips(trips, legs)
   const months = nmPerMonth(legs, todayIso())
 
-  async function onFile(file: File | undefined) {
-    if (!file) return
-    setError(null)
-    setReading(true)
-    try {
-      // Inhoud bepaalt het formaat (CSV of .xlsx), niet de naam of het MIME-type van de bestandskiezer.
-      setPending(parseMileageFile(new Uint8Array(await file.arrayBuffer())))
-    } catch (e) {
-      recordError(e)
-      setError(
-        e instanceof ImportError
-          ? e.message
-          : t('import.unreadable'),
-      )
-    } finally {
-      setReading(false)
-      if (fileInput.current) fileInput.current.value = ''
-    }
-  }
-
-  async function confirmImport() {
-    if (!pending) return
-    setBusy(true)
-    setError(null)
-    try {
-      await mijlenImporteren(store, pending)
-      setPending(null)
-      setChecking(true)
-    } catch (e) {
-      // Bijvoorbeeld een import die een bestaande koppeling zou veranderen (src/domain/relaties.ts): niets geschreven.
-      setError(describeError(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
+  const mileage = useMileageImport(store, () => setChecking(true))
   useBack(exporting, () => setExporting(false))
   if (exporting) return <SailingExport store={store} onBack={() => setExporting(false)} />
+  if (mileage.preview) return mileage.preview
 
   if (checking && unchecked.length > 0) {
     return (
@@ -106,53 +62,6 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       </section>
     )
   }
-
-  if (pending) {
-    const previous = legs.filter((l) => l.deletedAt === null && l.source === 'import').length
-    const manual = legs.filter((l) => l.deletedAt === null && l.source === 'manual').length
-    return (
-      <section className="stack">
-        <header className="page-header">
-          <h1>{t('import.check')}</h1>
-        </header>
-        <p className="muted">
-          {t('import.compare')}
-          {previous > 0 ? ` ${t('import.replaces', { n: formatNumber(previous) })}` : ''}
-          {manual > 0 ? ` ${t('import.manualKept', { n: formatNumber(manual) })}` : ''}
-        </p>
-        <SummaryGrid summary={pending.summary} />
-        {pending.warnings.length > 0 && (
-          <>
-            <h2>{t('import.warnings', { n: pending.warnings.length })}</h2>
-            <ul className="warnings">
-              {pending.warnings.map((w) => (
-                <li key={w}>{w}</li>
-              ))}
-            </ul>
-          </>
-        )}
-        <div className="stack">
-          <button className="btn primary" onClick={() => void confirmImport()} disabled={busy}>
-            {busy ? t('import.importing') : t('import.import')}
-          </button>
-          <button className="btn" onClick={() => setPending(null)} disabled={busy}>
-            {t('common.cancel')}
-          </button>
-        </div>
-      </section>
-    )
-  }
-
-  const importButton = (primary: boolean) => (
-    <button
-      className={`btn${primary ? ' primary' : ' small quiet'}`}
-      onClick={() => fileInput.current?.click()}
-      disabled={reading}
-    >
-      <Icon icon={reading ? LoaderCircle : Upload} className={reading ? 'spin' : ''} />
-      {reading ? t('import.reading') : t('import.import')}
-    </button>
-  )
 
   // Tochten per maand van de laatste dag, nieuwste eerst.
   const groups: { month: string; trips: TripSummary[] }[] = []
@@ -167,7 +76,7 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
     <section className="stack-lg">
       <header className="page-header">
         <h1>{t('nav.logbook')}</h1>
-        {summary.days > 0 && importButton(false)}
+        {summary.days > 0 && mileage.trigger(t('import.import'))}
       </header>
       <div className="row wrap">
         <button className="btn small quiet new-week" onClick={() => setEditing({ kind: 'new-week' })}>
@@ -181,12 +90,9 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
           </button>
         )}
       </div>
-      {/* Geen accept-filter: Android en Google Drive geven CSV en Excel wisselende MIME-types en grijzen ze dan uit. */}
-      <input ref={fileInput} type="file" hidden aria-label={t('import.file')} onChange={(e) => void onFile(e.target.files?.[0])} />
-      <ErrorLine error={error} />
       <CounterDoubtNotice store={store} notify={notify} />
       {summary.days === 0 && (
-        <Empty icon={FileSpreadsheet} action={importButton(true)}>
+        <Empty icon={FileSpreadsheet} action={mileage.trigger(t('import.import'), true)}>
           {t('sailing.empty')}
         </Empty>
       )}
@@ -234,33 +140,6 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       {editing?.kind === 'trip' && <TripOverviewSheet store={store} trip={editing.trip} notify={notify} onClose={() => setEditing(null)} />}
       {editing?.kind === 'new-week' && <WeekSheet store={store} trip={null} onClose={() => setEditing(null)} notify={notify} />}
     </section>
-  )
-}
-
-export function SummaryGrid({ summary }: { summary: SailingSummary }) {
-  const water = summary.nmByWater
-  return (
-    <dl className="grid grid-3">
-      <Stat label={t('stat.total')} value={formatNm(summary.nm)} />
-      <Stat label={t('stat.days')} value={formatNumber(summary.days)} />
-      <Stat label={t('stat.trips')} value={formatNumber(summary.trips)} />
-      <Stat label={t('stat.nightHours')} value={formatHours(summary.nightHours)} />
-      {ROLES.filter((r) => summary.nmByRole[r] > 0).map((r) => (
-        <Stat key={r} label={roleLabel(r)} value={formatNm(summary.nmByRole[r])} />
-      ))}
-      <Stat label={t('water.inland')} value={formatNm(water.inland)} />
-      <Stat label={t('water.sea')} value={formatNm(water.sea)} />
-      <Stat label={t('water.tidal')} value={formatNm(water.tidal)} />
-    </dl>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stat">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
   )
 }
 

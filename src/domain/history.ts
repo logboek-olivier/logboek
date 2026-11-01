@@ -23,7 +23,6 @@ const WITHOUT_HISTORY: ReadonlySet<string> = new Set([
   'periodemodelMigreren',
   'studentenArchiveren',
   'studentenWissen',
-  'mijlenImporteren',
   'planningImporteren',
   'standenImporteren',
   'backupTerugzetten',

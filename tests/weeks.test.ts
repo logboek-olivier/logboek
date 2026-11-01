@@ -189,7 +189,7 @@ describe('achterwaarts compatibel', () => {
 })
 
 describe('opnieuw importeren ruimt nooit een tocht op waar iets aan hangt', () => {
-  it('een geïmporteerde tocht met een fooi, review of organisatie blijft als de naam in Excel veranderde', async () => {
+  it('een geïmporteerde tocht met een fooi, review of organisatie blijft als hij uit Excel ging; zelfde eerste dag = dezelfde trip', async () => {
     const { store } = await device()
     const empty = { nm: 0, days: 0, trips: 0, nightHours: 0, nmByRole: { schipper: 0, 'co-schipper': 0, bemanningslid: 0, trainee: 0, instructeur: 0 }, nmByWater: { inland: 0, sea: 0, tidal: 0 } }
     await mijlenImporteren(store, { trips: [oldTrip('a', 'Nepweek fooi'), oldTrip('b', 'Nepweek review'), oldTrip('c', 'Nepweek SV'), oldTrip('d', 'Nepweek leeg')], legs: [leg('a1', 'a', '2025-07-05'), leg('b1', 'b', '2025-08-05'), leg('c1', 'c', '2025-09-05'), leg('d1', 'd', '2025-10-05')], summary: empty, warnings: [], kind: 'csv' })
@@ -199,10 +199,14 @@ describe('opnieuw importeren ruimt nooit een tocht op waar iets aan hangt', () =
     await put(store, 'trips.json.enc', { ...b, review: { quotes: [], rating: 8, lesson: 'Nepzin' }, closedAt: '2025-08-10', updatedAt: now })
     const c = store.list('trips.json.enc').find((t) => t.id === 'c')!
     await put(store, 'trips.json.enc', { ...c, organisation: 'sailing-virgins', updatedAt: now })
-    // In Excel kregen alle tochten een andere naam: de import herkent ze niet meer.
+    // In Excel staat nu één blok met een andere naam dat op de eerste dag van a begint: dat is a (zelfde eerste dag,
+    // naam en fooi blijven, begin en eind uit het blok). b en c staan niet meer in het bestand, maar er hangt iets aan.
     await mijlenImporteren(store, { trips: [oldTrip('n1', 'Andere naam 1')], legs: [leg('n1a', 'n1', '2025-07-05'), leg('n1b', 'n1', '2025-08-05'), leg('n1c', 'n1', '2025-09-05'), leg('n1d', 'n1', '2025-10-05')], summary: empty, warnings: [], kind: 'csv' })
     const ids = store.list('trips.json.enc').map((t) => t.id)
-    expect(ids).toEqual(expect.arrayContaining(['a', 'b', 'c', 'n1']))
+    expect(ids).toEqual(expect.arrayContaining(['a', 'b', 'c']))
+    expect(ids).not.toContain('n1')
+    expect(store.list('trips.json.enc').find((t) => t.id === 'a')).toMatchObject({ name: 'Nepweek fooi', startDate: '2025-07-05', endDate: '2025-10-05' })
+    expect(store.list('transactions.json.enc')[0]!.tripId).toBe('a')
     // Een tocht waar niets aan hangt, gaat wel weg (zoals altijd).
     expect(ids).not.toContain('d')
     expect(store.list('trips.json.enc').find((t) => t.id === 'b')?.review?.lesson).toBe('Nepzin')

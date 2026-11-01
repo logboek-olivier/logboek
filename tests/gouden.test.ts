@@ -100,6 +100,8 @@ describe('gouden dataset: prullenbak van vóór de geschiedenis', () => {
     await putMany(s, 'trips.json.enc', [{ ...s.get('trips.json.enc').find((t) => t.id === gone.id)!, updatedAt: at, deletedAt: at }])
     await putMany(s, 'legs.json.enc', own.map((l) => ({ ...l, tripId: other.id, updatedAt: at })))
     await putMany(s, 'students.json.enc', [{ ...s.get('students.json.enc').find((x) => x.id === 'p-oud')!, weekId: other.id, updatedAt: at }])
+    // De oudere versie had nog geen geschiedenis (de import schrijft nu een regel): die regel bestond toen niet.
+    await putMany(s, 'history.json.enc', s.get('history.json.enc').map((e) => ({ ...e, at: '2099-01-01T00:00:00.000Z', deletedAt: '2099-01-01T00:00:00.000Z' })))
     const item = trashItems(s).find((i) => i.kind === 'periode')!
     expect(item).toBeTruthy()
     const moved = movedAway(s, item)

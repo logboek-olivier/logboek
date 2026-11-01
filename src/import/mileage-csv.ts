@@ -1,3 +1,4 @@
+import { daysBetween } from '../basis/datum'
 import { defaultTripName } from '../model/trip-name'
 import { tripShip } from '../model/boats'
 import { summarize, type SailingSummary } from '../model/derive'
@@ -144,6 +145,8 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
   const warnings: string[] = []
   let trip: Trip | null = null
   let previousDate: string | null = null
+  // De vorige dag in hetzelfde blok: dagen ver uit elkaar zijn een waarschuwing (de Excel aanpassen, niet de app).
+  let blockDate: string | null = null
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i]!
@@ -161,6 +164,7 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
     if (!content.some((c) => text(c) !== '') && !hasNm) {
       if (text(columns.notes) !== '') warnings.push(t('import.warnOnlyNotes', { row: rowNumber, column: COLUMN_LABELS.notes }))
       trip = null
+      blockDate = null
       continue
     }
 
@@ -187,6 +191,10 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
       }
     }
     previousDate = date
+    if (blockDate !== null && Math.abs(daysBetween(blockDate, date)) > GAP_WARNING_DAYS) {
+      warnings.push(t('import.warnGap', { row: rowNumber, days: Math.abs(daysBetween(blockDate, date)) }))
+    }
+    blockDate = date
 
     const roleText = text(columns.role)
     const role = ROLE_MAP[roleText.toLowerCase().replace(/\s+/g, '')]
@@ -245,8 +253,12 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
   }
   if (legs.length === 0) throw new ImportError(t('import.noDays', { row: header.number }))
   // Boten: "Naam (Model)" uit de kolom Schip wordt naam en model van de trip. De lengte blijft een voorstel
-  // (scherm Bootgegevens controleren) en wordt hier nooit ingevuld.
+  // (scherm Bootgegevens controleren) en wordt hier nooit ingevuld. Begin en eind: de eerste en laatste dag van het blok
+  // (CLAUDE.md, uitgangspunt 1).
   for (const trip of trips) {
+    const dates = legs.filter((l) => l.tripId === trip.id).map((l) => l.date).sort()
+    trip.startDate = dates[0]!
+    trip.endDate = dates.at(-1)!
     const ship = tripShip(trip, legs)
     if (ship.name) trip.boat = ship.name
     if (ship.model) trip.boatModel = ship.model
@@ -258,6 +270,9 @@ export function parseMileageRows(rows: readonly SheetRow[], now: string): Omit<I
  * Wind is tekst ("3-4"). Excel maakt van een getypte "3-4" soms 3 april; zo'n cel met datumnotatie wordt
  * weer "3-4". Een gewoon getal blijft een getal.
  */
+/** Twee opeenvolgende dagen in één blok die verder uit elkaar liggen, krijgen een waarschuwing in het voorbeeld. */
+export const GAP_WARNING_DAYS = 7
+
 function windText(cell: SheetCell): string {
   if (cell.number !== undefined && cell.dateStyled && cell.isoDate) {
     const [, m, d] = cell.isoDate.split('-')
