@@ -1,5 +1,6 @@
 import type { CollectionPath, SyncRecord } from '../model/types'
 import type { Store } from '../storage/store'
+import { HISTORY_PATH, historyEntry } from './history'
 import { tombstone } from './tombstone'
 import { Tx } from './tx'
 
@@ -54,7 +55,6 @@ function same(a: SyncRecord | undefined, b: SyncRecord): boolean {
  * meteen een fout), zodat ook een opdracht die nog achter een andere wacht, wordt afgemaakt.
  */
 export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Promise<T> | T): Promise<Committed<T>> {
-  void name
   const handle = store.beginWrite()
   const done = await serial(store, async () => {
     try {
@@ -69,11 +69,14 @@ export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Pr
         for (const r of changed) written.push({ path, before: current.get(r.id) ?? null, after: r })
         entries.push({ path, records: changed })
       }
+      // De geschiedenis in dezelfde transactie: de opdracht en zijn regel komen samen op het apparaat, of geen van beide.
+      const entry = historyEntry(name, tx.now, written)
+      if (entry) entries.push({ path: HISTORY_PATH, records: [entry] })
       // De vastgelegde versies (de Store kan updatedAt net later zetten dan een versie met een tijd in de toekomst).
       const final = new Map<string, SyncRecord>()
       if (entries.length > 0) for (const { path, records } of await tx.write(entries)) for (const r of records) final.set(`${path}\n${r.id}`, r)
       const stored = written.map((w) => ({ ...w, after: final.get(`${w.path}\n${w.after.id}`) ?? w.after }))
-      return { result, stored, followUps: tx.followUps() }
+      return { result, stored, followUps: tx.followUps(), entryId: entry?.id ?? null }
     } finally {
       handle.release()
     }
@@ -84,8 +87,9 @@ export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Pr
   const stored = done.stored
   return {
     result: done.result,
-    undo: undoFor(store, stored),
-    undoOnly: (keep) => undoFor(store, stored.filter((w) => keep(w.path))),
+    undo: undoFor(store, stored, done.entryId),
+    // Een deel ongedaan maken: de regel in de geschiedenis blijft (er staat nog iets van de opdracht).
+    undoOnly: (keep) => undoFor(store, stored.filter((w) => keep(w.path)), null),
     written: stored,
   }
 }
@@ -95,7 +99,7 @@ export async function run(store: Store, name: string, work: (tx: Tx) => Promise<
   return (await commit(store, name, work)).undo
 }
 
-function undoFor(store: Store, written: readonly Written[]): Undo {
+function undoFor(store: Store, written: readonly Written[], entryId: string | null): Undo {
   if (written.length === 0) return async () => {}
   return async () => {
     await commit(store, 'ongedaanMaken', async (tx) => {
@@ -104,6 +108,9 @@ function undoFor(store: Store, written: readonly Written[]): Undo {
         const back = current ? reverted(current, w, tx.now) : null
         if (back) await tx.put(w.path, back as never)
       }
+      // In de geschiedenis: teruggezet (staat dan ook niet meer in de prullenbak).
+      const entry = entryId ? tx.list(HISTORY_PATH).find((h) => h.id === entryId) : undefined
+      if (entry && !entry.undoneAt) await tx.put(HISTORY_PATH, { ...entry, undoneAt: tx.now, updatedAt: tx.now })
     })
   }
 }

@@ -5,8 +5,8 @@ import { addChecklist, deleteChecklist, saveChecklist, toggleCheck } from '../mo
 import { answerDoubt, saveFirstNumbers } from '../model/counters'
 import { renameTrip } from '../model/edit'
 import { answerReturning } from '../model/guests'
-import { acceptAllKinds, dismissReview, fixDayInStay, fixDayInTrip, fixLandOverlap, fixLegOutside, fixLegStart, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, setInvestmentCategory, setTripKind, setTripOrganisation } from '../model/review'
-import { changeParticipant, deleteTripWith, mergeTrips, replaceTrip } from '../model/trip-ops'
+import { acceptAllKinds, dismissReview, fixDayInStay, fixDayInTrip, fixLandOverlap, fixLegOutside, fixLegStart, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, moveLegsTo, setInvestmentCategory, setTripKind, setTripOrganisation, tripForLegs } from '../model/review'
+import { changeParticipant, deleteTripWith, mergeTrips, removeParticipant, replaceTrip } from '../model/trip-ops'
 import { addParticipant, closeWeek, startWeek, updateWeek } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
 
@@ -23,6 +23,7 @@ export const dagBeginAansluiten = opdracht('dagBeginAansluiten', fixLegStart)
 export const dagBuitenPeriodeOplossen = opdracht('dagBuitenPeriodeOplossen', fixLegOutside)
 export const dagtoestandUitLandperiode = opdracht('dagtoestandUitLandperiode', fixDayInStay)
 export const deelnemerToevoegen = opdracht('deelnemerToevoegen', addParticipant)
+export const deelnemerVerwijderen = opdracht('deelnemerVerwijderen', removeParticipant)
 export const deelnemerWijzigen = opdracht('deelnemerWijzigen', changeParticipant)
 export const geldKoppelen = opdracht('geldKoppelen', fixMoneyWithoutPeriod)
 export const investeringssoortZetten = opdracht('investeringssoortZetten', setInvestmentCategory)
@@ -43,3 +44,5 @@ export const samenvoegen = opdracht('samenvoegen', mergeTrips)
 export const soortenOvernemen = opdracht('soortenOvernemen', acceptAllKinds)
 export const tellerBeginnummersOpslaan = opdracht('tellerBeginnummersOpslaan', saveFirstNumbers)
 export const terugkerendeGastBeantwoorden = opdracht('terugkerendeGastBeantwoorden', answerReturning)
+export const dagenNaarTrip = opdracht('dagenNaarTrip', moveLegsTo)
+export const tripVoorDagen = opdracht('tripVoorDagen', tripForLegs)

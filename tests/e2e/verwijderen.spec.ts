@@ -3,8 +3,9 @@ import { mockGithub } from './helpers/fake-github'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook, openMore } from './helpers/logbook'
 
 // PR B: één vast patroon voor alles. Tikken opent bewerken met alle velden; onderaan "Verwijderen", daarna 10 seconden
-// "Ongedaan maken". Overlappende trips, een tikfout in een tripnaam, een trip met dagen verwijderen, de boot "xxx",
-// een deelnemer. Alle gegevens zijn verzonnen.
+// "Ongedaan maken". Een periode verwijderen staat alleen onder "⋯" en gaat naar de prullenbak. Overlappende trips, een
+// tikfout in een tripnaam, een trip met dagen naar de prullenbak en terug, de boot "xxx", een deelnemer. Alle gegevens
+// zijn verzonnen.
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -27,7 +28,7 @@ async function newTrip(page: Page, name: string, start: string, days: number, bo
   await expect(page.locator('.toast')).toHaveText('Trip opgeslagen')
 }
 
-test('overlappende trips samenvoegen, tikfout in de naam herstellen, trip met dagen verwijderen en meenemen', async ({ page }) => {
+test('overlappende trips samenvoegen, tikfout in de naam herstellen, trip met dagen naar de prullenbak en terug', async ({ page }) => {
   test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
@@ -75,16 +76,32 @@ test('overlappende trips samenvoegen, tikfout in de naam herstellen, trip met da
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await openLogbook(page)
   await page.locator('.trip').filter({ hasText: 'Nepweek eerder' }).getByRole('button').first().click()
+  // Verwijderen staat alleen onder "⋯" in de kop van de periode, nooit in het bewerkscherm of bij de dagen.
   await page.getByRole('dialog').getByRole('button', { name: 'Bewerken', exact: true }).click()
-  const del = page.getByRole('dialog')
-  await del.getByRole('button', { name: 'Trip verwijderen' }).click()
-  await expect(del.locator('.delete-choice')).toContainText('Deze trip heeft 1 gelogde dag. Wat moet daarmee gebeuren?')
+  await expect(page.getByRole('dialog').getByRole('button', { name: /^(Trip|Periode) verwijderen$/ })).toHaveCount(0)
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
+  await page.locator('.trip').filter({ hasText: 'Nepweek eerder' }).getByRole('button').first().click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Meer bij Nepweek eerder' }).click()
+  const menu = page.getByRole('dialog').last()
+  await menu.getByRole('button', { name: 'Periode verwijderen' }).click()
+  await expect(menu.locator('.delete-choice')).toContainText('Hieraan hangt: 1 gelogde dag.')
+  await expect(menu.getByRole('button', { name: 'Geld en dagen behouden zonder periode' })).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/bewerken/trip-verwijderen.png' })
-  await expect(del.getByRole('combobox', { name: 'Meenemen naar trip' })).toContainText('Week 44')
-  await del.getByRole('button', { name: 'Meenemen en deze trip verwijderen' }).click()
-  await expect(page.locator('.toast')).toContainText('alles staat nu bij Week 44')
+  await menu.getByRole('button', { name: 'Alles naar de prullenbak' }).click()
+  await expect(page.locator('.toast')).toContainText('Nepweek eerder staat in de prullenbak')
   await expect(page.locator('.trip').filter({ hasText: 'Nepweek eerder' })).toHaveCount(0)
+
+  // Meer → Prullenbak: met de dag terug.
+  await openMore(page, 'Prullenbak')
+  await page.getByRole('button', { name: /Nepweek eerder/ }).click()
+  const restore = page.getByRole('dialog')
+  await expect(restore).toContainText('Komt terug met 1 gelogde dag.')
+  await page.screenshot({ path: 'screenshots/bewerken/prullenbak-terugzetten.png' })
+  await restore.getByRole('button', { name: 'Terugzetten' }).click()
+  await expect(page.locator('.toast')).toContainText('Nepweek eerder is teruggezet')
+  await openLogbook(page)
+  await expect(page.locator('.trip').filter({ hasText: 'Nepweek eerder' })).toHaveCount(1)
   expect(errors).toEqual([])
 })
 

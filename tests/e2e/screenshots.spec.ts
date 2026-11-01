@@ -32,7 +32,7 @@ for (const { width, scheme, lang } of RUNS) {
     test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB' })
 
     test(`schermafbeeldingen ${width} px ${scheme === 'light' ? 'licht' : 'donker'} ${lang}`, async ({ page }) => {
-      test.setTimeout(300_000)
+      test.setTimeout(400_000)
       const L = (key: MessageKey) => translate(lang, key as 'common.save')
       const button = (key: MessageKey, exact = true) => page.getByRole('button', { name: L(key), exact })
       const errors = collectConsoleErrors(page)
@@ -226,6 +226,23 @@ for (const { width, scheme, lang } of RUNS) {
       await page.getByRole('radio', { name: L('stats.all') }).click()
       await button('week.showAmounts').click()
       await shot('statistieken')
+      // Periode verwijderen onder "⋯", de prullenbak en terugzetten.
+      await openLogbook(page, lang)
+      await page.locator('.trip').first().getByRole('button').first().click()
+      const periodSheet = page.getByRole('dialog')
+      await periodSheet.locator('.trip-head .btn.icon').last().click()
+      await page.getByRole('dialog').last().getByRole('button', { name: L('periodMenu.delete') }).click()
+      await shot('periode-verwijderen')
+      await page.getByRole('dialog').last().getByRole('button', { name: L('periodMenu.keep') }).click()
+      // Na een periode verwijderen staat "Ongedaan maken" 30 seconden in beeld.
+      await expect(page.locator('.toast')).toBeVisible()
+      await expect(page.locator('.toast')).toHaveCount(0, { timeout: 40_000 })
+      await openMore(page, L('trash.title'), L('nav.more'))
+      await shot('prullenbak')
+      await page.locator('.trash .settings-row').first().click()
+      await shot('prullenbak-terugzetten')
+      await page.getByRole('dialog').getByRole('button', { name: L('trash.restore') }).click()
+      await expect(page.locator('.trash .settings-row')).toHaveCount(0)
       await openMore(page, L('nav.storage'), L('nav.more'))
       await button('storage.checkNow').click()
       await expect(button('storage.checking')).toHaveCount(0, { timeout: 30_000 })

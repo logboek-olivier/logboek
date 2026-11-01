@@ -1,7 +1,6 @@
 import type { Tx, Reader } from '../domain/tx'
 import { followTrip, tripRange } from './calendar'
 import { saveSettings, currentSettings } from './settings'
-import { scrubbed } from './students'
 import { active } from './derive'
 import type { Claim, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
 import { applyChanges, type Change } from './changes'
@@ -71,25 +70,31 @@ async function forgetActive(store: Tx, removed: Trip, replacement: Trip | null):
 }
 
 /**
- * Trip verwijderen. `moveTo`: dagen, inkomsten, deelnemers, studenten en planningen gaan naar die trip; zonder: alles
- * gaat mee weg (studenten als geschoonde tombstone, regel 14).
+ * Een trip verwijderen (hij gaat naar de prullenbak, src/model/trash.ts):
+ * - "behouden": alleen de trip; dagen, geld, studenten, planningen en declaraties blijven staan en wijzen nog naar de trip
+ *   (zonder periode, in Nakijken), zodat terugzetten ze vanzelf weer koppelt;
+ * - "alles": ook wat eraan hangt, als tombstones met inhoud (declaraties en hun bonnetje geschoond, de inhoud staat 30
+ *   dagen in de geschiedenis);
+ * - een andere trip: wat eraan hangt gaat naar die trip (vervangen).
  */
-export async function deleteTripWith(store: Tx, trip: Trip, moveTo: Trip | null): Promise<void> {
+export async function deleteTripWith(store: Tx, trip: Trip, choice: Trip | 'behouden' | 'alles'): Promise<void> {
   const now = store.now
   const legs = store.list('legs.json.enc')
   const range = tripRange(trip, legs)
   const d = tripDependents(store, trip)
+  const moveTo = typeof choice === 'string' ? null : choice
   const changes: Change[] = [{ path: 'trips.json.enc', before: trip, after: gone(trip, now) }]
   if (moveTo) {
     changes.push(...moveChanges(store, trip, moveTo, now))
     if (d.participants.length > 0) {
       changes.push({ path: 'trips.json.enc', before: moveTo, after: moved(moveTo, { participants: joinParticipants(moveTo.participants ?? [], d.participants) }, now) })
     }
-  } else {
+  } else if (choice === 'alles') {
     changes.push(
       ...d.legs.map((l): Change => ({ path: 'legs.json.enc', before: l, after: gone(l, now) })),
       ...d.transactions.map((t): Change => ({ path: 'transactions.json.enc', before: t, after: gone(t, now) })),
-      ...d.students.map((s): Change => ({ path: 'students.json.enc', before: s, after: scrubbed(s, now) })),
+      // Studenten met hun naam: zo komen ze terug uit de prullenbak; na 30 dagen gaat de naam weg (regel 14).
+      ...d.students.map((s): Change => ({ path: 'students.json.enc', before: s, after: gone(s, now) })),
       ...d.plans.map((p): Change => ({ path: 'plans.json.enc', before: p, after: gone(p, now) })),
       // Declaraties gaan mee weg zonder notitie of bedrag, met hun bonnetje uit de kluis.
       ...d.claims.map((c): Change => ({ path: 'claims.json.enc', before: c, after: scrubbedClaim(c, now) })),
@@ -172,6 +177,11 @@ export async function mergeTrips(store: Tx, keep: Trip, other: Trip): Promise<vo
  */
 export async function replaceTrip(store: Tx, keep: Trip, other: Trip): Promise<void> {
   return deleteTripWith(store, other, keep)
+}
+
+/** Een deelnemer uit de trip halen (naar de prullenbak). Zijn fooideel telt dan als onbekend. */
+export function removeParticipant(store: Tx, trip: Trip, id: string): Promise<void> {
+  return changeParticipant(store, trip, id, null)
 }
 
 /** Eén deelnemer bewerken of (zonder `next`) uit de trip halen. Zijn fooideel telt dan als onbekend. */

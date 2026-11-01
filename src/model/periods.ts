@@ -251,8 +251,22 @@ export function rangeDates(from: string, to: string): string[] {
 }
 
 /** Een periode aan land verwijderen (zijn dagen worden weer automatisch). */
-export function deleteStay(store: Tx, stay: StayPeriod): Promise<void> {
-  return setStayDays(store, rangeDates(stay.startDate, stay.endDate), null)
+/**
+ * Een periode aan land verwijderen (naar de prullenbak); de dagen worden weer automatisch. "behouden": het geld blijft
+ * staan, zonder periode (in Nakijken); "alles": ook het geld van de periode (declaraties en vaste lasten volgen hun eigen
+ * regels en blijven staan).
+ */
+export async function deleteStay(store: Tx, stay: StayPeriod, choice: 'behouden' | 'alles' = 'behouden'): Promise<void> {
+  if (choice === 'alles') {
+    const money = store.list('transactions.json.enc').filter((tx) => tx.tripId === stay.id && !tx.claimId && !tx.fixedCostId)
+    await store.putMany('transactions.json.enc', money.map((tx) => ({ ...tx, updatedAt: store.now, deletedAt: store.now })))
+  }
+  await setStayDays(store, rangeDates(stay.startDate, stay.endDate), null)
+}
+
+/** Het geld dat aan een periode aan land hangt. */
+export function stayMoney(store: Reader, stay: StayPeriod): Transaction[] {
+  return store.list('transactions.json.enc').filter((tx) => tx.tripId === stay.id && !tx.claimId && !tx.fixedCostId)
 }
 
 export interface StayInput {

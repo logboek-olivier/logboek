@@ -107,19 +107,31 @@ describe('Trip verwijderen', () => {
     expect(s.list('trips.json.enc').find((t) => t.id === 'b')!.participants!.map((p) => p.id)).toEqual(['p2'])
   })
 
-  it('"Ook verwijderen": alles gaat mee weg, studenten als geschoonde tombstone (regel 14); ongedaan maken zet alles terug', async () => {
+  it('"Alles naar de prullenbak": alles gaat mee weg, studenten met naam tot de prullenbak na 30 dagen opruimt (regel 14); ongedaan maken zet alles terug', async () => {
     const s = await filled()
     const a = s.list('trips.json.enc').find((t) => t.id === 'a')!
-    const undo = await periodeVerwijderen(s, a, null)
+    const undo = await periodeVerwijderen(s, a, 'alles')
     expect(s.list('trips.json.enc').map((t) => t.id)).toEqual(['b'])
     expect(s.list('legs.json.enc').map((l) => l.id)).toEqual(['l3'])
     expect(s.list('transactions.json.enc')).toEqual([])
     expect(s.list('plans.json.enc')).toEqual([])
-    expect(s.get('students.json.enc')[0]).toMatchObject({ id: 'p1', firstName: '', deletedAt: expect.any(String) })
+    expect(s.get('students.json.enc')[0]).toMatchObject({ id: 'p1', firstName: 'Nepstudent', deletedAt: expect.any(String) })
     await undo()
     expect(s.list('legs.json.enc')).toHaveLength(3)
     expect(s.list('students.json.enc')[0]).toMatchObject({ id: 'p1', firstName: 'Nepstudent' })
     expect(s.list('transactions.json.enc')).toHaveLength(1)
+  })
+
+  it('"Geld en dagen behouden zonder periode": alleen de trip gaat weg; terugzetten koppelt alles weer', async () => {
+    const s = await filled()
+    const a = s.list('trips.json.enc').find((t) => t.id === 'a')!
+    const undo = await periodeVerwijderen(s, a, 'behouden')
+    expect(s.list('trips.json.enc').map((t) => t.id)).toEqual(['b'])
+    expect(s.list('legs.json.enc').filter((l) => l.tripId === 'a')).toHaveLength(2)
+    expect(s.list('transactions.json.enc')[0]!.tripId).toBe('a')
+    expect(s.list('students.json.enc')[0]).toMatchObject({ id: 'p1', firstName: 'Nepstudent', weekId: 'a' })
+    await undo()
+    expect(s.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['a', 'b'])
   })
 })
 

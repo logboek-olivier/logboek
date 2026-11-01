@@ -73,6 +73,10 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   // Weekafsluiting (ronde 2): cijfer en één zin per ISO-week; het id volgt uit de week.
   'weekreviews.json.enc': [{ id: 'week:2026-W43', week: '2026-W43', start: '2026-10-19', rating: 8, lesson: 'Nepzin over de week', spent: { amount: 85, currency: 'EUR' }, updatedAt: T, deletedAt: null }],
   // Periodemodel: periodes aan land (reis, thuis, vrij); werk, training en plezier zijn trips.
+  // Geschiedenis (prullenbak): één verwijderde dag, nog terug te zetten.
+  'history.json.enc': [
+    { id: 'upg-hist-1', at: T, command: 'dagVerwijderen', device: 'a1b2c3d4', changes: [{ path: 'legs.json.enc', id: 'upg-leg-weg', before: { deletedAt: null }, after: { deletedAt: T } }], undoneAt: null, updatedAt: T, deletedAt: null },
+  ],
   'periods.json.enc': [
     { id: 'upg-stay-thuis', kind: 'thuis', startDate: '2026-12-01', endDate: '2026-12-05', note: 'Nepnotitie', updatedAt: T, deletedAt: null },
     { id: 'upg-stay-reis', kind: 'reis', name: 'Nepreis', startDate: '2026-12-06', endDate: '2026-12-06', travel: { from: 'Nepstad', to: 'Nephaven', by: 'vliegtuig' }, updatedAt: T, deletedAt: null },

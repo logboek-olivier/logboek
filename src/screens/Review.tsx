@@ -18,7 +18,10 @@ import {
 import { ORGANISATIONS, WORK_TYPES, type Leg, type Organisation, type Trip, type WeekType } from '../model/types'
 import type { Store } from '../storage/store'
 import { plaatsenSamenvoegen } from '../domain/plaatsen'
-import { agendadagBijTrip, dagBeginAansluiten, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
+import { tripTerugzetten } from '../domain/prullenbak'
+import { trashItems } from '../model/trash'
+import { defaultTripName } from '../model/trip-name'
+import { agendadagBijTrip, dagBeginAansluiten, dagenNaarTrip, tripVoorDagen, dagBuitenPeriodeOplossen, dagtoestandUitLandperiode, geldKoppelen, investeringssoortZetten, landperiodeInkorten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 
 // Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): twijfelgevallen en tegenstrijdigheden, elk met één knop die het
 // oplost (met ongedaan maken) en "Klopt zo". Zonder punten staat het scherm niet in Meer.
@@ -113,6 +116,8 @@ function describe(item: ReviewItem): string {
       return t('review.workWithoutTrip', { range: formatDateRange(item.from, item.to) })
     case 'dag-zonder-periode':
       return t('review.dayWithoutPeriod', { range: formatDateRange(item.from, item.to), kind: t(`periodKind.${item.stayKind}`) })
+    case 'dagen-zonder-trip':
+      return t('review.daysWithoutTrip', { n: item.legs.length, range: formatDateRange(item.legs[0]!.date, item.legs.at(-1)!.date), name: item.tripName ?? t('review.unknownTrip') })
     case 'geld-zonder-periode':
       return t('review.moneyWithoutPeriod', { kind: kindLabel(item.tx.kind), date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
     case 'plaatsen':
@@ -157,6 +162,14 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
       ]
     case 'agendadag-in-trip':
       return [{ label: t('review.belongsTo', { name: item.trip.name }), primary: true, run: () => agendadagBijTrip(store, item.day) }]
+    case 'dagen-zonder-trip': {
+      const restorable = !!item.tripName && trashItems(store).some((i) => i.kind === 'periode' && i.title === item.tripName)
+      return [
+        ...(restorable ? [{ label: t('review.restoreTrip', { name: item.tripName! }), primary: true, run: () => tripTerugzetten(store, item.tripId) }] : []),
+        ...(item.target ? [{ label: t('review.moveTo', { name: item.target.name }), primary: !restorable, run: () => dagenNaarTrip(store, item.legs, item.target!) }] : []),
+        { label: t('review.newTripForDays'), primary: !restorable && !item.target, run: () => tripVoorDagen(store, item.legs, item.tripName ?? defaultTripName(item.legs[0]!.boat || t('field.trip'), item.legs[0]!.date)) },
+      ]
+    }
     case 'werkdag-zonder-trip':
       return [{ label: t('review.makeTrip'), primary: true, run: () => periodeMakenOverDagen(store, item.from, item.to, lang) }]
     case 'dag-zonder-periode':

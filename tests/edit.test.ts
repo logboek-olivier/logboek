@@ -104,7 +104,7 @@ describe('verwijderen en ongedaan maken', () => {
     const s = await store()
     await putMany(s, 'trips.json.enc', [trip('a', 'Tocht A'), trip('b', 'Tocht B')])
     await putMany(s, 'legs.json.enc', [leg('l1', 'a', '2026-05-01'), leg('l2', 'a', '2026-05-02'), leg('l3', 'b', '2026-06-01')])
-    const undo = await periodeVerwijderen(s, s.list('trips.json.enc').find((t) => t.id === 'a')!, null)
+    const undo = await periodeVerwijderen(s, s.list('trips.json.enc').find((t) => t.id === 'a')!, 'alles')
     expect(s.list('legs.json.enc').map((l) => l.id)).toEqual(['l3'])
     await undo()
     expect(s.list('legs.json.enc')).toHaveLength(3)

@@ -695,6 +695,33 @@ export interface Balance extends SyncRecord {
   source: 'handmatig' | 'import'
 }
 
+/**
+ * Eén opdracht in de geschiedenis (history.json.enc, docs/FUNDERING.md): welke records veranderden, met per veld de
+ * waarde vooraf en erna. De prullenbak en "Terugzetten" werken hiermee; na 30 dagen gaat de inhoud weg.
+ */
+export interface HistoryEntry extends SyncRecord {
+  /** Tijdstip van de opdracht. */
+  at: string
+  /** Naam van de opdracht (src/domain), bijvoorbeeld periodeVerwijderen. */
+  command: string
+  /** Apparaat-id (src/storage/device.ts), zoals in de commitberichten. */
+  device?: string
+  changes: HistoryChange[]
+  /** Teruggezet (ongedaan gemaakt, of via de prullenbak) op dit tijdstip. */
+  undoneAt?: string | null
+}
+
+export interface HistoryChange {
+  path: string
+  id: string
+  /** Waarden vooraf van de velden die veranderden; null bij een nieuw record. */
+  before: Record<string, unknown> | null
+  /** Waarden erna van dezelfde velden; bij een nieuw record leeg (of alleen deletedAt). */
+  after: Record<string, unknown>
+  /** Velden die er vooraf niet waren (in `before` als null; JSON kent geen undefined). */
+  unset?: string[]
+}
+
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
 export interface Collections {
   'trips.json.enc': Trip
@@ -719,6 +746,7 @@ export interface Collections {
   'fixedcosts.json.enc': FixedCost
   'claims.json.enc': Claim
   'periods.json.enc': StayPeriod
+  'history.json.enc': HistoryEntry
 }
 
 export type CollectionPath = keyof Collections
@@ -746,6 +774,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'fixedcosts.json.enc',
   'claims.json.enc',
   'periods.json.enc',
+  'history.json.enc',
 ]
 
 export function newId(): string {

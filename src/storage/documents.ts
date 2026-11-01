@@ -37,8 +37,14 @@ export class DocumentTooLargeError extends Error {
   }
 }
 
-/** Een verwijderd document: na een dag (ongedaan maken) gaat ook het bestand weg, van dit apparaat en van GitHub. */
-export const DOCUMENT_GRACE_MS = 24 * 3_600_000
+/**
+ * Een verwijderd document staat 30 dagen in de prullenbak (src/model/trash.ts); daarna gaat ook het bestand weg, van dit
+ * apparaat en van GitHub.
+ */
+export const DOCUMENT_GRACE_MS = 30 * 24 * 3_600_000
+
+/** Een losgeraakt bestand (de index werd nooit opgeslagen): na een dag weg van het apparaat. */
+export const ORPHAN_GRACE_MS = 24 * 3_600_000
 
 /** Na een mislukte upload (trage of geen verbinding) probeert de sync na een opslag het pas na 10 minuten opnieuw. */
 export const DOCUMENT_RETRY_MS = 10 * 60_000
