@@ -1316,6 +1316,22 @@ body.sheet-open {
   margin-top: var(--s-2);
 }
 
+/* Verwijderen staat nooit vlak onder Opslaan: een eigen rij, met ruimte en een lijn ertussen (een verkeerde tik met de
+   duim kost zo nooit data). */
+.sheet-actions > .btn.danger {
+  margin-top: var(--s-8);
+  position: relative;
+}
+
+.sheet-actions > .btn.danger::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--s-4) - 1px);
+  border-top: 1px solid var(--border);
+}
+
 .three {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3167,13 +3183,15 @@ body.presenting .bottom-bar {
 }
 
 .storage-ok,
+.health-ok,
 .storage-problem {
   justify-content: flex-start;
   margin: 0;
   padding: var(--s-2) var(--s-3);
 }
 
-.storage-ok {
+.storage-ok,
+.health-ok {
   background: var(--accent-soft);
   border-color: var(--accent);
 }

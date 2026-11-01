@@ -13,6 +13,7 @@ import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { put } from './helpers/schrijf'
+import { revertChange } from '../src/domain/history'
 
 // Regressietests uit de review van de domeinlaag (PR 0): ongedaan maken, vergrendelen tijdens opdrachten, uitkomsten.
 
@@ -90,5 +91,17 @@ describe('vergrendelen tijdens opdrachten', () => {
     await expect(termijnOpslaan(store, { title: 'Nep drie', date: '2026-12-03', kind: 'deadline', note: '' })).rejects.toThrow()
     const again = await Store.open(db, key, new GithubClient(TOKEN, new FakeGithub().fetch))
     expect(again.list('reminders.json.enc').map((r) => r.title).sort()).toEqual(['Nep een', 'Nep twee'])
+  })
+})
+
+describe('terugzetten per veld (gevonden door de eigenschappentests)', () => {
+  it('begin en eind blijven een paar: nooit een trip met het begin na het eind', () => {
+    const T = '2026-10-01T00:00:00.000Z'
+    // De opdracht schoof de trip naar voren; daarna veranderde alleen het eind nog.
+    const change = { path: 'trips.json.enc', id: 'a', before: { startDate: '2026-10-20', endDate: '2026-10-25' }, after: { startDate: '2026-10-01', endDate: '2026-10-05' } }
+    const current = { id: 'a', name: 'Neptrip', startDate: '2026-10-01', endDate: '2026-10-15', updatedAt: T, deletedAt: null }
+    const back = revertChange(current, change, T) as unknown as { startDate: string; endDate: string } | null
+    expect(back?.startDate ?? current.startDate).toBe('2026-10-01')
+    expect(back?.endDate ?? current.endDate).toBe('2026-10-15')
   })
 })

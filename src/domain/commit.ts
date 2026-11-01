@@ -1,8 +1,10 @@
 import type { CollectionPath, SyncRecord } from '../model/types'
 import type { Store } from '../storage/store'
+import { sameValue } from '../basis/gelijk'
 import { HISTORY_PATH, historyEntry } from './history'
+import { InvariantError, newHardViolations } from './invariants'
 import { tombstone } from './tombstone'
-import { Tx } from './tx'
+import { Tx, type Reader } from './tx'
 
 // De enige poort naar de opslag (docs/FUNDERING.md). Een opdracht werkt op een transactie; `commit` legt die in één keer
 // vast: alle bestanden en de outbox samen, of niets. Daarna kan de opdracht ongedaan gemaakt worden, als eigen opdracht:
@@ -47,7 +49,7 @@ function serial<T>(store: Store, task: () => Promise<T>): Promise<T> {
 /** Zelfde inhoud (los van updatedAt): dan valt er niets te schrijven. */
 function same(a: SyncRecord | undefined, b: SyncRecord): boolean {
   if (!a) return false
-  return JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' })
+  return sameValue({ ...a, updatedAt: '' }, { ...b, updatedAt: '' })
 }
 
 /**
@@ -68,6 +70,13 @@ export async function commit<T>(store: Store, name: string, work: (tx: Tx) => Pr
         if (changed.length === 0) continue
         for (const r of changed) written.push({ path, before: current.get(r.id) ?? null, after: r })
         entries.push({ path, records: changed })
+      }
+      // Invarianten (src/domain/invariants.ts): een opdracht die een nieuwe harde overtreding maakt, schrijft niets.
+      // Testdata en de demo zetten bewust ook rare toestanden klaar; die gaan er niet langs.
+      if (written.length > 0 && name !== 'test' && name !== 'demoVullen') {
+        const base = { get: tx.base.bind(tx), list: <P extends CollectionPath>(path: P) => tx.base(path).filter((r) => r.deletedAt === null) } as Reader
+        const broken = newHardViolations(base, tx)
+        if (broken.length > 0) throw new InvariantError(broken, name)
       }
       // De geschiedenis in dezelfde transactie: de opdracht en zijn regel komen samen op het apparaat, of geen van beide.
       const entry = historyEntry(name, tx.now, written)
@@ -115,7 +124,7 @@ function undoFor(store: Store, written: readonly Written[], entryId: string | nu
   }
 }
 
-const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const equal = sameValue
 
 /**
  * Ongedaan maken per veld: alleen wat de opdracht veranderde, en alleen waar het nog staat zoals de opdracht het

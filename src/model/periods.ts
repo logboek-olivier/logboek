@@ -4,7 +4,7 @@ import { applyChanges, type Change } from './changes'
 import { active } from './derive'
 import { weekView, type WeekView } from './weeks'
 import type { CalendarDay, Leg, PeriodKind, StayKind, StayPeriod, Transaction, Trip, WeekType } from './types'
-import { addDays } from '../basis/datum'
+import { addDays, isDate } from '../basis/datum'
 
 // Het periodemodel (docs/PERIODEMODEL.md): elke dag hoort bij hoogstens één periode. Werk, training en plezier zijn
 // trips (trips.json.enc); reis, thuis en vrij zijn periodes aan land (periods.json.enc). Schermen werken met `Period`,
@@ -29,7 +29,6 @@ export interface Period {
   stay?: StayPeriod
 }
 
-const isDate = (value: string | undefined): value is string => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 
 export function isWaterKind(kind: PeriodKind): kind is 'werk' | 'training' | 'plezier' {
   return kind === 'werk' || kind === 'training' || kind === 'plezier'

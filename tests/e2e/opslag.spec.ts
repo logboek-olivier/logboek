@@ -64,6 +64,8 @@ test('Meer → Opslag: per bestand de stand, Controleer nu, back-up downloaden e
   await page.getByRole('button', { name: 'Controleer nu' }).click()
   await expect(page.getByRole('button', { name: 'Controleren…' })).toHaveCount(0, { timeout: 30_000 })
   await expect(page.locator('.storage-ok')).toContainText('GitHub en deze telefoon zijn gelijk')
+  // Gezondheid: de regels over de data (src/domain/invariants.ts) kloppen.
+  await expect(page.locator('.health-ok')).toContainText('Alles klopt')
   const days = page.locator('.storage-file').filter({ hasText: 'Dagen' })
   await expect(days).toContainText('1 hier · 1 op GitHub')
   await expect(days).toContainText('Leesbaar')

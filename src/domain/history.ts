@@ -1,3 +1,4 @@
+import { sameValue } from '../basis/gelijk'
 import { deviceId } from '../storage/device'
 import { newId, type CollectionPath, type HistoryChange, type HistoryEntry, type SyncRecord } from '../model/types'
 
@@ -45,7 +46,7 @@ const ONLY_LINKS: ReadonlySet<string> = new Set(['students.json.enc', 'career.js
 const LINK_FIELDS: ReadonlySet<string> = new Set(['deletedAt', 'archivedAt', 'weekId', 'tripId', 'accountId'])
 const SKIPPED: ReadonlySet<string> = new Set(['settings.json.enc', HISTORY_PATH])
 
-const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const equal = sameValue
 
 /** Eén gewijzigd record als regel: alleen de velden die veranderden (zonder updatedAt). */
 export function historyChange(path: CollectionPath, before: SyncRecord | null, after: SyncRecord): HistoryChange | null {
@@ -113,5 +114,12 @@ export function revertChange(
   }
   // deletedAt hoort altijd te bestaan (null = niet verwijderd).
   if (changed && next.deletedAt === undefined) next.deletedAt = null
+  // Begin en eind horen bij elkaar: is er na de opdracht maar één van de twee gewijzigd, dan zou per veld terugzetten
+  // een begin na het eind kunnen geven. Dan blijven beide zoals ze nu zijn.
+  const [start, end] = [next.startDate, next.endDate]
+  if (typeof start === 'string' && typeof end === 'string' && start > end) {
+    next.startDate = (current as unknown as Record<string, unknown>).startDate
+    next.endDate = (current as unknown as Record<string, unknown>).endDate
+  }
   return changed ? ({ ...next, updatedAt: now } as unknown as SyncRecord) : null
 }
