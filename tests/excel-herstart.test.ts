@@ -150,6 +150,66 @@ describe('Excel opnieuw importeren als schone herstart', () => {
   })
 })
 
+describe('Excel opnieuw importeren: wat Olivier in de app deed, blijft', () => {
+  const ownTrip: Trip = { id: 'app', name: 'Nep app-trip', startDate: '2026-06-01', endDate: '2026-06-03', updatedAt: T, deletedAt: null }
+
+  for (const which of ['eerste', 'middelste'] as const) {
+    it(`de ${which} dag van een geïmporteerde tocht zelf naar een app-trip verplaatst: opnieuw importeren laat beide trips staan en schrijft niets`, async () => {
+      const s = await store()
+      await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+      await put(s, 'trips.json.enc', ownTrip)
+      const trip = active(s.get('trips.json.enc')).find((t) => t.name === 'Nep overtocht 2')!
+      const days = active(s.get('legs.json.enc')).filter((l) => l.tripId === trip.id).sort((a, b) => a.date.localeCompare(b.date))
+      const moved = which === 'eerste' ? days[0]! : days[Math.floor(days.length / 2)]!
+      await putMany(s, 'legs.json.enc', [{ ...moved, tripId: 'app', updatedAt: new Date().toISOString() }])
+      const before = snapshot(s)
+      const plan = planImport(s, parseMileageCsv(goldenCsv()))
+      expect({ trips: plan.trips.length, legs: plan.legs.length, removedTrips: plan.removedTrips.length, removedLegs: plan.removedLegs.length }).toEqual({ trips: 0, legs: 0, removedTrips: 0, removedLegs: 0 })
+      await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+      expect(snapshot(s)).toBe(before)
+      expect(active(s.get('legs.json.enc')).find((l) => l.id === moved.id)!.tripId).toBe('app')
+    })
+  }
+
+  it('een eerdere eerste dag in Excel (een vergeten dag erbij): dezelfde trip, met zijn organisatie; geen lege trip ernaast', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const trip = active(s.get('trips.json.enc')).find((t) => t.name === 'Nep overtocht 2')!
+    await put(s, 'trips.json.enc', { ...trip, organisation: 'yacht-week', updatedAt: new Date().toISOString() })
+    // In Excel een dag vóór het blok erbij.
+    const golden = goldenTrips().find((t) => t.name === 'Nep overtocht 2')!
+    const dmy = (iso: string) => `${Number(iso.slice(8, 10))}-${Number(iso.slice(5, 7))}-${iso.slice(0, 4)}`
+    const first = dmy(goldenDate(golden, 0))
+    const earlier = dmy(shiftDays(goldenDate(golden, 0), -1))
+    const csv = goldenCsv().replace(new RegExp(`\\r\\n${first};([^\\r]*);Nep overtocht 2\\r\\n`), (...m: string[]) => `\r\n${earlier};${m[1]};Nep overtocht 2\r\n${first};${m[1]};\r\n`)
+    expect(csv).not.toBe(goldenCsv())
+    await mijlenImporteren(s, parseMileageCsv(csv))
+    const now = active(s.get('trips.json.enc')).filter((t) => t.name === 'Nep overtocht 2')
+    expect(now).toHaveLength(1)
+    expect(now[0]).toMatchObject({ id: trip.id, organisation: 'yacht-week', startDate: shiftDays(goldenDate(golden, 0), -1) })
+    expect(active(s.get('trips.json.enc'))).toHaveLength(goldenTrips().length)
+  })
+
+  it('alleen de laatste import staat in de prullenbak (een eerdere terugzetten zou trips dubbel maken)', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    await mijlenImporteren(s, parseMileageCsv(without(goldenCsv(), ['Amorgos trainingsweek 2'])))
+    expect(trashItems(s).filter((i) => i.kind === 'import')).toHaveLength(1)
+    await mijlenImporteren(s, parseMileageCsv(without(goldenCsv(), ['Nep overtocht 2'])))
+    const items = trashItems(s).filter((i) => i.kind === 'import')
+    expect(items).toHaveLength(1)
+    expect(items[0]!.title).toContain('Nep overtocht 2')
+  })
+
+  it('twee schrijfwijzen van dezelfde boot in Excel: twee keer importeren schrijft de tweede keer niets', async () => {
+    const s = await store()
+    const csv = goldenCsv().replace(/Nepboot A \(/, 'NEPBOOT A (')
+    await mijlenImporteren(s, parseMileageCsv(csv))
+    const plan = planImport(s, parseMileageCsv(csv))
+    expect(plan.legs.length + plan.trips.length).toBe(0)
+  })
+})
+
 function shiftDays(iso: string, n: number): string {
   const d = new Date(`${iso}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + n)

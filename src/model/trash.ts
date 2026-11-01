@@ -96,8 +96,10 @@ function fromEntry(reader: Reader, entry: HistoryEntry): TrashItem | null {
     legacy: [],
   })
   if (kind === 'import') {
-    // Alleen als de import iets weghaalde dat nog weg is.
+    // Alleen als de import iets weghaalde dat nog weg is, en alleen de laatste import: een eerdere terugzetten na een
+    // nieuwere import zou trips dubbel maken.
     if (!removed.some((c) => find(reader, c.path, c.id)?.deletedAt != null)) return null
+    if (reader.get(HISTORY_PATH).some((e) => e.command === entry.command && e.deletedAt === null && e.at > entry.at)) return null
     const names = removed.filter((c) => c.path === 'trips.json.enc').map((c) => String(before(reader, c).name ?? ''))
     return item(names.length > 3 ? `${names.slice(0, 3).join(', ')} …` : names.join(', '), entry.at.slice(0, 10))
   }

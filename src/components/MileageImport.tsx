@@ -103,8 +103,8 @@ function ImportPreview({ store, input, onClose, onDone }: { store: Store; input:
       <ul className="plain-list small import-plan">
         <li>{t('import.planNew', { trips: formatNumber(input.trips.length), days: formatNumber(input.legs.length) })}</li>
         {plan.matched > 0 && <li>{t('import.planMatched', { n: formatNumber(plan.matched) })}</li>}
-        {(plan.removedTrips.length > 0 || plan.removedLegs.length > 0) && (
-          <li>{t('import.planTrash', { trips: formatNumber(plan.removedTrips.length), days: formatNumber(plan.removedLegs.length) })}</li>
+        {(plan.removedTrips.length > 0 || plan.goneDays > 0) && (
+          <li>{t('import.planTrash', { trips: formatNumber(plan.removedTrips.length), days: formatNumber(plan.goneDays) })}</li>
         )}
         {plan.keptTrips.length > 0 && <li>{t('import.planKept', { names: plan.keptTrips.map((x) => x.name).join(', ') })}</li>}
         <li>{t('import.planOwn', { n: formatNumber(plan.manualLegs) })}</li>

@@ -27,8 +27,10 @@ export interface ImportPlan {
   legs: Leg[]
   /** Geïmporteerde trips die niet meer in het bestand staan: naar de prullenbak. */
   removedTrips: Trip[]
-  /** Geïmporteerde dagen die niet meer in het bestand staan: naar de prullenbak. */
+  /** Geïmporteerde dagen die vervangen worden of niet meer in het bestand staan: naar de prullenbak. */
   removedLegs: Leg[]
+  /** Daarvan: dagen waarvan de datum niet meer in het bestand staat (voor het voorbeeld). */
+  goneDays: number
   /** Geïmporteerde trips die niet meer in het bestand staan maar blijven, omdat er iets aan hangt. */
   keptTrips: Trip[]
   /** Bestaande geïmporteerde trips die het bestand bijwerkt (zelfde eerste dag). */
@@ -41,29 +43,45 @@ export interface ImportPlan {
 export function planImport(reader: Reader, input: ImportResult, now: string = new Date().toISOString()): ImportPlan {
   const trips = active(reader.get('trips.json.enc'))
   const legs = active(reader.get('legs.json.enc'))
-  const imported = importedTrips(trips, legs)
-
-  // Bestaande geïmporteerde trips op hun eerste geïmporteerde dag.
-  const byFirstDay = new Map<string, Trip[]>()
-  for (const trip of imported) {
-    const first = legs.filter((l) => l.tripId === trip.id && l.source === 'import').map((l) => l.date).sort()[0]!
-    byFirstDay.set(first, [...(byFirstDay.get(first) ?? []), trip])
+  // De geïmporteerde dagen per tocht waar ze vandaan komen (het vaste id), niet de trip waar Olivier ze later neerzette:
+  // een trip die alleen een verplaatste dag kreeg, is geen geïmporteerde trip.
+  const origin = new Map<string, string[]>()
+  for (const leg of legs) if (leg.source === 'import') origin.set(originOf(leg), [...(origin.get(originOf(leg)) ?? []), leg.date])
+  const imported = trips.filter((t) => origin.has(t.id))
+  const range = (t: Trip) => {
+    const dates = [...origin.get(t.id)!].sort()
+    return { start: dates[0]!, end: dates.at(-1)! }
   }
 
-  const boats = boatNames(trips)
+  const boats = boatNames(trips, legs)
   const places = placeNames(reader)
   const rename = new Map<string, string>()
   const used = new Set<string>()
   const outTrips: Trip[] = []
-  for (const parsed of input.trips) {
+  const blocks = input.trips.map((parsed) => {
     // Begin en eind: de eerste en laatste dag van het blok.
     const dates = input.legs.filter((l) => l.tripId === parsed.id).map((l) => l.date).sort()
-    const block: Trip = { ...parsed, startDate: dates[0] ?? parsed.startDate, endDate: dates.at(-1) ?? parsed.endDate }
-    const candidates = (byFirstDay.get(block.startDate ?? '') ?? []).filter((t) => !used.has(t.id))
-    const match = candidates.find((t) => sameName(t.name, block.name)) ?? candidates[0]
+    return { ...parsed, startDate: dates[0] ?? parsed.startDate, endDate: dates.at(-1) ?? parsed.endDate } as Trip
+  })
+  // Welke bestaande geïmporteerde trip is een blok? Eerst dezelfde eerste dag (bij twee: dezelfde naam); dan, voor een
+  // blok waarvan Olivier de eerste datum in Excel verbeterde, dezelfde naam met overlappende datums.
+  const matches = new Map<string, Trip>()
+  const claim = (block: Trip, candidates: Trip[]) => {
+    const free = candidates.filter((t) => !used.has(t.id))
+    const match = free.find((t) => sameName(t.name, block.name)) ?? free[0]
+    if (!match) return
+    used.add(match.id)
+    matches.set(block.id, match)
+  }
+  for (const block of blocks) claim(block, imported.filter((t) => range(t).start === block.startDate))
+  for (const block of blocks) {
+    if (matches.has(block.id)) continue
+    claim(block, imported.filter((t) => sameName(t.name, block.name) && range(t).start <= block.endDate! && block.startDate! <= range(t).end))
+  }
+  for (const block of blocks) {
+    const match = matches.get(block.id)
     const boat = block.boat ? (boats.get(boatNameKey(block.boat)) ?? block.boat) : undefined
     if (match) {
-      used.add(match.id)
       rename.set(block.id, match.id)
       // Alleen begin en eind komen uit het bestand; wat Olivier aan de trip toevoegde, blijft.
       const { datesFromDays: _follows, ...rest } = match
@@ -91,16 +109,24 @@ export function planImport(reader: Reader, input: ImportResult, now: string = ne
   })
   const ids = new Set(incoming.map((l) => l.id))
   const removedLegs = legs.filter((l) => l.source === 'import' && !ids.has(l.id)).map((l) => ({ ...l, updatedAt: now, deletedAt: now }))
+  const removedIds = new Set(removedLegs.map((l) => l.id))
+  // Voor het voorbeeld: alleen dagen waarvan de datum niet meer in het bestand staat (een dag met een nieuw vast id op
+  // dezelfde datum is dezelfde dag).
+  const incomingDays = new Set(incoming.map((l) => `${l.tripId}|${l.date}`))
+  const goneDays = removedLegs.filter((l) => !incomingDays.has(`${rename.get(l.tripId) ?? l.tripId}|${l.date}`) && !incomingDays.has(`${l.tripId}|${l.date}`)).length
 
+  // Een geïmporteerde trip die niet meer in het bestand staat, gaat naar de prullenbak, behalve als er iets aan hangt:
+  // een dag die blijft (zelf gelogd of hierheen verplaatst), een organisatie, geld, deelnemers, een salaris, ...
   const gone = imported.filter((t) => !used.has(t.id))
-  const manualTrips = new Set(legs.filter((l) => l.source !== 'import').map((l) => l.tripId))
-  const keptTrips = gone.filter((t) => manualTrips.has(t.id) || !!t.organisation || hasOtherData(reader, t))
+  const keepsDays = new Set([...legs.filter((l) => !removedIds.has(l.id) && !ids.has(l.id)), ...incoming].map((l) => l.tripId))
+  const keptTrips = gone.filter((t) => keepsDays.has(t.id) || !!t.organisation || hasOtherData(reader, t))
   const kept = new Set(keptTrips.map((t) => t.id))
   return {
     trips: outTrips,
     legs: incoming.filter((l) => !sameLeg(stored.get(l.id), l)),
     removedTrips: gone.filter((t) => !kept.has(t.id)).map((t) => ({ ...t, updatedAt: now, deletedAt: now })),
     removedLegs,
+    goneDays,
     keptTrips,
     matched: used.size,
     manualLegs: legs.filter((l) => l.source !== 'import').length,
@@ -114,19 +140,27 @@ export async function applyImport(tx: Tx, input: ImportResult): Promise<void> {
   await tx.putMany('legs.json.enc', [...plan.removedLegs, ...plan.legs])
 }
 
-/** Trips met geïmporteerde dagen. */
-function importedTrips(trips: readonly Trip[], legs: readonly Leg[]): Trip[] {
-  const withImport = new Set(legs.filter((l) => l.source === 'import').map((l) => l.tripId))
-  return trips.filter((t) => withImport.has(t.id))
+/** De tocht waar een geïmporteerde dag vandaan komt: uit zijn vaste id (`import:<trip>:…`), anders (oude willekeurige id's) zijn trip. */
+function originOf(leg: Leg): string {
+  return leg.id.startsWith('import:') ? leg.id.split(':')[1]! : leg.tripId
 }
 
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
 const boatNameKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ')
 
-/** Bootnamen zoals ze al in het logboek staan (de trips), op naam zonder hoofdletters en dubbele spaties. */
-function boatNames(trips: readonly Trip[]): Map<string, string> {
+/**
+ * Bootnamen zoals Olivier ze in de app schreef (trips zonder geïmporteerde dagen, en zelf gelogde dagen), op naam zonder
+ * hoofdletters en dubbele spaties. Wat uit Excel komt, houdt de schrijfwijze van Excel: zo verandert twee keer dezelfde
+ * import niets.
+ */
+function boatNames(trips: readonly Trip[], legs: readonly Leg[]): Map<string, string> {
   const out = new Map<string, string>()
-  for (const trip of trips) if (trip.boat?.trim() && !out.has(boatNameKey(trip.boat))) out.set(boatNameKey(trip.boat), trip.boat.trim())
+  const add = (name: string | undefined) => {
+    if (name?.trim() && !out.has(boatNameKey(name))) out.set(boatNameKey(name), name.trim())
+  }
+  const imported = new Set(legs.filter((l) => l.source === 'import').map((l) => l.tripId))
+  for (const trip of trips) if (!imported.has(trip.id)) add(trip.boat)
+  for (const leg of legs) if (leg.source !== 'import') add(leg.boat)
   return out
 }
 
