@@ -5,8 +5,6 @@ import { active } from '../model/derive'
 import { currentSettings, saveSettings } from '../model/settings'
 import { scrubbed } from '../model/students'
 import { movedAway, trashItemForTrip, trashItems } from '../model/trash'
-import { followDays } from '../model/trip-dates'
-import { untangleSurvivors } from '../model/link-repair'
 import type { CollectionPath, HistoryEntry, Participant, Student, SyncRecord, Trip } from '../model/types'
 import { HISTORY_DAYS, HISTORY_PATH, revertChange } from './history'
 import { tombstone } from './tombstone'
@@ -38,8 +36,6 @@ export async function restoreTrash(tx: Tx, key: string, relink: readonly string[
   if (trip) {
     const chosen = new Set(relink)
     const away = movedAway(tx, item)
-    // De trips waar iets vandaan komt (vóór het schrijven: daarna heeft het een andere tijd).
-    const others = [...new Set(away.filter((m) => chosen.has(m.record.id)).map((m) => m.tripId))]
     // Wat bij het verwijderen naar een andere trip ging, en geld dat Olivier aanvinkte: weer aan deze trip.
     for (const moved of away) {
       if (!chosen.has(moved.record.id)) continue
@@ -50,13 +46,6 @@ export async function restoreTrash(tx: Tx, key: string, relink: readonly string[
     for (const id of chosen) {
       const money = tx.list('transactions.json.enc').find((t) => t.id === id)
       if (money && money.tripId !== trip.id) await put('transactions.json.enc', { ...money, tripId: trip.id, updatedAt: tx.now } as SyncRecord)
-    }
-    // Datums die de dagen volgen: weer gelijk aan de dagen (bij beide trips).
-    await followDays(tx, [trip.id, ...others])
-    // Samenvoegen gaf de andere trip de datums en deelnemers van beide: die krijgt weer alleen zijn eigen (op id en
-    // op bewijs, niet op tijd: de andere trip kan intussen bewerkt zijn).
-    for (const fix of untangleSurvivors(tx, trip as Trip)) {
-      await put('trips.json.enc', { ...fix.next, updatedAt: tx.now })
     }
   }
   return count
@@ -101,9 +90,7 @@ export async function revertEntry(tx: Tx, entry: HistoryEntry, participants = fa
     if (participants && change.path === 'trips.json.enc') {
       const trip = current as Trip
       const was = (change.before?.participants ?? []) as Participant[]
-      // Een deelnemer hoort bij één trip (op id): staat hij intussen bij een andere trip, dan komt hij hier niet dubbel terug.
-      const elsewhere = new Set(active(tx.get('trips.json.enc')).flatMap((t) => (t.participants ?? []).map((q) => q.id)))
-      const back = was.filter((p) => !(change.after.participants as Participant[] | undefined)?.some((q) => q.id === p.id) && !elsewhere.has(p.id))
+      const back = was.filter((p) => !(change.after.participants as Participant[] | undefined)?.some((q) => q.id === p.id) && !trip.participants?.some((q) => q.id === p.id))
       if (back.length > 0) {
         await tx.put('trips.json.enc', { ...trip, participants: [...(trip.participants ?? []), ...back], updatedAt: tx.now })
         count++

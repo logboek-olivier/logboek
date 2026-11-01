@@ -1,17 +1,14 @@
 import type { Tx, Reader } from '../domain/tx'
-import { followTrip, tripRange } from './calendar'
 import { saveSettings, currentSettings } from './settings'
-import { active } from './derive'
 import type { Claim, Leg, Participant, Student, SyncRecord, Transaction, Trip, WeekPlan } from './types'
 import { applyChanges, type Change } from './changes'
 import { scrubbedClaim } from './claims'
 import { scrubbedDocument } from './documents'
 import { syncParticipants } from './weeks'
-import { datesFollowDays, followDays } from './trip-dates'
 
 // Trips als geheel: verwijderen met de keuze wat er met dagen, inkomsten, deelnemers, studenten en planningen gebeurt
-// ("Meenemen naar trip …" of "Ook verwijderen"), overlappende trips samenvoegen of vervangen, en deelnemers los bewerken
-// of verwijderen. Ongedaan maken regelt de opdracht (src/domain): de toestand vooraf komt terug.
+// ("Geld en dagen behouden" of "Alles naar de prullenbak"), en deelnemers los bewerken of verwijderen. Trips mogen
+// overlappen; samenvoegen of vervangen bestaat niet meer. Ongedaan maken regelt de opdracht (src/domain).
 
 /** Alles wat aan een trip hangt. */
 export interface TripDependents {
@@ -46,27 +43,10 @@ function gone<T extends SyncRecord>(record: T, now: string): T {
   return { ...record, updatedAt: now, deletedAt: now }
 }
 
-/** Deelnemers samenvoegen zonder dubbelen (zelfde id). */
-function joinParticipants(a: readonly Participant[], b: readonly Participant[]): Participant[] {
-  return [...a, ...b.filter((p) => !a.some((q) => q.id === p.id))]
-}
-
-/** Wat er van `from` naar `to` gaat: dagen, inkomsten, studenten en planningen krijgen de andere trip. */
-function moveChanges(store: Reader, from: Trip, to: Trip, now: string): Change[] {
-  const d = tripDependents(store, from)
-  return [
-    ...d.legs.map((l): Change => ({ path: 'legs.json.enc', before: l, after: moved(l, { tripId: to.id }, now) })),
-    ...d.transactions.map((t): Change => ({ path: 'transactions.json.enc', before: t, after: moved(t, { tripId: to.id }, now) })),
-    ...d.students.map((s): Change => ({ path: 'students.json.enc', before: s, after: moved(s, { weekId: to.id }, now) })),
-    ...d.plans.map((p): Change => ({ path: 'plans.json.enc', before: p, after: moved(p, { tripId: to.id }, now) })),
-    ...d.claims.map((c): Change => ({ path: 'claims.json.enc', before: c, after: moved(c, { tripId: to.id }, now) })),
-  ]
-}
-
 /** De lopende trip wijst niet meer naar een verwijderde trip. */
-async function forgetActive(store: Tx, removed: Trip, replacement: Trip | null): Promise<void> {
+async function forgetActive(store: Tx, removed: Trip): Promise<void> {
   const settings = currentSettings(store.get('settings.json.enc'))
-  if (settings.activeWeekId === removed.id) await saveSettings(store, { activeWeekId: replacement?.id ?? undefined })
+  if (settings.activeWeekId === removed.id) await saveSettings(store, { activeWeekId: undefined })
 }
 
 /**
@@ -74,22 +54,13 @@ async function forgetActive(store: Tx, removed: Trip, replacement: Trip | null):
  * - "behouden": alleen de trip; dagen, geld, studenten, planningen en declaraties blijven staan en wijzen nog naar de trip
  *   (zonder periode, in Nakijken), zodat terugzetten ze vanzelf weer koppelt;
  * - "alles": ook wat eraan hangt, als tombstones met inhoud (declaraties en hun bonnetje geschoond, de inhoud staat 30
- *   dagen in de geschiedenis);
- * - een andere trip: wat eraan hangt gaat naar die trip (vervangen).
+ *   dagen in de geschiedenis).
  */
-export async function deleteTripWith(store: Tx, trip: Trip, choice: Trip | 'behouden' | 'alles'): Promise<void> {
+export async function deleteTripWith(store: Tx, trip: Trip, choice: 'behouden' | 'alles'): Promise<void> {
   const now = store.now
-  const legs = store.list('legs.json.enc')
-  const range = tripRange(trip, legs)
   const d = tripDependents(store, trip)
-  const moveTo = typeof choice === 'string' ? null : choice
   const changes: Change[] = [{ path: 'trips.json.enc', before: trip, after: gone(trip, now) }]
-  if (moveTo) {
-    changes.push(...moveChanges(store, trip, moveTo, now))
-    if (d.participants.length > 0) {
-      changes.push({ path: 'trips.json.enc', before: moveTo, after: moved(moveTo, { participants: joinParticipants(moveTo.participants ?? [], d.participants) }, now) })
-    }
-  } else if (choice === 'alles') {
+  if (choice === 'alles') {
     changes.push(
       ...d.legs.map((l): Change => ({ path: 'legs.json.enc', before: l, after: gone(l, now) })),
       ...d.transactions.map((t): Change => ({ path: 'transactions.json.enc', before: t, after: gone(t, now) })),
@@ -105,78 +76,7 @@ export async function deleteTripWith(store: Tx, trip: Trip, choice: Trip | 'beho
     )
   }
   await applyChanges(store, changes)
-  await followTrip(store, trip.id, range, null)
-  // Dagen naar een trip waarvan de datums de dagen volgen: die schuiven mee.
-  if (moveTo) await followDays(store, [moveTo.id])
-  await forgetActive(store, trip, moveTo)
-}
-
-/** Twee trips die op dezelfde dagen liggen (meer dan alleen een wisseldag: de laatste dag van de een is de eerste van de ander). */
-export interface Overlap {
-  a: Trip
-  b: Trip
-  from: string
-  to: string
-}
-
-export function tripOverlaps(trips: readonly Trip[], legs: readonly Leg[]): Overlap[] {
-  const live = active(legs)
-  const ranged = active(trips)
-    .map((trip) => ({ trip, range: tripRange(trip, live) }))
-    .filter((x): x is { trip: Trip; range: { start: string; end: string } } => x.range !== null)
-    .sort((x, y) => (x.range.start < y.range.start ? -1 : x.range.start > y.range.start ? 1 : x.trip.id < y.trip.id ? -1 : 1))
-  const out: Overlap[] = []
-  for (let i = 0; i < ranged.length; i++) {
-    for (let j = i + 1; j < ranged.length; j++) {
-      const x = ranged[i]!
-      const y = ranged[j]!
-      if (y.range.start > x.range.end) break
-      const from = y.range.start > x.range.start ? y.range.start : x.range.start
-      const to = y.range.end < x.range.end ? y.range.end : x.range.end
-      if (from > to) continue
-      // Wisseldag: de een eindigt op de dag dat de ander begint (gasten eraf, nieuwe gasten erop).
-      const changeover = from === to && ((x.range.end === from && y.range.start === from) || (y.range.end === from && x.range.start === from))
-      if (!changeover) out.push({ a: x.trip, b: y.trip, from, to })
-    }
-  }
-  return out
-}
-
-/**
- * Samenvoegen: `other` gaat op in `keep`. Dagen, inkomsten, deelnemers, studenten en planningen gaan mee; lege velden
- * van `keep` worden aangevuld uit `other`; de datums lopen over beide trips. `other` verdwijnt.
- */
-export async function mergeTrips(store: Tx, keep: Trip, other: Trip): Promise<void> {
-  const now = store.now
-  const legs = store.list('legs.json.enc')
-  const keepRange = tripRange(keep, legs)
-  const otherRange = tripRange(other, legs)
-  const start = [keepRange?.start, otherRange?.start].filter((x): x is string => !!x).sort()[0]
-  const end = [keepRange?.end, otherRange?.end].filter((x): x is string => !!x).sort().at(-1)
-  const fill: Partial<Trip> = {}
-  for (const key of ['type', 'boat', 'boatModel', 'boatLengthFt', 'boatKind', 'base', 'charter', 'area', 'organisation', 'note'] as const) {
-    if (keep[key] === undefined && other[key] !== undefined) (fill as Record<string, unknown>)[key] = other[key]
-  }
-  const merged: Trip = moved(keep, { ...fill, ...(start ? { startDate: start } : {}), ...(end ? { endDate: end } : {}), participants: joinParticipants(keep.participants ?? [], other.participants ?? []) }, now)
-  // De datums volgen alleen nog de dagen als dat voor beide trips gold; anders staan de samengevoegde datums vast.
-  if (keep.datesFromDays && !datesFollowDays(other)) delete merged.datesFromDays
-  const changes: Change[] = [
-    { path: 'trips.json.enc', before: keep, after: merged },
-    { path: 'trips.json.enc', before: other, after: gone(other, now) },
-    ...moveChanges(store, other, keep, now),
-  ]
-  await applyChanges(store, changes)
-  await followTrip(store, keep.id, keepRange, tripRange(merged, store.list('legs.json.enc')))
-  await forgetActive(store, other, keep)
-  await syncParticipants(store, merged)
-}
-
-/**
- * Vervangen: `keep` blijft zoals hij is (ook de datums), `other` verdwijnt. Wat aan `other` hing (dagen, inkomsten,
- * deelnemers, studenten, planningen) gaat naar `keep`, zodat er niets verloren gaat.
- */
-export async function replaceTrip(store: Tx, keep: Trip, other: Trip): Promise<void> {
-  return deleteTripWith(store, other, keep)
+  await forgetActive(store, trip)
 }
 
 /** Een deelnemer uit de trip halen (naar de prullenbak). Zijn fooideel telt dan als onbekend. */

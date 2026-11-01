@@ -40,20 +40,14 @@ test('trip toevoegen met alleen de datums; de volgende krijgt een naamvoorstel; 
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Trip opgeslagen')
 
-  // Een trip die de eerste overlapt: direct de keuze.
+  // Een trip die de eerste overlapt: gewoon opgeslagen, geen melding of keuze (overlap is normaal).
   await page.getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Trip' }).click()
   await page.getByLabel('Startdatum').fill(iso(33))
   await page.getByLabel('Einddatum').fill(iso(35))
   await page.getByLabel('Naam', { exact: true }).fill('Plaatshouder')
   await page.getByRole('button', { name: 'Opslaan' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Overlappende trips' })
-  await expect(sheet).toContainText('Nepweek 1 en Plaatshouder liggen op dezelfde dagen')
-  await sheet.getByRole('radio', { name: /Nepweek 1/ }).click()
-  await sheet.getByRole('button', { name: 'Vervangen' }).click()
-  await expect(page.locator('.toast')).toContainText('Vervangen door Nepweek 1')
-  await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
-  await expect(page.locator('main')).toContainText('Nepweek 1')
-  await expect(page.locator('main')).not.toContainText('Plaatshouder')
+  await expect(page.locator('.toast')).toHaveText('Trip opgeslagen')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   expect(errors).toEqual([])
 })

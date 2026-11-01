@@ -1,5 +1,4 @@
 import type { Tx } from '../domain/tx'
-import { followDays } from './trip-dates'
 import { active, compareLegs, totalNm } from './derive'
 import { placeCountry, placeKey, suggestDistance } from './places'
 import { saveSettings } from './settings'
@@ -145,7 +144,6 @@ export async function logPlanned(store: Tx, trip: Trip, planned: PlannedLeg, dat
     deletedAt: null,
   }
   await store.put('legs.json.enc', leg)
-  await followDays(store, [trip.id])
   await saveSettings(store, { lastTripId: trip.id, ...(leg.boat ? { lastBoat: leg.boat } : {}), lastRole: leg.role })
   return leg
 }

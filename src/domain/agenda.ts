@@ -1,15 +1,14 @@
 // Opdrachten voor de agenda en periodes aan land: dagsoort, periodes, tripdatums en de eenmalige omzetting. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
-import { clearDay, resizeTrip, setDay, setDays, type DayDetails, type TripResize } from '../model/calendar'
+import { clearDay, resizeTrip, setDay, setDays, type DayDetails } from '../model/calendar'
 import { migratePeriods } from '../model/migrate-periods'
 import { deleteStay, setStayDays, updateStay, type StayDetails } from '../model/periods'
 import type { DayType } from '../model/types'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
 
-/** Dagsoort kiezen in het dagblad: eerst zo nodig de trip een dag korter, dan een periode aan land of een dagtoestand. */
-export async function chooseDayType(tx: Tx, date: string, next: DayType, details: DayDetails, stay: StayDetails, shrink: TripResize | null, land: 'reis' | 'thuis' | 'vrij' | null): Promise<void> {
-  if (shrink) await resizeTrip(tx, shrink)
+/** Dagsoort kiezen in het dagblad (een dag buiten een trip): een periode aan land of een dagtoestand. */
+export async function chooseDayType(tx: Tx, date: string, next: DayType, details: DayDetails, stay: StayDetails, land: 'reis' | 'thuis' | 'vrij' | null): Promise<void> {
   if (land) return setStayDays(tx, [date], land, stay)
   // Een dagtoestand (beschikbaar, optie, onbeschikbaar) hoort bij een dag zonder periode.
   if (inStay(tx, date)) await setStayDays(tx, [date], null)

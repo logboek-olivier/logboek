@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { buildIndex, dayInfo, setDay } from '../src/model/calendar'
+import { buildIndex, dayInfo } from '../src/model/calendar'
 import { migratePeriods, migrationChanges, stayId } from '../src/model/migrate-periods'
 import { allPeriods, periodAt, planStayDays } from '../src/model/periods'
-import { legOutsideCanExtend, reviewInput, reviewItems } from '../src/model/review'
+import { reviewInput, reviewItems } from '../src/model/review'
 import { tripKind } from '../src/model/trip-kind'
 import { startWeek, type WeekInput } from '../src/model/weeks'
 import type { CalendarDay, Leg, StayPeriod, Transaction, Trip } from '../src/model/types'
@@ -13,7 +13,7 @@ import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx, put, putMany } from './helpers/schrijf'
 import { landperiodeZetten, periodeDatumsWijzigen } from '../src/domain/agenda'
-import { dagBeginAansluiten, dagBuitenPeriodeOplossen, geldKoppelen, periodeSoortZetten } from '../src/domain/trips'
+import { geldKoppelen, periodeSoortZetten } from '../src/domain/trips'
 
 // Het periodemodel (docs/PERIODEMODEL.md): soort per trip, periodes aan land (maken, verlengen, korter, splitsen,
 // samenvoegen), de eenmalige migratie van agenda en geld, en Nakijken. Alle gegevens verzonnen.
@@ -108,7 +108,7 @@ describe('periodes aan land', () => {
     ])
   })
 
-  it('een trip over een thuisperiode maakt die korter; geld blijft bij zijn periode (nooit stil verhuizen)', async () => {
+  it('een trip over een thuisperiode verandert die periode niet (de agenda toont de trip); geld blijft bij zijn periode', async () => {
     const s = await store()
     await landperiodeZetten(s, ['2027-03-01', '2027-03-02', '2027-03-03', '2027-03-04', '2027-03-05'], 'thuis')
     const home = s.list('periods.json.enc')[0]!
@@ -116,7 +116,7 @@ describe('periodes aan land', () => {
     await put(s, 'transactions.json.enc', tx('t2', '2027-03-01', { tripId: home.id }))
     const input: WeekInput = { name: 'Nepweek', type: 'skipper-charter', startDate: '2027-03-04', dayCount: 3, boat: '', boatModel: '', boatLengthFt: null, base: '', charter: '', area: '', participants: [], note: '' }
     const created = await inTx(s, startWeek, input, 'nl', '2027-01-01')
-    expect(s.list('periods.json.enc').map((p) => [p.startDate, p.endDate])).toEqual([['2027-03-01', '2027-03-03']])
+    expect(s.list('periods.json.enc').map((p) => [p.startDate, p.endDate])).toEqual([['2027-03-01', '2027-03-05']])
     expect(created.id).toBeTruthy()
     expect(s.list('transactions.json.enc').find((x) => x.id === 't1')?.tripId).toBe(home.id)
     expect(s.list('transactions.json.enc').find((x) => x.id === 't2')?.tripId).toBe(home.id)
@@ -209,22 +209,8 @@ describe('migratie naar het periodemodel', () => {
 })
 
 describe('Nakijken', () => {
-  it('dag buiten zijn trip (oorzaak van SV #1 met een dag op 28 oktober): naar de trip van die datum', async () => {
-    const s = await store()
-    await putMany(s, 'trips.json.enc', [trip('sv1', { startDate: '2026-10-18', endDate: '2026-10-24', type: 'training-geven', organisation: 'sailing-virgins' }), trip('sv2', { startDate: '2026-10-26', endDate: '2026-10-31', type: 'training-geven', organisation: 'sailing-virgins' })])
-    await putMany(s, 'legs.json.enc', [leg('in', 'sv1', '2026-10-19'), leg('uit', 'sv1', '2026-10-28')])
-    const items = reviewItems(reviewInput(s))
-    const outside = items.find((i) => i.kind === 'dag-buiten')
-    expect(outside).toMatchObject({ leg: { id: 'uit' }, trip: { id: 'sv1' }, target: { id: 'sv2' } })
-    if (outside?.kind !== 'dag-buiten') throw new Error('verwacht')
-    const undo = await dagBuitenPeriodeOplossen(s, outside.leg, outside.trip, outside.target)
-    expect(s.list('legs.json.enc').find((l) => l.id === 'uit')?.tripId).toBe('sv2')
-    expect(reviewItems(reviewInput(s)).some((i) => i.kind === 'dag-buiten')).toBe(false)
-    await undo()
-    expect(s.list('legs.json.enc').find((l) => l.id === 'uit')?.tripId).toBe('sv1')
-  })
 
-  it('soort onzeker, werk zonder organisatie (voorstel uit de source), geld zonder periode, plaatsen die niet aansluiten', async () => {
+  it('soort onzeker, werk zonder organisatie (voorstel uit de source), geld zonder periode; nooit plaatsen of dagen verbeteren', async () => {
     const s = await store()
     await putMany(s, 'trips.json.enc', [trip('oud', { name: 'Nepboot mei 2024', startDate: '2024-05-01', endDate: '2024-05-03' }), trip('werk', { name: 'Nepcharter', type: 'skipper-charter', startDate: '2026-09-01', endDate: '2026-09-03' })])
     await putMany(s, 'legs.json.enc', [
@@ -237,12 +223,9 @@ describe('Nakijken', () => {
     expect(items.find((i) => i.kind === 'soort')).toMatchObject({ trip: { id: 'oud' } })
     expect(items.find((i) => i.kind === 'organisatie')).toMatchObject({ trip: { id: 'werk' }, suggestion: 'yacht-week' })
     expect(items.find((i) => i.kind === 'geld-zonder-periode')).toMatchObject({ tx: { id: 'los' }, target: null })
-    const join = items.find((i) => i.kind === 'aansluiting')
-    expect(join).toMatchObject({ leg: { id: 'b' }, from: { name: 'Nep Eiland' }, into: { name: 'Nepstadje' } })
-    // De eerste fix verandert alleen de van van die ene dag.
-    if (join?.kind !== 'aansluiting') throw new Error('verwacht')
-    await dagBeginAansluiten(s, join.leg, join.previous)
-    expect(s.list('legs.json.enc').find((l) => l.id === 'b')?.fromPlace).toBe('Nepstadje')
+    // Een dag die begint waar de vorige niet eindigde: geen voorstel meer (de import is de waarheid).
+    expect(items.map((i) => i.kind)).toEqual(expect.arrayContaining(['soort', 'organisatie', 'geld-zonder-periode']))
+    expect(items.every((i) => ['soort', 'organisatie', 'geld-zonder-periode', 'werkdag-zonder-trip', 'dag-zonder-periode', 'investering-soort', 'dagen-zonder-trip'].includes(i.kind))).toBe(true)
     const soort = items.find((i) => i.kind === 'soort')!
     if (soort.kind !== 'soort') throw new Error('verwacht')
     await periodeSoortZetten(s, soort.trip, 'zelf-cruisen')
@@ -264,31 +247,12 @@ describe('Nakijken', () => {
     expect(periodAt(periods, '2026-11-30')?.id).toBe('s')
   })
 
-  it('een agendadag binnen een trip staat in Nakijken; de trip gaat voor in de agenda', async () => {
-    const s = await store()
-    await put(s, 'trips.json.enc', trip('w', { type: 'skipper-charter', organisation: 'yacht-week', startDate: '2027-02-01', endDate: '2027-02-05' }))
-    await inTx(s, setDay, '2027-02-03', 'rust')
-    const index = buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc'))
-    expect(dayInfo(index, '2027-02-03', '2027-01-01').type).toBe('werk')
-    expect(reviewItems(reviewInput(s)).find((i) => i.kind === 'agendadag-in-trip')).toMatchObject({ day: { date: '2027-02-03' } })
-  })
 
-  it('een dag ver buiten zijn trip verlengt de trip niet met één tik (de datum is dan vast fout)', () => {
-    const w = trip('w', { startDate: '2026-10-18', endDate: '2026-10-24' })
-    expect(legOutsideCanExtend(leg('a', 'w', '2026-10-26'), w)).toBe(true)
-    expect(legOutsideCanExtend(leg('a', 'w', '2026-11-26'), w)).toBe(false)
-  })
 
-  it('een dagtoestand binnen een periode aan land staat in Nakijken', async () => {
-    const s = await store()
-    await landperiodeZetten(s, ['2027-05-01', '2027-05-02', '2027-05-03'], 'thuis')
-    await put(s, 'calendar.json.enc', day('2027-05-02', 'onbeschikbaar', { reason: 'Nepreden' }))
-    expect(reviewItems(reviewInput(s)).find((i) => i.kind === 'agendadag-in-periode')).toMatchObject({ day: { date: '2027-05-02' } })
-  })
 })
 
 describe('reviewpunten periodes', () => {
-  it('verlengen ongedaan maken zet ook de periode aan land terug; het geld bleef al staan', async () => {
+  it('verlengen in de agenda verandert alleen de trip, niet de periode aan land; ongedaan maken zet de trip terug', async () => {
     const { tripRange } = await import('../src/model/calendar')
     const { weekView } = await import('../src/model/weeks')
     const s = await store()
@@ -298,7 +262,8 @@ describe('reviewpunten periodes', () => {
     await put(s, 'transactions.json.enc', tx('t', '2027-06-06', { tripId: home.id }))
     const view = weekView(s.list('trips.json.enc')[0]!, [])
     const undo = await periodeDatumsWijzigen(s, { view, start: '2027-06-01', end: '2027-06-06' })
-    expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-07' })
+    expect(s.list('periods.json.enc')[0]).toMatchObject({ startDate: '2027-06-06', endDate: '2027-06-10' })
+    expect(tripRange(s.list('trips.json.enc')[0]!, [])).toEqual({ start: '2027-06-01', end: '2027-06-06' })
     // Het geld blijft bij de thuisperiode (nooit stil verhuizen).
     expect(s.list('transactions.json.enc')[0]!.tripId).toBe(home.id)
     await undo()

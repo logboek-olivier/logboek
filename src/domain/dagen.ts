@@ -1,6 +1,5 @@
 // Opdrachten voor gelogde dagen: loggen, bewerken, verwijderen, "Zoals gepland" en aanvullen. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
-import { resizeTrip, type TripResize } from '../model/calendar'
 import { active, compareLegs } from '../model/derive'
 import { deleteLeg, updateLeg, type LegPatch } from '../model/edit'
 import { fillGap } from '../model/gaps'
@@ -8,9 +7,7 @@ import { placeLeg } from '../model/leg-trip'
 import { placeCountry } from '../model/places'
 import { logPlanned } from '../model/routes'
 import { saveSettings } from '../model/settings'
-import { followDays } from '../model/trip-dates'
 import { newId, type Leg, type Role, type Trip, type Water } from '../model/types'
-import { weekView } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
 
@@ -34,24 +31,22 @@ export interface LogDayInput {
 }
 
 /**
- * Een dag loggen (Toevoegen → Dag). De dag komt altijd binnen de datums van zijn trip: de trip van de datum, de gekozen
- * trip een paar dagen langer, of een nieuwe trip die de dagen volgt (src/model/leg-trip.ts).
+ * Een dag loggen (Toevoegen → Dag): bij de gekozen trip of de trip van de datum, anders een nieuwe trip met die dag als
+ * begin en eind (src/model/leg-trip.ts). Alleen wat het formulier vóór het opslaan zei ("Opslaan verlengt <trip> tot
+ * <datum>") verandert de datums van een bestaande trip.
  */
 export async function logDay(tx: Tx, input: LogDayInput): Promise<Leg> {
   const trips = tx.get('trips.json.enc')
   const legs = tx.get('legs.json.enc')
   const place = placeLeg(trips, legs, input.tripId, input.date, input.explicit)
   let id = place.tripId ?? undefined
-  if (id && place.extend) {
-    const trip = active(trips).find((x) => x.id === id)
-    if (trip) await resizeTrip(tx, { view: weekView(trip, legs), start: place.extend.start, end: place.extend.end })
-  }
   if (!id) {
-    // Een trip vanuit Dag: begin en eind volgen de dagen (src/model/trip-dates.ts).
+    // Een nieuwe trip vanuit Dag: deze dag is begin en eind (gewone velden; later zelf te wijzigen). `datesFromDays`:
+    // hij blijft drie dagen na zijn laatste dag lopend, zodat hij 's ochtends vóór het loggen in Deze trip staat.
     const trip: Trip = { id: newId(), name: input.newTripName, startDate: input.date, endDate: input.date, datesFromDays: true, updatedAt: tx.now, deletedAt: null }
     await tx.put('trips.json.enc', trip)
     id = trip.id
-  }
+  } else if (place.extend) await extendTrip(tx, id, place.extend)
   // Landen: van de plaats zelf (punt of eerdere dagen), anders het land van de vorige dag in deze trip; nooit van een
   // dag uit een andere trip (anders krijgt een dag in de BVI het land van een dag in Engeland).
   const places = tx.get('places.json.enc')
@@ -80,15 +75,23 @@ export async function logDay(tx: Tx, input: LogDayInput): Promise<Leg> {
   if (input.wind.trim()) leg.windBft = input.wind.trim()
   if (input.notes.trim()) leg.notes = input.notes.trim()
   await tx.put('legs.json.enc', leg)
-  await followDays(tx, [id])
   await saveSettings(tx, { ...(leg.boat ? { lastBoat: leg.boat } : {}), lastRole: input.role, lastTripId: id, lastWater: input.water })
   return leg
 }
 
-/** Een dag bewerken; ligt de nieuwe datum vlak naast de gekozen trip, dan wordt die trip eerst langer. */
-export async function editDay(tx: Tx, leg: Leg, patch: LegPatch, trip: { id: string } | { newName: string }, extend: TripResize | null): Promise<void> {
-  if (extend) await resizeTrip(tx, extend)
+/**
+ * Een dag bewerken, ook naar een andere of een nieuwe trip. De datums van een trip veranderen alleen als het formulier
+ * dat vóór het opslaan zei (`extend`, src/model/leg-trip.ts).
+ */
+export async function editDay(tx: Tx, leg: Leg, patch: LegPatch, trip: { id: string } | { newName: string }, extend?: { start: string; end: string }): Promise<void> {
+  if (extend && 'id' in trip) await extendTrip(tx, trip.id, extend)
   await updateLeg(tx, leg, patch, trip)
+}
+
+/** De gekozen trip verlengen tot de datums die het formulier toonde; een trip uit Toevoegen → Dag houdt zijn soort. */
+async function extendTrip(tx: Tx, tripId: string, extend: { start: string; end: string }): Promise<void> {
+  const trip = tx.list('trips.json.enc').find((x) => x.id === tripId)
+  if (trip) await tx.put('trips.json.enc', { ...trip, startDate: extend.start, endDate: extend.end, updatedAt: tx.now })
 }
 
 export const aanvullen = opdracht('aanvullen', fillGap)
@@ -97,4 +100,3 @@ export const dagBewerkenMetTrip = opdracht('dagBewerkenMetTrip', editDay)
 export const dagLoggen = opdrachtMet('dagLoggen', logDay)
 export const dagVerwijderen = opdracht('dagVerwijderen', deleteLeg)
 export const dagZoalsGepland = opdrachtMet('dagZoalsGepland', logPlanned)
-export const tripDatumsVolgen = opdracht('tripDatumsVolgen', followDays)

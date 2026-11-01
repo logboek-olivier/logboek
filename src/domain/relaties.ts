@@ -4,7 +4,7 @@ import type { CollectionPath, Participant, SyncRecord } from '../model/types'
 // planning of een declaratie hangt aan een periode via tripId, een student aan een trip via weekId, een deelnemer aan
 // een trip doordat hij in de lijst van die trip staat. Nooit een positie of volgorde.
 //
-// Opdrachten die vanzelf draaien (migraties, opruimen, koersen) en imports mogen geen bestaande koppeling veranderen:
+// Opdrachten die vanzelf draaien (de omzetting van het dataformaat, archiveren, opruimen) en imports mogen geen bestaande koppeling veranderen:
 // `commit` (src/domain/commit.ts) rekent ze eerst uit op de transactie (een kopie; er is dan nog niets geschreven) en
 // schrijft niets als een koppeling verandert. Nieuwe records en records die weggaan tellen niet: die maakt of ruimt de
 // opdracht zelf op (een import vervangt zijn dagen door dagen met een vast id).
@@ -15,7 +15,7 @@ import type { CollectionPath, Participant, SyncRecord } from '../model/types'
  * geschiedenis leunt (welke datums Olivier zelf koos) anders kan uitvallen; opruimen moet altijd door (regel 14). Het
  * mag wel geen koppeling veranderen (zie KEEPS_RELATIONS).
  */
-export const AUTOMATIC: ReadonlySet<string> = new Set(['koersenVastleggen', 'vasteLastenBoeken', 'periodemodelMigreren', 'studentenArchiveren', 'nieuwLogboekInrichten'])
+export const AUTOMATIC: ReadonlySet<string> = new Set(['periodemodelMigreren', 'studentenArchiveren', 'nieuwLogboekInrichten'])
 
 /**
  * Opdrachten die nooit een bestaande koppeling mogen veranderen: de automatische, opruimen, en de imports (die mogen wel
@@ -23,7 +23,7 @@ export const AUTOMATIC: ReadonlySet<string> = new Set(['koersenVastleggen', 'vas
  */
 // De planningsimport staat er niet bij: een werkregel die een periode aan land splitst, neemt het geld van die dagen
 // bewust mee (dezelfde periode in twee stukken); hij heeft zijn eigen voorbeeld vooraf.
-export const KEEPS_RELATIONS: ReadonlySet<string> = new Set([...AUTOMATIC, 'geschiedenisOpruimen', 'mijlenImporteren', 'standenImporteren', 'backupTerugzetten'])
+export const KEEPS_RELATIONS: ReadonlySet<string> = new Set([...AUTOMATIC, 'geschiedenisOpruimen', 'vasteLastenBoeken', 'mijlenImporteren', 'standenImporteren', 'backupTerugzetten'])
 
 const LINK_FIELD: Partial<Record<CollectionPath, 'tripId' | 'weekId'>> = {
   'legs.json.enc': 'tripId',

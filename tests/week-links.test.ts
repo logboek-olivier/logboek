@@ -96,6 +96,22 @@ describe('deelnemers en studenten', () => {
     expect(store.list('students.json.enc').find((s) => s.id === anna.id)!.updatedAt).toBe(updatedAt)
   })
 
+  it('een deelnemer in twee trips (uitgangspunt 4): de andere trip opslaan verhuist zijn student niet', async () => {
+    const store = await device()
+    const p = { id: 'p-twee', firstName: 'Neptwee', curriculumId: 'seed-asa-101', level: 'beginner' as const }
+    const a: Trip = { id: 'a', name: 'Nep A', startDate: '2026-10-01', endDate: '2026-10-07', participants: [p], updatedAt: NOW, deletedAt: null }
+    const b: Trip = { id: 'b', name: 'Nep B', startDate: '2026-10-10', endDate: '2026-10-14', participants: [p], updatedAt: NOW, deletedAt: null }
+    await put(store, 'trips.json.enc', a)
+    await inTx(store, syncParticipants, a)
+    await put(store, 'trips.json.enc', b)
+    await inTx(store, syncParticipants, b)
+    expect(store.list('students.json.enc').find((x) => x.id === p.id)!.weekId).toBe('a')
+    // Zonder trip (zijn trip is weg): dan hoort hij bij de trip die opgeslagen wordt.
+    await put(store, 'trips.json.enc', { ...a, deletedAt: NOW, updatedAt: new Date().toISOString() })
+    await inTx(store, syncParticipants, b)
+    expect(store.list('students.json.enc').find((x) => x.id === p.id)!.weekId).toBe('b')
+  })
+
   it('een student toegevoegd in Deze week komt bij de deelnemers', async () => {
     const store = await device()
     const trip = await inTx(store, startWeek, { ...input, participants: [] }, 'nl')

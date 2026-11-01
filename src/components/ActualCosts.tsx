@@ -9,12 +9,12 @@ import { Icon } from './Icon'
 import { useCollection } from './useCollection'
 import { todayIso } from '../basis/datum'
 
-/** Geld → Werkelijk: kosten per maand (vaste lasten geboekt, losse kosten, weekschatting). */
+/** Geld → Werkelijk: kosten per maand (vaste lasten geboekt en losse kosten). */
 export function ActualCostsSection({ store }: { store: Store }) {
   const transactions = useCollection(store, 'transactions.json.enc')
-  const closings = useCollection(store, 'weekreviews.json.enc')
-  const rates = useSyncExternalStore(subscribeRates, getRates)
-  const rows = actualCosts(transactions, closings, todayIso(), rates)
+  // Opnieuw tekenen zodra de koersen er zijn (eurOf rekent met de koersen van dat moment).
+  useSyncExternalStore(subscribeRates, getRates)
+  const rows = actualCosts(transactions, todayIso())
   if (rows.length === 0) return null
   return (
     <div className="section card card-body stack-sm actual-costs">
@@ -31,7 +31,6 @@ export function ActualCostsSection({ store }: { store: Store }) {
             <th>{t('money.month')}</th>
             <th className="num">{t('actual.fixed')}</th>
             <th className="num">{t('actual.loose')}</th>
-            <th className="num">{t('actual.week')}</th>
             <th className="num">{t('actual.total')}</th>
           </tr>
         </thead>
@@ -41,7 +40,6 @@ export function ActualCostsSection({ store }: { store: Store }) {
               <td>{formatMonthShort(r.month)}</td>
               <td className="num">{formatMoney(r.fixedEur, 'EUR')}</td>
               <td className="num">{formatMoney(r.looseEur, 'EUR')}</td>
-              <td className="num">{formatMoney(r.weekEur, 'EUR')}</td>
               <td className="num">
                 <strong>{formatMoney(r.totalEur, 'EUR')}</strong>
                 {Object.entries(r.other).map(([c, v]) => (

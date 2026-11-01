@@ -1,64 +1,64 @@
 import { active } from './derive'
-import { datesFollowDays } from './trip-dates'
 import { weekView } from './weeks'
 import type { Leg, Trip } from './types'
 import { daysBetween } from '../basis/datum'
 
-// Bij welke trip hoort een gelogde dag? Een dag ligt altijd binnen de datums van zijn trip (docs/PERIODEMODEL.md). Zo kon
-// een dag van 28 oktober in SV #1 (18–24 oktober) terechtkomen: een oude "lopende trip" of een trip die vanaf het
-// tripscherm was meegegeven, won van de trip van die datum.
+// Bij welke trip hoort een gelogde dag? De datums van een trip zijn gewone velden (CLAUDE.md, uitgangspunt 2): een dag
+// verandert ze nooit vanzelf. Koos Olivier de trip zelf, dan komt de dag daar, ook buiten de datums. Anders de trip
+// waarin de datum valt, en anders een nieuwe trip (met die dag als begin en eind). Ligt de datum hoogstens drie dagen
+// naast de gekozen trip, dan zegt het formulier vóór het opslaan "Opslaan verlengt <trip> tot <datum>": de tik op
+// Opslaan verlengt hem (zo wordt een trip uit Toevoegen → Dag elke dag een dag langer, nooit zonder die tik).
 
-/** Zoveel dagen naast een trip met vaste datums mag een dag hem verlengen; verder weg hoort de dag niet bij die trip. */
+/** Zoveel dagen naast de gekozen trip verlengt Opslaan hem; verder weg hoort de dag niet bij die trip. */
 export const LEG_EXTEND_DAYS = 3
 
 export interface LegPlacement {
-  /** De trip van de dag; null = een nieuwe trip (de datums volgen de dagen). */
+  /** De trip van de dag; null = een nieuwe trip. */
   tripId: string | null
-  /** De gekozen trip wordt verlengd tot deze datums. */
+  /** Opslaan verlengt de gekozen trip tot deze datums (staat vóór het opslaan in het formulier). */
   extend?: { start: string; end: string }
-  /** De gekozen trip kon niet (de datum valt erbuiten): de dag gaat naar een andere trip of een nieuwe. */
+  /** De voorgevulde trip past niet bij de datum: de dag gaat naar de trip van die datum, of een nieuwe trip. */
   moved?: boolean
 }
 
 /**
  * De trip voor een dag op `date`, uitgaande van de gekozen trip (null = nieuwe trip):
- * 1. de gekozen trip als de datum erin valt, of als hij zijn dagen volgt en Olivier hem zelf koos (`explicit`);
- * 2. anders de trip waarin de datum valt (bij een wisseldag de laatst begonnen);
- * 3. anders de gekozen trip die zijn dagen volgt, als de datum hoogstens drie dagen naast zijn dagen ligt (een
- *    voorgevulde trip slokt nooit een dag van weken later op);
- * 4. anders de gekozen trip (met vaste datums) verlengd, als de datum hoogstens drie dagen ernaast ligt;
+ * 1. de gekozen trip als de datum erin valt;
+ * 2. de gekozen trip als Olivier hem zelf koos (`explicit`), verlengd als de datum hoogstens drie dagen ernaast ligt;
+ * 3. anders de trip waarin de datum valt (bij een wisseldag de laatst begonnen);
+ * 4. anders de gekozen trip verlengd, als de datum hoogstens drie dagen ernaast ligt;
  * 5. anders een nieuwe trip.
  */
 export function placeLeg(trips: readonly Trip[], legs: readonly Leg[], chosenId: string | null, date: string, explicit = false): LegPlacement {
   const live = active(trips)
   const chosen = chosenId ? live.find((x) => x.id === chosenId) : undefined
-  const views = live.map((trip) => weekView(trip, legs)).filter((v) => v.startDate && v.endDate)
-  const inside = (v: { startDate: string; endDate: string }) => v.startDate <= date && date <= v.endDate
-  const chosenView = chosen ? weekView(chosen, legs) : null
-  if (chosen && chosenView?.startDate && chosenView.endDate && inside(chosenView as { startDate: string; endDate: string })) return { tripId: chosen.id }
-  // Een trip die zijn dagen volgt, groeit mee met elke dag die Olivier er zelf in zet (de agenda toont een overlap).
-  const follows = !!chosen && datesFollowDays(chosen)
-  if (chosen && follows && explicit) return { tripId: chosen.id }
-  const containing = views.filter((v) => v.trip.id !== chosen?.id && inside(v)).sort((a, b) => (a.startDate < b.startDate ? -1 : 1)).at(-1)
+  const inside = (v: { startDate?: string; endDate?: string }) => !!v.startDate && !!v.endDate && v.startDate <= date && date <= v.endDate
+  const view = chosen ? weekView(chosen, legs) : null
+  if (chosen && view && inside(view)) return { tripId: chosen.id }
+  const extend = view ? extension(view, date) : null
+  if (chosen && explicit) return { tripId: chosen.id, ...(extend ? { extend } : {}) }
+  const containing = live
+    .map((trip) => weekView(trip, legs))
+    .filter(inside)
+    .sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))
+    .at(-1)
   if (containing) return { tripId: containing.trip.id, ...(chosen ? { moved: true } : {}) }
-  // Vanzelf (een voorgevulde trip) alleen met een dag vlak naast zijn dagen: een tikfout in de datum rekt hem nooit
-  // maanden op, over periodes aan land en andere trips heen.
-  if (chosen && follows) {
-    const own = legs.filter((l) => l.tripId === chosen.id && l.deletedAt === null).map((l) => l.date).sort()
-    if (own.length === 0 || (daysBetween(own.at(-1)!, date) <= LEG_EXTEND_DAYS && daysBetween(date, own[0]!) <= LEG_EXTEND_DAYS)) return { tripId: chosen.id }
-    return { tripId: null, moved: true }
-  }
-  if (chosen && chosenView?.startDate && chosenView.endDate) {
-    const gap = date < chosenView.startDate ? daysBetween(date, chosenView.startDate) : daysBetween(chosenView.endDate, date)
-    if (gap <= LEG_EXTEND_DAYS) return { tripId: chosen.id, extend: { start: date < chosenView.startDate ? date : chosenView.startDate, end: date > chosenView.endDate ? date : chosenView.endDate } }
-  }
+  if (chosen && extend) return { tripId: chosen.id, extend }
   return { tripId: null, ...(chosen ? { moved: true } : {}) }
 }
 
-/** De dagen van een trip binnen zijn datums; dagen erbuiten staan apart (Nakijken, en een melding op de pagina). */
+/** De nieuwe datums als `date` hoogstens drie dagen vóór of na de trip ligt; anders null. */
+function extension(view: { startDate?: string; endDate?: string }, date: string): { start: string; end: string } | null {
+  if (!view.startDate || !view.endDate) return null
+  if (date < view.startDate && daysBetween(date, view.startDate) <= LEG_EXTEND_DAYS) return { start: date, end: view.endDate }
+  if (date > view.endDate && daysBetween(view.endDate, date) <= LEG_EXTEND_DAYS) return { start: view.startDate, end: date }
+  return null
+}
+
+/** De dagen van een trip binnen zijn datums; dagen erbuiten staan apart op de pagina (alleen ter informatie). */
 export function splitLegs(trip: Trip, legs: readonly Leg[]): { inside: Leg[]; outside: Leg[] } {
   const own = legs.filter((l) => l.tripId === trip.id && l.deletedAt === null)
-  // Alleen een trip met eigen datums: die van Toevoegen → Dag volgt zijn dagen.
-  if (trip.datesFromDays || !trip.startDate || !trip.endDate) return { inside: own, outside: [] }
+  // Een trip zonder datums (van vóór november 2026) toont gewoon al zijn dagen.
+  if (!trip.startDate || !trip.endDate) return { inside: own, outside: [] }
   return { inside: own.filter((l) => l.date >= trip.startDate! && l.date <= trip.endDate!), outside: own.filter((l) => l.date < trip.startDate! || l.date > trip.endDate!) }
 }

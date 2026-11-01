@@ -13,7 +13,7 @@ import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx, put, putMany } from './helpers/schrijf'
 import { declaratieBewerken, declaratieIngediend, declaratieTerugbetaald, declaratieVerwijderen } from '../src/domain/geld'
-import { periodeVerwijderen, samenvoegen } from '../src/domain/trips'
+import { periodeVerwijderen } from '../src/domain/trips'
 
 // Ronde 3 · PR 6: declaraties. Het bonnetje versleuteld in de kluis, de status open → ingediend → terugbetaald, de
 // terugbetaling als inkomen van soort terugbetaling (in het saldo, niet verdiend), open declaraties met een bedrag als
@@ -110,13 +110,11 @@ describe('declaraties', () => {
     expect(claimsToShow(s.list('claims.json.enc')).map((c) => c.id)).toEqual([claim.id])
   })
 
-  it('declaraties gaan mee bij samenvoegen en verwijderen met meenemen; bij ook verwijderen gaan ze mee weg met het bonnetje', async () => {
+  it('bij een trip met alles naar de prullenbak gaan de declaraties mee weg met het bonnetje; ongedaan maken zet ze terug', async () => {
     const s = await store()
     const other: Trip = { ...trip, id: 'trip-2', name: 'Nepweek twee', startDate: '2026-10-05', endDate: '2026-10-11' }
     await putMany(s, 'trips.json.enc', [trip, other])
-    const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: 'trip-1', note: 'Nephaven', amount: 10, currency: 'EUR' }, jpeg)
-    await samenvoegen(s, other, trip)
-    expect(s.list('claims.json.enc')[0]!.tripId).toBe('trip-2')
+    const claim = await inTx(s, addClaim, { date: '2026-10-08', tripId: 'trip-2', note: 'Nephaven', amount: 10, currency: 'EUR' }, jpeg)
     const undo = await periodeVerwijderen(s, s.list('trips.json.enc').find((x) => x.id === 'trip-2')!, 'alles')
     expect(s.list('claims.json.enc')).toEqual([])
     expect(s.get('claims.json.enc')[0]!.note).toBeUndefined()
@@ -129,7 +127,7 @@ describe('declaraties', () => {
   it('een gedeclareerde uitgave telt niet mee in het gemiddelde van de losse uitgaven', async () => {
     const s = await store()
     await inTx(s, addClaim, { date: '2026-10-03', tripId: null, note: '', amount: 500, currency: 'EUR' }, null)
-    const a = dayAverages(s.list('transactions.json.enc'), [], buildIndex([], [], []), '2026-10-30', DEFAULT_SETTINGS, null)
+    const a = dayAverages(s.list('transactions.json.enc'), buildIndex([], [], []), '2026-10-30', DEFAULT_SETTINGS)
     expect(a.thuis.source).toBe('onbekend')
   })
 })

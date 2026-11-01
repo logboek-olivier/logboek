@@ -1,15 +1,10 @@
 import 'fake-indexeddb/auto'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 // @ts-expect-error: Node-script zonder typen
 import { parseEcb, XCD_PER_USD } from '../scripts/build-rates.mjs'
 import { totals } from '../src/model/money'
-import { backfillRates, eurValue, finalRateFields, isRatesFile, loadRates, rateFor, setRates, type RatesFile } from '../src/model/rates'
+import { eurValue, finalRateFields, isRatesFile, loadRates, rateFor, setRates, type RatesFile } from '../src/model/rates'
 import type { Transaction } from '../src/model/types'
-import { GithubClient } from '../src/storage/github'
-import { openLogboekDb } from '../src/storage/idb'
-import { Store } from '../src/storage/store'
-import { FakeGithub } from './helpers/fake-github'
-import { inTx, putMany } from './helpers/schrijf'
 
 const NOW = '2026-10-26T10:00:00.000Z'
 
@@ -104,27 +99,3 @@ describe('koers van een datum', () => {
   })
 })
 
-describe('koers opslaan bij bestaande transacties', () => {
-  let masterKey: CryptoKey
-  beforeAll(async () => {
-    masterKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
-  })
-
-  it('een fooi in USD van de huidige versie (zonder amountEur) krijgt de definitieve koers; voorlopige en EUR blijven ongemoeid', async () => {
-    const db = await openLogboekDb('logboek-rates-1')
-    const store = await Store.open(db, masterKey, new GithubClient('github_pat_RATES_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
-    // Zo slaat de huidige versie een fooi in USD op: zonder amountEur, rate of rateDate.
-    await putMany(store, 'transactions.json.enc', [
-      tx({ id: 'oud-usd' }),
-      tx({ id: 'nieuw-usd', date: '2026-10-25', amount: 108 }),
-      tx({ id: 'eur', currency: 'EUR', amount: 50, amountEur: 50 }),
-    ])
-    expect(await inTx(store, backfillRates, file)).toBe(1)
-    const byId = new Map(store.list('transactions.json.enc').map((t) => [t.id, t]))
-    expect(byId.get('oud-usd')).toMatchObject({ amountEur: 100, rate: 1.07, rateDate: '2026-10-22' })
-    expect(byId.get('nieuw-usd')!.amountEur).toBeUndefined()
-    expect(byId.get('eur')).toEqual(tx({ id: 'eur', currency: 'EUR', amount: 50, amountEur: 50 }))
-    // Nog een keer: niets meer te doen.
-    expect(await inTx(store, backfillRates, file)).toBe(0)
-  })
-})

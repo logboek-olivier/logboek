@@ -1,5 +1,4 @@
-import type { Tx } from '../domain/tx'
-import { justAfter, type Transaction } from './types'
+import type { Transaction } from './types'
 
 // Wisselkoersen: ECB-referentiekoersen (vreemde valuta per 1 EUR), door deploy.yml gebouwd als public/rates.json op
 // dezelfde origin. De app haalt nooit zelf koersen van buiten (beveiligingsregel 2). Een transactie gebruikt de koers
@@ -114,25 +113,6 @@ export function finalRateFields(tx: Pick<Transaction, 'currency' | 'amount' | 'd
   return { rate: hit.rate, rateDate: hit.date, amountEur: round2(tx.amount / hit.rate) }
 }
 
-/**
- * Slaat de gebruikte koers op bij transacties die er nog geen hebben, zodra die definitief bekend is. Eén keer per
- * sessie na een geslaagde sync, zodat een offline apparaat geen wijzigingen van een ander apparaat overschrijft.
- */
-export async function backfillRates(store: Tx, file: RatesFile | null = current): Promise<number> {
-  if (!file) return 0
-  const changed: Transaction[] = []
-  for (const tx of store.list('transactions.json.enc')) {
-    if (tx.currency === 'EUR' || typeof tx.amountEur === 'number') continue
-    const fields = finalRateFields(tx, file)
-    // Net na de vorige versie: een echte wijziging op een ander apparaat (dat nog niet synchroniseerde) wint altijd; de
-    // koers wordt daarna gewoon opnieuw vastgelegd.
-    if (fields) changed.push({ ...tx, ...fields, updatedAt: justAfter(tx.updatedAt) })
-  }
-  if (changed.length > 0) {
-    await store.putMany('transactions.json.enc', changed)
-  }
-  return changed.length
-}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100

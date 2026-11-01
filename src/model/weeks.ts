@@ -2,7 +2,6 @@ import { translate, type Lang } from '../i18n'
 import { endedFor } from './trip-dates'
 import type { Tx } from '../domain/tx'
 import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
-import { followTrip, tripRange } from './calendar'
 import { MAX_COUNTRY, MAX_TAG } from './guests'
 import { currentSettings, saveSettings } from './settings'
 import { cleanSalary, withSalaryDefault } from './salary'
@@ -286,8 +285,6 @@ export async function startWeek(store: Tx, input: WeekInput, lang: Lang, today: 
   const settings = currentSettings(store.list('settings.json.enc'))
   const trip = input.salary ? { ...fields, salary: cleanSalary(input.salary) } : input.salary === null ? fields : withSalaryDefault(fields, settings, undefined, store.list('legs.json.enc'), today)
   await store.put('trips.json.enc', trip)
-  // De agenda volgt direct: zelf ingestelde dagen in de nieuwe trip maken plaats voor werk.
-  await followTrip(store, trip.id, null, tripRange(trip, store.list('legs.json.enc')))
   await syncParticipants(store, trip)
   const current = !!trip.startDate && !!trip.endDate && trip.startDate <= today && today <= trip.endDate
   await saveSettings(store, { ...(current ? { activeWeekId: trip.id } : {}), ...(trip.boat ? { lastBoat: trip.boat } : {}) })
@@ -312,10 +309,7 @@ export async function updateWeek(store: Tx, trip: Trip, input: WeekInput, lang: 
         : { ...merged, salary: cleanSalary(input.salary) }
   // Zelf andere datums gekozen: die staan voortaan vast en volgen de dagen niet meer.
   if (next.datesFromDays && (next.startDate !== trip.startDate || next.endDate !== trip.endDate)) delete next.datesFromDays
-  const legs = store.list('legs.json.enc')
   await store.put('trips.json.enc', next)
-  // Verlengen of verplaatsen: de agenda volgt direct.
-  await followTrip(store, trip.id, tripRange(trip, legs), tripRange(next, legs))
   await syncParticipants(store, next)
 }
 
@@ -377,6 +371,7 @@ export function planWeek(plan: WeekPlan, trips: readonly Trip[], legs: readonly 
  */
 export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
   const students = store.get('students.json.enc')
+  const liveTrips = new Set(store.list('trips.json.enc').map((x) => x.id))
   const now = new Date().toISOString()
   const changed: Student[] = []
   for (const p of trip.participants ?? []) {
@@ -396,7 +391,10 @@ export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
         deletedAt: null,
       })
     } else if (existing.deletedAt === null) {
-      const next = { ...existing, firstName: p.firstName, curriculumId: p.curriculumId, level: p.level ?? existing.level, weekId: trip.id }
+      // Een deelnemer mag in meerdere trips staan (uitgangspunt 4): de student blijft bij zijn trip. Alleen zonder trip
+      // (of met een verwijderde trip) hoort hij voortaan bij deze.
+      const linked = !!existing.weekId && liveTrips.has(existing.weekId)
+      const next = { ...existing, firstName: p.firstName, curriculumId: p.curriculumId, level: p.level ?? existing.level, weekId: linked ? existing.weekId : trip.id }
       if (JSON.stringify(next) !== JSON.stringify(existing)) changed.push({ ...next, updatedAt: now })
     }
   }

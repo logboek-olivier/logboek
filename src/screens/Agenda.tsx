@@ -7,7 +7,6 @@ import type { Notify } from '../components/EditSheets'
 import { Icon } from '../components/Icon'
 import { PeriodSheet, PlanningImportSheet } from '../components/PeriodSheets'
 import { ReminderSheet } from '../components/ReminderSheet'
-import { OverlapNotices } from '../components/TripSheets'
 import { MonthSalaries, SalaryDot } from '../components/MoneyPath'
 import { useCollection } from '../components/useCollection'
 import { WeekSheet } from '../components/WeekSheet'
@@ -17,7 +16,6 @@ import { t, useLang } from '../i18n'
 import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
 import { buildIndex, dayInfo, dayLabelKey, monthIncome, monthSummary, monthWeeks, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
-import { tripOverlaps } from '../model/trip-ops'
 import { closingFor } from '../model/week-close'
 import { salaryState, type SalaryState } from '../model/money-path'
 import { nameWithCounter, type TripCounter } from '../model/counters'
@@ -86,10 +84,6 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   if (view === 'delen') return <AgendaShare store={store} onBack={() => setView('maand')} />
 
   const weeks = monthWeeks(month)
-  // Trips op dezelfde dagen in het zichtbare raster: melding met samenvoegen, vervangen of datums aanpassen.
-  const gridStart = weeks[0]?.[0] ?? `${month}-01`
-  const gridEnd = weeks.at(-1)?.at(-1) ?? `${month}-31`
-  const overlaps = tripOverlaps(trips, legs).filter((o) => o.from <= gridEnd && o.to >= gridStart)
   const summary = monthSummary(index, month, today)
   const income = showAmounts ? monthIncome(index, transactions, month, today) : null
 
@@ -145,7 +139,6 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           {t('nav.logbook')}
         </button>
       </header>
-      <OverlapNotices store={store} overlaps={overlaps} notify={notify} onEditTrip={setEditTrip} />
       <div className="agenda-month">
         <button className="btn icon" aria-label={t('calendar.prev')} onClick={() => setMonth(shiftMonth(month, -1))}>
           <Icon icon={ChevronLeft} />

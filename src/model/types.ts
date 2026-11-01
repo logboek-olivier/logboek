@@ -556,8 +556,6 @@ export interface WeekClosing extends SyncRecord {
   /** 1–10. */
   rating?: number
   lesson?: string
-  /** "Ongeveer los uitgegeven deze week?": telt als variabele kosten van die week. */
-  spent?: { amount: number; currency: Currency }
 }
 
 /** Een doel dat zichzelf vult uit de gegevens van de app. */

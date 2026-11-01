@@ -1,8 +1,6 @@
 // Opdracht voor de gezondheidscheck (Meer → Opslag → Gezondheid): een overtreding met één tik oplossen, waar dat
 // zonder gokken kan. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
-import { addDays } from '../basis/datum'
-import { rangeDates, setStayDays } from '../model/periods'
 import { saveSettings } from '../model/settings'
 import type { Violation } from './invariants'
 import { opdracht } from './opdracht'
@@ -10,7 +8,7 @@ import type { Tx } from './tx'
 
 /** Welke overtredingen een fix van één tik hebben. */
 export function canFix(violation: Violation): boolean {
-  return violation.rule === 'lopende-trip-weg' || violation.rule === 'salaris-zonder-inkomen' || violation.rule === 'land-overlap' || violation.rule === 'trip-datums'
+  return violation.rule === 'lopende-trip-weg' || violation.rule === 'salaris-zonder-inkomen' || violation.rule === 'trip-datums'
 }
 
 export async function fixViolation(tx: Tx, violation: Violation): Promise<void> {
@@ -25,20 +23,6 @@ export async function fixViolation(tx: Tx, violation: Violation): Promise<void> 
       const { transactionId: _t, ...salary } = trip.salary
       void _t
       return tx.put('trips.json.enc', { ...trip, salary: { ...salary, status: 'verwacht' }, updatedAt: tx.now })
-    }
-    case 'land-overlap': {
-      // Twee periodes aan land op dezelfde dagen: de eerst begonnen houdt die dagen, de andere wordt korter.
-      const first = tx.list('periods.json.enc').find((s) => s.id === violation.id)
-      const second = tx.list('periods.json.enc').find((s) => s.id === violation.other)
-      if (!first || !second) return
-      const from = second.startDate > first.startDate ? second.startDate : first.startDate
-      const to = second.endDate < first.endDate ? second.endDate : first.endDate
-      if (from > to) return
-      const days = rangeDates(from, to)
-      if (second.startDate >= from && second.endDate <= to) return setStayDays(tx, days, first.kind)
-      // Alleen het stuk dat overlapt gaat van de tweede af.
-      await tx.put('periods.json.enc', second.startDate < from ? { ...second, endDate: addDays(from, -1), updatedAt: tx.now } : { ...second, startDate: addDays(to, 1), updatedAt: tx.now })
-      return
     }
     case 'trip-datums': {
       // Begin na eind: omdraaien (de dagen zelf blijven staan).

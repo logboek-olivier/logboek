@@ -3252,41 +3252,6 @@ body.presenting .bottom-bar {
   cursor: pointer;
 }
 
-.overlap-notice span {
-  display: inline-flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-}
-
-.overlap-notice .icon {
-  --icon: 16px;
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--warning);
-}
-
-/* Keuze welke trip blijft, of welke trip de dagen krijgt. */
-.choice {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.choice.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .delete-choice {
   padding: var(--s-3);
   border: 1px solid var(--negative);
@@ -4681,7 +4646,3 @@ textarea.note {
   margin: var(--s-2) 0;
 }
 
-/* Logboek herstellen (Meer → Opslag): per trip nu en na herstellen. */
-.link-repair .row-main {
-  gap: var(--s-1);
-}

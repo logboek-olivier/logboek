@@ -1,13 +1,11 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { commit, type Written } from '../src/domain/commit'
-import { planSignature, repairLinks } from '../src/domain/herstel'
 import { applyImport } from '../src/import/apply'
 import { parseMileageCsv } from '../src/import/mileage-csv'
 import { tripRange } from '../src/model/calendar'
 import { active } from '../src/model/derive'
 import { bookFixedCosts } from '../src/model/fixed-bookings'
-import { isEmptyPlan, planLinkRepair } from '../src/model/link-repair'
 import { migratePeriods } from '../src/model/migrate-periods'
 import { pruneTrash } from '../src/domain/prullenbak'
 import type { CalendarDay, Leg, Student, Transaction, Trip } from '../src/model/types'
@@ -118,15 +116,7 @@ const STEPS: Step[] = [
   { name: 'vasteLastenBoeken', run: (tx) => bookFixedCosts(tx, '2026-11-01') },
   { name: 'geschiedenisOpruimen', run: (tx) => pruneTrash(tx) },
   { name: 'mijlenImporteren', run: (tx) => applyImport(tx, parseMileageCsv(IMPORT_CSV)) },
-  {
-    name: 'logboekHerstellen',
-    run: async (tx) => {
-      // Op een logboek zonder schade is er niets te herstellen.
-      const plan = planLinkRepair(tx, tx.now)
-      expect(isEmptyPlan(plan)).toBe(true)
-      return repairLinks(tx, planSignature(plan))
-    },
-  },
+
 ]
 
 async function step(s: Store, st: Step): Promise<Written[]> {
@@ -192,16 +182,4 @@ describe('proef op een kopie: een automatische stap die een koppeling verandert,
     expect(content(s)).toEqual(before)
   })
 
-  it('een automatische stap die een trip over de dagen van een andere trip laat lopen, wordt tegengehouden', async () => {
-    const s = await variant(5)
-    const legs = s.get('legs.json.enc')
-    const trips = [...active(s.get('trips.json.enc'))].sort((a, b) => (tripRange(a, legs)!.start < tripRange(b, legs)!.start ? -1 : 1))
-    const before = content(s)
-    await expect(
-      commit(s, 'periodemodelMigreren', async (tx) => {
-        await tx.put('trips.json.enc', { ...trips[3]!, startDate: tripRange(trips[3]!, legs)!.start, endDate: tripRange(trips[6]!, legs)!.end, updatedAt: tx.now })
-      }),
-    ).rejects.toThrow(/Invariant/)
-    expect(content(s)).toEqual(before)
-  })
 })

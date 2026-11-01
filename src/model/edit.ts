@@ -2,7 +2,6 @@ import type { Tx } from '../domain/tx'
 import { scrubbedCareer } from './career'
 import { tripForDate } from './derive'
 import { scrubbedDocument } from './documents'
-import { datesFollowDays, followDays, hasOtherData } from './trip-dates'
 import { finalRateFields } from './rates'
 import type { CareerRecord, Claim, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, SyncRecord, TipFrom, TipVia, CostCategory, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 import { round2 } from '../basis/bedrag'
@@ -89,17 +88,9 @@ function claimWithout(claim: Claim, tx: Transaction): Claim | null {
   return null
 }
 
-/**
- * Een dag verwijderen; raakt de tocht daardoor leeg, dan gaat die mee (en komt terug bij ongedaan maken), maar alleen als
- * de datums de dagen volgen en er verder niets aan hangt (inkomsten, deelnemers, salaris, review, ...): een trip met eigen
- * datums of met gegevens blijft. Volgen de datums van de trip de dagen, dan schuiven ze mee (ook bij ongedaan maken).
- */
+/** Een dag verwijderen. De trip blijft zoals hij is (ook zonder dagen); de datums veranderen niet. */
 export async function deleteLeg(tx: Tx, leg: Leg): Promise<void> {
   await removeAll(tx, 'legs.json.enc', [leg])
-  const others = tx.list('legs.json.enc').filter((l) => l.tripId === leg.tripId)
-  const trip = tx.list('trips.json.enc').find((t) => t.id === leg.tripId)
-  if (others.length === 0 && trip && datesFollowDays(trip) && !hasOtherData(tx, trip)) await removeAll(tx, 'trips.json.enc', [trip])
-  await followDays(tx, [leg.tripId])
 }
 
 export async function renameTrip(tx: Tx, trip: Trip, name: string): Promise<void> {
@@ -181,8 +172,6 @@ export async function updateLeg(store: Tx, leg: Leg, patch: LegPatch, trip: { id
     if (!next[key]) delete next[key]
   }
   await store.put('legs.json.enc', next)
-  // Een andere datum of een andere trip: de datums van beide trips volgen hun dagen (als ze dat doen).
-  if (next.date !== leg.date || tripId !== leg.tripId) await followDays(store, [leg.tripId, tripId])
 }
 
 /** "12,5" → 12.5; leeg → 0; ongeldig of negatief → null. Voor mijlen en nachturen, waar 0 geldig is. */

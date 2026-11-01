@@ -26,22 +26,15 @@ for (const lang of ['nl', 'en'] as Lang[]) {
   test.describe(lang, () => {
     test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB' })
 
-    test(`kosten: vaste last vanaf een maand, standaard per dagsoort, uitgave met soort, weekschatting (${lang})`, async ({ page }) => {
+    test(`kosten: vaste last vanaf een maand, standaard per dagsoort, uitgave met soort (${lang})`, async ({ page }) => {
       test.setTimeout(150_000)
-      // Zondag 14 februari 2027: de weekafsluiting staat op Vandaag.
+      // Zondag 14 februari 2027.
       await page.clock.setSystemTime(new Date('2027-02-14T10:00:00'))
       const L = (key: MessageKey, ...args: unknown[]) => (translate as (l: Lang, k: MessageKey, ...a: unknown[]) => string)(lang, key, ...args)
       const errors = collectConsoleErrors(page)
       const toast = page.locator('.toast')
       await mockGithub(page)
       await createNewLogbook(page, lang)
-
-      // Weekafsluiting: één getal voor de losse uitgaven van deze week.
-      const card = page.locator('.week-close')
-      await card.getByLabel(L('weekClose.spent')).fill('140')
-      await card.getByRole('button', { name: L('weekClose.save') }).click()
-      await expect(toast).toHaveText(L('weekClose.saved'))
-      await expect(toast).toHaveCount(0, { timeout: 15_000 })
 
       // Een losse uitgave met een soort, zonder trip.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()

@@ -2,7 +2,6 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { mijlenImporteren } from '../src/domain/importeren'
 import { terugzetten } from '../src/domain/prullenbak'
-import { periodeVerwijderen, periodeVervangen, samenvoegen } from '../src/domain/trips'
 import { movedAway, trashItems } from '../src/model/trash'
 import { parseMileageCsv } from '../src/import/mileage-csv'
 import { tripRange } from '../src/model/calendar'
@@ -60,37 +59,6 @@ describe('gouden dataset', () => {
   })
 })
 
-describe('gouden dataset: prullenbak van vóór de geschiedenis', () => {
-  /** Zoals de vorige versie: verwijderingen zonder regel in de geschiedenis. */
-  async function forgetHistory(s: Store): Promise<void> {
-    const entries = s.get('history.json.enc').map((e) => ({ ...e, at: '2099-01-01T00:00:00.000Z', deletedAt: '2099-01-01T00:00:00.000Z' }))
-    await putMany(s, 'history.json.enc', entries)
-  }
-
-  it('een trip die met "Meenemen naar trip …" verwijderd werd, terugzetten met wat aangevinkt staat: alles weer zoals vóór het verwijderen', async () => {
-    const s = await store()
-    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
-    const trips = [...active(s.get('trips.json.enc'))].sort((a, b) => (tripRange(a, s.get('legs.json.enc'))!.start < tripRange(b, s.get('legs.json.enc'))!.start ? -1 : 1))
-    // Deelnemers met een cursus (studenten) bij een paar trips.
-    const withPeople = [trips[19]!, trips[20]!, trips[21]!]
-    for (const [i, t] of withPeople.entries()) {
-      const pid = `p-${i}`
-      await putMany(s, 'trips.json.enc', [{ ...t, participants: [{ id: pid, firstName: `Nep${i}`, curriculumId: 'seed-asa-101', level: 'beginner' }] }])
-      await putMany(s, 'students.json.enc', [{ id: pid, firstName: `Nep${i}`, curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, weekId: t.id, updatedAt: new Date().toISOString(), deletedAt: null }])
-    }
-    const before = relations(s)
-    const studentsBefore = active(s.get('students.json.enc')).map((x) => `${x.firstName} → ${s.get('trips.json.enc').find((t) => t.id === x.weekId)?.name}`).sort()
-    // Per ongeluk verwijderd, dagen mee naar de trip ernaast (zoals de vorige versie dat deed).
-    await periodeVerwijderen(s, s.get('trips.json.enc').find((t) => t.id === trips[20]!.id)!, s.get('trips.json.enc').find((t) => t.id === trips[21]!.id)!)
-    await forgetHistory(s)
-    const item = trashItems(s).find((i) => i.kind === 'periode')!
-    expect(item).toBeTruthy()
-    // Terugzetten met wat de prullenbak vooraf aanvinkt.
-    await terugzetten(s, item.key, movedAway(s, item).map((m) => m.record.id))
-    expect(relations(s)).toEqual(before)
-    expect(active(s.get('students.json.enc')).map((x) => `${x.firstName} → ${s.get('trips.json.enc').find((t) => t.id === x.weekId)?.name}`).sort()).toEqual(studentsBefore)
-  })
-})
 
 describe('gouden dataset: opnieuw importeren met eigen wijzigingen', () => {
   it('trips met eigen soort, organisatie en datums, een gewijzigde Excel en een tweede apparaat: elke dag bij zijn tocht', async () => {
@@ -113,39 +81,31 @@ describe('gouden dataset: opnieuw importeren met eigen wijzigingen', () => {
   })
 })
 
-describe('gouden dataset: samenvoegen of vervangen van vóór de geschiedenis, terugzetten', () => {
-  async function forgetHistory(s: Store): Promise<void> {
-    const entries = s.get('history.json.enc').map((e) => ({ ...e, at: '2099-01-01T00:00:00.000Z', deletedAt: '2099-01-01T00:00:00.000Z' }))
-    await putMany(s, 'history.json.enc', entries)
-  }
-  const studentsOf = (s: Store) => active(s.get('students.json.enc')).map((x) => `${x.firstName} → ${s.get('trips.json.enc').find((t) => t.id === x.weekId)?.name}`).sort()
-  const participantsOf = (s: Store) => active(s.get('trips.json.enc')).map((t) => `${t.name}: ${(t.participants ?? []).map((p) => p.firstName).sort().join(',')}`).sort()
 
-  for (const how of ['samenvoegen', 'vervangen'] as const) {
-    it(`${how}: terugzetten zet dagen en deelnemers terug bij hun eigen trip`, async () => {
-      const s = await store()
-      await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
-      const legs = s.get('legs.json.enc')
-      const trips = [...active(s.get('trips.json.enc'))].sort((a, b) => (tripRange(a, legs)!.start < tripRange(b, legs)!.start ? -1 : 1))
-      for (const [i, t] of [trips[11]!, trips[12]!].entries()) {
-        const pid = `q-${i}`
-        await putMany(s, 'trips.json.enc', [{ ...s.get('trips.json.enc').find((x) => x.id === t.id)!, participants: [{ id: pid, firstName: `Nepq${i}`, curriculumId: 'seed-asa-101', level: 'beginner' }] }])
-        await putMany(s, 'students.json.enc', [{ id: pid, firstName: `Nepq${i}`, curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, weekId: t.id, updatedAt: new Date().toISOString(), deletedAt: null }])
-      }
-      const before = relations(s)
-      const sBefore = studentsOf(s)
-      const pBefore = participantsOf(s)
-      const keep = s.get('trips.json.enc').find((x) => x.id === trips[11]!.id)!
-      const other = s.get('trips.json.enc').find((x) => x.id === trips[12]!.id)!
-      if (how === 'samenvoegen') await samenvoegen(s, keep, other)
-      else await periodeVervangen(s, keep, other)
-      await forgetHistory(s)
-      const item = trashItems(s).find((i) => i.kind === 'periode')!
-      await terugzetten(s, item.key, movedAway(s, item).map((m) => m.record.id))
-      expect(relations(s).legs).toEqual(before.legs)
-      expect(studentsOf(s)).toEqual(sBefore)
-      expect(relations(s).ranges).toEqual(before.ranges)
-      expect(participantsOf(s)).toEqual(pBefore)
-    })
-  }
+describe('gouden dataset: prullenbak van vóór de geschiedenis', () => {
+  it('een trip die met "Meenemen naar trip …" verwijderd werd (oude versie), terugzetten met wat aangevinkt staat: alles weer zoals vóór het verwijderen', async () => {
+    const s = await store()
+    await mijlenImporteren(s, parseMileageCsv(goldenCsv()))
+    const legs = s.get('legs.json.enc')
+    const trips = [...active(s.get('trips.json.enc'))].sort((a, b) => (tripRange(a, legs)!.start < tripRange(b, legs)!.start ? -1 : 1))
+    const [gone, other] = [trips[20]!, trips[21]!]
+    // Een student bij de trip die weg gaat.
+    await putMany(s, 'trips.json.enc', [{ ...gone, participants: [{ id: 'p-oud', firstName: 'Nepoud', curriculumId: 'seed-asa-101', level: 'beginner' }] }])
+    await putMany(s, 'students.json.enc', [{ id: 'p-oud', firstName: 'Nepoud', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, weekId: gone.id, updatedAt: new Date().toISOString(), deletedAt: null }])
+    const before = relations(s)
+    // Zoals een oudere versie dat deed, zonder regel in de geschiedenis: de trip een tombstone, zijn dagen en student
+    // op hetzelfde moment naar de trip ernaast.
+    const at = new Date(Date.now() + 1000).toISOString()
+    const own = active(s.get('legs.json.enc')).filter((l) => l.tripId === gone.id)
+    await putMany(s, 'trips.json.enc', [{ ...s.get('trips.json.enc').find((t) => t.id === gone.id)!, updatedAt: at, deletedAt: at }])
+    await putMany(s, 'legs.json.enc', own.map((l) => ({ ...l, tripId: other.id, updatedAt: at })))
+    await putMany(s, 'students.json.enc', [{ ...s.get('students.json.enc').find((x) => x.id === 'p-oud')!, weekId: other.id, updatedAt: at }])
+    const item = trashItems(s).find((i) => i.kind === 'periode')!
+    expect(item).toBeTruthy()
+    const moved = movedAway(s, item)
+    expect(moved.map((m) => m.record.id).sort()).toEqual([...own.map((l) => l.id), 'p-oud'].sort())
+    await terugzetten(s, item.key, moved.map((m) => m.record.id))
+    expect(relations(s)).toEqual(before)
+    expect(active(s.get('students.json.enc')).find((x) => x.id === 'p-oud')!.weekId).toBe(gone.id)
+  })
 })

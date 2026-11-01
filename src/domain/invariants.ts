@@ -1,7 +1,6 @@
 import { isDate } from '../basis/datum'
 import { currentSettings } from '../model/settings'
-import { datesChosen, longImportTrips, stretchedDates } from '../model/link-repair'
-import type { CollectionPath, StayPeriod } from '../model/types'
+import type { CollectionPath } from '../model/types'
 import type { Reader } from './tx'
 
 // Invarianten als code (docs/FUNDERING.md). Twee soorten:
@@ -14,16 +13,11 @@ export type Rule =
   | 'datum'
   | 'getal'
   | 'trip-datums'
-  | 'land-overlap'
   | 'dag-zonder-trip'
-  | 'dag-buiten-trip'
   | 'geld-zonder-periode'
   | 'salaris-zonder-inkomen'
   | 'lopende-trip-weg'
   | 'student-zonder-trip'
-  | 'trip-langer-dan-dagen'
-  | 'lange-importtrip'
-  | 'deelnemer-dubbel'
 
 export interface Violation {
   /** Vast per overtreding: zo is te zien of een opdracht er een nieuwe maakt. */
@@ -36,7 +30,7 @@ export interface Violation {
   other?: string
 }
 
-const HARD: ReadonlySet<Rule> = new Set(['datum', 'getal', 'trip-datums', 'land-overlap'])
+const HARD: ReadonlySet<Rule> = new Set(['datum', 'getal', 'trip-datums'])
 
 function v(rule: Rule, path: CollectionPath, id: string, other?: string): Violation {
   return { key: `${rule}:${path}:${id}${other ? `:${other}` : ''}`, rule, severity: HARD.has(rule) ? 'fout' : 'nakijken', path, id, ...(other ? { other } : {}) }
@@ -64,9 +58,6 @@ export function violations(reader: Reader): Violation[] {
   for (const trip of trips) {
     if ((trip.startDate && !isDate(trip.startDate)) || (trip.endDate && !isDate(trip.endDate))) out.push(v('datum', 'trips.json.enc', trip.id))
     else if (trip.startDate && trip.endDate && trip.startDate > trip.endDate) out.push(v('trip-datums', 'trips.json.enc', trip.id))
-    if (!trip.datesFromDays && isDate(trip.startDate) && isDate(trip.endDate)) {
-      for (const leg of byTrip.get(trip.id) ?? []) if (isDate(leg.date) && (leg.date < trip.startDate || leg.date > trip.endDate)) out.push(v('dag-buiten-trip', 'legs.json.enc', leg.id))
-    }
     const salary = trip.salary
     if (salary?.status === 'ontvangen' && salary.transactionId && !money.some((tx) => tx.id === salary.transactionId)) out.push(v('salaris-zonder-inkomen', 'trips.json.enc', trip.id))
   }
@@ -75,37 +66,10 @@ export function violations(reader: Reader): Violation[] {
     if (!(finite(tx.amount) && tx.amount > 0)) out.push(v('getal', 'transactions.json.enc', tx.id))
     if (!tx.claimId && !tx.fixedCostId && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
   }
-  out.push(...landOverlaps(stays))
   for (const stay of stays) if (!isDate(stay.startDate) || !isDate(stay.endDate) || stay.startDate > stay.endDate) out.push(v('datum', 'periods.json.enc', stay.id))
   for (const student of reader.list('students.json.enc')) if (student.weekId && !live.has(student.weekId) && !student.archivedAt) out.push(v('student-zonder-trip', 'students.json.enc', student.id))
-  // Een trip loopt nooit langer dan zijn eigen dagen plus de datums die Olivier zelf instelde: eigen datums die over de
-  // dagen van een andere trip heen lopen, kwamen van samenvoegen (src/model/link-repair.ts).
-  const allLegs = reader.get('legs.json.enc')
-  const chosen = datesChosen(reader)
-  for (const trip of trips) if (stretchedDates(trip, allLegs, trips, chosen)) out.push(v('trip-langer-dan-dagen', 'trips.json.enc', trip.id))
-  // Een geïmporteerde trip van meer dan 21 dagen: bijna altijd een verkeerde koppeling (ook in Nakijken).
-  for (const long of longImportTrips(reader)) out.push(v('lange-importtrip', 'trips.json.enc', long.trip.id))
-  // Een deelnemer hoort bij één trip (op id, nooit op positie).
-  const seen = new Map<string, string>()
-  for (const trip of trips) {
-    for (const p of trip.participants ?? []) {
-      const first = seen.get(p.id)
-      if (first && first !== trip.id) out.push(v('deelnemer-dubbel', 'trips.json.enc', trip.id, p.id))
-      else seen.set(p.id, trip.id)
-    }
-  }
   const settings = currentSettings(reader.list('settings.json.enc'))
   if (settings.activeWeekId && !live.has(settings.activeWeekId)) out.push(v('lopende-trip-weg', 'settings.json.enc', 'settings'))
-  return out
-}
-
-/** Twee periodes aan land op dezelfde dag (elke dag hoort bij hoogstens één periode). */
-function landOverlaps(stays: readonly StayPeriod[]): Violation[] {
-  const dated = stays.filter((s) => isDate(s.startDate) && isDate(s.endDate) && s.startDate <= s.endDate).sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.id < b.id ? -1 : 1))
-  const out: Violation[] = []
-  for (let i = 0; i < dated.length; i++) {
-    for (let j = i + 1; j < dated.length && dated[j]!.startDate <= dated[i]!.endDate; j++) out.push(v('land-overlap', 'periods.json.enc', dated[i]!.id, dated[j]!.id))
-  }
   return out
 }
 

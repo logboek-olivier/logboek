@@ -28,7 +28,7 @@ async function newTrip(page: Page, name: string, start: string, days: number, bo
   await expect(page.locator('.toast')).toHaveText('Trip opgeslagen')
 }
 
-test('overlappende trips samenvoegen, tikfout in de naam herstellen, trip met dagen naar de prullenbak en terug', async ({ page }) => {
+test('overlappende trips zonder melding, tikfout in de naam herstellen, trip met dagen naar de prullenbak en terug', async ({ page }) => {
   test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
@@ -40,23 +40,9 @@ test('overlappende trips samenvoegen, tikfout in de naam herstellen, trip met da
   await newTrip(page, 'Weel 44', iso(-1), 7, '', 'Nepanna')
   await newTrip(page, 'Nepweek BVI', iso(0), 7)
   await page.getByRole('navigation').getByRole('button', { name: 'Agenda', exact: true }).click()
-  const notice = page.locator('.overlap-notice')
-  await expect(notice).toContainText('Weel 44 en Nepweek BVI liggen op dezelfde dagen')
+  // Overlap is normaal: geen melding en geen keuze in de agenda.
+  await expect(page.locator('.overlap-notice')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
-  await notice.getByRole('button', { name: 'Oplossen' }).click()
-  const sheet = page.getByRole('dialog')
-  await expect(sheet.getByRole('radio', { name: /Weel 44/ })).toHaveAttribute('aria-checked', 'true')
-  await page.screenshot({ path: 'screenshots/bewerken/overlap.png' })
-  await sheet.getByRole('button', { name: 'Samenvoegen' }).click()
-  await expect(page.locator('.toast')).toContainText('Samengevoegd in Weel 44')
-  await expect(page.locator('.toast').getByRole('button', { name: 'Ongedaan maken' })).toBeVisible()
-  await expect(notice).toHaveCount(0)
-  // Ongedaan maken (binnen 10 seconden): beide trips terug, de melding ook.
-  await page.locator('.toast').getByRole('button', { name: 'Ongedaan maken' }).click()
-  await expect(notice).toHaveCount(1)
-  await notice.getByRole('button', { name: 'Oplossen' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Samenvoegen' }).click()
-  await expect(notice).toHaveCount(0)
 
   // De tikfout in de naam: vanuit de dagkaart naar het tripoverzicht, daar het potlood.
   await page.locator('.cal-day.today').click()

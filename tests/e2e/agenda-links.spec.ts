@@ -66,7 +66,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(today).toContainText(L('periodKind.werk'))
       await expect(page.getByRole('button', { name: L('today.logDay') })).toBeVisible()
 
-      // Agenda → trip: werk op 15 maart verlengt de trip (14 maart komt erbij); rust op de laatste dag maakt hem korter.
+      // Agenda → trip: werk op 15 maart biedt verlengen (een tik; 14 maart komt erbij). Een andere dagsoort op de laatste
+      // dag maakt de trip niet korter (uitgangspunt 2): de dag blijft bij de trip, met de uitleg waar je datums wijzigt.
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
       await day(15).click()
       await sheet.getByRole('button', { name: L('common.edit') }).click()
@@ -79,10 +80,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(sheet.getByText(L('day.source.trip'))).toBeVisible()
       await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.rust') }).click()
-      await expect(page.getByText(/Nepweek Koppel: /)).toBeVisible()
+      await expect(page.getByText(L('day.inTrip', { name: 'Nepweek Koppel' }))).toBeVisible()
       await sheet.getByRole('button', { name: L('common.close') }).click()
-      await expect(day(15)).toHaveClass(/day-rust/)
-      await expect(day(14)).toHaveClass(/day-werk/)
+      for (const n of [14, 15]) await expect(day(n)).toHaveClass(/day-werk/)
 
       // Termijn op zijn dag: toevoegen vanuit het dagblad van 20 maart, met een stip in de agenda.
       await day(20).click()

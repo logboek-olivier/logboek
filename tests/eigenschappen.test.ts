@@ -7,7 +7,7 @@ import { geldToevoegen, geldVerwijderen } from '../src/domain/geld'
 import { gezondheidHerstellen } from '../src/domain/gezondheid'
 import { hardViolations, violations } from '../src/domain/invariants'
 import { geschiedenisTerugzetten, terugzetten } from '../src/domain/prullenbak'
-import { periodeMaken, periodeVervangen, periodeVerwijderen, samenvoegen } from '../src/domain/trips'
+import { periodeBewerken, periodeMaken, periodeVerwijderen } from '../src/domain/trips'
 import { addDays } from '../src/basis/datum'
 import { historyRows } from '../src/model/history-view'
 import { trashItems } from '../src/model/trash'
@@ -61,7 +61,7 @@ const START = '2026-10-01'
 const date = (r: ReturnType<typeof random>) => addDays(START, r.int(40))
 
 /** Opdrachten die een dag of geld naar een andere periode mogen zetten (Olivier kiest dat zelf). */
-const MOVES = new Set(['samenvoegen', 'periodeVervangen', 'terugzetten', 'geschiedenisTerugzetten', 'ongedaanMaken', 'dagBewerken'])
+const MOVES = new Set(['terugzetten', 'geschiedenisTerugzetten', 'ongedaanMaken', 'dagBewerken'])
 /** Opdrachten die een dag of geld mogen weghalen. */
 const REMOVES = new Set(['dagVerwijderen', 'geldVerwijderen', 'periodeVerwijderen', 'geschiedenisTerugzetten', 'ongedaanMaken', 'terugzetten'])
 
@@ -119,9 +119,11 @@ async function act(s: Store, r: ReturnType<typeof random>): Promise<{ name: stri
       return { name: 'landperiodeZetten', undo: await landperiodeZetten(s, days, kind) }
     }
     case 8: {
-      const [a, b] = [r.pick(trips), r.pick(trips)]
-      if (!a || !b || a.id === b.id) return null
-      return r.chance(0.5) ? { name: 'samenvoegen', undo: await samenvoegen(s, a, b) } : { name: 'periodeVervangen', undo: await periodeVervangen(s, a, b) }
+      // Trip bewerken met andere datums (een gewone keuze van Olivier; dagen en geld verhuizen niet).
+      const t = r.pick(trips)
+      if (!t) return null
+      const start = date(r)
+      return { name: 'periodeBewerken', undo: await periodeBewerken(s, t, { name: t.name, type: t.type ?? 'overig', startDate: start, dayCount: 1 + r.int(9), boat: t.boat ?? '', boatModel: '', boatLengthFt: null, base: '', charter: '', area: '', participants: [], note: '' }, 'nl') }
     }
     case 9: {
       const item = r.pick(trashItems(s))
@@ -208,9 +210,8 @@ describe('eigenschappen (willekeurige reeksen)', () => {
         const ids = (s: Store) => s.list(path).map((x) => strip(x)).sort()
         expect(ids(b), `zaad ${10_000 + seed}: ${path} verschilt tussen de apparaten`).toEqual(ids(a))
       }
-      // Wat twee apparaten tegelijk deden (bijvoorbeeld twee periodes aan land op dezelfde dagen) lost de check op.
+      // Wat twee apparaten tegelijk deden, lost de gezondheidscheck op waar dat zonder gokken kan.
       for (const x of hardViolations(a)) await gezondheidHerstellen(a, x)
-      expect(hardViolations(a).filter((x) => x.rule === 'land-overlap'), `zaad ${10_000 + seed}`).toEqual([])
       expect(violations(a).every((x) => typeof x.key === 'string')).toBe(true)
       a.lock()
       b.lock()

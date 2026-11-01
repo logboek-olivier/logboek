@@ -1,18 +1,12 @@
-import type { Tx, Reader } from '../domain/tx'
+import type { Reader } from '../domain/tx'
 import type { DateRange } from './calendar'
 import { active } from './derive'
 import type { Leg, Trip } from './types'
-import { setStayDays } from './periods'
 import { addDays } from '../basis/datum'
 
-// Datums van een trip die de dagen volgen (aangemaakt via Toevoegen → Dag, of een trip zonder datums): begin en eind
-// komen uit de gelogde dagen en schuiven mee als er dagen bijkomen of weggaan. Stelt Olivier de datums zelf in (Trip
-// bewerken, verlengen of inkorten in de agenda), dan staan ze vast en raakt dit ze niet meer.
-
-/** Volgen de datums van deze trip de dagen? Ja als hij zo is aangemaakt, of als hij nog helemaal geen datums heeft. */
-export function datesFollowDays(trip: Trip): boolean {
-  return trip.datesFromDays === true || (!trip.startDate && !trip.endDate)
-}
+// Datums van een trip zijn gewone velden (CLAUDE.md, uitgangspunt 2): de app rekent ze nooit uit de dagen en past ze
+// nooit vanzelf aan. Hier alleen wat lezen nodig heeft: de eerste en laatste dag (een trip zonder datums van vóór
+// november 2026 toont die), en wanneer een trip "voorbij" is.
 
 /** Eerste en laatste gelogde dag van een trip; null zonder dagen. */
 export function daysRange(tripId: string, legs: readonly Leg[]): DateRange | null {
@@ -23,47 +17,13 @@ export function daysRange(tripId: string, legs: readonly Leg[]): DateRange | nul
   return dates.length > 0 ? { start: dates[0]!, end: dates.at(-1)! } : null
 }
 
-/** Een trip waarvan de datums de dagen volgen, is pas na drie dagen zonder nieuwe dag "voorbij" (anders vraagt Deze trip elke ochtend om af te ronden). */
+/** Een trip die via Toevoegen → Dag ontstond (van vóór november 2026: `datesFromDays`), is pas na drie dagen "voorbij" (anders vraagt Deze trip elke ochtend om af te ronden). */
 export const DAYS_TRIP_GRACE = 3
 
 export function endedFor(trip: Trip, endDate: string): string {
   return trip.datesFromDays ? addDays(endDate, DAYS_TRIP_GRACE) : endDate
 }
 
-/**
- * Na een nieuwe, verschoven, verplaatste of verwijderde dag (en na het ongedaan maken daarvan): de datums van deze trips
- * volgen hun dagen. Een trip met zelf ingestelde datums blijft ongemoeid, net als een geïmporteerde tocht zonder datums
- * (die volgt de import). De agenda wordt hier niet aangepast: zelf ingestelde dagen tussen twee gelogde dagen blijven
- * staan (eigen instelling gaat voor), zodat een verkeerd getypte datum nooit dagen in de agenda wist. Raakt een trip uit
- * Toevoegen → Dag zijn laatste dag kwijt en hangt er verder niets aan, dan verdwijnt hij, zoals bij een dag verwijderen.
- */
-export async function followDays(store: Tx, tripIds: readonly (string | null | undefined)[]): Promise<void> {
-  const ids = [...new Set(tripIds.filter((id): id is string => !!id))]
-  for (const id of ids) {
-    const legs = store.list('legs.json.enc')
-    const trip = store.list('trips.json.enc').find((t) => t.id === id)
-    if (!trip || !datesFollowDays(trip)) continue
-    const own = legs.filter((l) => l.tripId === id)
-    // Een geïmporteerde tocht zonder datums: de datums komen uit de import, niet vastleggen.
-    if (!trip.datesFromDays && own.some((l) => l.source === 'import')) continue
-    const range = daysRange(id, legs)
-    if (!range) {
-      if (trip.datesFromDays && !hasOtherData(store, trip)) {
-        const now = new Date().toISOString()
-        await store.put('trips.json.enc', { ...trip, updatedAt: now, deletedAt: now })
-        const settings = store.list('settings.json.enc').find((x) => x.id === 'settings')
-        if (settings?.activeWeekId === id) await store.put('settings.json.enc', { ...settings, activeWeekId: null, updatedAt: now })
-      }
-      continue
-    }
-    if (trip.startDate === range.start && trip.endDate === range.end && trip.datesFromDays) continue
-    await store.put('trips.json.enc', { ...trip, startDate: range.start, endDate: range.end, datesFromDays: true, updatedAt: new Date().toISOString() })
-    // Water gaat voor land: dagen die er nieuw bij komen, gaan uit hun periode aan land.
-    const added: string[] = []
-    for (let d = range.start; d <= range.end && added.length <= 400; d = addDays(d, 1)) if (!(trip.startDate && trip.endDate && trip.startDate <= d && d <= trip.endDate)) added.push(d)
-    if (added.length > 0 && store.list('periods.json.enc').some((st) => st.startDate <= range.end && st.endDate >= range.start)) await setStayDays(store, added, null, {})
-  }
-}
 
 /**
  * Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, declaraties, review, afgerond, afgevinkte

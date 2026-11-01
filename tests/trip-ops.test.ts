@@ -2,7 +2,6 @@ import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { boatList } from '../src/model/boats'
 import { placeUses } from '../src/model/places'
-import { tripDependents, tripOverlaps } from '../src/model/trip-ops'
 import type { Leg, Place, Student, Transaction, Trip, WeekPlan } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -10,10 +9,10 @@ import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { put, putMany } from './helpers/schrijf'
 import { pinVerwijderen, plaatsHernoemen, plaatsVerwijderen } from '../src/domain/plaatsen'
-import { bootVerwijderen, botenSamenvoegen, deelnemerWijzigen, periodeVervangen, periodeVerwijderen, samenvoegen } from '../src/domain/trips'
+import { bootVerwijderen, botenSamenvoegen, deelnemerWijzigen, periodeVerwijderen } from '../src/domain/trips'
 
 // PR B: alles bewerken en verwijderen, met ongedaan maken. Trips met hun dagen, inkomsten, deelnemers, studenten en
-// planningen; overlappende trips; boten; plaatsen. Verzonnen data.
+// planningen; boten; plaatsen. Verzonnen data.
 
 const TOKEN = 'github_pat_TRIPOPS_0123456789abcdefghijklmnopqrstuvwxyz'
 let masterKey: CryptoKey
@@ -54,24 +53,6 @@ const tx = (id: string, tripId: string): Transaction => ({ id, date: '2026-10-20
 const student = (id: string, weekId: string): Student => ({ id, firstName: 'Nepstudent', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, weekId, updatedAt: T0, deletedAt: null })
 const plan = (id: string, tripId: string): WeekPlan => ({ id, title: 'Nepplan', startDate: '2026-10-20', dayCount: 3, tripId, groups: [], days: [], updatedAt: T0, deletedAt: null })
 
-describe('Overlappende trips', () => {
-  it('ziet trips op dezelfde dagen, maar niet een wisseldag of trips die aansluiten', () => {
-    const trips = [
-      trip('a', 'Nepacademy', '2026-10-18', '2026-10-24'),
-      trip('b', 'Weel 44', '2026-10-25', '2026-10-31'),
-      trip('c', 'Nepweek 2', '2026-10-28', '2026-11-03'),
-      trip('d', 'Wisselweek', '2026-11-03', '2026-11-09'),
-    ]
-    const found = tripOverlaps(trips, [])
-    expect(found.map((o) => [o.a.id, o.b.id, o.from, o.to])).toEqual([['b', 'c', '2026-10-28', '2026-10-31']])
-  })
-
-  it('een trip binnen een andere en een trip zonder datums met dagen erin', () => {
-    const trips = [trip('a', 'Lang', '2026-10-01', '2026-10-20'), trip('b', 'Kort', '2026-10-05', '2026-10-05'), trip('c', 'Uit dagen')]
-    const found = tripOverlaps(trips, [leg('l1', 'c', '2026-10-10'), leg('l2', 'c', '2026-10-12')])
-    expect(found.map((o) => `${o.a.id}-${o.b.id}`).sort()).toEqual(['a-b', 'a-c'])
-  })
-})
 
 describe('Trip verwijderen', () => {
   async function filled() {
@@ -87,25 +68,6 @@ describe('Trip verwijderen', () => {
     return s
   }
 
-  it('"Meenemen naar trip …": dagen, inkomsten, deelnemers, studenten en planningen gaan mee; ongedaan maken zet alles terug', async () => {
-    const s = await filled()
-    const a = s.list('trips.json.enc').find((t) => t.id === 'a')!
-    const b = s.list('trips.json.enc').find((t) => t.id === 'b')!
-    expect(tripDependents(s, a)).toMatchObject({ legs: [{}, {}], transactions: [{}], participants: [{}], students: [{}], plans: [{}] })
-    const undo = await periodeVerwijderen(s, a, b)
-    expect(s.list('trips.json.enc').map((t) => t.id)).toEqual(['b'])
-    expect(s.list('legs.json.enc').every((l) => l.tripId === 'b')).toBe(true)
-    expect(s.list('transactions.json.enc')[0]!.tripId).toBe('b')
-    expect(s.list('students.json.enc')[0]!.weekId).toBe('b')
-    expect(s.list('plans.json.enc')[0]!.tripId).toBe('b')
-    expect(s.list('trips.json.enc')[0]!.participants!.map((p) => p.id)).toEqual(['p2', 'p1'])
-    await undo()
-    expect(s.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['a', 'b'])
-    expect(s.list('legs.json.enc').filter((l) => l.tripId === 'a')).toHaveLength(2)
-    expect(s.list('transactions.json.enc')[0]!.tripId).toBe('a')
-    expect(s.list('students.json.enc')[0]!.weekId).toBe('a')
-    expect(s.list('trips.json.enc').find((t) => t.id === 'b')!.participants!.map((p) => p.id)).toEqual(['p2'])
-  })
 
   it('"Alles naar de prullenbak": alles gaat mee weg, studenten met naam tot de prullenbak na 30 dagen opruimt (regel 14); ongedaan maken zet alles terug', async () => {
     const s = await filled()
@@ -135,34 +97,6 @@ describe('Trip verwijderen', () => {
   })
 })
 
-describe('Overlappende trips oplossen', () => {
-  it('samenvoegen: de datums lopen over beide, lege velden aangevuld, alles van de andere trip erbij; ongedaan maken', async () => {
-    const s = await store()
-    await putMany(s, 'trips.json.enc', [trip('a', 'Weel 44', '2026-10-25', '2026-10-31'), trip('b', 'Nepweek 2', '2026-10-28', '2026-11-03', { boat: 'Nepboot', area: 'BVI' })])
-    await put(s, 'legs.json.enc', leg('l1', 'b', '2026-11-01'))
-    const [a, b] = ['a', 'b'].map((id) => s.list('trips.json.enc').find((t) => t.id === id)!)
-    const undo = await samenvoegen(s, a!, b!)
-    const merged = s.list('trips.json.enc')
-    expect(merged).toHaveLength(1)
-    expect(merged[0]).toMatchObject({ id: 'a', name: 'Weel 44', startDate: '2026-10-25', endDate: '2026-11-03', boat: 'Nepboot', area: 'BVI' })
-    expect(s.list('legs.json.enc')[0]!.tripId).toBe('a')
-    expect(tripOverlaps(s.list('trips.json.enc'), s.list('legs.json.enc'))).toEqual([])
-    await undo()
-    expect(s.list('trips.json.enc').map((t) => t.id).sort()).toEqual(['a', 'b'])
-    expect(s.list('trips.json.enc').find((t) => t.id === 'a')).toMatchObject({ endDate: '2026-10-31' })
-    expect(s.list('legs.json.enc')[0]!.tripId).toBe('b')
-  })
-
-  it('vervangen: de gekozen trip blijft zoals hij is; de dagen van de andere komen erbij', async () => {
-    const s = await store()
-    await putMany(s, 'trips.json.enc', [trip('a', 'Echte week', '2026-10-25', '2026-10-31'), trip('b', 'Plaatshouder', '2026-10-28', '2026-11-03')])
-    await put(s, 'legs.json.enc', leg('l1', 'b', '2026-10-29'))
-    const [a, b] = ['a', 'b'].map((id) => s.list('trips.json.enc').find((t) => t.id === id)!)
-    await periodeVervangen(s, a!, b!)
-    expect(s.list('trips.json.enc')).toEqual([expect.objectContaining({ id: 'a', startDate: '2026-10-25', endDate: '2026-10-31' })])
-    expect(s.list('legs.json.enc')[0]!.tripId).toBe('a')
-  })
-})
 
 describe('Deelnemer bewerken of verwijderen', () => {
   it('één deelnemer aanpassen of eruit halen, met ongedaan maken', async () => {

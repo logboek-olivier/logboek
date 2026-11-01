@@ -1,9 +1,8 @@
 import type { Tx } from '../domain/tx'
 import { dayInfo, type CalendarIndex } from './calendar'
 import { totalNm } from './derive'
-import type { Currency, Student, WeekClosing } from './types'
+import type { Student, WeekClosing } from './types'
 import { isoWeek } from './weeks'
-import { round2 } from '../basis/bedrag'
 import { addDays, mondayOf } from '../basis/datum'
 
 // Weekafsluiting (Vandaag op zondag, terug te lezen in de agenda op de dagkaart van de zondag): een automatische
@@ -115,7 +114,7 @@ export function cleanClosing(input: { rating: number | null; lesson: string }): 
 }
 
 /** Cijfer en zin opslaan voor de week van een datum (bestaat de afsluiting al, dan wordt hij bijgewerkt). */
-export async function saveClosing(store: Tx, date: string, input: { rating: number | null; lesson: string; spent?: { amount: number; currency: Currency } | null }): Promise<void> {
+export async function saveClosing(store: Tx, date: string, input: { rating: number | null; lesson: string }): Promise<void> {
   const id = weekClosingId(date)
   const now = new Date().toISOString()
   const { rating, lesson } = cleanClosing(input)
@@ -130,8 +129,7 @@ export async function saveClosing(store: Tx, date: string, input: { rating: numb
   }
   delete record.rating
   delete record.lesson
-  // "Ongeveer los uitgegeven": ontbreekt het in de invoer, dan blijft wat er stond; null of 0 = weg.
-  if (input.spent !== undefined) delete record.spent
-  const spent = input.spent && input.spent.amount > 0 ? { amount: round2(input.spent.amount), currency: input.spent.currency } : undefined
-  await store.put('weekreviews.json.enc', { ...record, ...(rating !== undefined ? { rating } : {}), ...(lesson !== undefined ? { lesson } : {}), ...(spent ? { spent } : {}) })
+  // Een oude schatting "los uitgegeven" (spent, van vóór november 2026) blijft in het record staan voor oudere versies,
+  // maar telt nergens meer mee.
+  await store.put('weekreviews.json.enc', { ...record, ...(rating !== undefined ? { rating } : {}), ...(lesson !== undefined ? { lesson } : {}) })
 }

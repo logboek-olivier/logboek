@@ -4,6 +4,7 @@ import { formatMoney, formatMonth } from '../format'
 import { t } from '../i18n'
 import { buildIndex } from '../model/calendar'
 import { cleanDefaults, dayAverages, fixedAmount, fixedInMonth } from '../model/costs'
+import { missingBookings } from '../model/fixed-bookings'
 import { active } from '../model/derive'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
@@ -11,6 +12,7 @@ import { COST_DAY_TYPES, CURRENCIES, type CostDayType, type Currency, type Fixed
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { useSyncStatus } from './SyncStatusLine'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { ViewRows } from './Views'
@@ -25,7 +27,6 @@ import { todayIso } from '../basis/datum'
 export function CostsSection({ store, notify }: { store: Store; notify: Notify }) {
   const fixed = active(useCollection(store, 'fixedcosts.json.enc'))
   const transactions = useCollection(store, 'transactions.json.enc')
-  const closings = useCollection(store, 'weekreviews.json.enc')
   const calendar = useCollection(store, 'calendar.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
@@ -34,12 +35,29 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
   const today = todayIso()
   const stays = useCollection(store, 'periods.json.enc')
   const index = useMemo(() => buildIndex(calendar, trips, legs, [], stays), [calendar, trips, legs, stays])
-  const averages = dayAverages(transactions, closings, index, today, settings, rates)
+  const averages = dayAverages(transactions, index, today, settings)
   const [viewing, setViewing] = useState<FixedCost | null>(null)
   const [adding, setAdding] = useState(false)
   const [defaults, setDefaults] = useState(false)
   const thisMonth = today.slice(0, 7)
   const perMonth = fixedInMonth(fixed, thisMonth, rates)
+  // Voorbije maanden van een vaste last komen pas als uitgave in Werkelijk na een tik (nooit vanzelf), en pas na een
+  // geslaagde sync: anders zou een maand terugkomen die een ander apparaat al verwijderde. Geen ongedaan maken: een
+  // weggehaalde maand wordt nooit opnieuw geboekt, dus de knop zou niet terugkomen; een maand is los te verwijderen.
+  useSyncStatus(store)
+  const missing = store.hasSynced() ? missingBookings(fixed, transactions, today, today).length : 0
+  const [booking, setBooking] = useState(false)
+
+  async function book() {
+    if (booking) return
+    setBooking(true)
+    try {
+      const { result } = await vasteLastenBoeken(store, today)
+      if (result > 0) notify(t('costs.booked', { n: result }))
+    } finally {
+      setBooking(false)
+    }
+  }
 
   return (
     <div className="section card card-body stack-sm costs">
@@ -72,6 +90,11 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
             {[formatMoney(perMonth.eur, 'EUR'), ...Object.entries(perMonth.other).map(([cur, v]) => formatMoney(v, cur))].join(' + ')}
           </strong>
         </p>
+      )}
+      {missing > 0 && (
+        <button type="button" className="btn small" disabled={booking} onClick={() => void book()}>
+          {t('costs.book', { n: missing })}
+        </button>
       )}
       <button type="button" className="btn small" onClick={() => setAdding(true)}>
         <Icon icon={Plus} />
@@ -140,8 +163,6 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
         notify(t('costs.saved'), undo)
       } else {
         await vasteLastToevoegen(store, { name, amount: parsed, currency, from })
-        // Een vaste last vanaf een voorbije maand: die maanden staan direct als uitgave bij Werkelijk.
-        await vasteLastenBoeken(store, todayIso())
         onClose()
         notify(t('costs.saved'))
       }
