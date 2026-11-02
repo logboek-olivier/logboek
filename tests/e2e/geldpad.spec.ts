@@ -135,7 +135,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
       await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
       await page.getByLabel(L('field.amount')).fill('40')
-      await expect(page.getByRole('radio', { name: L('tipVia.contant') })).toHaveCount(0)
+      await expect(page.getByRole('radio', { name: lang === 'nl' ? 'Contant' : 'Cash' })).toHaveCount(0)
       await page.getByRole('button', { name: L('common.save') }).click()
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
       await openMore(page, L('nav.money'), L('nav.more'))

@@ -257,8 +257,7 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
   const valid = parsed !== null && parsed >= 0 && !missing && (status !== 'ontvangen' || !!date)
   const name = nameWithCounter(current, counters.get(current.id))
 
-  async function save(e: FormEvent) {
-    e.preventDefault()
+  async function save() {
     if (!valid || busy) return
     setBusy(true)
     try {
@@ -272,7 +271,9 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
 
   return (
     <Sheet title={t('salary.tripTitle', { trip: name })} onClose={onClose}>
-      <form className="stack" onSubmit={(e) => void save(e)}>
+      {/* Geen <form>: dit blad opent ook vanuit Trip bewerken, dat zelf een formulier is (een genest formulier verstuurt
+          het buitenste, en dat blokkeert de CSP). */}
+      <div className="stack">
         <div className="segments" role="radiogroup" aria-label={t('salary.status')}>
           {(['verwacht', 'ontvangen', 'geen'] as const).map((s) => (
             <button key={s} type="button" role="radio" aria-checked={status === s} className={`segment${status === s ? ' active' : ''}`} onClick={() => setStatus(s)}>
@@ -310,11 +311,11 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
           </label>
         )}
         {missing && <p className="warning small">{t('salary.receivedNeedsAmount')}</p>}
-        <button className="btn primary" type="submit" disabled={!valid || busy}>
+        <button className="btn primary" type="button" disabled={!valid || busy} onClick={() => void save()}>
           <Icon icon={status === 'ontvangen' ? Check : status === 'geen' ? Ban : Pencil} />
           {t('common.save')}
         </button>
-      </form>
+      </div>
     </Sheet>
   )
 }

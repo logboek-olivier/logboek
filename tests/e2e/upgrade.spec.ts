@@ -62,6 +62,8 @@ function loadedScript(page: Page): Promise<string | null> {
 
 const repairHeading = (page: Page) => page.getByRole('heading', { name: L('repair.title') })
 const todayHeading = (page: Page) => page.getByRole('heading', { name: L('nav.today') })
+// Na het koppelen aan geld van vóór één waarheid voor geld: eenmalig het scherm Geld omzetten (src/domain/geld-omzetten.ts).
+const conversionHeading = (page: Page) => page.getByRole('heading', { name: L('convert.title') })
 const unlockButton = (page: Page) => page.getByRole('button', { name: L('unlock.unlock') })
 
 async function link(page: Page): Promise<void> {
@@ -69,7 +71,7 @@ async function link(page: Page): Promise<void> {
   await enterToken(page)
   await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
   await page.getByRole('button', { name: L('setup.linkButton') }).click()
-  await expect(todayHeading(page).or(repairHeading(page))).toBeVisible({ timeout: 30_000 })
+  await expect(todayHeading(page).or(repairHeading(page)).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
 }
 
 async function expectSynced(page: Page): Promise<void> {
@@ -446,7 +448,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(legs).toEqual(expect.arrayContaining([expect.objectContaining({ tripId: 'upg-trip-dag', date: '2026-10-13', deletedAt: null })]))
     // Het salaris is ontvangen: dezelfde ene transactie (vast id), het bedrag blijft; de tocht heeft geen salaris-veld meer.
     expect(trips.find((t) => t.id === 'upg-trip-salaris')).not.toHaveProperty('salary')
-    expect(transactions.filter((tx) => tx.kind === 'loon' && tx.tripId === 'upg-trip-salaris' && tx.deletedAt === null)).toEqual([expect.objectContaining({ id: 'salaris:upg-trip-salaris', amount: 1200, status: 'ontvangen' })])
+    expect((transactions as unknown as { kind: string; tripId?: string; deletedAt: string | null }[]).filter((tx) => tx.kind === 'loon' && tx.tripId === 'upg-trip-salaris' && tx.deletedAt === null)).toEqual([expect.objectContaining({ id: 'salaris:upg-trip-salaris', amount: 1200, status: 'ontvangen' })])
     expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
     // De weekafsluiting staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende).
     const closings = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
