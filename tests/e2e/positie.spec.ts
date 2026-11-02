@@ -133,10 +133,12 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await startSheet.getByRole('button', { name: L('common.save') }).click()
       await expect(toast).toContainText(L('position.startSaved'))
       await expect(page.getByRole('dialog')).toHaveCount(0)
-      // Begin: 2.000 − 12.500 = −10.500; vandaag −8.500: +2.000 = zeilresultaat 0 + te ontvangen +1.000 + overig +1.000.
+      // Begin: 2.000 − 12.500 = −10.500; vandaag −8.500: +2.000 = zeilresultaat 0 + te ontvangen +1.000 + schulden +500
+      // (de studieschuld ging van 12.500 naar 12.000) + overig +500 (de bank van 2.000 naar 2.500).
       await expect(totalsBox).toContainText(`+${money(2000)}`)
       await expect(totalsBox.getByRole('button', { name: new RegExp(L('position.partReceivable')) })).toContainText(`+${money(1000)}`)
-      await expect(totalsBox.getByRole('button', { name: new RegExp(L('position.partOther').replace(/[()]/g, '.')) })).toContainText(`+${money(1000)}`)
+      await expect(totalsBox.getByRole('button', { name: new RegExp(`^${L('position.partDebts')}`) })).toContainText(`+${money(500)}`)
+      await expect(totalsBox.getByRole('button', { name: new RegExp(L('position.partOther').replace(/[()]/g, '.')) })).toContainText(`+${money(500)}`)
       await shots(page, 'positie', lang)
       // Doorklikken: te ontvangen op het einde min op de begindag; terug = Geld op dezelfde plek.
       await totalsBox.getByRole('button', { name: new RegExp(L('position.partReceivable')) }).click()

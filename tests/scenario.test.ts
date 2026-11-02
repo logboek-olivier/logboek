@@ -62,14 +62,14 @@ function sumCloses(p: Profile, f: Forecast): void {
 }
 
 describe('schemaversie 3', () => {
-  it('leest bestanden van versie 2 (standen, instellingen) ongewijzigd in en schrijft versie 3 met schrijfversie 8', () => {
+  it('leest bestanden van versie 2 (standen, instellingen) ongewijzigd in en schrijft versie 3 met schrijfversie 9', () => {
     const p = profileA()
     const v2 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, minWriterVersion: 6, records }))
     expect(decodeRecords('balances.json.enc', v2(p.input.balances))).toEqual(p.input.balances)
     expect(decodeRecords('settings.json.enc', v2([p.settings]))).toEqual([p.settings])
     expect(SCHEMA_VERSION).toBe(3)
-    expect(WRITER_VERSION).toBe(8)
-    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 3, minWriterVersion: 8 })
+    expect(WRITER_VERSION).toBe(9)
+    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 3, minWriterVersion: 9 })
   })
 })
 

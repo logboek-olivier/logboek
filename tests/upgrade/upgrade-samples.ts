@@ -130,6 +130,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'accounts.json.enc': [
     { id: 'upg-acc-1', name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR', note: 'Nepnotitie', updatedAt: T, deletedAt: null },
     { id: 'upg-acc-2', name: 'Nepschuld', provider: 'duo', kind: 'schuld', currency: 'EUR', updatedAt: T, deletedAt: null },
+    // Bezittingen (november 2026): een boot als bezitting met een geschatte waarde.
+    { id: 'upg-acc-3', name: 'Nepboot bezit', provider: 'bezit', kind: 'bezit', currency: 'EUR', updatedAt: T, deletedAt: null },
   ],
   'balances.json.enc': [
     { id: 'stand:upg-acc-1:2026-09', accountId: 'upg-acc-1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: T, deletedAt: null },
@@ -137,6 +139,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     // Saldo-geschiedenis (november 2026): een stand per dag (id met de datum), naast een stand van vóór de geschiedenis
     // (id per maand) in dezelfde maand. Beide blijven staan.
     { id: 'stand:upg-acc-1:2026-09-02', accountId: 'upg-acc-1', date: '2026-09-02', amount: 1000, source: 'handmatig', updatedAt: T, deletedAt: null },
+    { id: 'stand:upg-acc-3:2026-10-01', accountId: 'upg-acc-3', date: '2026-10-01', amount: 20000, source: 'handmatig', updatedAt: T, deletedAt: null },
   ],
   // Scenario's (november 2026, Geld → Verwacht → Scenario): twee blokken na de planning, één met eigen kosten.
   'scenarios.json.enc': [

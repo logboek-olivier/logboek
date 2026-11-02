@@ -9,7 +9,9 @@ export const PASSPHRASE = 'nep wachtzin voor e2e'
 export async function enterToken(page: Page, submitLabel = 'Verder', lang: Lang = 'nl'): Promise<void> {
   await page.getByLabel(translate(lang, 'token.label')).fill(TOKEN)
   await page.getByRole('button', { name: translate(lang, 'token.check'), exact: true }).click()
-  await expect(page.getByLabel(translate(lang, 'token.expiry'))).toBeVisible()
+  // De controle van een lege repo vraagt elk databestand op (ruim twintig verzoeken); tegen de echte GitHub-API in de
+  // integratietest duurt dat langer dan de gewone vijf seconden.
+  await expect(page.getByLabel(translate(lang, 'token.expiry'))).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: submitLabel, exact: true }).click()
 }
 

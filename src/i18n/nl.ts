@@ -2127,7 +2127,7 @@ export const nl = {
   // Verandering van de netto waarde en doorklikken in Geld (src/domain/doorklik.ts).
   'position.partSailing': 'Zeilresultaat in de periode',
   'position.partReceivable': 'Verandering in nog te ontvangen',
-  'position.partOther': 'Overig (beleggingen, lening, de rest)',
+  'position.partOther': 'Overig (bank en contant)',
   'position.receivableAt': (p: { date: string }) => `Te ontvangen op ${p.date}`,
   'position.changeUnknown': (p: { date: string; accounts: string }) => `Verandering onbekend: geen saldo op ${p.date} voor ${p.accounts}`,
   'position.enterStart': 'Beginsaldo invoeren',
@@ -2163,7 +2163,7 @@ export const nl = {
   'drill.receivableHint': 'Te ontvangen op het einde min te ontvangen op de begindag: salaris van voorbije tochten dat nog niet binnen was, en declaraties.',
   'drill.receivableNowHint': (p: { date: string }) => `Salaris van tochten die vóór ${p.date} eindigden en nog niet binnen zijn, en declaraties die nog niet terugbetaald zijn.`,
   'drill.sailingHint': (p: { from: string }) => `Inkomsten en terugbetalingen min uitgaven na ${p.from}; wat op ${p.from} zelf binnenkwam of uitging, zit al in de netto waarde van die dag.`,
-  'drill.otherHint': 'De verandering op de rekeningen min het zeilresultaat: beleggingen, een lening, geld dat niet in Geld staat en koersverschillen.',
+  'drill.otherHint': 'De verandering op de bank en contant min het zeilresultaat: geld dat niet in Geld staat en koersverschillen.',
   'position.careerStartNotSet': 'Niet ingesteld',
   'key.file.scenarios': 'Scenario\'s',
   'storage.file.scenarios': 'Scenario\'s',
@@ -2231,6 +2231,14 @@ export const nl = {
   'drill.payout': (p: { date: string }) => `uitbetaling rond ${p.date}`,
   'position.onlyReceivable': 'Zonder rekeningen is de netto waarde alleen wat nog te ontvangen is: geld dat binnenkwam, staat dan nergens. Voeg rekeningen en hun stand toe onder Meer → Rekeningen.',
   'outlook.inclReceivable': 'Ook salaris van voorbije tochten dat nog niet binnen is; in de vooruitblik netto waarde zit dat al in de netto waarde van vandaag.',
+  'accounts.provider.bezit': 'Bezitting (huis, boot, auto)',
+  'accounts.kind.bezit': 'Bezitting',
+  'accounts.assetHint': 'Een bezitting telt mee met haar geschatte waarde. Vul de waarde in als een stand; een hypotheek of lening is een aparte rekening van soort Schuld.',
+  'position.assets': 'Bezittingen',
+  'position.partValue': 'Waardeverandering beleggingen en bezittingen',
+  'position.partDebts': 'Schulden',
+  'drill.valueHint': 'De waarde van je beleggingen en bezittingen op het einde min die op de begindag: koersen, huizenprijzen en wat je zelf inlegde (dat laatste staat niet in Geld).',
+  'drill.debtsHint': 'Schulden op het einde min op de begindag: positief is minder schuld.',
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

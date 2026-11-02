@@ -30,9 +30,9 @@ function closes(d: Drill): void {
 
 /** De netto waarde op een dag is de som van haar delen. */
 function netCloses(p: Position): void {
-  const parts = ['bank', 'cash', 'receivable', 'investments', 'debts'] as const
+  const parts = ['bank', 'cash', 'receivable', 'investments', 'assets', 'debts'] as const
   expect(parts.reduce((n, k) => n + cents(p.totals[k].eur), 0)).toBe(cents(p.totals.net.eur))
-  const rows = [...p.bank, ...p.cashAccounts, ...p.investments, ...p.debts]
+  const rows = [...p.bank, ...p.cashAccounts, ...p.investments, ...p.assets, ...p.debts]
   expect(rows.reduce((n, r) => n + cents(r.eur?.eur ?? 0), 0)).toBe(cents(p.totals.net.eur) - cents(p.totals.receivable.eur))
 }
 
@@ -140,32 +140,40 @@ describe('profiel A (met de hand uitgerekend)', () => {
     ])
   })
 
-  it('verandering van de netto waarde sinds 1 januari 2026: sluit met zeilresultaat, te ontvangen en overig', () => {
+  it('verandering van de netto waarde sinds 1 januari 2026: sluit met zeilresultaat, te ontvangen, waarde, schulden en overig', () => {
     const { input } = profileA()
     const change = netWorthChange(input, { from: '2026-01-01', to: '2027-01-24' }, TODAY)
     expect(change.state).toBe('bekend')
     if (change.state !== 'bekend') return
     expect(change.to).toBe(TODAY)
-    // Begin: 3000 + 10000 + 2000 − 20000 + 500 USD = −4600, niets te ontvangen. Einde: 6100 + 10500 + 2600 − 19000 +
-    // 800 USD = 840, plus te ontvangen 2000 USD + declaratie 60 = 1660: 2500.
-    expect(change.start.totals.net.eur).toBe(-4600)
-    expect(change.end.totals.net.eur).toBe(2500)
-    expect(change.change).toBe(7100)
+    // Begin: 3000 + 10000 + 2000 − 20000 + 500 USD + huis 250000 − hypotheek 200000 = 45400, niets te ontvangen.
+    // Einde: 6100 + 10500 + 2600 − 19000 + 800 USD + 255000 − 198000 = 57840, plus te ontvangen 2000 USD + declaratie 60
+    // = 1660: 59500.
+    expect(change.start.totals.net.eur).toBe(45400)
+    expect(change.end.totals.net.eur).toBe(59500)
+    expect(change.change).toBe(14100)
     expect(change.sailing).toBe(2826)
     expect(change.receivable).toBe(1660)
-    expect(change.other).toBe(2614)
-    expect(cents(change.sailing) + cents(change.receivable) + cents(change.other)).toBe(cents(change.change))
+    // Waarde: beleggingen +600 en het huis +5000; schulden: lening +1000 en hypotheek +2000.
+    expect(change.value).toBe(5600)
+    expect(change.debts).toBe(3000)
+    // Overig: bank +3100, spaar +500, dollars +240, min het zeilresultaat.
+    expect(change.other).toBe(1014)
+    expect(cents(change.sailing) + cents(change.receivable) + cents(change.value) + cents(change.debts) + cents(change.other)).toBe(cents(change.change))
     // Elke regel van de uitsplitsing opent posten die optellen tot die regel.
     const drills = changeDrills(change, input.transactions, input.trips, RATES)
     for (const d of Object.values(drills)) closes(d)
     expect(drills.sailing.eur).toBe(change.sailing)
     expect(drills.receivable.eur).toBe(change.receivable)
     expect(drills.other.eur).toBe(change.other)
-    // Overig = de rekeningen samen (+3100 + 500 + 600 + 1000 + 240 USD) min het zeilresultaat.
+    expect(drills.value.eur).toBe(change.value)
+    expect(drills.debts.eur).toBe(change.debts)
     expect(change.accounts.map((a) => [a.account.id, a.eur])).toEqual([
       ['a-bank', 3100],
       ['a-beleg', 600],
       ['a-usd', 240],
+      ['a-huis', 5000],
+      ['a-hypotheek', 2000],
       ['a-lening', 1000],
       ['a-spaar', 500],
     ])
@@ -175,7 +183,7 @@ describe('profiel A (met de hand uitgerekend)', () => {
     const { input } = profileA()
     const change = netWorthChange(input, { from: '2025-12-31', to: '2026-12-31' }, TODAY)
     expect(change).toMatchObject({ state: 'onbekend', from: '2025-12-31' })
-    expect(change.state === 'onbekend' && change.missing.map((a) => a.name)).toEqual(['Nepbeleggen', 'Nepdollars', 'Nepspaar'])
+    expect(change.state === 'onbekend' && change.missing.map((a) => a.name)).toEqual(['Nepbeleggen', 'Nepdollars', 'Nephuis', 'Nephypotheek', 'Nepspaar'])
     expect('change' in change).toBe(false)
   })
 

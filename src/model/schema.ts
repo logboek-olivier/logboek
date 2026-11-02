@@ -32,7 +32,9 @@ export const SCHEMA_VERSION = 3
 // dag maken; hij schrijft niet meer over deze bestanden.
 // 8: scenario's (scenarios.json.enc) en het actieve scenario in de instellingen. Een oudere build kent het bestand niet
 // en zou het actieve scenario bij het opslaan van de instellingen niet bewaren.
-export const WRITER_VERSION = 8
+// 9: bezittingen (een rekening van soort `bezit`: huis, boot, auto) en de aannames van een scenario. Een oudere build zou
+// een bezitting bij het opslaan een andere soort geven en de aannames weggooien.
+export const WRITER_VERSION = 9
 
 let writer = WRITER_VERSION
 

@@ -5,7 +5,7 @@ import { getLang, t } from '../i18n'
 import { isDebt } from '../model/accounts'
 import { buildIndex, planningEnd, type CalendarIndex } from '../model/calendar'
 import { nameWithCounter } from '../model/counters'
-import { careerStart, earliestDate, effectivePreset, forecast, netWorthChange, positionAt, resolvePeriod, type AccountRow, type Period, type PeriodPreset, type PositionInput, type Sum } from '../model/position'
+import { careerStart, earliestDate, effectivePreset, forecast, GROUP, netWorthChange, positionAt, resolvePeriod, type AccountRow, type Period, type PeriodPreset, type PositionInput, type Sum } from '../model/position'
 import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
@@ -110,7 +110,7 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
     ))
   const range = change.to > change.from && change.to === today ? t('position.since', { date: formatDate(change.from) }) : t('position.between', { from: formatDate(change.from), to: formatDate(change.to) })
   const drillPeriod = t('drill.period', { from: formatDate(change.from), to: formatDate(change.to) })
-  const openPart = (part: 'sailing' | 'receivable' | 'other') => {
+  const openPart = (part: 'sailing' | 'receivable' | 'value' | 'debts' | 'other') => {
     if (change.state !== 'bekend') return
     const drills = changeDrills(change, input.transactions, input.trips, input.rates)
     const at = (date: string) => t('position.receivableAt', { date: formatDate(date) })
@@ -119,7 +119,11 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
         ? { title: t('position.partSailing'), drill: drills.sailing, period: drillPeriod, hint: t('drill.sailingHint', { from: formatDate(change.from) }), signed: true }
         : part === 'receivable'
           ? { title: t('position.partReceivable'), drill: drills.receivable, period: drillPeriod, hint: t('drill.receivableHint'), labels: { eind: at(change.to), begin: at(change.from) }, signed: true }
-          : { title: t('position.partOther'), drill: drills.other, period: drillPeriod, hint: t('drill.otherHint'), signed: true },
+          : part === 'value'
+            ? { title: t('position.partValue'), drill: drills.value, period: drillPeriod, hint: t('drill.valueHint'), signed: true }
+            : part === 'debts'
+              ? { title: t('position.partDebts'), drill: drills.debts, period: drillPeriod, hint: t('drill.debtsHint'), signed: true }
+              : { title: t('position.partOther'), drill: drills.other, period: drillPeriod, hint: t('drill.otherHint'), signed: true },
     )
   }
 
@@ -162,6 +166,9 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
         <PositionGroup label={t('position.investments')} sum={now.totals.investments} show={now.investments.length > 0}>
           <ul className="plain-list">{accountRows(now.investments)}</ul>
         </PositionGroup>
+        <PositionGroup label={t('position.assets')} sum={now.totals.assets} show={now.assets.length > 0}>
+          <ul className="plain-list">{accountRows(now.assets)}</ul>
+        </PositionGroup>
         <PositionGroup label={t(now.debts.every((r) => r.account.provider === 'duo') ? 'position.studentDebt' : 'position.debts')} sum={now.totals.debts} show={now.debts.length > 0}>
           <ul className="plain-list">{accountRows(now.debts)}</ul>
         </PositionGroup>
@@ -182,9 +189,14 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
                 [
                   ['sailing', t('position.partSailing'), change.sailing],
                   ['receivable', t('position.partReceivable'), change.receivable],
+                  ['value', t('position.partValue'), change.value],
+                  ['debts', t('position.partDebts'), change.debts],
                   ['other', t('position.partOther'), change.other],
                 ] as const
-              ).map(([part, label, eur]) => (
+              )
+                // Regels zonder rekeningen van die soort (geen beleggingen, geen schulden) blijven weg; de som sluit toch.
+                .filter(([part]) => (part === 'value' ? change.accounts.some((a) => ['investments', 'assets'].includes(GROUP[a.account.kind] ?? 'bank')) : part === 'debts' ? change.accounts.some((a) => GROUP[a.account.kind] === 'debts') : true))
+                .map(([part, label, eur]) => (
                 <li key={part}>
                   <button type="button" className="row change-part" onClick={() => openPart(part)}>
                     <span className="grow small">{label}</span>

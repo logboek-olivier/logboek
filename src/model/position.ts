@@ -136,17 +136,22 @@ export interface Position {
   /** Declaraties met een bedrag die op die dag nog niet terugbetaald waren (open of ingediend). */
   claims: Claim[]
   investments: AccountRow[]
+  /** Bezittingen: huis, boot, auto (soort `bezit`), met hun geschatte waarde. */
+  assets: AccountRow[]
   debts: AccountRow[]
-  totals: Record<'bank' | 'cash' | 'receivable' | 'investments' | 'debts' | 'net', Sum>
+  totals: Record<'bank' | 'cash' | 'receivable' | 'investments' | 'assets' | 'debts' | 'net', Sum>
   /** Rekeningen met een stand. */
   counted: number
 }
 
-const GROUP: Record<AccountKind, 'bank' | 'cash' | 'investments' | 'debts'> = {
+export type PositionGroupKey = 'bank' | 'cash' | 'investments' | 'assets' | 'debts'
+
+export const GROUP: Record<AccountKind, PositionGroupKey> = {
   betaal: 'bank',
   spaar: 'bank',
   contant: 'cash',
   beleggen: 'investments',
+  bezit: 'assets',
   schuld: 'debts',
 }
 
@@ -175,8 +180,9 @@ export function positionAt(input: PositionInput, date: string): Position {
     receivable: [],
     claims: [],
     investments: [],
+    assets: [],
     debts: [],
-    totals: { bank: emptySum(), cash: emptySum(), receivable: emptySum(), investments: emptySum(), debts: emptySum(), net: emptySum() },
+    totals: { bank: emptySum(), cash: emptySum(), receivable: emptySum(), investments: emptySum(), assets: emptySum(), debts: emptySum(), net: emptySum() },
     counted: 0,
   }
   for (const account of accounts) {
@@ -187,6 +193,7 @@ export function positionAt(input: PositionInput, date: string): Position {
     if (group === 'bank') out.bank.push(row)
     else if (group === 'cash') out.cashAccounts.push(row)
     else if (group === 'investments') out.investments.push(row)
+    else if (group === 'assets') out.assets.push(row)
     else out.debts.push(row)
     if (!balance) continue
     out.counted++
@@ -216,7 +223,7 @@ export function positionAt(input: PositionInput, date: string): Position {
     out.claims.push(c)
     add(out.totals.receivable, c.amount, c.currency, date, rates)
   }
-  for (const key of ['bank', 'cash', 'receivable', 'investments', 'debts'] as const) addSum(out.totals.net, out.totals[key])
+  for (const key of ['bank', 'cash', 'receivable', 'investments', 'assets', 'debts'] as const) addSum(out.totals.net, out.totals[key])
   return out
 }
 
@@ -241,7 +248,9 @@ export interface AccountChange {
  * - zeilresultaat: het echte geld in Geld (inkomsten en terugbetalingen min uitgaven) ná de begindag tot en met het einde
  *   (wat op de begindag zelf binnenkwam, zit al in de netto waarde van die dag);
  * - te ontvangen: de verandering in wat nog te ontvangen is (salaris van voorbije tochten, declaraties);
- * - overig: de rest van de verandering op de rekeningen (beleggingen, een lening, geld dat niet in Geld staat, koersen).
+ * - waardeverandering: beleggingen en bezittingen (koers, huizenprijs: geld dat niet in Geld staat);
+ * - schulden: wat er van een lening of studieschuld af ging (of bij kwam);
+ * - overig: de rest op de bank en contant (geld dat niet in Geld staat, koersverschillen).
  * Heeft een rekening die op de begindag open was geen stand op of vóór die dag, dan is de verandering onbekend: nooit
  * een latere stand of een verzonnen bedrag. Zonder rekeningen staat er geen verandering (er is niets om te vergelijken).
  */
@@ -259,6 +268,10 @@ export type NetWorthChange =
       /** Zeilgeld zonder koers in de periode (niet in het zeilresultaat in euro; zit in overig). */
       sailingOther: Partial<Record<Currency, number>>
       receivable: number
+      /** Waardeverandering van beleggingen en bezittingen. */
+      value: number
+      /** Verandering van de schulden (positief = minder schuld). */
+      debts: number
       other: number
       accounts: AccountChange[]
     }
@@ -282,7 +295,7 @@ export function netWorthChange(input: PositionInput, period: Period, today: stri
   const sailing = cents(sailingTotals.balanceEur)
   const sailingOther: Partial<Record<Currency, number>> = {}
   for (const [c, v] of Object.entries(sailingTotals.other)) sailingOther[c as Currency] = round2(v.income - v.costs)
-  const rows = (p: Position) => [...p.bank, ...p.cashAccounts, ...p.investments, ...p.debts]
+  const rows = (p: Position) => [...p.bank, ...p.cashAccounts, ...p.investments, ...p.assets, ...p.debts]
   const startRows = new Map(rows(start).map((r) => [r.account.id, r]))
   const endRows = new Map(rows(end).map((r) => [r.account.id, r]))
   const accounts: AccountChange[] = []
@@ -293,6 +306,9 @@ export function netWorthChange(input: PositionInput, period: Period, today: stri
     accounts.push({ account, start: s, end: e, eur: round2((cents(e?.eur?.eur ?? 0) - cents(s?.eur?.eur ?? 0)) / 100) })
   }
   accounts.sort((a, b) => a.account.name.localeCompare(b.account.name))
+  const sumOf = (keys: readonly PositionGroupKey[]) => accounts.filter((a) => keys.includes(GROUP[a.account.kind] ?? 'bank')).reduce((n, a) => n + cents(a.eur), 0)
+  const value = sumOf(['investments', 'assets'])
+  const debts = sumOf(['debts'])
   return {
     state: 'bekend',
     from,
@@ -303,7 +319,9 @@ export function netWorthChange(input: PositionInput, period: Period, today: stri
     sailing: sailing / 100,
     sailingOther,
     receivable: receivable / 100,
-    other: (change - receivable - sailing) / 100,
+    value: value / 100,
+    debts: debts / 100,
+    other: (change - receivable - sailing - value - debts) / 100,
     accounts,
   }
 }

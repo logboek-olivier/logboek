@@ -19,6 +19,7 @@ export const DEFAULT_KIND: Record<AccountProvider, AccountKind> = {
   bux: 'beleggen',
   degiro: 'beleggen',
   duo: 'schuld',
+  bezit: 'bezit',
   overig: 'betaal',
 }
 
