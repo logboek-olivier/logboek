@@ -584,6 +584,11 @@ for (const state of ['eerste keer', 'ontgrendelen', 'herstellen'] as const) {
               }),
           )
         }
+        // Een vorige release met één waarheid voor geld toont na de sync eenmalig "Geld omzetten": "Later".
+        await conversionHeading(page)
+          .waitFor({ timeout: 5_000 })
+          .catch(() => undefined)
+        if (await conversionHeading(page).isVisible()) await page.getByRole('button', { name: L('convert.later') }).click()
         await lock(page)
         if (state === 'herstellen') {
           await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
