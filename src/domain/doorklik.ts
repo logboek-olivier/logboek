@@ -28,6 +28,8 @@ export type DrillSection =
   | 'rekeningen'
   | 'zeilresultaat'
   | 'scenario'
+  | 'eenmalig'
+  | 'groei'
 
 export interface DrillPost {
   key: string
@@ -49,15 +51,19 @@ export interface DrillPost {
   month?: string
   /** Vooruitblik: een schatting (fooi), geen transactie. */
   estimate?: boolean
+  /** Vooruitblik: de naam van een eenmalige uitgave. */
+  oneOffName?: string
   /** Vooruitblik: wanneer een salaris waarschijnlijk wordt uitbetaald (ter informatie). */
   payout?: string
+  /** Vooruitblik, waardegroei: waarover gerekend is en met welk percentage van die maand. */
+  growth?: { opening: number; rate: number; contribution: number }
 }
 
 export interface DrillGroup {
   key: string
   section: DrillSection
   /** Soort transactie of soort uitgave; in de vooruitblik ook vaste lasten, variabele kosten en kosten van een scenarioblok. */
-  kind?: TransactionKind | CostCategory | 'onbekend' | 'vaste-lasten' | 'variabel' | 'scenario-kosten'
+  kind?: TransactionKind | CostCategory | 'onbekend' | 'vaste-lasten' | 'variabel' | 'scenario-kosten' | 'groei-beleggen' | 'groei-bezit' | 'rente-schuld'
   org?: TaxGroup
   /** Bij een scenario: het blok. */
   block?: BlockRange
@@ -81,7 +87,7 @@ interface Entry {
   block?: BlockRange
 }
 
-const SECTION_ORDER: readonly DrillSection[] = ['rekeningen', 'inkomsten', 'salaris', 'scenario', 'terugbetaald', 'kosten', 'declaraties', 'eind', 'begin', 'zeilresultaat']
+const SECTION_ORDER: readonly DrillSection[] = ['rekeningen', 'inkomsten', 'salaris', 'scenario', 'groei', 'terugbetaald', 'kosten', 'eenmalig', 'declaraties', 'eind', 'begin', 'zeilresultaat']
 const toCents = (n: number) => Math.round(n * 100)
 
 function build(entries: readonly Entry[]): Drill {
@@ -285,6 +291,10 @@ export interface ForecastDrills {
   tips: Drill
   scenario: Drill
   costs: Drill
+  /** De eenmalige uitgaven van het scenario. */
+  oneOffs: Drill
+  /** Waardegroei per maand: beleggingen, bezittingen en de rente op schulden. */
+  growth: Drill
 }
 
 function itemPost(item: ForecastItem, key: string): DrillPost {
@@ -335,5 +345,18 @@ export function forecastDrills(f: Forecast, start: Position, trips: readonly Tri
       return { post, section: 'kosten' as const, kind }
     }),
   )
-  return { start: positionDrill(start, trips, rates), salary, tips, scenario, costs }
+  const oneOffs = build(
+    of(['eenmalig']).map((item) => ({
+      post: { ...itemPost(item, `eenmalig:${item.oneOff!.id}`), amount: -item.oneOff!.amount, currency: item.oneOff!.currency, oneOffName: item.oneOff!.name },
+      section: 'eenmalig' as const,
+    })),
+  )
+  const growth = build(
+    of(['groei']).map((item) => ({
+      post: { ...itemPost(item, `groei:${item.growth!.group}:${item.growth!.month}`), month: item.growth!.month, growth: { opening: item.growth!.opening, rate: item.growth!.rate, contribution: item.growth!.contribution } },
+      section: 'groei' as const,
+      kind: item.growth!.group === 'beleggen' ? ('groei-beleggen' as const) : item.growth!.group === 'bezit' ? ('groei-bezit' as const) : ('rente-schuld' as const),
+    })),
+  )
+  return { start: positionDrill(start, trips, rates), salary, tips, scenario, costs, oneOffs, growth }
 }

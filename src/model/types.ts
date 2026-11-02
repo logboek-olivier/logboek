@@ -739,15 +739,42 @@ export interface ScenarioBlock {
   costsPerWeek?: number
 }
 
+/** Aannames van een scenario, allemaal in procent per jaar (of van het inkomen); leeg = 0, nooit verzonnen. */
+export interface ScenarioAssumptions {
+  /** Groei van de beleggingen (beleggen-rekeningen), % per jaar. */
+  investmentGrowthPct?: number
+  /** Groei van de bezittingen (huis, boot), % per jaar. */
+  assetGrowthPct?: number
+  /** Rente op de schulden, % per jaar (de schuld groeit ermee). */
+  debtInterestPct?: number
+  /** Deel van elk inkomen in de vooruitblik dat belegd wordt en meegroeit, % (0–100). */
+  investPct?: number
+}
+
+/** Een eenmalige grote uitgave in een scenario (een auto, een dure vakantie). */
+export interface ScenarioOneOff {
+  id: string
+  name: string
+  /** jjjj-mm-dd */
+  date: string
+  amount: number
+  currency: Currency
+}
+
 /**
- * Geld → Verwacht → Scenario (scenarios.json.enc): eigen blokken voor de weken ná de planning. Het eerste blok begint op
- * `startDate`, anders op de dag na het einde van de planning; elk volgend blok direct na het vorige.
+ * Geld → Verwacht → Scenario (scenarios.json.enc): eigen blokken voor de weken ná de planning, aannames over groei en
+ * rente, eenmalige uitgaven en een horizon. Het eerste blok begint op `startDate`, anders op de dag na het einde van de
+ * planning; elk volgend blok direct na het vorige. `endDate`: kijk vooruit tot die dag (anders tot het einde van het
+ * laatste blok of de laatste eenmalige uitgave).
  */
 export interface Scenario {
   id: string
   name: string
   startDate?: string
+  endDate?: string
   blocks: ScenarioBlock[]
+  assumptions?: ScenarioAssumptions
+  oneOffs?: ScenarioOneOff[]
   updatedAt: string
   deletedAt: string | null
 }

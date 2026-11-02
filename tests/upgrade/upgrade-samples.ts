@@ -143,6 +143,6 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   ],
   // Scenario's (november 2026, Geld → Verwacht → Scenario): twee blokken na de planning, één met eigen kosten.
   'scenarios.json.enc': [
-    { id: 'upg-scenario-1', name: 'Nepscenario', blocks: [{ id: 'upg-blok-1', weeks: 20, incomePerWeek: 2000, currency: 'EUR' }, { id: 'upg-blok-2', weeks: 10, incomePerWeek: 1000, currency: 'USD', costsPerWeek: 250 }], updatedAt: T, deletedAt: null },
+    { id: 'upg-scenario-1', name: 'Nepscenario', endDate: '2030-12-31', blocks: [{ id: 'upg-blok-1', weeks: 20, incomePerWeek: 2000, currency: 'EUR' }, { id: 'upg-blok-2', weeks: 10, incomePerWeek: 1000, currency: 'USD', costsPerWeek: 250 }], assumptions: { investmentGrowthPct: 6, assetGrowthPct: 2, debtInterestPct: 2.5, investPct: 20 }, oneOffs: [{ id: 'upg-eenmalig-1', name: 'Nepauto', date: '2028-05-01', amount: 15000, currency: 'EUR' }], updatedAt: T, deletedAt: null },
   ],
 }

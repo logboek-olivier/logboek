@@ -2,7 +2,7 @@ import type { Tx } from '../domain/tx'
 import { toEur } from './accounts'
 import { active } from './derive'
 import type { RatesFile } from './rates'
-import { newId, type Currency, type Scenario, type ScenarioBlock } from './types'
+import { newId, type Currency, type Scenario, type ScenarioAssumptions, type ScenarioBlock, type ScenarioOneOff } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, monthEnd } from '../basis/datum'
 
@@ -15,6 +15,12 @@ import { addDays, monthEnd } from '../basis/datum'
 /** Hoogstens zoveel blokken en weken: een tikfout maakt geen vooruitblik van honderd jaar. */
 export const MAX_BLOCKS = 20
 export const MAX_WEEKS = 260
+/** Hoogstens zoveel eenmalige uitgaven, en zo ver vooruit (jaren) als horizon. */
+export const MAX_ONE_OFFS = 50
+export const MAX_HORIZON_YEARS = 40
+/** Groei en rente tussen −50 en +100 procent per jaar; het belegde deel tussen 0 en 100 procent. */
+export const MIN_PCT = -50
+export const MAX_PCT = 100
 
 export interface BlockRange {
   block: ScenarioBlock
@@ -59,9 +65,61 @@ export function blockRanges(scenario: Pick<Scenario, 'blocks'>, start: string): 
   return out
 }
 
-/** De laatste dag van het scenario (null zonder blokken). */
+/** De laatste dag van de blokken (null zonder blokken). */
 export function scenarioEnd(ranges: readonly BlockRange[]): string | null {
   return ranges.at(-1)?.to ?? null
+}
+
+/** De aannames zoals ze gelden: ontbrekend of ongeldig is 0 (nooit verzonnen). */
+export function assumptionsOf(scenario: Pick<Scenario, 'assumptions'>): Required<ScenarioAssumptions> {
+  const a = scenario.assumptions ?? {}
+  const pct = (v: number | undefined, min: number, max: number) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : 0)
+  return {
+    investmentGrowthPct: pct(a.investmentGrowthPct, MIN_PCT, MAX_PCT),
+    assetGrowthPct: pct(a.assetGrowthPct, MIN_PCT, MAX_PCT),
+    debtInterestPct: pct(a.debtInterestPct, MIN_PCT, MAX_PCT),
+    investPct: pct(a.investPct, 0, 100),
+  }
+}
+
+/** De eenmalige uitgaven die meetellen: een geldige datum en een bedrag boven nul, op datum. */
+export function validOneOffs(scenario: Pick<Scenario, 'oneOffs'>): ScenarioOneOff[] {
+  return (scenario.oneOffs ?? [])
+    .filter((o) => ISO.test(o.date) && Number.isFinite(o.amount) && o.amount > 0)
+    .slice(0, MAX_ONE_OFFS)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+}
+
+/**
+ * De horizon van een scenario: de eigen einddatum ("kijk vooruit tot"), anders de laatste dag van de blokken of van de
+ * laatste eenmalige uitgave (wat later is); null als er niets is. Nooit verder dan MAX_HORIZON_YEARS na vandaag.
+ */
+export function scenarioHorizon(scenario: Pick<Scenario, 'endDate' | 'oneOffs'>, ranges: readonly BlockRange[], today: string): string | null {
+  const cap = `${Number(today.slice(0, 4)) + MAX_HORIZON_YEARS}${today.slice(4)}`
+  const own = scenario.endDate && ISO.test(scenario.endDate) ? scenario.endDate : null
+  const candidates = own ? [own] : [scenarioEnd(ranges), validOneOffs(scenario).at(-1)?.date ?? null].filter((d): d is string => !!d)
+  if (candidates.length === 0) return null
+  const last = candidates.sort().at(-1)!
+  return last > cap ? cap : last
+}
+
+/** Alles wat de vooruitblik van een scenario nodig heeft, één keer uitgerekend. */
+export interface ScenarioPlan {
+  ranges: BlockRange[]
+  assumptions: Required<ScenarioAssumptions>
+  oneOffs: ScenarioOneOff[]
+  /** De horizon: de laatste dag van de vooruitblik (null zonder blokken, uitgaven of einddatum). */
+  end: string | null
+}
+
+export function scenarioPlan(scenario: Scenario, planningEnd: string | null, today: string): ScenarioPlan {
+  const ranges = blockRanges(scenario, scenarioStart(scenario, planningEnd, today))
+  return { ranges, assumptions: assumptionsOf(scenario), oneOffs: validOneOffs(scenario), end: scenarioHorizon(scenario, ranges, today) }
+}
+
+/** Maandrente uit een jaarpercentage: (1 + p)^(1/12) − 1, zodat twaalf maanden precies p geven. */
+export function monthlyRate(pctPerYear: number): number {
+  return Math.pow(1 + pctPerYear / 100, 1 / 12) - 1
 }
 
 export interface ScenarioPart {
@@ -220,7 +278,66 @@ export async function moveScenarioBlock(tx: Tx, id: string, blockId: string, by:
   return write(tx, { ...scenario, blocks })
 }
 
-/** Tombstone zonder naam of bedragen. */
+/** Aannames opslaan (alleen geldige percentages; leeg = 0). */
+export async function setAssumptions(tx: Tx, id: string, input: ScenarioAssumptions): Promise<Scenario> {
+  const clean: ScenarioAssumptions = {}
+  const keep = (key: keyof ScenarioAssumptions, min: number, max: number) => {
+    const v = input[key]
+    if (typeof v === 'number' && Number.isFinite(v) && v !== 0) clean[key] = Math.min(max, Math.max(min, Math.round(v * 100) / 100))
+  }
+  keep('investmentGrowthPct', MIN_PCT, MAX_PCT)
+  keep('assetGrowthPct', MIN_PCT, MAX_PCT)
+  keep('debtInterestPct', MIN_PCT, MAX_PCT)
+  keep('investPct', 0, 100)
+  const next: Scenario = { ...current(tx, id) }
+  if (Object.keys(clean).length > 0) next.assumptions = clean
+  else delete next.assumptions
+  return write(tx, next)
+}
+
+/** Begindatum en horizon in één keer (één keer ongedaan maken). */
+export async function setScenarioDates(tx: Tx, id: string, startDate: string | null, endDate: string | null): Promise<Scenario> {
+  await setScenarioStart(tx, id, startDate)
+  return setScenarioEnd(tx, id, endDate)
+}
+
+/** Horizon aanpassen; null = tot het einde van het laatste blok of de laatste eenmalige uitgave. */
+export async function setScenarioEnd(tx: Tx, id: string, endDate: string | null): Promise<Scenario> {
+  const next: Scenario = { ...current(tx, id) }
+  if (endDate && ISO.test(endDate)) next.endDate = endDate
+  else delete next.endDate
+  return write(tx, next)
+}
+
+export interface OneOffInput {
+  name: string
+  date: string
+  amount: number
+  currency: Currency
+}
+
+function cleanOneOff(id: string, input: OneOffInput): ScenarioOneOff {
+  return { id, name: input.name.trim().slice(0, 60), date: input.date, amount: round2(Math.max(0, input.amount)), currency: input.currency }
+}
+
+export async function addOneOff(tx: Tx, id: string, input: OneOffInput): Promise<Scenario> {
+  const scenario = current(tx, id)
+  if ((scenario.oneOffs ?? []).length >= MAX_ONE_OFFS || !ISO.test(input.date)) return scenario
+  return write(tx, { ...scenario, oneOffs: [...(scenario.oneOffs ?? []), cleanOneOff(newId(), input)] })
+}
+
+export async function changeOneOff(tx: Tx, id: string, oneOffId: string, input: OneOffInput): Promise<Scenario> {
+  const scenario = current(tx, id)
+  if (!ISO.test(input.date)) return scenario
+  return write(tx, { ...scenario, oneOffs: (scenario.oneOffs ?? []).map((o) => (o.id === oneOffId ? cleanOneOff(oneOffId, input) : o)) })
+}
+
+export async function removeOneOff(tx: Tx, id: string, oneOffId: string): Promise<Scenario> {
+  const scenario = current(tx, id)
+  return write(tx, { ...scenario, oneOffs: (scenario.oneOffs ?? []).filter((o) => o.id !== oneOffId) })
+}
+
+/** Tombstone zonder naam, bedragen of aannames. */
 export async function deleteScenario(tx: Tx, id: string): Promise<void> {
   const scenario = current(tx, id)
   await tx.put('scenarios.json.enc', { id: scenario.id, name: '', blocks: [], updatedAt: tx.now, deletedAt: tx.now })
