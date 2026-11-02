@@ -1,7 +1,8 @@
+import { groupOf } from './tax-year'
 import { booked } from '../domain/geldmodel'
 import type { Lang } from '../i18n'
 import { boatKey, parseShip, suggestKind, tripShip } from './boats'
-import { dayInfo, tripRange, type CalendarIndex } from './calendar'
+import { dayInfo, isWorkday, tripRange, type CalendarIndex } from './calendar'
 import { tripCounters } from './counters'
 import { courseLabel, localized } from './curricula'
 import { active, compareLegs, round1, totalNm, type WaterTotals } from './derive'
@@ -322,9 +323,8 @@ export interface TripMoney {
 export interface MoneyStats {
   /** Verdiend per trip (zonder terugbetalingen), meeste eerst. */
   perTrip: TripMoney[]
+  /** Verdiend per organisatie, zoals in Geld en het jaaroverzicht (`groupOf`). */
   perOrganisation: { org: Organisation | ''; eur: number }[]
-  /** Verdiend zonder trip. */
-  withoutTrip: number
   earned: number
   workdays: number
   perWorkday: number | null
@@ -344,8 +344,9 @@ export function moneyStats(trips: readonly Trip[], legs: readonly Leg[], transac
   const txs = booked(transactions).filter((tx) => inPeriod(tx.date, period))
   const tripById = new Map(active(trips).map((t) => [t.id, t]))
   const perTrip = new Map<string, number>()
+  // Per organisatie zoals in Geld en het jaaroverzicht (één regel, `groupOf`): de organisatie van de tocht, van het
+  // seizoen, anders de oude bron.
   const perOrg = new Map<string, number>()
-  let withoutTrip = 0
   let earned = 0
   for (const tx of txs) {
     if (!isEarned(tx.kind)) continue
@@ -353,13 +354,9 @@ export function moneyStats(trips: readonly Trip[], legs: readonly Leg[], transac
     if (eur === null) continue
     earned += eur
     const trip = tx.tripId ? tripById.get(tx.tripId) : undefined
-    if (!trip) {
-      withoutTrip += eur
-      continue
-    }
-    perTrip.set(trip.id, (perTrip.get(trip.id) ?? 0) + eur)
-    const org = tripOrganisation(trip) ?? trip.organisation ?? ''
-    perOrg.set(org, (perOrg.get(org) ?? 0) + eur)
+    if (trip) perTrip.set(trip.id, (perTrip.get(trip.id) ?? 0) + eur)
+    const group = groupOf(tx, tripById)
+    perOrg.set(group, (perOrg.get(group) ?? 0) + eur)
   }
   const tripMoney: TripMoney[] = [...perTrip.entries()]
     .map(([id, eur]) => {
@@ -370,13 +367,13 @@ export function moneyStats(trips: readonly Trip[], legs: readonly Leg[], transac
     .sort((a, b) => b.eur - a.eur)
   const ranked = tripMoney.filter((t) => t.perDay !== null).sort((a, b) => b.perDay! - a.perDay!)
   let workdays = 0
-  for (let d = period.from; d <= period.to && d <= today; d = addDays(d, 1)) if (dayInfo(index, d, today).type === 'werk') workdays++
+  // Werkdagen zoals in Geld en de agenda (`isWorkday`: werk, geen training of plezier).
+  for (let d = period.from; d <= period.to && d <= today; d = addDays(d, 1)) if (isWorkday(dayInfo(index, d, today))) workdays++
   const end = period.to < today ? period.to : today
   const weeks = Math.min(MAX_TIP_WEEKS, Math.max(1, Math.floor((Date.parse(mondayOf(end)) - Date.parse(mondayOf(period.from))) / (7 * 86_400_000)) + 1))
   return {
     perTrip: tripMoney,
     perOrganisation: [...perOrg.entries()].map(([org, eur]) => ({ org: org as Organisation | '', eur: round2(eur) })).sort((a, b) => b.eur - a.eur),
-    withoutTrip: round2(withoutTrip),
     earned: round2(earned),
     workdays,
     perWorkday: workdays > 0 ? round2(earned / workdays) : null,

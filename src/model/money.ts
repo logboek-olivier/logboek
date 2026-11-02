@@ -1,7 +1,7 @@
 import { lastMonths, round1 } from './derive'
 import { booked } from '../domain/geldmodel'
 import { eurValue } from './rates'
-import { INCOME_KIND_LIST, type Currency, type Transaction, type TransactionKind, type TransactionSource } from './types'
+import { INCOME_KIND_LIST, type Currency, type Transaction, type TransactionKind } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, mondayOf } from '../basis/datum'
 
@@ -86,19 +86,6 @@ export function perMonth(transactions: readonly Transaction[]): MonthTotals[] {
 export function monthSeries(transactions: readonly Transaction[], today: string, count = 12): MonthTotals[] {
   const byMonth = new Map(perMonth(transactions).map((m) => [m.month, m]))
   return lastMonths(today, count).map((month) => byMonth.get(month) ?? { month, ...emptyTotals() })
-}
-
-export interface SourceTotals extends MoneyTotals {
-  source: TransactionSource
-}
-
-/** Per bron, grootste inkomsten eerst; bronnen zonder transacties vallen weg. */
-export function perSource(transactions: readonly Transaction[]): SourceTotals[] {
-  const groups = new Map<TransactionSource, Transaction[]>()
-  for (const tx of booked(transactions)) groups.set(tx.source, [...(groups.get(tx.source) ?? []), tx])
-  return [...groups.entries()]
-    .map(([source, txs]) => ({ source, ...totals(txs) }))
-    .sort((a, b) => b.incomeEur - a.incomeEur)
 }
 
 export interface WeekTips {

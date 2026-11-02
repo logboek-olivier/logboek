@@ -127,9 +127,10 @@ describe('fooi per persoon', () => {
       ['b', 2, 50, 25],
       ['a', 3, 105, 35],
     ])
-    expect(tipsPerTripType(perTrip).map((g) => [g.key, g.perGuest])).toEqual([
-      ['skipper-charter', 35],
-      ['training-geven', 25],
+    // Per soort en organisatie (deze nep-tochten hebben geen organisatie).
+    expect(tipsPerTripType(perTrip).map((g) => [g.type, g.org, g.perGuest])).toEqual([
+      ['skipper-charter', null, 35],
+      ['training-geven', null, 25],
     ])
     expect(tipsPerCountry([t1, t2], txs).map((g) => [g.label, g.guests, g.eur, g.perGuest])).toEqual([
       ['VS', 1, 100, 100],

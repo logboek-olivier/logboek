@@ -143,6 +143,8 @@ export async function recordPayout(tx: Tx, payout: Payout, chosen: readonly Trip
       kind: 'loon',
       source: sourceForOrganisation(payout.org),
       status: 'ontvangen',
+      // Zonder tochten hoort de uitbetaling bij het seizoen van die organisatie (per organisatie en jaaroverzicht).
+      season: { org: payout.org, year: Number(payout.date.slice(0, 4)) },
       payoutId,
       ...(payout.currency === 'EUR' ? { amountEur: amount } : (finalRateFields(base, rates) ?? {})),
       updatedAt: tx.now,

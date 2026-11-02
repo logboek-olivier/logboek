@@ -83,6 +83,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   // Nieuwe trip bij Sailing Virgins of Yacht Week: naamvoorstel met teller ("SV #4 · BVI").
   const namePlaceholder = newTripName(trips, legs, currentSettings(store.get('settings.json.enc')), organisation, startDate || todayIso(), area, defaultWeekName(startDate || todayIso(), lang, base))
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
+  const [guestCount, setGuestCount] = useState(trip?.guestCount ? String(trip.guestCount) : '')
   // Dubbele voornamen: om land of kenmerk vragen ("Nick B." of "Nick (VS)").
   const unclear = needsDistinction(rows)
   const countries = usedCountries(trips)
@@ -161,7 +162,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     if (busy) return
     setBusy(true)
     // Salaris alleen bij werk: training en plezier houden een bestaand salaris niet vast (wel als het al ontvangen is).
-    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route }
+    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route, guestCount: guestCount.trim() === '' ? null : Number(guestCount) }
     try {
       if (trip) {
         await periodeBewerken(store, trip, input, getLang())
@@ -400,6 +401,11 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
               <option key={c} value={c} />
             ))}
           </datalist>
+          {/* Zonder namen (Yacht Week): alleen het aantal gasten, voor de fooi per gast. */}
+          <label>
+            {t('week.guestCount')}
+            <input type="number" inputMode="numeric" min={0} max={500} value={guestCount} onChange={(e) => setGuestCount(e.target.value)} />
+          </label>
         </fieldset>
       </form>
       {/* Het geld staat buiten het formulier: het slaat zelf direct op, en zijn bladen hebben hun eigen formulier (een

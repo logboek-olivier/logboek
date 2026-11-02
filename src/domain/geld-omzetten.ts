@@ -5,6 +5,7 @@ import { finalRateFields } from '../model/rates'
 import { tripEnd } from '../model/salary'
 import type { Currency, SalaryStatus, Transaction, Trip } from '../model/types'
 import { salariesOf, salaryIncomeId, salaryStatus } from './geldmodel'
+import { isDate } from '../basis/datum'
 import { opdrachtMet } from './opdracht'
 import type { Reader, Tx } from './tx'
 
@@ -18,6 +19,7 @@ import type { Reader, Tx } from './tx'
 
 /** Het salaris zoals het vóór de omzetting op een tocht stond (een veld dat deze versie verder niet kent). */
 interface OldTripSalary {
+  transactionId?: unknown
   amount?: unknown
   currency?: unknown
   status?: unknown
@@ -79,13 +81,14 @@ export function planMoneyConversion(reader: Reader, now: string): Plan {
   const changed = new Map<string, Transaction>()
   const put = (tx: Transaction) => changed.set(tx.id, tx)
   const current = (id: string) => changed.get(id) ?? all.find((x) => x.id === id)!
-  // Contant en gestort vervallen; de fooi blijft met hetzelfde bedrag op haar eigen datum staan.
+  // Contant en gestort vervallen; de fooi blijft met hetzelfde bedrag op haar eigen datum staan. Alleen levend geld: een
+  // verwijderde fooi blijft zoals hij was (de prullenbak van vóór de geschiedenis herkent hem aan zijn tombstone).
   for (const tx of all as OldTransaction[]) {
-    if (tx.tipVia === undefined && tx.depositedAt === undefined) continue
+    if (tx.deletedAt !== null || (tx.tipVia === undefined && tx.depositedAt === undefined)) continue
     const { tipVia: _v, depositedAt: _d, ...rest } = tx
     void [_v, _d]
     put({ ...rest, updatedAt: now })
-    if (tx.deletedAt === null) counts.cashMarks++
+    counts.cashMarks++
   }
   const trips: Trip[] = []
   for (const trip of reader.list('trips.json.enc') as OldTrip[]) {
@@ -104,19 +107,27 @@ export function planMoneyConversion(reader: Reader, now: string): Plan {
     }
     const existing = salaries[0]
     if (existing) {
-      // De transactie houdt het bedrag; de status komt van de tocht. Een transactie met een bedrag telde al overal als
-      // ontvangen geld: die blijft ontvangen (anders zou een bedrag uit verdiend verdwijnen).
-      const next: SalaryStatus = existing.amount > 0 ? 'ontvangen' : status
+      // De transactie houdt het bedrag. Heeft ze al een status (het nieuwe model, bijvoorbeeld een standaardsalaris dat na
+      // de update ontstond), dan blijft die. Anders komt de status van de tocht, maar een transactie met een bedrag telde
+      // al overal als ontvangen geld: die blijft ontvangen (anders zou een bedrag uit verdiend verdwijnen).
+      const next: SalaryStatus = existing.status !== undefined ? salaryStatus(existing) : existing.amount > 0 ? 'ontvangen' : status
       const tx = current(existing.id)
       put({ ...tx, status: next, ...(next === 'verwacht' && typeof old.askAfter === 'string' ? { askAfter: old.askAfter } : {}), updatedAt: now })
       counts.merged++
       if (next === 'ontvangen' && !(existing.amount > 0)) counts.missing++
       continue
     }
+    // Het inkomen van dit salaris staat bij een andere tocht (zelf verhuisd): dat geld bestaat al, dus geen tweede.
+    const linked = typeof old.transactionId === 'string' ? all.find((x) => x.id === old.transactionId && x.deletedAt === null) : undefined
+    if (linked) {
+      counts.merged++
+      continue
+    }
     // Alleen een status op de tocht: een loon-transactie met die status (bij "geen salaris" bedrag 0).
     const amount = status === 'geen' ? 0 : oldAmount(old)
     const currency = oldCurrency(old)
-    const date = tripEnd(trip, legs) || trip.startDate || now.slice(0, 10)
+    // Een geldige datum (een kapotte tripdatum mag de hele omzetting niet tegenhouden).
+    const date = [tripEnd(trip, legs), trip.startDate ?? ''].find((d) => isDate(d)) ?? now.slice(0, 10)
     const base = { date, amount, currency }
     const id = salaryIncomeId(trip.id, [...changed.values(), ...all])
     put({
@@ -146,8 +157,3 @@ export async function convertMoney(tx: Tx): Promise<MoneyConversion> {
 }
 
 export const geldOmzetten = opdrachtMet('geldOmzetten', convertMoney)
-
-/** Salarissen die nog niet kloppen (Te controleren): ontvangen zonder bedrag. */
-export function receivedWithoutAmount(transactions: readonly Transaction[]): Transaction[] {
-  return active(transactions).filter((tx) => tx.kind === 'loon' && tx.tripId && salaryStatus(tx) === 'ontvangen' && !(tx.amount > 0))
-}

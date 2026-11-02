@@ -243,8 +243,9 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
   const byId = new Map(live.map((x) => [x.id, x]))
   const averages = tipAverages(live, legs, transactions, today)
   const other: Partial<Record<Currency, number>> = {}
+  // Alleen het salaris van tochten die er nog zijn (zoals Mijn positie en de vooruitblik).
   const expected = expectedSalaries(transactions)
-    .filter((tx) => tx.amount > 0)
+    .filter((tx) => tx.amount > 0 && (!tx.tripId || byId.has(tx.tripId)))
     .map((tx) => {
       const trip = tx.tripId ? byId.get(tx.tripId) : undefined
       return { tx, trip, end: (trip ? tripEnd(trip, legs) : '') || tx.date }

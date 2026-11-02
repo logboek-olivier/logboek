@@ -309,7 +309,9 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   const averages = tipAverages(trips, legs, transactions, today)
   for (const trip of active(trips)) {
     const end = tripEnd(trip, legs)
-    if (!end || end < today) continue
+    // Voorbij zoals overal (een tocht die de dagen volgt pas drie dagen na de laatste dag): daarna staat het salaris in
+    // "te ontvangen", daarvóór in de vooruitblik; nooit in geen van beide.
+    if (!end || endedFor(trip, end) < today) continue
     if (!range && monthOf(end) > until) until = monthOf(end)
     for (const s of active(transactions)) {
       if (s.kind !== 'loon' || s.tripId !== trip.id || salaryStatus(s) !== 'verwacht' || !(s.amount > 0)) continue

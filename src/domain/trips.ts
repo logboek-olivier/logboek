@@ -4,12 +4,13 @@ import { confirmBoats, deleteBoat, mergeBoat, skipBoats } from '../model/boats'
 import { addChecklist, deleteChecklist, saveChecklist, toggleCheck } from '../model/checklists'
 import { answerDoubt, saveFirstNumbers } from '../model/counters'
 import { renameTrip } from '../model/edit'
-import { answerReturning } from '../model/guests'
+import { answerReturning, setGuestCount } from '../model/guests'
 import { acceptAllKinds, dismissReview, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, setInvestmentCategory, setTripKind, setTripOrganisation, tripForLegs } from '../model/review'
 import { changeParticipant, deleteTripWith, removeParticipant } from '../model/trip-ops'
 import { addParticipant, closeWeek, startWeek, updateWeek } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
 
+export const aantalGastenZetten = opdracht('aantalGastenZetten', setGuestCount)
 export const bootVerwijderen = opdracht('bootVerwijderen', deleteBoat)
 export const botenBevestigen = opdracht('botenBevestigen', confirmBoats)
 export const botenOverslaan = opdracht('botenOverslaan', skipBoats)
