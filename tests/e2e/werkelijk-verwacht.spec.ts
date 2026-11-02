@@ -58,8 +58,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.getByText(L('costs.booked', { n: 2 }))).toBeVisible()
       await expect(costs.getByRole('button', { name: L('costs.book', { n: 2 }) })).toHaveCount(0)
 
-      // Werkelijk: december en januari geboekt.
+      // Werkelijk: december en januari geboekt (de periode bovenaan Geld: Alles, want december valt in een vorig jaar).
       await page.getByRole('tab', { name: L('money.actual') }).click()
+      await page.locator('.money-period').getByRole('radio', { name: L('period.alles') }).click()
       const table = page.locator('.actual-costs')
       await expect(table.locator('tbody tr')).toHaveCount(2)
       await expect(table).toContainText(money(500))
