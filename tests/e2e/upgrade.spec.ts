@@ -210,7 +210,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
 
     await deployAndReopen(page, server)
     // Binnen 5 minuten hervat de sessie; anders ontgrendelen met de wachtzin.
-    await expect(todayHeading(page).or(unlockButton(page))).toBeVisible({ timeout: 30_000 })
+    // Na de eerste sync kan het scherm Geld omzetten al over Vandaag liggen (eenmalig, na een tik).
+    await expect(todayHeading(page).or(unlockButton(page)).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
     if (await unlockButton(page).isVisible()) {
       await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
       await unlockButton(page).click()
@@ -523,13 +524,14 @@ test('telefoon van 28 oktober: checklists onleesbaar op GitHub, lus op het herst
     const taps = await deployAndReopen(page, server)
     expect(taps).toBe(0)
     // Tik 2 (plus de wachtzin typen): ontgrendelen. Geen herstelscherm meer.
-    await expect(todayHeading(page).or(unlockButton(page))).toBeVisible({ timeout: 30_000 })
+    // Na de eerste sync kan het scherm Geld omzetten al over Vandaag liggen (eenmalig, na een tik).
+    await expect(todayHeading(page).or(unlockButton(page)).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
     await expect(repairHeading(page)).toHaveCount(0)
     if (await unlockButton(page).isVisible()) {
       await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
       await unlockButton(page).click()
     }
-    await expect(todayHeading(page)).toBeVisible({ timeout: 30_000 })
+    await expect(todayHeading(page).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
     // Checklists herstelt de app vanzelf; de rest werkt gewoon.
     await expectSynced(page)
     await page.getByRole('status').first().click()
