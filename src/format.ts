@@ -61,18 +61,22 @@ export function formatHours(n: number): string {
 const SYMBOLS: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' }
 
 /** Nederlands met spatie na het symbool (€ 12,50), Engels zonder (€12.50). */
+/** "€ 1.250,50" (nl) of "€1,250.50" (en); negatief altijd met een echt minteken vooraan: "−€ 1.830,52", nooit "€-1,830.52". */
 export function formatMoney(amount: number, currency: string, lang: Lang = getLang()): string {
   const symbol = SYMBOLS[currency]
-  const value = f(lang).money.format(amount)
-  if (!symbol) return `${value} ${currency}`
-  return lang === 'nl' ? `${symbol} ${value}` : `${symbol}${value}`
+  // Afgerond op centen: −0,004 is gewoon € 0,00 (geen "−€ 0,00").
+  const negative = Math.round(amount * 100) < 0
+  const value = f(lang).money.format(Math.abs(amount))
+  const text = !symbol ? `${value} ${currency}` : lang === 'nl' ? `${symbol} ${value}` : `${symbol}${value}`
+  return negative ? `−${text}` : text
 }
 
 /** Bedrag zonder centen voor as-teksten: € 1.250. */
 export function formatMoneyShort(amount: number, currency = 'EUR', lang: Lang = getLang()): string {
-  const whole = f(lang).whole.format(amount)
-  if (currency !== 'EUR') return `${whole} ${currency}`
-  return lang === 'nl' ? `€ ${whole}` : `€${whole}`
+  const negative = Math.round(amount) < 0
+  const whole = f(lang).whole.format(Math.abs(amount))
+  const text = currency !== 'EUR' ? `${whole} ${currency}` : lang === 'nl' ? `€ ${whole}` : `€${whole}`
+  return negative ? `−${text}` : text
 }
 
 /** jjjj-mm-dd → 3 mei 2024. */

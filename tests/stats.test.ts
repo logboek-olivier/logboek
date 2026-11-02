@@ -177,11 +177,11 @@ describe('Geld', () => {
       ['lang', 500, 10, 50],
       ['kort', 300, 2, 150],
     ])
+    // Per organisatie zoals in Geld (`groupOf`): geld zonder tocht valt onder zijn bron (hier Yacht Week).
     expect(m.perOrganisation).toEqual([
       { org: 'sailing-virgins', eur: 500 },
-      { org: 'yacht-week', eur: 300 },
+      { org: 'yacht-week', eur: 325 },
     ])
-    expect(m.withoutTrip).toBe(25)
     expect(m.workdays).toBe(12)
     expect(m.perWorkday).toBe(68.75)
     expect(m.best?.trip.id).toBe('kort')

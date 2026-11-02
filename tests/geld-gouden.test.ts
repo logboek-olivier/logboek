@@ -218,3 +218,53 @@ describe('omzetten verliest nooit een bedrag (eigenschap)', () => {
     }
   }, 120_000)
 })
+
+describe('randgevallen van de omzetting (onafhankelijke review)', () => {
+  const T0 = '2026-10-01T00:00:00.000Z'
+  const trip = (id: string, salary?: Record<string, unknown>, extra: Partial<Trip> = {}): Trip => ({ id, name: `Nep ${id}`, organisation: 'yacht-week', startDate: '2026-07-01', endDate: '2026-07-07', ...(salary ? { salary } : {}), ...extra, updatedAt: T0, deletedAt: null }) as Trip
+  const money = (id: string, extra: Partial<Transaction>): Transaction => ({ id, date: '2026-07-10', kind: 'loon', amount: 900, currency: 'EUR', source: 'yacht-week', updatedAt: T0, deletedAt: null, ...extra }) as Transaction
+  async function fresh(trips: Trip[], txs: Transaction[]): Promise<Store> {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    const s = await Store.open(await openLogboekDb(`logboek-geld-rand-${++counter}`), key, new GithubClient(TOKEN, new FakeGithub().fetch))
+    await putMany(s, 'trips.json.enc', trips)
+    if (txs.length > 0) await putMany(s, 'transactions.json.enc', txs)
+    return s
+  }
+
+  it('een salaris dat al een status heeft (nieuw model) houdt die: een verwacht salaris wordt nooit ontvangen', async () => {
+    const s = await fresh([trip('a', { amount: 900, currency: 'EUR', status: 'ontvangen', source: 'eigen' })], [money('salaris:a', { tripId: 'a', status: 'verwacht', amount: 2000 })])
+    await geldOmzetten(s)
+    expect(salaryOf('a', s.list('transactions.json.enc'))).toMatchObject({ amount: 2000, status: 'verwacht' })
+  })
+
+  it('het vaste id dat intussen een ander soort inkomen is, wordt nooit overschreven', async () => {
+    const s = await fresh([trip('a', { amount: 900, currency: 'EUR', status: 'verwacht', source: 'eigen' })], [money('salaris:a', { tripId: 'a', kind: 'bonus', amount: 300 })])
+    await geldOmzetten(s)
+    const all = s.list('transactions.json.enc')
+    expect(all.find((x) => x.id === 'salaris:a')).toMatchObject({ kind: 'bonus', amount: 300 })
+    expect(salaryOf('a', all)).toMatchObject({ amount: 900, status: 'verwacht' })
+    expect(salaryOf('a', all)!.id).not.toBe('salaris:a')
+  })
+
+  it('een salaris waarvan het inkomen naar een andere tocht verhuisde, krijgt geen tweede inkomen', async () => {
+    const s = await fresh([trip('a', { amount: 900, currency: 'EUR', status: 'ontvangen', source: 'eigen', transactionId: 'salaris:a' }), trip('b')], [money('salaris:a', { tripId: 'b' })])
+    const before = sumPerCurrency(booked(s.list('transactions.json.enc')))
+    await geldOmzetten(s)
+    expect(sumPerCurrency(booked(s.list('transactions.json.enc')))).toEqual(before)
+    expect(salaryOf('a', s.list('transactions.json.enc'))).toBeUndefined()
+  })
+
+  it('een verwijderde contante fooi blijft zoals hij was (de prullenbak van vóór de geschiedenis)', async () => {
+    const s = await fresh([trip('a')], [{ ...money('fooi-weg', { tripId: 'a', kind: 'fooi', amount: 400 }), tipVia: 'contant', deletedAt: '2026-09-28T10:00:00.000Z' } as Transaction])
+    expect(needsMoneyConversion(s)).toBe(false)
+    const { result } = await geldOmzetten(s)
+    expect(result.cashMarks).toBe(0)
+    expect(s.get('transactions.json.enc').find((x) => x.id === 'fooi-weg')).toMatchObject({ tipVia: 'contant', deletedAt: '2026-09-28T10:00:00.000Z' })
+  })
+
+  it('een kapotte tripdatum houdt de omzetting niet tegen: dan de datum van vandaag', async () => {
+    const s = await fresh([trip('a', { amount: 700, currency: 'EUR', status: 'verwacht', source: 'eigen' }, { startDate: '1-7-2026', endDate: '7-7-2026' })], [])
+    await geldOmzetten(s)
+    expect(salaryOf('a', s.list('transactions.json.enc'))?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})

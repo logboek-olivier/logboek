@@ -223,6 +223,8 @@ export interface WeekInput {
   note: string
   /** Geplande etappes (sjabloon of vorige trip); ontbreekt het, dan blijft een bestaande planning staan. */
   route?: PlannedLeg[]
+  /** Aantal gasten zonder namen (Yacht Week); null of 0 = weg; ontbreekt het, dan blijft het zoals het was. */
+  guestCount?: number | null
 }
 
 /** Geplande etappes: korte plaatsnamen, hoogstens 120 dagen. */
@@ -276,6 +278,7 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
     participants: cleanParticipants(input.participants),
     ...(input.note.trim() ? { note: input.note.trim().slice(0, 500) } : {}),
     ...(input.route && input.route.length > 0 ? { route: cleanRoute(input.route) } : {}),
+    ...(input.guestCount && Number.isFinite(input.guestCount) && input.guestCount > 0 ? { guestCount: Math.min(500, Math.round(input.guestCount)) } : {}),
   }
 }
 
@@ -293,8 +296,10 @@ export async function startWeek(store: Tx, input: WeekInput, lang: Lang, today: 
 
 /** Bestaande week bijwerken; review en afronding blijven staan. */
 export async function updateWeek(store: Tx, trip: Trip, input: WeekInput, lang: Lang): Promise<void> {
-  const { startDate: _s, endDate: _e, boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, route, ...rest } = trip
+  const { startDate: _s, endDate: _e, boat: _b, boatModel: _m, boatLengthFt: _l, boatKind: _k, base: _ba, charter: _c, area: _a, organisation: _o, note: _n, route, guestCount, ...rest } = trip
   void [_s, _e, _b, _m, _l, _k, _ba, _c, _a, _o, _n]
+  // Zonder aantal gasten in de invoer blijft het bestaande.
+  if (input.guestCount === undefined && guestCount !== undefined) Object.assign(rest, { guestCount })
   // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
   const keep = input.route === undefined && route ? { route } : {}
   const next: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }

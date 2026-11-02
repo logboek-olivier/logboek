@@ -263,7 +263,6 @@ export function Stats({ store }: { store: Store }) {
                 title={t('stats.perOrgMoney')}
                 rows={[
                   ...money.perOrganisation.map((o) => ({ key: o.org || 'geen', label: o.org ? organisationLabel(o.org) : t('stats.noOrganisation'), value: o.eur })),
-                  ...(money.withoutTrip > 0 ? [{ key: 'zonder-trip', label: t('stats.withoutTrip'), value: money.withoutTrip }] : []),
                 ]}
                 format={(n) => formatMoney(n, 'EUR')}
               />

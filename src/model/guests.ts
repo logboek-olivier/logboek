@@ -1,5 +1,7 @@
 import type { Tx } from '../domain/tx'
 import { active } from './derive'
+import { booked } from '../domain/geldmodel'
+import { tripOrganisation } from '../basis/organisatie'
 import { eurOf } from './money'
 import { weekView } from './weeks'
 import type { Leg, Participant, TipFrom, Transaction, Trip, WeekType } from './types'
@@ -181,9 +183,33 @@ export interface GuestTips {
 export interface TripTips {
   trip: Trip
   type: WeekType
+  /** De organisatie van de tocht (ook uit de naam, zoals de teller), of null. */
+  org: string | null
+  /** Aantal gasten: de deelnemers, anders het ingevulde aantal (`guestCount`); 0 = onbekend. */
   guests: number
   eur: number
   perGuest: number | null
+}
+
+/**
+ * "Aantal gasten" van een tocht zetten (alleen een getal, geen namen; voor de fooi per gast bij Yacht Week). Leeg of 0
+ * haalt het weg. Wat de deelnemers en de rest van de tocht zijn, blijft staan.
+ */
+export async function setGuestCount(tx: Tx, tripId: string, count: number | null): Promise<void> {
+  const trip = tx.list('trips.json.enc').find((x) => x.id === tripId)
+  if (!trip) return
+  const n = count !== null && Number.isFinite(count) ? Math.max(0, Math.min(500, Math.round(count))) : 0
+  const { guestCount: _old, ...rest } = trip
+  void _old
+  await tx.put('trips.json.enc', { ...rest, ...(n > 0 ? { guestCount: n } : {}), updatedAt: tx.now })
+}
+
+/** Aantal gasten van een tocht: de deelnemers met naam, anders het ingevulde aantal (Yacht Week); 0 = onbekend. */
+export function guestCountOf(trip: Trip): number {
+  const named = trip.participants?.length ?? 0
+  if (named > 0) return named
+  const n = trip.guestCount
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 0
 }
 
 export interface GroupTips {
@@ -195,7 +221,7 @@ export interface GroupTips {
   perGuest: number | null
 }
 
-const tips = (transactions: readonly Transaction[]) => active(transactions).filter((tx) => tx.kind === 'fooi')
+const tips = (transactions: readonly Transaction[]) => booked(transactions).filter((tx) => tx.kind === 'fooi')
 
 /** Fooi per gast (terugkerende gasten samen), meeste eerst. */
 export function tipsPerGuest(trips: readonly Trip[], transactions: readonly Transaction[]): GuestTips[] {
@@ -218,7 +244,11 @@ export function tipsPerGuest(trips: readonly Trip[], transactions: readonly Tran
   return [...guests.values()].map(({ tripIds, ...g }) => ({ ...g, trips: tripIds.size, eur: round2(g.eur) })).sort((a, b) => b.eur - a.eur || a.label.localeCompare(b.label))
 }
 
-/** Fooi per trip en het gemiddelde per gast (alle fooien van de trip, ook van onbekend), nieuwste trip eerst. */
+/**
+ * Fooi per tocht en het gemiddelde per gast (alle fooien van de tocht, ook van onbekend), nieuwste tocht eerst. Elke tocht
+ * met fooien staat erin; zonder bekend aantal gasten is het gemiddelde onbekend (null). Fooi van een eerder seizoen hoort
+ * bij geen tocht en staat hier niet.
+ */
 export function tipsPerTrip(trips: readonly Trip[], transactions: readonly Transaction[], legs: readonly Leg[]): TripTips[] {
   const sums = new Map<string, number>()
   for (const tx of tips(transactions)) {
@@ -230,26 +260,35 @@ export function tipsPerTrip(trips: readonly Trip[], transactions: readonly Trans
     .filter((t) => sums.has(t.id))
     .map((trip) => {
       const view = weekView(trip, legs)
-      const guests = trip.participants?.length ?? 0
+      const guests = guestCountOf(trip)
       const eur = round2(sums.get(trip.id)!)
-      return { tip: { trip, type: view.type, guests, eur, perGuest: guests > 0 ? round2(eur / guests) : null }, start: view.startDate }
+      const org = tripOrganisation(trip) ?? (trip.organisation && trip.organisation !== 'overig' && trip.organisation !== 'eigen' ? trip.organisation : null)
+      return { tip: { trip, type: view.type, org, guests, eur, perGuest: guests > 0 ? round2(eur / guests) : null }, start: view.startDate }
     })
     .sort((a, b) => (a.start < b.start ? 1 : -1))
     .map((x) => x.tip)
 }
 
-/** Gemiddelde fooi per gast per soort trip (alleen trips met deelnemers). */
-export function tipsPerTripType(perTrip: readonly TripTips[]): GroupTips[] {
-  const groups = new Map<WeekType, GroupTips>()
+/**
+ * Gemiddelde fooi per gast per soort tocht en organisatie, zodat Yacht Week en Sailing Virgins naast elkaar staan. Elke
+ * tocht met fooien telt mee in het totaal; het gemiddelde alleen over tochten met een bekend aantal gasten.
+ */
+export function tipsPerTripType(perTrip: readonly TripTips[]): (GroupTips & { org: string | null; type: WeekType })[] {
+  const groups = new Map<string, GroupTips & { org: string | null; type: WeekType; known: number }>()
   for (const t of perTrip) {
-    if (t.guests === 0) continue
-    const g = groups.get(t.type) ?? { key: t.type, label: t.type, trips: 0, guests: 0, eur: 0, perGuest: null }
+    const key = `${t.org ?? ''}|${t.type}`
+    const g = groups.get(key) ?? { key, label: t.type, org: t.org, type: t.type, trips: 0, guests: 0, eur: 0, perGuest: null, known: 0 }
     g.trips++
-    g.guests += t.guests
     g.eur += t.eur
-    groups.set(t.type, g)
+    if (t.guests > 0) {
+      g.guests += t.guests
+      g.known += t.eur
+    }
+    groups.set(key, g)
   }
-  return [...groups.values()].map((g) => ({ ...g, eur: round2(g.eur), perGuest: round2(g.eur / g.guests) })).sort((a, b) => (b.perGuest ?? 0) - (a.perGuest ?? 0))
+  return [...groups.values()]
+    .map(({ known, ...g }) => ({ ...g, eur: round2(g.eur), perGuest: g.guests > 0 ? round2(known / g.guests) : null }))
+    .sort((a, b) => (b.perGuest ?? -1) - (a.perGuest ?? -1) || b.eur - a.eur)
 }
 
 /** Fooi per land: totaal van de gasten uit dat land en het gemiddelde per gast. Gasten zonder land staan apart. */

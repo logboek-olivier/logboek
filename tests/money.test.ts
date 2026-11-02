@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { otherCurrencies, perMonth, perSource, tipsPerWeek, totals } from '../src/model/money'
+import { otherCurrencies, perMonth, tipsPerWeek, totals } from '../src/model/money'
 import type { Transaction } from '../src/model/types'
 import { parseAmount } from '../src/basis/bedrag'
 import { addDays, mondayOf } from '../src/basis/datum'
@@ -65,9 +65,6 @@ describe('zeilgeld', () => {
     expect(months.map((m) => m.month)).toEqual(['2026-10', '2026-09'])
     expect(months[0]).toMatchObject({ incomeEur: 1200.5, costsEur: 35.25, balanceEur: 1165.25 })
     expect(months[1]).toMatchObject({ incomeEur: 0, costsEur: 500, other: { GBP: { income: 0, costs: 40 } } })
-    const sources = perSource(sample)
-    expect(sources.map((s) => s.source)).toEqual(['yacht-week', 'sailing-virgins', 'overig'])
-    expect(sources[0]).toMatchObject({ incomeEur: 1120, costsEur: 35.25 })
   })
 
   it('geeft fooi per week voor 12 weken, oudste eerst, met de huidige week als laatste', () => {

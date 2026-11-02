@@ -42,13 +42,13 @@ export function salaryOf(tripId: string, transactions: readonly Transaction[]): 
 
 /**
  * Het id voor een nieuw salaris van een tocht: vast per tocht (`salaris:<trip>`), zodat een tweede tik of een ander
- * apparaat hetzelfde record schrijft. Is dat id al van een andere levende transactie (zelf naar een andere tocht gezet),
- * dan een nieuw id: nooit over ander geld heen.
+ * apparaat hetzelfde record schrijft. Is dat id al van een levende transactie (zelf naar een andere tocht gezet, of een
+ * ander soort inkomen geworden), dan een nieuw id: nooit over ander geld heen.
  */
 export function salaryIncomeId(tripId: string, transactions: readonly Transaction[] = []): string {
   const id = `salaris:${tripId}`
-  const taken = transactions.find((tx) => tx.id === id)
-  return taken && taken.deletedAt === null && taken.tripId !== tripId ? newId() : id
+  // Elk levend record met dit id (naar een andere tocht gezet, of een ander soort inkomen geworden) blijft van zichzelf.
+  return transactions.some((tx) => tx.id === id && tx.deletedAt === null) ? newId() : id
 }
 
 /** Verwachte salarissen (nog geen geld). */

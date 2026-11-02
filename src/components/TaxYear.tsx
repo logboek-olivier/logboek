@@ -1,3 +1,4 @@
+import { yearOverview } from '../domain/geldrapport'
 import { Printer } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
@@ -5,7 +6,7 @@ import { formatDate, formatMoney, formatRate } from '../format'
 import { t } from '../i18n'
 import { kindLabel, organisationLabel, sourceLabel } from '../i18n/labels'
 import { getRates, subscribeRates } from '../model/rates'
-import { taxYear, taxYears, type TaxGroup, type TaxLine, type TaxYear } from '../model/tax-year'
+import { taxYears, type TaxGroup, type TaxLine, type TaxYear } from '../model/tax-year'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { useCollection } from './useCollection'
@@ -106,7 +107,7 @@ export function TaxYearSection({ store }: { store: Store }) {
   const years = taxYears(transactions)
   const chosen = year !== null && years.includes(year) ? year : (years[0] ?? null)
   if (chosen === null) return null
-  const data = taxYear(transactions, trips, chosen, rates)
+  const data = yearOverview(transactions, trips, chosen, rates)
 
   return (
     <div className="section card card-body stack tax-year">

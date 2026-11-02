@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { eerderSeizoenInvoeren, geldToevoegen, seasonDate } from '../src/domain/geld'
+import { eerderSeizoenInvoeren, geldToevoegen, seasonDate, uitbetalingInvoeren } from '../src/domain/geld'
 import { booked, linkOf } from '../src/domain/geldmodel'
 import { tripResult } from '../src/domain/geldrapport'
 import { violations } from '../src/domain/invariants'
@@ -83,5 +83,16 @@ describe('geld per tocht', () => {
     expect(cost.tripId).toBe('sv-1')
     await undo()
     expect(tripResult(t, s.list('transactions.json.enc')).result.eur).toBe(200)
+  })
+})
+
+describe('uitbetaling zonder tochten', () => {
+  it('hoort bij het seizoen van de organisatie (per organisatie en jaaroverzicht), niet bij Overig', async () => {
+    const s = await store()
+    await uitbetalingInvoeren(s, { org: 'org:nep', amount: 500, currency: 'EUR', date: '2025-09-30' }, [], RATES)
+    const [tx] = s.list('transactions.json.enc')
+    expect(tx).toMatchObject({ kind: 'loon', status: 'ontvangen', season: { org: 'org:nep', year: 2025 } })
+    expect(taxYear(s.list('transactions.json.enc'), s.list('trips.json.enc'), 2025, RATES).groups.map((g) => g.group)).toEqual(['org:nep'])
+    expect(violations(s).filter((v) => v.rule === 'geld-zonder-periode')).toEqual([])
   })
 })
