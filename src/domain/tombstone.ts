@@ -3,7 +3,7 @@ import { scrubbedCareer } from '../model/career'
 import { scrubbedClaim } from '../model/claims'
 import { scrubbedDocument } from '../model/documents'
 import { scrubbed } from '../model/students'
-import type { Account, Balance, CareerRecord, Claim, CollectionPath, FixedCost, Student, SyncRecord, VaultDocument } from '../model/types'
+import type { Account, Balance, CareerRecord, Claim, CollectionPath, FixedCost, Scenario, Student, SyncRecord, VaultDocument } from '../model/types'
 
 /**
  * De tombstone van een record dat weer weg moet (ongedaan maken van iets nieuws). Persoonlijke en gevoelige gegevens
@@ -24,6 +24,10 @@ export function tombstone(path: CollectionPath, record: SyncRecord, now: string)
       return scrubbedDocument(record as VaultDocument, now)
     case 'students.json.enc':
       return scrubbed(record as Student, now)
+    case 'scenarios.json.enc': {
+      const empty: Scenario = { id: record.id, name: '', blocks: [], updatedAt: now, deletedAt: now }
+      return empty
+    }
     case 'fixedcosts.json.enc': {
       const empty: FixedCost = { id: record.id, name: '', currency: (record as FixedCost).currency, amounts: [], updatedAt: now, deletedAt: now }
       return empty

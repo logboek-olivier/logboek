@@ -180,6 +180,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'accounts.json.enc': 'key.file.accounts',
   'balances.json.enc': 'key.file.balances',
   'fixedcosts.json.enc': 'key.file.fixedcosts',
+  'scenarios.json.enc': 'key.file.scenarios',
   'claims.json.enc': 'key.file.claims',
   'periods.json.enc': 'key.file.periods',
   'history.json.enc': 'key.file.history',

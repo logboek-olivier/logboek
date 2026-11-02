@@ -10,6 +10,7 @@ import { recordPayout } from '../model/money-path'
 import { finalRateFields } from '../model/rates'
 import { askSalaryLater, receiveSalary, saveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { saveSettings } from '../model/settings'
+import { addScenarioBlock, changeScenarioBlock, createScenario, deleteScenario, moveScenarioBlock, removeScenarioBlock, renameScenario, setScenarioStart } from '../model/scenario'
 import { newId, type Account, type Balance, type Currency, type Leg, type Organisation, type Settings, type Transaction, type Trip } from '../model/types'
 import { active } from '../model/derive'
 import { weekView } from '../model/weeks'
@@ -163,6 +164,21 @@ export const salarisOntvangen = opdracht('salarisOntvangen', receiveSalary)
 export const salarisOpslaan = opdrachtMet('salarisOpslaan', saveSalary)
 export const standOpslaan = opdrachtMet('standOpslaan', setBalance)
 export const beginsaldiInvoeren = opdrachtMet('beginsaldiInvoeren', setStartBalances)
+
+// Scenario's (Geld → Verwacht → Scenario, src/model/scenario.ts). Het actieve scenario staat in de instellingen.
+export const scenarioMaken = opdrachtMet('scenarioMaken', async (tx: Tx, name: string) => {
+  const scenario = await createScenario(tx, name)
+  await saveSettings(tx, { activeScenarioId: scenario.id })
+  return scenario
+})
+export const scenarioActiveren = opdracht('scenarioActiveren', (tx: Tx, id: string) => saveSettings(tx, { activeScenarioId: id }))
+export const scenarioHernoemen = opdrachtMet('scenarioHernoemen', renameScenario)
+export const scenarioBeginAanpassen = opdrachtMet('scenarioBeginAanpassen', setScenarioStart)
+export const scenarioVerwijderen = opdracht('scenarioVerwijderen', deleteScenario)
+export const blokToevoegen = opdrachtMet('blokToevoegen', addScenarioBlock)
+export const blokWijzigen = opdrachtMet('blokWijzigen', changeScenarioBlock)
+export const blokVerwijderen = opdrachtMet('blokVerwijderen', removeScenarioBlock)
+export const blokVerplaatsen = opdrachtMet('blokVerplaatsen', moveScenarioBlock)
 export const standVerwijderen = opdracht('standVerwijderen', deleteBalance)
 export const standWijzigen = opdracht('standWijzigen', changeBalance)
 export const standaardsalarisOpslaan = opdrachtMet('standaardsalarisOpslaan', saveSalaryDefaults)

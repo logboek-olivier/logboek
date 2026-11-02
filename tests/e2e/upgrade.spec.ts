@@ -401,6 +401,25 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('fixedcosts.json.enc'), { timeout: 20_000 }).toBeGreaterThan(fixedPuts)
     await expectSynced(page)
+    // Scenario's (scenarios.json.enc, nieuw in november 2026): Verwacht → Scenario, een scenario met één blok.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await page.getByRole('radio', { name: L('forecast.scenario'), exact: true }).click()
+    const scenarioPuts = puts('scenarios.json.enc')
+    const createScenario = page.getByRole('button', { name: L('scenario.create') })
+    if ((await createScenario.count()) > 0) await createScenario.click()
+    else await page.getByRole('button', { name: L('scenario.new') }).click()
+    await page.getByRole('dialog').getByLabel(L('scenario.name')).fill('Nepscenario upgrade')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    await page.getByRole('button', { name: L('scenario.addBlock') }).click()
+    await page.getByRole('dialog').getByLabel(L('scenario.weeks')).fill('4')
+    await page.getByRole('dialog').getByLabel(L('scenario.incomePerWeek')).fill('1000')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect.poll(() => puts('scenarios.json.enc'), { timeout: 20_000 }).toBeGreaterThan(scenarioPuts)
+    await page.getByRole('radio', { name: L('forecast.planned'), exact: true }).click()
+    await expectSynced(page)
     // Declaraties (claims.json.enc, nieuw in ronde 3): een declaratie zonder bonnetje.
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     const claimPuts = puts('claims.json.enc')
@@ -486,6 +505,9 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     if (sampleBalances.length > 0) expect(sampleBalances).toEqual(expect.arrayContaining(['stand:upg-acc-1:2026-09', 'stand:upg-acc-1:2026-09-02']))
     // De vaste last staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende); de soort
     // van een uitgave, de schatting bij de weekafsluiting en de standaardbedragen komen ongeschonden over.
+    // Het scenario staat leesbaar op GitHub, met zijn blok.
+    const scenarios = await decryptRecords(key, 'scenarios.json.enc', Uint8Array.from(Buffer.from(github.files.get('scenarios.json.enc')!.content, 'base64')))
+    expect(scenarios).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nepscenario upgrade', blocks: [expect.objectContaining({ weeks: 4, incomePerWeek: 1000 })], deletedAt: null })]))
     const claims = await decryptRecords(key, 'claims.json.enc', Uint8Array.from(Buffer.from(github.files.get('claims.json.enc')!.content, 'base64')))
     expect(claims).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'Nepdeclaratie upgrade', amount: 12, status: 'open', deletedAt: null })]))
     const fixed = await decryptRecords(key, 'fixedcosts.json.enc', Uint8Array.from(Buffer.from(github.files.get('fixedcosts.json.enc')!.content, 'base64')))

@@ -2,7 +2,8 @@ import { toEur } from '../model/accounts'
 import { active } from '../model/derive'
 import { expenseCategory } from '../model/expenses'
 import { isEarned, isIncome } from '../model/money'
-import type { NetWorthChange, Position } from '../model/position'
+import type { Forecast, ForecastItem, NetWorthChange, Position } from '../model/position'
+import type { BlockRange } from '../model/scenario'
 import { eurValue, type RatesFile } from '../model/rates'
 import { groupOf, type TaxGroup } from '../model/tax-year'
 import type { Account, Claim, CostCategory, Currency, Transaction, TransactionKind, Trip } from '../model/types'
@@ -26,6 +27,7 @@ export type DrillSection =
   | 'eind'
   | 'rekeningen'
   | 'zeilresultaat'
+  | 'scenario'
 
 export interface DrillPost {
   key: string
@@ -43,14 +45,22 @@ export interface DrillPost {
   provisional: boolean
   /** Bij een rekening: de stand op de begindag en op het einde, in de valuta van de rekening (null: geen stand). */
   balances?: { start: number | null; end: number | null }
+  /** Vooruitblik: de maand (jjjj-mm) van een kostenpost of een deel van een scenarioblok. */
+  month?: string
+  /** Vooruitblik: een schatting (fooi), geen transactie. */
+  estimate?: boolean
+  /** Vooruitblik: wanneer een salaris waarschijnlijk wordt uitbetaald (ter informatie). */
+  payout?: string
 }
 
 export interface DrillGroup {
   key: string
   section: DrillSection
-  /** Soort transactie of soort uitgave. */
-  kind?: TransactionKind | CostCategory | 'onbekend'
+  /** Soort transactie of soort uitgave; in de vooruitblik ook vaste lasten, variabele kosten en kosten van een scenarioblok. */
+  kind?: TransactionKind | CostCategory | 'onbekend' | 'vaste-lasten' | 'variabel' | 'scenario-kosten'
   org?: TaxGroup
+  /** Bij een scenario: het blok. */
+  block?: BlockRange
   eur: number
   /** Posten zonder koers, per valuta (met teken). */
   other: Partial<Record<Currency, number>>
@@ -68,16 +78,17 @@ interface Entry {
   section: DrillSection
   kind?: DrillGroup['kind']
   org?: TaxGroup
+  block?: BlockRange
 }
 
-const SECTION_ORDER: readonly DrillSection[] = ['inkomsten', 'salaris', 'terugbetaald', 'kosten', 'declaraties', 'eind', 'begin', 'rekeningen', 'zeilresultaat']
+const SECTION_ORDER: readonly DrillSection[] = ['rekeningen', 'inkomsten', 'salaris', 'scenario', 'terugbetaald', 'kosten', 'declaraties', 'eind', 'begin', 'zeilresultaat']
 const toCents = (n: number) => Math.round(n * 100)
 
 function build(entries: readonly Entry[]): Drill {
   const groups = new Map<string, { group: DrillGroup; cents: number }>()
   for (const e of entries) {
-    const key = [e.section, e.kind ?? '', e.org ?? ''].join('|')
-    const known = groups.get(key) ?? { group: { key, section: e.section, ...(e.kind ? { kind: e.kind } : {}), ...(e.org ? { org: e.org } : {}), eur: 0, other: {}, posts: [] }, cents: 0 }
+    const key = [e.section, e.kind ?? '', e.org ?? '', e.block?.block.id ?? ''].join('|')
+    const known = groups.get(key) ?? { group: { key, section: e.section, ...(e.kind ? { kind: e.kind } : {}), ...(e.org ? { org: e.org } : {}), ...(e.block ? { block: e.block } : {}), eur: 0, other: {}, posts: [] }, cents: 0 }
     known.group.posts.push(e.post)
     if (e.post.eur !== null) known.cents += toCents(e.post.eur)
     else known.group.other[e.post.currency] = (toCents(known.group.other[e.post.currency] ?? 0) + toCents(e.post.amount)) / 100
@@ -88,7 +99,7 @@ function build(entries: readonly Entry[]): Drill {
     group.posts.sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key))
     return group
   })
-  list.sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section) || Math.abs(b.eur) - Math.abs(a.eur) || a.key.localeCompare(b.key))
+  list.sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section) || (a.block && b.block ? a.block.number - b.block.number : 0) || Math.abs(b.eur) - Math.abs(a.eur) || a.key.localeCompare(b.key))
   const other: Partial<Record<Currency, number>> = {}
   for (const g of list) for (const [c, v] of Object.entries(g.other) as [Currency, number][]) other[c] = (toCents(other[c] ?? 0) + toCents(v)) / 100
   return { eur: list.reduce((n, g) => n + toCents(g.eur), 0) / 100, other, groups: list }
@@ -245,4 +256,78 @@ export function changeDrills(change: Extract<NetWorthChange, { state: 'bekend' }
   }))
   entries.push({ post: { key: 'zeilresultaat', date: change.to, amount: -sailing.eur, currency: 'EUR', eur: -sailing.eur, provisional: false }, section: 'zeilresultaat' })
   return { sailing, receivable, other: build(entries) }
+}
+
+/** De netto waarde op een dag: de rekeningen (de laatste stand) en wat nog te ontvangen is. Gelijk aan `totals.net`. */
+export function positionDrill(position: Position, trips: readonly Trip[], rates: RatesFile | null): Drill {
+  const byId = tripMap(trips)
+  const entries: Entry[] = []
+  for (const row of [...position.bank, ...position.cashAccounts, ...position.investments, ...position.debts]) {
+    if (!row.balance) continue
+    entries.push({
+      post: { key: row.account.id, account: row.account, date: row.balance.date, amount: row.balance.amount, currency: row.account.currency, eur: row.eur?.eur ?? null, provisional: row.eur?.provisional ?? false },
+      section: 'rekeningen',
+    })
+  }
+  return build([...entries, ...receivableEntries(position, byId, rates, 1)])
+}
+
+/** Uitsplitsing van de vooruitblik: elke regel van de som apart te openen. */
+export interface ForecastDrills {
+  start: Drill
+  salary: Drill
+  tips: Drill
+  scenario: Drill
+  costs: Drill
+}
+
+function itemPost(item: ForecastItem, key: string): DrillPost {
+  return { key, date: item.date, amount: item.eur, currency: 'EUR', eur: item.eur, provisional: false }
+}
+
+/**
+ * De regels van de vooruitblik met hun posten: elke regel telt op tot het bedrag in de som (dezelfde posten als
+ * `forecast`). Salaris per organisatie (elke post opent het salaris), geschatte fooi per organisatie, het scenario per
+ * blok en per maand, en de kosten: vaste lasten en variabele kosten per maand, en de kosten van een scenarioblok.
+ */
+export function forecastDrills(f: Forecast, start: Position, trips: readonly Trip[], rates: RatesFile | null): ForecastDrills {
+  const byId = tripMap(trips)
+  const of = (kinds: readonly ForecastItem['kind'][]) => f.items.filter((i) => kinds.includes(i.kind))
+  const salary = build(
+    of(['salaris']).map((item, i) => {
+      const tx = item.tx!
+      return {
+        post: { key: `${tx.id}:${i}`, tx, ...(item.trips[0] ? { trip: item.trips[0] } : {}), ...(item.payout ? { payout: item.payout } : {}), date: item.date, amount: tx.amount, currency: tx.currency, eur: item.eur, provisional: false },
+        section: 'salaris' as const,
+        kind: 'loon' as const,
+        org: groupOf(tx, byId),
+      }
+    }),
+  )
+  const tips = build(
+    of(['fooi']).map((item) => ({
+      post: { ...itemPost(item, `fooi:${item.trips[0]?.id ?? item.date}`), ...(item.trips[0] ? { trip: item.trips[0] } : {}), estimate: true },
+      section: 'inkomsten' as const,
+      kind: 'fooi' as const,
+      ...(item.org ? { org: item.org } : {}),
+    })),
+  )
+  const scenario = build(
+    of(['scenario']).map((item) => ({
+      post: { ...itemPost(item, `${item.part!.range.block.id}:${item.part!.month}`), amount: item.part!.income, currency: item.part!.range.block.currency, provisional: item.part!.provisional, month: item.part!.month },
+      section: 'scenario' as const,
+      block: item.part!.range,
+    })),
+  )
+  const costs = build(
+    of(['vaste-lasten', 'kosten', 'scenario-kosten']).map((item) => {
+      const kind = item.kind === 'vaste-lasten' ? ('vaste-lasten' as const) : item.kind === 'kosten' ? ('variabel' as const) : ('scenario-kosten' as const)
+      const post =
+        item.kind === 'scenario-kosten'
+          ? { ...itemPost(item, `kosten:${item.part!.range.block.id}:${item.part!.month}`), amount: -(item.part!.costs ?? 0), currency: item.part!.range.block.currency, provisional: item.part!.provisional, month: item.part!.month }
+          : { ...itemPost(item, `${kind}:${item.date}`), month: item.date.slice(0, 7), estimate: item.kind === 'kosten' }
+      return { post, section: 'kosten' as const, kind }
+    }),
+  )
+  return { start: positionDrill(start, trips, rates), salary, tips, scenario, costs }
 }

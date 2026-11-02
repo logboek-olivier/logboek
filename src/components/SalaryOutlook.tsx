@@ -43,6 +43,7 @@ export function SalaryOutlook({ store }: { store: Store }) {
       ) : (
         <>
           <p className="outlook-total">{t('outlook.until', { month: until, amount: formatMoney(o.expectedEur, 'EUR') })}</p>
+          <p className="muted small">{t('outlook.inclReceivable')}</p>
           {Object.entries(o.other).map(([c, v]) => (
             <p key={c} className="muted small">
               {t('money.noRateFor', { currency: c })}: {formatMoney(v, c)}

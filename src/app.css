@@ -4826,3 +4826,65 @@ button.drill-post {
 .change-unknown p {
   margin: 0;
 }
+
+/* ---------- Vooruitblik: de sluitende som en scenario's ---------- */
+
+.forecast-sum {
+  display: grid;
+  gap: 0;
+}
+
+.forecast-total {
+  min-height: 44px;
+  margin-top: var(--s-1);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--border);
+}
+
+.scenario-blocks {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+}
+
+.scenario-block {
+  gap: var(--s-1);
+  padding: var(--s-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.scenario-block-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scenario-actions {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.amount-currency {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-end;
+}
+
+.amount-currency .grow {
+  min-width: 0;
+}
+
+.scenario-move {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--s-1);
+}

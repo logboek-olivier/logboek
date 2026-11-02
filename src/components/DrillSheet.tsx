@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { formatDate, formatMoney } from '../format'
+import { formatDate, formatMoney, formatMonth } from '../format'
 import { t } from '../i18n'
 import { kindLabel } from '../i18n/labels'
 import type { Drill, DrillGroup, DrillPost, DrillSection } from '../domain/doorklik'
@@ -34,15 +34,20 @@ export interface DrillRequest {
 
 /** Een bedrag met plus of min (als er ook iets af gaat), anders gewoon het bedrag. */
 function amountText(eur: number, signed: boolean): string {
-  if (!signed) return formatMoney(eur, 'EUR')
+  if (!signed || Math.round(eur * 100) === 0) return formatMoney(eur === 0 ? 0 : eur, 'EUR')
   return `${eur >= 0 ? '+' : '−'}${formatMoney(Math.abs(eur), 'EUR')}`
 }
 
 function groupTitle(g: DrillGroup, labels: DrillRequest['labels']): string {
   // "Overig" zegt niets extra's (geld zonder organisatie): dan alleen de soort.
   const org = g.org && g.org !== 'overig' ? ` · ${groupLabel(g.org)}` : ''
+  if (g.kind === 'vaste-lasten') return t('drill.fixedCosts')
+  if (g.kind === 'variabel') return t('drill.variableCosts')
+  if (g.kind === 'scenario-kosten') return t('drill.scenarioCosts')
   const kind = g.kind === 'onbekend' ? t('drill.investmentNoKind') : g.kind ? (g.section === 'kosten' ? t(`costCategory.${g.kind as 'overig'}`) : kindLabel(g.kind as Transaction['kind'])) : ''
   switch (g.section) {
+    case 'scenario':
+      return g.block ? t('scenario.blockLine', { n: g.block.number, weeks: g.block.block.weeks, amount: formatMoney(g.block.block.incomePerWeek, g.block.block.currency) }) : ''
     case 'inkomsten':
     case 'kosten':
       return `${kind}${org}`
@@ -65,6 +70,8 @@ function groupTitle(g: DrillGroup, labels: DrillRequest['labels']): string {
 }
 
 function postTitle(p: DrillPost): string {
+  if (p.estimate && p.trip) return t('drill.tipEstimate', { trip: p.trip.name })
+  if (p.month && !p.tx) return formatMonth(p.month)
   if (p.tx) {
     if (p.tx.note?.trim()) return p.tx.note.trim()
     if (p.tx.kind === 'kosten' || p.tx.kind === 'investering') return t(`costCategory.${p.tx.category ?? 'overig'}`)
@@ -132,8 +139,9 @@ export function DrillSheet({ store, notify, request, onClose }: { store: Store; 
                       {postTitle(p)}
                       <span className="muted small">
                         {' · '}
-                        {p.account ? accountDetail(p) : formatDate(p.date)}
-                        {p.trip ? ` · ${p.trip.name}` : ''}
+                        {p.account ? accountDetail(p) : p.month && !p.tx ? t('drill.until', { date: formatDate(p.date) }) : formatDate(p.date)}
+                        {p.trip && !p.estimate ? ` · ${p.trip.name}` : ''}
+                        {p.payout ? ` · ${t('drill.payout', { date: formatDate(p.payout) })}` : ''}
                       </span>
                     </span>
                     <span className="num">
@@ -175,6 +183,7 @@ export function DrillSheet({ store, notify, request, onClose }: { store: Store; 
 
 /** Bij een rekening: de stand op de begindag en op het einde ("€ 1.000,00 → € 1.250,00"). */
 function accountDetail(p: DrillPost): string {
+  if (!p.balances) return formatDate(p.date)
   const show = (n: number | null | undefined) => (n === null || n === undefined ? '–' : formatMoney(n, p.currency))
   return `${show(p.balances?.start)} → ${show(p.balances?.end)}`
 }

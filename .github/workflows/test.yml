@@ -11,8 +11,9 @@ jobs:
   test:
     # Vast op 24.04: op het nieuwe ubuntu-latest (Ubuntu 26) blijft de Playwright-installatie met --with-deps hangen.
     runs-on: ubuntu-24.04
-    # De installatiestappen duren soms ruim 10 minuten; de tests zelf ongeveer 4.
-    timeout-minutes: 30
+    # Vitest duurt ongeveer 4 minuten, Playwright (alle schermen, ook de upgradetest) ruim 20, de installatie een paar
+    # minuten: samen rond de 30. Met ruimte, zodat een trage runner niet halverwege wordt afgebroken.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:

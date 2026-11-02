@@ -57,7 +57,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-claim', date: '2026-10-20', kind: 'kosten', amount: 18.4, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', category: 'overig', claimId: 'upg-claim-1', updatedAt: T, deletedAt: null },
   ],
   'settings.json.enc': [
-    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', careerStart: '2026-09-01', costDefaults: { thuis: 25, reis: 40 }, lastCostCategory: 'eten', organisations: [{ id: 'sailing-virgins', name: 'Sailing Virgins', short: 'SV' }, { id: 'yacht-week', name: 'Yacht Week', short: 'YW' }, { id: 'org:upg-nep', name: 'Nep Charters', short: 'NC' }], curriculumPacks: ['ASA', 'RYA', 'CWO'], updatedAt: T, deletedAt: null },
+    { id: 'settings', lastBoat: 'Nepboot', lastRole: 'schipper', lastCurrency: 'EUR', lastSource: 'yacht-week', yearGoalNm: 2500, orgFirst: { 'sailing-virgins': 3 }, orgAnswered: ['upg-trip-0'], salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } }, dailyReminder: { time: '19:30', workdaysOnly: true }, payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } }, lastTipVia: 'contant', careerStart: '2026-09-01', costDefaults: { thuis: 25, reis: 40 }, lastCostCategory: 'eten', organisations: [{ id: 'sailing-virgins', name: 'Sailing Virgins', short: 'SV' }, { id: 'yacht-week', name: 'Yacht Week', short: 'YW' }, { id: 'org:upg-nep', name: 'Nep Charters', short: 'NC' }], curriculumPacks: ['ASA', 'RYA', 'CWO'], activeScenarioId: 'upg-scenario-1', updatedAt: T, deletedAt: null },
     // Fundering: "laatst gebruikt" van een ander apparaat in een eigen record (oudere versies lezen alleen 'settings').
     { id: 'laatst:0a1b2c3d', lastBoat: 'Nepboot ander apparaat', lastRole: 'instructeur', lastCurrency: 'USD', lastSource: 'overig', lastWater: 'getij', updatedAt: T, deletedAt: null },
   ],
@@ -137,5 +137,9 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     // Saldo-geschiedenis (november 2026): een stand per dag (id met de datum), naast een stand van vóór de geschiedenis
     // (id per maand) in dezelfde maand. Beide blijven staan.
     { id: 'stand:upg-acc-1:2026-09-02', accountId: 'upg-acc-1', date: '2026-09-02', amount: 1000, source: 'handmatig', updatedAt: T, deletedAt: null },
+  ],
+  // Scenario's (november 2026, Geld → Verwacht → Scenario): twee blokken na de planning, één met eigen kosten.
+  'scenarios.json.enc': [
+    { id: 'upg-scenario-1', name: 'Nepscenario', blocks: [{ id: 'upg-blok-1', weeks: 20, incomePerWeek: 2000, currency: 'EUR' }, { id: 'upg-blok-2', weeks: 10, incomePerWeek: 1000, currency: 'USD', costsPerWeek: 250 }], updatedAt: T, deletedAt: null },
   ],
 }

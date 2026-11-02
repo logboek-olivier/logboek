@@ -333,6 +333,8 @@ export interface Settings extends SyncRecord {
   payouts?: Partial<Record<Organisation, PayoutRule>>
   /** Begin van de zeilcarrière (jjjj-mm-dd) voor "Sinds …" in Mijn positie; ontbreekt = 11 september 2026. */
   careerStart?: string
+  /** Geld → Verwacht → Scenario: het actieve scenario (scenarios.json.enc). */
+  activeScenarioId?: string | null
   /** Standaard variabele kosten per dag in euro per dagsoort, zolang de app nog te weinig eigen gegevens heeft. */
   costDefaults?: Partial<Record<CostDayType, number>>
   /** Laatst gekozen soort losse uitgave. */
@@ -725,6 +727,29 @@ export interface HistoryChange {
 }
 
 /** Versleutelde bestanden in logboek-data en hun recordtype. */
+/** Een blok van een scenario: aantal weken, inkomen per week (in de valuta van het blok) en optioneel kosten per week. */
+export interface ScenarioBlock {
+  id: string
+  weeks: number
+  incomePerWeek: number
+  currency: Currency
+  /** Leeg: de gemiddelde kosten per dagsoort, zoals bij Gepland. */
+  costsPerWeek?: number
+}
+
+/**
+ * Geld → Verwacht → Scenario (scenarios.json.enc): eigen blokken voor de weken ná de planning. Het eerste blok begint op
+ * `startDate`, anders op de dag na het einde van de planning; elk volgend blok direct na het vorige.
+ */
+export interface Scenario {
+  id: string
+  name: string
+  startDate?: string
+  blocks: ScenarioBlock[]
+  updatedAt: string
+  deletedAt: string | null
+}
+
 export interface Collections {
   'trips.json.enc': Trip
   'legs.json.enc': Leg
@@ -749,6 +774,7 @@ export interface Collections {
   'claims.json.enc': Claim
   'periods.json.enc': StayPeriod
   'history.json.enc': HistoryEntry
+  'scenarios.json.enc': Scenario
 }
 
 export type CollectionPath = keyof Collections
@@ -777,6 +803,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'claims.json.enc',
   'periods.json.enc',
   'history.json.enc',
+  'scenarios.json.enc',
 ]
 
 export function newId(): string {
