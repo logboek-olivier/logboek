@@ -212,11 +212,11 @@ for (const { width, scheme, lang } of RUNS) {
       await expect(page.getByRole('dialog').last().getByRole('button', { name: L('common.delete') })).toBeVisible()
       await shot('dag-bewerken')
       await page.getByRole('dialog').last().getByRole('button', { name: L('common.close') }).click()
-      // Trip bewerken: salaris en de fooien en inkomsten van de trip.
+      // Trip bewerken: het salaris (één regel) en de fooien en inkomsten van de trip.
       await overview.getByRole('button', { name: L('common.edit') }).click()
       const tripEdit = page.getByRole('dialog')
-      await tripEdit.getByRole('button', { name: new RegExp(`^${L('salary.title')}`) }).click()
       await tripEdit.getByRole('button', { name: new RegExp(L('tripIncome.title')) }).click()
+      await expect(tripEdit.locator('.salary-row')).toBeVisible()
       await tripEdit.locator('.trip-income').scrollIntoViewIfNeeded()
       await shot('trip-bewerken-geld')
       // Sluiten: terug in het tripoverzicht, dan dat ook dicht.

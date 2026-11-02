@@ -4,10 +4,10 @@ import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
-// Ronde 3 · PR 4: Geld → Mijn positie en de vooruitblik. Een betaalrekening en een studieschuld, een stand in een paar
-// seconden vanuit Mijn positie, een voorbije trip met salaris te ontvangen, een komende trip in de planning; de netto
-// waarde nu en "Sinds <start zeilcarrière>"; de vooruitblik met "Netto waarde eind …" en "Wat je planning toevoegt".
-// Alle gegevens verzonnen.
+// Geld → Mijn positie en de vooruitblik: de rekeningen plus wat nog te ontvangen is (geen contant meer). Een
+// betaalrekening en een studieschuld, een stand in een paar seconden vanuit Mijn positie, een voorbije trip met salaris te
+// ontvangen, een komende trip in de planning; de netto waarde nu en "Sinds <start zeilcarrière>"; de vooruitblik met
+// "Netto waarde eind …" en "Wat je planning toevoegt". Alle gegevens verzonnen.
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -15,6 +15,28 @@ function iso(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() + days)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * Het salaris van een tocht zetten (één loon-transactie, src/domain/geldmodel.ts): Meer → Periodes → zoeken → het
+ * tripoverzicht → Bewerken → Fooien en inkomsten → Salaris → bedrag (verwacht) → Opslaan.
+ */
+async function setSalary(page: Page, L: (key: MessageKey, ...args: unknown[]) => string, name: string, amount: string) {
+  await openMore(page, L('periods.title'), L('nav.more'))
+  await page.getByLabel(L('periods.search')).fill(name)
+  await page.locator('.period-row', { hasText: name }).click()
+  await page.getByRole('dialog').getByRole('button', { name: L('common.edit'), exact: true }).first().click()
+  const edit = page.getByRole('dialog', { name: L('week.edit') })
+  await edit.getByRole('button', { name: new RegExp(`^${L('tripIncome.title')}`) }).click()
+  await edit.locator('.salary-row').click()
+  const sheet = page.getByRole('dialog').last()
+  await sheet.getByLabel(L('salary.amount')).fill(amount)
+  await sheet.getByRole('button', { name: L('common.save') }).click()
+  await expect(page.locator('.toast')).toContainText(L('salary.tripSaved'))
+  await page.getByRole('dialog', { name: L('week.edit') }).getByRole('button', { name: L('common.close'), exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: L('common.close'), exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 }
 
 async function shots(page: Page, name: string, lang: Lang) {
@@ -64,10 +86,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
         await sheet.getByLabel(L('field.name'), { exact: true }).fill(name)
         await sheet.getByLabel(L('week.startDate')).fill(start)
         await sheet.getByRole('combobox', { name: L('week.organisation') }).selectOption({ label: 'Sailing Virgins' })
-        await sheet.getByRole('button', { name: /^(Salaris|Salary)/ }).click()
-        await sheet.getByLabel(L('salary.amount')).fill('1000')
         await sheet.getByRole('button', { name: L('week.start') }).click()
         await expect(page.getByRole('dialog')).toHaveCount(0)
+        // Het salaris is een eigen transactie bij de tocht: zetten via het salaris in Trip bewerken.
+        await setSalary(page, L, name, '1000')
       }
 
       // Geld → Mijn positie: de stand van de bank en de schuld in een paar seconden.
