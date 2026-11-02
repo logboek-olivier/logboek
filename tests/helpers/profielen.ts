@@ -6,7 +6,8 @@ import { DEFAULT_SETTINGS } from '../../src/model/settings'
 // Gouden dataset met twee nepprofielen voor geld en netto waarde (alles verzonnen, CLAUDE.md regel 4). De app moet voor
 // iedereen kloppen, niet alleen voor één gebruiker:
 // - Profiel A lijkt op een instructeur met een paar seizoenen: twee eigen organisaties, euro en dollars, rekeningen met
-//   een geschiedenis van standen (ook een lening en beleggingen), declaraties, een eerder seizoen en een planning.
+//   een geschiedenis van standen (ook een lening en beleggingen, een huis met hypotheek als bezitting en schuld),
+//   declaraties, een eerder seizoen en een planning.
 // - Profiel B is een vriend: één organisatie, alleen inkomsten in dollars, geen rekeningen, geen planning en geen start
 //   van de zeilcarrière.
 // De uitkomsten staan met de hand uitgerekend in tests/doorklik.test.ts (1 EUR = 1,25 USD op elke dag).
@@ -81,6 +82,8 @@ export function profileA(): Profile {
     account('a-beleg', 'Nepbeleggen', 'beleggen', 'EUR', 'degiro'),
     account('a-lening', 'Neplening', 'schuld'),
     account('a-usd', 'Nepdollars', 'betaal', 'USD', 'revolut'),
+    account('a-huis', 'Nephuis', 'bezit', 'EUR', 'bezit'),
+    account('a-hypotheek', 'Nephypotheek', 'schuld'),
   ]
   const balances = [
     balance('a-bank', '2025-12-31', 3000),
@@ -95,6 +98,10 @@ export function profileA(): Profile {
     balance('a-lening', '2026-11-01', -19000),
     balance('a-usd', '2026-01-01', 500),
     balance('a-usd', '2026-11-01', 800),
+    balance('a-huis', '2026-01-01', 250000),
+    balance('a-huis', '2026-11-01', 255000),
+    balance('a-hypotheek', '2026-01-01', -200000),
+    balance('a-hypotheek', '2026-11-01', -198000),
   ]
   const settings: Settings = {
     ...DEFAULT_SETTINGS,

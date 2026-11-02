@@ -2,7 +2,7 @@ import { toEur } from '../model/accounts'
 import { active } from '../model/derive'
 import { expenseCategory } from '../model/expenses'
 import { isEarned, isIncome } from '../model/money'
-import type { Forecast, ForecastItem, NetWorthChange, Position } from '../model/position'
+import { GROUP, type Forecast, type ForecastItem, type NetWorthChange, type Position } from '../model/position'
 import type { BlockRange } from '../model/scenario'
 import { eurValue, type RatesFile } from '../model/rates'
 import { groupOf, type TaxGroup } from '../model/tax-year'
@@ -233,7 +233,11 @@ export interface ChangeDrills {
   sailing: Drill
   /** Te ontvangen op het einde (plus) en op de begindag (min). */
   receivable: Drill
-  /** De verandering per rekening (plus), min het zeilresultaat. */
+  /** Waardeverandering van beleggingen en bezittingen, per rekening. */
+  value: Drill
+  /** Verandering van de schulden, per rekening. */
+  debts: Drill
+  /** De verandering op de bank en contant (plus), min het zeilresultaat. */
   other: Drill
 }
 
@@ -241,7 +245,7 @@ export function changeDrills(change: Extract<NetWorthChange, { state: 'bekend' }
   const byId = tripMap(trips)
   const sailing = resultDrill(transactions, trips, { from: addDays(change.from, 1), to: change.to })
   const receivable = build([...receivableEntries(change.end, byId, rates, 1, 'eind'), ...receivableEntries(change.start, byId, rates, -1, 'begin')])
-  const entries: Entry[] = change.accounts.map((a) => ({
+  const accountEntry = (a: (typeof change.accounts)[number]): Entry => ({
     post: {
       key: a.account.id,
       account: a.account,
@@ -253,16 +257,18 @@ export function changeDrills(change: Extract<NetWorthChange, { state: 'bekend' }
       balances: { start: a.start?.balance?.amount ?? null, end: a.end?.balance?.amount ?? null },
     },
     section: 'rekeningen',
-  }))
+  })
+  const of = (groups: readonly string[]) => change.accounts.filter((a) => groups.includes(GROUP[a.account.kind] ?? 'bank')).map(accountEntry)
+  const entries = of(['bank', 'cash'])
   entries.push({ post: { key: 'zeilresultaat', date: change.to, amount: -sailing.eur, currency: 'EUR', eur: -sailing.eur, provisional: false }, section: 'zeilresultaat' })
-  return { sailing, receivable, other: build(entries) }
+  return { sailing, receivable, value: build(of(['investments', 'assets'])), debts: build(of(['debts'])), other: build(entries) }
 }
 
 /** De netto waarde op een dag: de rekeningen (de laatste stand) en wat nog te ontvangen is. Gelijk aan `totals.net`. */
 export function positionDrill(position: Position, trips: readonly Trip[], rates: RatesFile | null): Drill {
   const byId = tripMap(trips)
   const entries: Entry[] = []
-  for (const row of [...position.bank, ...position.cashAccounts, ...position.investments, ...position.debts]) {
+  for (const row of [...position.bank, ...position.cashAccounts, ...position.investments, ...position.assets, ...position.debts]) {
     if (!row.balance) continue
     entries.push({
       post: { key: row.account.id, account: row.account, date: row.balance.date, amount: row.balance.amount, currency: row.account.currency, eur: row.eur?.eur ?? null, provisional: row.eur?.provisional ?? false },

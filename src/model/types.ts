@@ -670,11 +670,13 @@ export interface Project extends SyncRecord {
 export type CareerRecord = Application | Contact | Project
 
 /** Bij wie de rekening loopt: bepaalt alleen welk importformaat de app voorstelt. */
-export type AccountProvider = 'asn' | 'revolut' | 'bux' | 'degiro' | 'duo' | 'overig'
-export const ACCOUNT_PROVIDERS: readonly AccountProvider[] = ['asn', 'revolut', 'bux', 'degiro', 'duo', 'overig']
+/** Aanbieder van een rekening; `bezit` is geen bank maar iets dat geld waard is (huis, boot, auto). */
+export type AccountProvider = 'asn' | 'revolut' | 'bux' | 'degiro' | 'duo' | 'bezit' | 'overig'
+export const ACCOUNT_PROVIDERS: readonly AccountProvider[] = ['asn', 'revolut', 'bux', 'degiro', 'duo', 'bezit', 'overig']
 /** Soort rekening; een schuld (bijvoorbeeld de studieschuld) telt negatief mee in de netto waarde. */
-export type AccountKind = 'betaal' | 'spaar' | 'beleggen' | 'schuld' | 'contant'
-export const ACCOUNT_KINDS: readonly AccountKind[] = ['betaal', 'spaar', 'beleggen', 'schuld', 'contant']
+/** `bezit`: een bezitting (huis, boot, auto) met een geschatte waarde per datum, zoals een stand. */
+export type AccountKind = 'betaal' | 'spaar' | 'beleggen' | 'bezit' | 'schuld' | 'contant'
+export const ACCOUNT_KINDS: readonly AccountKind[] = ['betaal', 'spaar', 'beleggen', 'bezit', 'schuld', 'contant']
 
 /** Een rekening (accounts.json.enc, src/model/accounts.ts). Geen rekeningnummer, geen inloggegevens. */
 export interface Account extends SyncRecord {

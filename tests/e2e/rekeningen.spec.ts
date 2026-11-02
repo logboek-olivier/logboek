@@ -107,6 +107,27 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(toast).toHaveCount(0, { timeout: 15_000 })
       await shots(page, 'overzicht', lang)
 
+      // Een bezitting (boot): soort bezit, de geschatte waarde telt mee als een stand.
+      await page.getByRole('button', { name: L('accounts.add') }).click()
+      const assetSheet = page.getByRole('dialog').last()
+      await assetSheet.getByRole('radio', { name: L('accounts.provider.bezit') }).click()
+      await expect(assetSheet.getByLabel(L('accounts.kind'))).toHaveValue('bezit')
+      await expect(assetSheet.getByText(L('accounts.assetHint'))).toBeVisible()
+      await assetSheet.getByLabel(L('accounts.name')).fill('Nepboot')
+      await assetSheet.getByRole('button', { name: L('common.save') }).click()
+      const boat = page.locator('.row-button', { hasText: 'Nepboot' })
+      await boat.click()
+      const boatView = page.getByRole('dialog', { name: 'Nepboot' })
+      await boatView.getByLabel(L('accounts.standAmount'), { exact: true }).fill(lang === 'nl' ? '20.000' : '20,000')
+      await boatView.getByRole('button', { name: L('accounts.updateStand') }).click()
+      await expect(boatView.locator('.rows .row-button').first()).toContainText(formatMoney(20000, 'EUR', lang))
+      await boatView.getByRole('button', { name: L('common.close') }).click()
+
+      // Netto waarde 4.000 − 15.000 + 20.000: positief.
+      await expect(page.locator('.stat.hero dd')).toContainText(formatMoney(9000, 'EUR', lang))
+      await expect(paceLine).toContainText(L('accounts.pace.positive'))
+      await expect(toast).toHaveCount(0, { timeout: 15_000 })
+
       // Een onbekend bestand: zelf koppelen, alleen bedragen met het saldo nu.
       await asn.click()
       await page.getByRole('dialog').getByRole('button', { name: L('accounts.import') }).click()

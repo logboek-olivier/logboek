@@ -378,6 +378,7 @@ function AccountSheet({ store, account, notify, onClose }: { store: Store; accou
         </div>
         {hasStands && <p className="muted small">{t('accounts.currencyFixed')}</p>}
         {isDebt(input) && <p className="muted small">{t('accounts.debtHint')}</p>}
+        {input.kind === 'bezit' && <p className="muted small">{t('accounts.assetHint')}</p>}
         {account && (
           <label>
             {t('accounts.closedAt')}
