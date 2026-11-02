@@ -1,6 +1,7 @@
 import { balanceOn, toEur, type EurAmount } from './accounts'
 import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
+import { ownCostsOn, scenarioParts, type BlockRange, type ScenarioPart } from './scenario'
 import { active } from './derive'
 import { eurOf, totals } from './money'
 import { booked } from '../domain/geldmodel'
@@ -319,21 +320,42 @@ export function payoutMoment(trip: Trip, legs: readonly Leg[], settings: Setting
 }
 
 export interface ForecastItem {
-  /** jjjj-mm-dd: het uitbetaalmoment (salaris), het einde van de trip (fooi) of het einde van de maand (kosten). */
+  /** jjjj-mm-dd: het uitbetaalmoment (salaris), het einde van de trip (fooi), het einde van de maand (kosten) of van het deel van een scenarioblok. */
   date: string
-  /** Kosten (vaste lasten, variabele kosten) staan als negatief bedrag. */
-  kind: 'salaris' | 'fooi' | 'vaste-lasten' | 'kosten'
+  /** Kosten (vaste lasten, variabele kosten, kosten van een scenarioblok) staan als negatief bedrag. */
+  kind: 'salaris' | 'fooi' | 'vaste-lasten' | 'kosten' | 'scenario' | 'scenario-kosten'
   org?: Organisation
   trips: Trip[]
+  /** Bij salaris: het verwachte salaris (de transactie) en wanneer het waarschijnlijk wordt uitbetaald. */
+  tx?: Transaction
+  payout?: string
+  /** Bij een scenario: het blok en de maand. */
+  part?: ScenarioPart
   eur: number
 }
 
 export interface ForecastMonth {
   /** jjjj-mm */
   month: string
+  /** Alleen bij het eindpunt binnen de lopende maand: de einddatum (jjjj-mm-dd). */
+  date?: string
   /** Netto waarde aan het einde van de maand (de lopende maand: vandaag); verleden gemeten, toekomst verwacht. */
   eur: number | null
   future: boolean
+}
+
+/**
+ * De som van de vooruitblik, zichtbaar en sluitend (in centen): netto waarde vandaag + salaris + geschatte fooien +
+ * scenario-inkomen − kosten = netto waarde op de einddatum.
+ */
+export interface ForecastLines {
+  start: number
+  salary: number
+  tips: number
+  scenario: number
+  /** Negatief: vaste lasten, variabele kosten en de kosten van scenarioblokken. */
+  costs: number
+  end: number
 }
 
 export interface Forecast {
@@ -344,7 +366,7 @@ export interface Forecast {
   until: string
   /** Netto waarde aan het einde van de planning (null zonder koers voor alles van nu). */
   endEur: number | null
-  /** Wat de planning toevoegt: salaris plus geschatte fooi. */
+  /** Wat de planning toevoegt: salaris plus geschatte fooi plus scenario-inkomen, min kosten. */
   addsEur: number
   /** Daarvan geschatte fooi. */
   tipEstimateEur: number
@@ -352,9 +374,11 @@ export interface Forecast {
   costsEur: number
   /** Een dagsoort zonder eigen gemiddelde of standaardbedrag: de variabele kosten zijn dan te laag. */
   costsUnknown: boolean
-  /** Verwacht salaris zonder koers, per valuta (niet meegeteld). */
+  /** Verwacht salaris (of scenario-inkomen) zonder koers, per valuta (niet meegeteld). */
   other: Partial<Record<Currency, number>>
   months: ForecastMonth[]
+  /** De som regel voor regel; null als de netto waarde van vandaag niet in euro te zeggen is, of de periode al voorbij is. */
+  lines: ForecastLines | null
 }
 
 function monthsBetween(from: string, to: string): number {
@@ -368,12 +392,6 @@ function monthLast(month: string): string {
   return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
 }
 
-/**
- * Vooruitblik tot het einde van de planning (de laatste trip, of `planningEnd` uit de agenda): de netto waarde van nu,
- * plus het verwachte salaris van tochten die nog niet voorbij zijn (op het uitbetaalmoment) en een geschatte fooi per
- * komende trip (eigen gemiddelde van de organisatie, min wat er die trip al binnenkwam). Salaris van voorbije trips staat
- * al in "te ontvangen" en telt dus niet nog eens. De laatste zes maanden gemeten, daarna verwacht.
- */
 export interface CostInput {
   fixed: readonly FixedCost[]
   averages: Record<CostDayType, DayAverage>
@@ -381,66 +399,102 @@ export interface CostInput {
 }
 
 /**
- * `range` (zelf gekozen periode): de grafiek van de maand van `from` tot de maand van `to`, en alleen salaris, fooi en
- * kosten tot en met `to`. Zonder `range` de laatste `history` maanden tot het einde van de planning.
+ * Vooruitblik tot het einde van de planning (de laatste trip, of `planningEnd` uit de agenda), of tot en met `range.to`:
+ * de netto waarde van vandaag (dezelfde als in Mijn positie), plus het verwachte salaris van tochten die nog niet voorbij
+ * zijn (op het uitbetaalmoment, één regel per salaris), een geschatte fooi per komende trip (eigen gemiddelde van de
+ * organisatie, min wat er die trip al binnenkwam), het inkomen van een scenario (`scenario`: blokken ná de planning) en de
+ * kosten (vaste lasten naar rato, per dag het gemiddelde van de dagsoort, of de kosten van een scenarioblok). Salaris van
+ * voorbije trips staat al in "te ontvangen" en telt dus niet nog eens. Alles tot en met de einddatum, niets daarna.
  */
-export function forecast(input: PositionInput, settings: Settings, today: string, planningEnd: string | null = null, history = 6, costs: CostInput | null = null, range: Period | null = null): Forecast {
+export function forecast(
+  input: PositionInput,
+  settings: Settings,
+  today: string,
+  planningEnd: string | null = null,
+  history = 6,
+  costs: CostInput | null = null,
+  range: Period | null = null,
+  scenario: readonly BlockRange[] | null = null,
+): Forecast {
   const { trips, legs, transactions, rates } = input
   const now = positionAt(input, today).totals.net
   const items: ForecastItem[] = []
   const other: Partial<Record<Currency, number>> = {}
   let until = monthOf(today)
+  const scenarioLast = scenario && scenario.length > 0 ? scenario.at(-1)!.to : null
   if (range) {
     if (monthOf(range.to) > until) until = monthOf(range.to)
-  } else if (planningEnd && monthOf(planningEnd) > until) until = monthOf(planningEnd)
+  } else {
+    if (planningEnd && monthOf(planningEnd) > until) until = monthOf(planningEnd)
+    if (scenarioLast && monthOf(scenarioLast) > until) until = monthOf(scenarioLast)
+  }
   // Binnen de gekozen periode: alleen wat er tot en met `to` binnenkomt of afgaat.
   const inRange = (date: string) => !range || date <= range.to
   const averages = tipAverages(trips, legs, transactions, today)
+  // Alles in de vooruitblik valt na vandaag: wat vandaag al telt, zit in de netto waarde van vandaag.
+  const tomorrow = addDays(today, 1)
   for (const trip of active(trips)) {
     const end = tripEnd(trip, legs)
     // Voorbij zoals overal (een tocht die de dagen volgt pas drie dagen na de laatste dag): daarna staat het salaris in
     // "te ontvangen", daarvóór in de vooruitblik; nooit in geen van beide.
     if (!end || endedFor(trip, end) < today) continue
     if (!range && monthOf(end) > until) until = monthOf(end)
+    // Het salaris telt vanaf het einde van de tocht (daarna is het te ontvangen, zoals in positionAt), niet pas bij de
+    // uitbetaling: die verandert de netto waarde niet en staat er alleen ter informatie bij. Nooit op vandaag of eerder.
+    const counts = end > today ? end : tomorrow
     for (const s of active(transactions)) {
       if (s.kind !== 'loon' || s.tripId !== trip.id || salaryStatus(s) !== 'verwacht' || !(s.amount > 0)) continue
-      const moment = payoutMoment(trip, legs, settings) ?? end
-      if (!inRange(moment)) continue
-      if (!range && monthOf(moment) > until) until = monthOf(moment)
+      if (!inRange(counts)) continue
+      if (!range && monthOf(counts) > until) until = monthOf(counts)
       const eur = eurValue({ ...s, date: end }, rates)?.eur ?? null
       if (eur === null) other[s.currency] = round2((other[s.currency] ?? 0) + s.amount)
-      else {
-        const same = items.find((i) => i.kind === 'salaris' && i.date === moment && i.org === trip.organisation)
-        if (same) {
-          if (!same.trips.includes(trip)) same.trips.push(trip)
-          same.eur = round2(same.eur + eur)
-        } else items.push({ date: moment, kind: 'salaris', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], eur })
-      }
+      else items.push({ date: counts, kind: 'salaris', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], tx: s, payout: payoutMoment(trip, legs, settings) ?? end, eur })
     }
     const avg = trip.organisation ? averages[trip.organisation] : undefined
-    if (avg !== undefined && inRange(end)) {
+    const tipDate = end > today ? end : tomorrow
+    if (avg !== undefined && inRange(tipDate)) {
       const already = booked(transactions)
         .filter((tx) => tx.kind === 'fooi' && tx.tripId === trip.id)
         .reduce((n, tx) => n + (eurOf(tx) ?? 0), 0)
       const estimate = round2(Math.max(0, avg - already))
-      if (estimate > 0) items.push({ date: end, kind: 'fooi', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], eur: estimate })
+      if (estimate > 0) items.push({ date: tipDate, kind: 'fooi', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], eur: estimate })
     }
   }
-  // Kosten tot het einde van de planning: per maand de vaste lasten en de variabele kosten (negatief).
+  // Het scenario: per blok en per maand het inkomen (en de eigen kosten van het blok), tot en met de einddatum.
+  const endDate = range ? range.to : monthLast(until)
+  if (scenario) {
+    for (const part of scenarioParts(scenario, endDate, rates, today)) {
+      if (part.incomeEur === null) other[part.range.block.currency] = round2((other[part.range.block.currency] ?? 0) + part.income)
+      else if (part.incomeEur > 0) items.push({ date: part.date, kind: 'scenario', trips: [], part, eur: part.incomeEur })
+      if (part.costs !== null && part.costs > 0) {
+        if (part.costsEur === null) other[part.range.block.currency] = round2((other[part.range.block.currency] ?? 0) - part.costs)
+        else items.push({ date: part.date, kind: 'scenario-kosten', trips: [], part, eur: -part.costsEur })
+      }
+    }
+  }
+  // Kosten tot en met de einddatum: per maand de vaste lasten en de variabele kosten (negatief); dagen in een scenarioblok
+  // met eigen kosten tellen niet mee in de variabele kosten.
   let costsUnknown = false
   if (costs) {
-    for (const m of expectedCosts(costs.fixed, costs.averages, costs.index, today, until, rates)) {
-      const last = range && monthLast(m.month) > range.to ? range.to : monthLast(m.month)
+    const own = scenario ? (date: string) => ownCostsOn(scenario, date) : undefined
+    for (const m of expectedCosts(costs.fixed, costs.averages, costs.index, today, until, rates, endDate, own)) {
+      const last = monthLast(m.month) > endDate ? endDate : monthLast(m.month)
       if (m.fixedEur > 0) items.push({ date: last, kind: 'vaste-lasten', trips: [], eur: -m.fixedEur })
+      // Vaste lasten zonder koers: niet in de som in euro, wel apart erbij (nooit stil weggelaten).
+      for (const [c, v] of Object.entries(m.fixedOther ?? {}) as [Currency, number][]) other[c] = round2((other[c] ?? 0) - v)
       if (m.variableEur > 0) items.push({ date: last, kind: 'kosten', trips: [], eur: -m.variableEur })
       costsUnknown ||= m.unknown
     }
   }
-  const order = { salaris: 0, fooi: 1, 'vaste-lasten': 2, kosten: 3 }
+  const order = { salaris: 0, fooi: 1, scenario: 2, 'vaste-lasten': 3, kosten: 4, 'scenario-kosten': 5 }
   items.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind])
-  const addsEur = round2(items.reduce((n, i) => n + i.eur, 0))
-  const tipEstimateEur = round2(items.filter((i) => i.kind === 'fooi').reduce((n, i) => n + i.eur, 0))
-  const costsEur = round2(items.filter((i) => i.kind === 'vaste-lasten' || i.kind === 'kosten').reduce((n, i) => n + i.eur, 0))
+  const sum = (kinds: readonly ForecastItem['kind'][]) => items.filter((i) => kinds.includes(i.kind)).reduce((n, i) => n + cents(i.eur), 0)
+  const salary = sum(['salaris'])
+  const tips = sum(['fooi'])
+  const scenarioIncome = sum(['scenario'])
+  const costTotal = sum(['vaste-lasten', 'kosten', 'scenario-kosten'])
+  const addsCents = salary + tips + scenarioIncome + costTotal
+  const addsEur = addsCents / 100
   const nowKnown = Object.keys(now.other).length === 0
   const months: ForecastMonth[] = []
   const current = monthOf(today)
@@ -457,13 +511,20 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   if (range && range.to < today) {
     const past = months.filter((m) => m.month <= monthOf(range.to))
     const end = positionAt(input, range.to).totals.net
-    return { now, items: [], until: monthOf(range.to), endEur: Object.keys(end.other).length === 0 ? end.eur : null, addsEur: 0, tipEstimateEur: 0, costsEur: 0, costsUnknown: false, other, months: past }
+    return { now, items: [], until: monthOf(range.to), endEur: Object.keys(end.other).length === 0 ? end.eur : null, addsEur: 0, tipEstimateEur: 0, costsEur: 0, costsUnknown: false, other, months: past, lines: null }
+  }
+  // Eindigt de vooruitblik nog deze maand, dan een eindpunt op de einddatum (zo is het laatste punt altijd het einde).
+  if (monthOf(endDate) === current && endDate > today) {
+    const added = items.reduce((n, i) => n + cents(i.eur), 0)
+    months.push({ month: current, date: endDate, eur: nowKnown ? (cents(now.eur) + added) / 100 : null, future: true })
   }
   for (let month = shiftMonth(current, 1); month <= until; month = shiftMonth(month, 1)) {
-    const by = range && monthLast(month) > range.to ? range.to : monthLast(month)
-    const added = items.filter((i) => i.date <= by).reduce((n, i) => n + i.eur, 0)
-    months.push({ month, eur: nowKnown ? round2(now.eur + added) : null, future: true })
+    const by = monthLast(month) > endDate ? endDate : monthLast(month)
+    const added = items.filter((i) => i.date <= by).reduce((n, i) => n + cents(i.eur), 0)
+    months.push({ month, eur: nowKnown ? (cents(now.eur) + added) / 100 : null, future: true })
   }
   // De lopende maand: wat er nog deze maand binnenkomt, telt pas in de verwachte lijn; het punt van nu is gemeten.
-  return { now, items, until, endEur: nowKnown ? round2(now.eur + addsEur) : null, addsEur, tipEstimateEur, costsEur, costsUnknown, other, months }
+  const start = cents(now.eur)
+  const lines: ForecastLines | null = nowKnown ? { start: start / 100, salary: salary / 100, tips: tips / 100, scenario: scenarioIncome / 100, costs: costTotal / 100, end: (start + addsCents) / 100 } : null
+  return { now, items, until, endEur: lines ? lines.end : null, addsEur, tipEstimateEur: tips / 100, costsEur: costTotal / 100, costsUnknown, other, months, lines }
 }

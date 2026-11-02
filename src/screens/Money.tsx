@@ -8,6 +8,7 @@ import { MoneyPathSection } from '../components/MoneyPath'
 import { PositionAndForecast, useMoneyPeriod } from '../components/Position'
 import { PeriodPicker } from '../components/money-period'
 import { DrillSheet, type DrillRequest } from '../components/DrillSheet'
+import { ForecastModeSwitch, ScenarioSection, useForecastMode } from '../components/Scenario'
 import { costsDrill, incomeDrill, investmentDrill, organisationDrill, reimbursedDrill, resultDrill } from '../domain/doorklik'
 import { CostsSection } from '../components/Costs'
 import { ActualCostsSection } from '../components/ActualCosts'
@@ -17,7 +18,7 @@ import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
-import { buildIndex } from '../model/calendar'
+import { buildIndex, planningEnd } from '../model/calendar'
 import { perOrganisation, perWorkday, tipReports, toCheck, transactionList } from '../domain/geldrapport'
 import { aantalGastenZetten } from '../domain/trips'
 import { TripOverviewSheet } from '../components/TripOverview'
@@ -71,6 +72,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const transactions = useCollection(store, 'transactions.json.enc')
   // De periode bovenaan Geld geldt voor alle bedragen: de totalen, kosten per maand, per organisatie en de transacties.
   const { period, hasData, preset, careerSet } = useMoneyPeriod(store)
+  const mode = useForecastMode()
   const [drill, setDrill] = useState<DrillRequest | null>(null)
   const periodText = t('drill.period', { from: formatDate(period.from), to: formatDate(period.to) })
   // Alleen echt geld (geen verwacht salaris): dezelfde transacties als per organisatie, per werkdag en het jaaroverzicht
@@ -148,11 +150,14 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
           </button>
         ))}
       </div>
+      {/* Bovenaan Verwacht: Gepland of Scenario. */}
+      {view === 'verwacht' && <ForecastModeSwitch />}
       {hasData && <PeriodPicker period={period} preset={preset} careerSet={careerSet} />}
       {view === 'verwacht' && (
         <>
           <p className="muted small">{t('money.expectedHint')}</p>
-          <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} />
+          {mode === 'scenario' && <ScenarioSection store={store} notify={notify} planningEnd={planningEnd(index)} today={today} />}
+          <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} preset={preset} mode={mode} />
           <SalaryOutlook store={store} />
           <CostsSection store={store} notify={notify} />
         </>

@@ -98,18 +98,20 @@ describe('vooruitblik', () => {
     })
     const f = forecast(data, settings({ payouts: { 'sailing-virgins': { kind: 'maandelijks', day: 5 } } }), TODAY)
     expect(f.now.eur).toBe(500 + 1000)
-    expect(f.items.map((i) => [i.kind, i.date, i.eur])).toEqual([
-      ['fooi', '2026-11-02', 80],
-      ['salaris', '2026-12-05', 1000],
-      ['fooi', '2026-12-07', 100],
-      ['salaris', '2027-01-05', 1000],
+    // Het salaris telt vanaf het einde van de tocht (dan is het te ontvangen, zoals in Mijn positie); het uitbetaalmoment
+    // (maandelijks rond de 5e) staat er alleen bij.
+    expect(f.items.map((i) => [i.kind, i.date, i.eur, i.payout])).toEqual([
+      ['salaris', '2026-11-02', 1000, '2026-12-05'],
+      ['fooi', '2026-11-02', 80, undefined],
+      ['salaris', '2026-12-07', 1000, '2027-01-05'],
+      ['fooi', '2026-12-07', 100, undefined],
     ])
     expect(f.addsEur).toBe(2180)
     expect(f.tipEstimateEur).toBe(180)
     expect(f.endEur).toBe(1500 + 2180)
-    expect(f.until).toBe('2027-01')
+    expect(f.until).toBe('2026-12')
     // Gemeten tot en met nu, daarna verwacht; de laatste maand is het einde.
     expect(f.months.filter((m) => !m.future).at(-1)).toEqual({ month: '2026-10', eur: 1500, future: false })
-    expect(f.months.at(-1)).toEqual({ month: '2027-01', eur: 3680, future: true })
+    expect(f.months.at(-1)).toEqual({ month: '2026-12', eur: 3680, future: true })
   })
 })

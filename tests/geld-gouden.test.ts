@@ -160,13 +160,13 @@ describe('Geld omzetten met de gouden dataset', () => {
 })
 
 describe('schemaversie 2', () => {
-  it('leest een bestand van versie 1 (het oude geldmodel) gewoon in en schrijft versie 2', () => {
+  it('leest een bestand van versie 1 (het oude geldmodel) gewoon in en schrijft de huidige versie', () => {
     const v1 = new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 1, records: oldTrips() }))
     const trips = decodeRecords<Trip>('trips.json.enc', v1)
     expect(trips).toHaveLength(9)
     expect(trips.filter((x) => 'salary' in x)).toHaveLength(8)
-    expect(SCHEMA_VERSION).toBe(2)
-    expect((JSON.parse(new TextDecoder().decode(encodeRecords(trips))) as { schemaVersion: number }).schemaVersion).toBe(2)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(2)
+    expect((JSON.parse(new TextDecoder().decode(encodeRecords(trips))) as { schemaVersion: number }).schemaVersion).toBe(SCHEMA_VERSION)
   })
 })
 

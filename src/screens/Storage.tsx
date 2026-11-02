@@ -51,6 +51,7 @@ export const FILE_NAME: Record<CollectionPath, MessageKey> = {
   'accounts.json.enc': 'storage.file.accounts',
   'balances.json.enc': 'storage.file.balances',
   'fixedcosts.json.enc': 'storage.file.fixedcosts',
+  'scenarios.json.enc': 'storage.file.scenarios',
   'claims.json.enc': 'storage.file.claims',
   'periods.json.enc': 'storage.file.periods',
   'history.json.enc': 'storage.file.history',

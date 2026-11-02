@@ -1,8 +1,7 @@
 import { ChevronRight, Landmark, TrendingUp } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
-import { formatDate, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
+import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
 import { getLang, t } from '../i18n'
-import { organisationLabel } from '../i18n/labels'
 import { isDebt } from '../model/accounts'
 import { buildIndex, planningEnd, type CalendarIndex } from '../model/calendar'
 import { nameWithCounter } from '../model/counters'
@@ -20,7 +19,9 @@ import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
 import { usePeriodChoice } from './money-period'
 import { beginsaldiInvoeren, standOpslaan } from '../domain/geld'
-import { changeDrills, receivableDrill } from '../domain/doorklik'
+import { changeDrills, forecastDrills, receivableDrill } from '../domain/doorklik'
+import { blockRanges, scenarioEnd, scenarioStart } from '../model/scenario'
+import { useActiveScenario, type ForecastMode } from './Scenario'
 import { DrillSheet, type DrillRequest } from './DrillSheet'
 import { instellingenOpslaan } from '../domain/instellingen'
 import { parseStand } from '../basis/bedrag'
@@ -47,6 +48,7 @@ function sumText(sum: Sum): string {
 }
 
 function signed(n: number): string {
+  if (Math.round(n * 100) === 0) return formatMoney(0, 'EUR')
   return `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n), 'EUR')}`
 }
 
@@ -69,18 +71,14 @@ export function useMoneyPeriod(store: Store): { period: Period; hasData: boolean
 }
 
 /** Mijn positie (Werkelijk) of de vooruitblik (Verwacht), in de periode bovenaan Geld. */
-export function PositionAndForecast({ store, notify, part, period }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik. */ part: 'werkelijk' | 'verwacht'; period: Period }) {
+export function PositionAndForecast({ store, notify, part, period, preset = 'carriere', mode = 'gepland' }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik. */ part: 'werkelijk' | 'verwacht'; period: Period; preset?: PeriodPreset; mode?: ForecastMode }) {
   const input = usePositionInput(store)
   const settingsRecords = useCollection(store, 'settings.json.enc')
   const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
   const calendar = useCollection(store, 'calendar.json.enc')
   const stays = useCollection(store, 'periods.json.enc')
   const index = useMemo(() => buildIndex(calendar, input.trips, input.legs, [], stays), [calendar, input.trips, input.legs, stays])
-  return part === 'werkelijk' ? <PositionSection store={store} notify={notify} input={input} period={period} /> : <ForecastSection store={store} input={input} settings={settings} index={index} period={period} />
-}
-
-function signedPart(n: number): string {
-  return `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n), 'EUR')}`
+  return part === 'werkelijk' ? <PositionSection store={store} notify={notify} input={input} period={period} /> : <ForecastSection store={store} notify={notify} input={input} settings={settings} index={index} period={period} preset={preset} mode={mode} />
 }
 
 function PositionSection({ store, notify, input, period }: { store: Store; notify: Notify; input: PositionInput; period: Period }) {
@@ -177,7 +175,7 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
           <>
             <p className="row">
               <span className="grow">{range}</span>
-              <strong className={`num ${change.change >= 0 ? 'positive' : 'negative'}`}>{signedPart(change.change)}</strong>
+              <strong className={`num ${change.change >= 0 ? 'positive' : 'negative'}`}>{signed(change.change)}</strong>
             </p>
             <ul className="plain-list change-parts">
               {(
@@ -190,7 +188,7 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
                 <li key={part}>
                   <button type="button" className="row change-part" onClick={() => openPart(part)}>
                     <span className="grow small">{label}</span>
-                    <span className="num small">{signedPart(eur)}</span>
+                    <span className="num small">{signed(eur)}</span>
                     <Icon icon={ChevronRight} />
                   </button>
                 </li>
@@ -210,7 +208,7 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
         {change.state === 'geen-koers' && <p className="muted small">{t('position.changeNoRate')}</p>}
         {change.state === 'toekomst' && today < change.from && <p className="muted small">{t('position.periodFuture', { date: formatDate(change.from) })}</p>}
       </div>
-      {!hasAccounts && <p className="muted small">{t('position.noAccounts')}</p>}
+      {!hasAccounts && <p className="muted small">{t('position.onlyReceivable')}</p>}
       {stand && <QuickStandSheet store={store} account={stand} notify={notify} onClose={() => setStand(null)} />}
       {drill && <DrillSheet store={store} notify={notify} request={drill} onClose={() => setDrill(null)} />}
       {starting && <StartBalanceSheet store={store} notify={notify} date={starting.date} accounts={starting.accounts} onClose={() => setStarting(null)} />}
@@ -331,23 +329,47 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
 }
 
 /**
- * Vooruitblik tot het einde van de planning: de netto waarde aan het einde ("≈"), wat de planning toevoegt, een grafiek
- * (gemeten doorgetrokken, verwacht gestippeld) en het verwachte salaris per uitbetaalmoment plus de geschatte fooi.
+ * Vooruitblik (Verwacht): de som zichtbaar en sluitend, elke regel te tikken: netto waarde vandaag + salaris + geschatte
+ * fooien (+ scenario-inkomen) − kosten = netto waarde op de einddatum; daaronder de grafiek (gemeten doorgetrokken,
+ * verwacht gestippeld). Bij Scenario loopt de vooruitblik door tot het einde van het scenario (behalve bij een zelf gekozen
+ * einddatum).
  */
-function ForecastSection({ store, input, settings, index, period }: { store: Store; input: PositionInput; settings: Settings; index: CalendarIndex; period: Period }) {
+function ForecastSection({ store, notify, input, settings, index, period, preset, mode }: { store: Store; notify: Notify; input: PositionInput; settings: Settings; index: CalendarIndex; period: Period; preset: PeriodPreset; mode: ForecastMode }) {
   const fixed = useCollection(store, 'fixedcosts.json.enc')
-  const counters = useCounters(store)
+  const scenario = useActiveScenario(store)
+  const [drill, setDrill] = useState<DrillRequest | null>(null)
   const today = todayIso()
+  const pEnd = planningEnd(index)
+  const ranges = useMemo(() => (mode === 'scenario' && scenario ? blockRanges(scenario, scenarioStart(scenario, pEnd, today)) : null), [mode, scenario, pEnd, today])
+  const lastDay = ranges ? scenarioEnd(ranges) : null
+  // Scenario: tot het einde van het scenario, behalve als de gebruiker zelf een einddatum koos.
+  const extended = !!lastDay && lastDay > period.to && preset !== 'eigen'
+  const range = useMemo(() => (extended && lastDay ? { from: period.from, to: lastDay } : period), [extended, lastDay, period])
   // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten. Alleen
   // opnieuw rekenen als de gegevens veranderen (de vooruitblik loopt over alle trips, dagen en transacties).
   const f = useMemo(() => {
     const averages = dayAverages(input.transactions, index, today, settings)
-    return forecast(input, settings, today, planningEnd(index), 6, { fixed, averages, index }, period)
-  }, [input, index, today, settings, fixed, period])
-  if (f.items.length === 0 && f.months.every((m) => m.eur === null)) return null
+    return forecast(input, settings, today, pEnd, 6, { fixed, averages, index }, range, ranges)
+  }, [input, index, today, settings, fixed, range, ranges, pEnd])
+  // Niets te tonen: geen posten, geen gemeten maand en niets zonder koers (dan wel de melding dat een koers ontbreekt).
+  if (f.items.length === 0 && f.months.every((m) => m.eur === null) && Object.keys(f.other).length === 0 && Object.keys(f.now.other).length === 0) return null
+  const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
   // Maanden zonder gegevens aan het begin laten we weg (vóór de eerste stand is er niets te tekenen).
   const first = f.months.findIndex((m) => m.eur !== null)
   const months = first > 0 ? f.months.slice(first) : f.months
+  const periodText = t('drill.period', { from: formatDate(today), to: formatDate(range.to) })
+  const open = (line: 'start' | 'salary' | 'tips' | 'scenario' | 'costs') => {
+    const drills = forecastDrills(f, positionAt(input, today), input.trips, input.rates)
+    const requests: Record<typeof line, DrillRequest> = {
+      start: { title: t('forecast.lineStart'), drill: drills.start, hint: t('forecast.startHint', { date: formatDate(today) }), signed: true },
+      salary: { title: t('forecast.lineSalary'), drill: drills.salary, period: periodText, hint: t('forecast.salaryHint'), signed: true },
+      tips: { title: t('forecast.lineTips'), drill: drills.tips, period: periodText, hint: t('forecast.tipsHint'), signed: true },
+      scenario: { title: t('forecast.lineScenario'), drill: drills.scenario, period: periodText, hint: t('forecast.scenarioIncomeHint'), signed: true },
+      costs: { title: t('forecast.lineCosts'), drill: drills.costs, period: periodText, hint: t('forecast.costsHint'), signed: true },
+    }
+    setDrill(requests[line])
+  }
+  const lines = f.lines
   return (
     <div className="section card card-body stack-sm forecast">
       <div className="section-head">
@@ -356,19 +378,42 @@ function ForecastSection({ store, input, settings, index, period }: { store: Sto
           {t('forecast.title')}
         </h2>
       </div>
-      {f.endEur !== null ? <p className="forecast-end">{t('forecast.endOn', { date: formatDate(period.to), amount: formatMoney(f.endEur, 'EUR') })}</p> : <p className="muted small">{t('forecast.noRate')}</p>}
-      <p className="row">
-        <span className="grow">{t('forecast.adds')}</span>
-        <strong className="num">{signed(f.addsEur)}</strong>
-      </p>
-      {f.tipEstimateEur > 0 && <p className="muted small">{t('forecast.tipPart', { amount: formatMoney(f.tipEstimateEur, 'EUR') })}</p>}
-      {f.costsEur < 0 && <p className="muted small">{t('forecast.costsPart', { amount: formatMoney(-f.costsEur, 'EUR') })}</p>}
+      {f.endEur !== null ? <p className="forecast-end">{t('forecast.endOn', { date: formatDate(range.to), amount: formatMoney(f.endEur, 'EUR') })}</p> : <p className="muted small">{t('forecast.noRate')}</p>}
+      {lines && (
+        <ul className="plain-list forecast-sum">
+          {(
+            [
+              ['start', t('forecast.lineStart'), lines.start, false],
+              ['salary', t('forecast.lineSalary'), lines.salary, true],
+              ['tips', t('forecast.lineTips'), lines.tips, true],
+              ...(mode === 'scenario' ? ([['scenario', t('forecast.lineScenario'), lines.scenario, true]] as const) : []),
+              ['costs', t('forecast.lineCosts'), lines.costs, true],
+            ] as const
+          ).map(([key, label, eur, isPart]) => (
+            <li key={key}>
+              <button type="button" className="row change-part" onClick={() => open(key)}>
+                <span className="grow small">{label}</span>
+                <span className={`num small${key === 'start' && eur < 0 ? ' negative' : ''}`}>{isPart ? signed(eur) : formatMoney(eur, 'EUR')}</span>
+                <Icon icon={ChevronRight} />
+              </button>
+            </li>
+          ))}
+          <li className="row forecast-total">
+            <strong className="grow small">{t('forecast.lineEnd', { date: formatDate(range.to) })}</strong>
+            <strong className={`num small ${lines.end >= 0 ? 'positive' : 'negative'}`}>{formatMoney(lines.end, 'EUR')}</strong>
+          </li>
+        </ul>
+      )}
+      {lines && <p className="muted small">{t('forecast.sumHint')}</p>}
+      {!hasAccounts && <p className="muted small">{t('position.onlyReceivable')}</p>}
+      {extended && lastDay && <p className="muted small">{t('forecast.toScenarioEnd', { date: formatDate(lastDay) })}</p>}
+      {!extended && lastDay && range.to < lastDay && <p className="muted small">{t('forecast.scenarioCut', { date: formatDate(lastDay) })}</p>}
       {f.costsUnknown && <p className="muted small">{t('forecast.costsUnknown')}</p>}
       <LineChart
-        points={months.map((m) => ({ key: m.month, label: formatMonthShort(m.month), value: m.eur, future: m.future }))}
-        label={`${t('forecast.chart')}: ${months.map((m) => `${formatMonth(m.month)} ${m.eur === null ? '–' : formatMoney(m.eur, 'EUR')}${m.future ? ` (${t('forecast.expected')})` : ''}`).join(', ')}`}
+        points={months.map((m) => ({ key: m.date ?? m.month, label: m.date ? formatDateShort(m.date) : formatMonthShort(m.month), value: m.eur, future: m.future }))}
+        label={`${t('forecast.chart')}: ${months.map((m) => `${m.date ? formatDate(m.date) : formatMonth(m.month)} ${m.eur === null ? '–' : formatMoney(m.eur, 'EUR')}${m.future ? ` (${t('forecast.expected')})` : ''}`).join(', ')}`}
         format={(n) => formatMoneyShort(n)}
-        labelEvery={months.length > 8 ? 2 : 1}
+        labelEvery={months.length > 8 ? Math.ceil(months.length / 6) : 1}
       />
       <ul className="legend">
         <li>
@@ -378,30 +423,12 @@ function ForecastSection({ store, input, settings, index, period }: { store: Sto
           <span className="swatch line dashed" /> {t('forecast.expected')}
         </li>
       </ul>
-      {f.items.length > 0 && (
-        <ul className="plain-list forecast-items">
-          {f.items.map((item, i) => (
-            <li key={i} className="row small">
-              <span className="muted">{formatDate(item.date)}</span>
-              <span className="grow">
-                {item.kind === 'salaris'
-                  ? t('forecast.salary', { org: item.org ? organisationLabel(item.org) : t('forecast.noOrg'), n: item.trips.length })
-                  : item.kind === 'fooi'
-                    ? t('forecast.tip', { trip: nameWithCounter(item.trips[0]!, counters.get(item.trips[0]!.id)) })
-                    : item.kind === 'vaste-lasten'
-                      ? t('forecast.fixed', { month: formatMonth(item.date.slice(0, 7)) })
-                      : t('forecast.variable', { month: formatMonth(item.date.slice(0, 7)) })}
-              </span>
-              <span className={`num${item.kind === 'fooi' || item.kind === 'kosten' ? ' muted' : ''}${item.eur < 0 ? ' negative' : ''}`}>{item.eur < 0 ? `−${formatMoney(-item.eur, 'EUR')}` : formatMoney(item.eur, 'EUR')}</span>
-            </li>
-          ))}
-        </ul>
-      )}
       {Object.entries(f.other).map(([c, v]) => (
         <p key={c} className="muted small">
           {t('money.noRateFor', { currency: c })}: {formatMoney(v, c)}
         </p>
       ))}
+      {drill && <DrillSheet store={store} notify={notify} request={drill} onClose={() => setDrill(null)} />}
     </div>
   )
 }

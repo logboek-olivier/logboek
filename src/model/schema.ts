@@ -5,7 +5,10 @@
 // 2: één waarheid voor geld (src/domain/geldmodel.ts): het salaris is een transactie met een status, contant en gestort
 // bestaan niet meer. Versie 1 blijft leesbaar; "Geld omzetten" (na één tik, src/domain/geld-omzetten.ts) zet het geld om.
 // Een build van vóór de schrijfversie (die alleen de schemaversie kent) schrijft daardoor niet meer over deze bestanden.
-export const SCHEMA_VERSION = 2
+// 3: scenario's (scenarios.json.enc, Geld → Verwacht → Scenario): een nieuw databestand en recordtype. De bestanden van
+// versie 2 blijven ongewijzigd leesbaar (er is niets om te zetten); een oudere build leest een bestand van versie 3 als
+// "van een nieuwere versie" en schrijft niets.
+export const SCHEMA_VERSION = 3
 
 // Schrijfversie van deze build: elk databestand dat deze build schrijft, krijgt hem mee als `minWriterVersion` (in de
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
@@ -27,7 +30,9 @@ export const SCHEMA_VERSION = 2
 // 7: standen van rekeningen hebben een geschiedenis (een stand per dag, id `stand:<rekening>:<jjjj-mm-dd>`). Een oudere
 // build houdt één stand per maand bij en zou een beginsaldo eerder in de maand weigeren of een tweede stand op dezelfde
 // dag maken; hij schrijft niet meer over deze bestanden.
-export const WRITER_VERSION = 7
+// 8: scenario's (scenarios.json.enc) en het actieve scenario in de instellingen. Een oudere build kent het bestand niet
+// en zou het actieve scenario bij het opslaan van de instellingen niet bewaren.
+export const WRITER_VERSION = 8
 
 let writer = WRITER_VERSION
 

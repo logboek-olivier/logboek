@@ -131,32 +131,50 @@ export interface CostMonth {
   /** jjjj-mm */
   month: string
   fixedEur: number
+  /** Vaste lasten zonder koers, per valuta (naar rato), apart van het bedrag in euro. */
+  fixedOther?: Partial<Record<Currency, number>>
   variableEur: number
   /** Een dagsoort zonder gemiddelde of standaard kwam voor: de variabele kosten zijn dan te laag. */
   unknown: boolean
 }
 
 /**
- * Verwachte kosten van morgen tot en met het einde van `until` (jjjj-mm), per maand: vaste lasten (de lopende maand naar
- * rato van de dagen die nog komen) en variabele kosten (per dag het gemiddelde van de dagsoort uit de agenda).
+ * Verwachte kosten per maand van morgen tot en met de maand `until` (of tot en met `endDate`): de vaste lasten naar rato
+ * van de dagen die nog komen, en per dag het gemiddelde van zijn dagsoort. `skip`: dagen met eigen kosten (een
+ * scenarioblok met kosten per week) tellen niet mee in de variabele kosten.
  */
-export function expectedCosts(fixed: readonly FixedCost[], averages: Record<CostDayType, DayAverage>, index: CalendarIndex, today: string, until: string, rates: RatesFile | null): CostMonth[] {
+export function expectedCosts(
+  fixed: readonly FixedCost[],
+  averages: Record<CostDayType, DayAverage>,
+  index: CalendarIndex,
+  today: string,
+  until: string,
+  rates: RatesFile | null,
+  endDate?: string,
+  skip?: (date: string) => boolean,
+): CostMonth[] {
   const out: CostMonth[] = []
   const first = month(today)
-  for (let m = first; m <= until; m = shiftMonth(m, 1)) {
+  const last = endDate && month(endDate) < until ? month(endDate) : until
+  for (let m = first; m <= last; m = shiftMonth(m, 1)) {
     const total = daysInMonth(m)
     const startDay = m === first ? Number(today.slice(8, 10)) + 1 : 1
-    const remaining = Math.max(0, total - startDay + 1)
-    const f = fixedInMonth(fixed, m, rates).eur
+    const endDay = endDate && m === month(endDate) ? Number(endDate.slice(8, 10)) : total
+    const counted = Math.max(0, endDay - startDay + 1)
+    const fixedMonth = fixedInMonth(fixed, m, rates)
+    const f = fixedMonth.eur
+    const fixedOther: Partial<Record<Currency, number>> = {}
+    for (const [c, v] of Object.entries(fixedMonth.other) as [Currency, number][]) fixedOther[c] = round2((v * counted) / total)
     let variable = 0
     let unknown = false
-    for (let day = startDay; day <= total; day++) {
+    for (let day = startDay; day <= endDay; day++) {
       const date = `${m}-${String(day).padStart(2, '0')}`
+      if (skip?.(date)) continue
       const avg = averages[costDayType(dayInfo(index, date, today).type)]
       variable += avg.perDay
       if (avg.source === 'onbekend') unknown = true
     }
-    out.push({ month: m, fixedEur: round2((f * remaining) / total), variableEur: round2(variable), unknown })
+    out.push({ month: m, fixedEur: round2((f * counted) / total), ...(Object.keys(fixedOther).length > 0 ? { fixedOther } : {}), variableEur: round2(variable), unknown })
   }
   return out
 }
