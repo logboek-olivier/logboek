@@ -108,6 +108,11 @@ export function tripOrganisation(trip: Trip): string | null {
  * De bron die oudere versies (en het jaaroverzicht als terugval) lezen: Sailing Virgins of Yacht Week als de trip daarbij
  * hoort (ook uit de naam, zoals de teller), delivery bij een delivery, anders overig. Nooit een eerder gekozen bron.
  */
+/** De bron van geld bij een organisatie (een seizoen): oudere versies kennen alleen deze vier. */
+export function sourceForOrganisation(org: string): TransactionSource {
+  return org === 'sailing-virgins' || org === 'yacht-week' ? org : 'overig'
+}
+
 export function sourceForPeriod(trip: Trip | undefined): TransactionSource {
   const org = trip ? (trip.organisation ?? tripOrganisation(trip)) : null
   if (org === 'sailing-virgins' || org === 'yacht-week') return org

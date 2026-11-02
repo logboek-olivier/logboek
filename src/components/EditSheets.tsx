@@ -1,3 +1,6 @@
+import { linkOf, type MoneyLink } from '../domain/geldmodel'
+import { TripPickerField } from './TripPicker'
+import { sourceForOrganisation } from '../basis/organisatie'
 import { BelongsTo, useBelongsTo } from './BelongsTo'
 import { expenseCategory, kindForCategory, sourceOnSave } from '../model/expenses'
 import { placeLeg } from '../model/leg-trip'
@@ -20,7 +23,6 @@ import { kindLabel, roleLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
 import { TipFromPicker } from './TipFromPicker'
 import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
-import { stayName } from '../model/periods'
 import { getLang, t } from '../i18n'
 import { dagBewerkenMetTrip, dagVerwijderen } from '../domain/dagen'
 import { geldBewerken, geldVerwijderen, uitgaveBewerken } from '../domain/geld'
@@ -58,12 +60,13 @@ export function TransactionSheet({
   const [date, setDate] = useState(tx.date)
   const [note, setNote] = useState(tx.note ?? '')
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
-  const [tripId, setTripId] = useState(tx.tripId ?? '')
+  // Tocht, eerder seizoen of niets (de tochtkiezer); een periode aan land blijft zoals hij was.
+  const [link, setLink] = useState<MoneyLink>(linkOf(tx))
+  const tripId = link.kind === 'tocht' ? link.tripId : ''
   // Een oude investering zonder soort: geen gok, Olivier kiest zelf (anders blijft hij zonder soort, in Nakijken).
   const [category, setCategory] = useState<CostCategory | null>(expenseCategory(tx))
   const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId, true)
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
-  const stayOf = (id: string) => active(store.get('periods.json.enc')).find((p) => p.id === id)
   const [busy, setBusy] = useState(false)
   // Fooi: van wie, achteraf te wijzigen; een andere trip begint weer bij onbekend.
   const people = kind === 'fooi' ? (trips.find((x) => x.id === tripId)?.participants ?? []) : []
@@ -95,7 +98,7 @@ export function TransactionSheet({
       if (expense && !tx.claimId) await uitgaveBewerken(store, tx, belongs.current, patch)
       else {
         const trip = tripId ? store.list('trips.json.enc').find((x) => x.id === tripId) : undefined
-        await geldBewerken(store, tx, { ...patch, tripId: tripId || null, source: sourceOnSave(trip, tx.source) })
+        await geldBewerken(store, tx, { ...patch, tripId: tripId || null, season: link.kind === 'seizoen' ? link.season : null, source: link.kind === 'seizoen' ? sourceForOrganisation(link.season.org) : sourceOnSave(trip, tx.source) })
       }
       onClose()
       notify(t('toast.saved'))
@@ -189,19 +192,7 @@ export function TransactionSheet({
         {expense && !tx.claimId ? (
           <BelongsTo store={store} options={belongs.options} value={belongs.key} onChange={belongs.choose} />
         ) : (
-          <label>
-            {t('field.trip')}
-            <select value={tripId} onChange={(e) => setTripId(e.target.value)}>
-              {/* Gekoppeld aan een periode die weg is of aan land: zo laten staan. */}
-              {tx.tripId && !trips.some((x) => x.id === tx.tripId) && <option value={tx.tripId}>{stayOf(tx.tripId) ? stayName(stayOf(tx.tripId)!) : t('belongsTo.none')}</option>}
-              <option value="">{t('quick.noTrip')}</option>
-              {trips.map((trip) => (
-                <option key={trip.id} value={trip.id}>
-                  {trip.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <TripPickerField store={store} value={link} onChange={setLink} date={date} />
         )}
         {people.length > 0 && (
           <TipFromPicker

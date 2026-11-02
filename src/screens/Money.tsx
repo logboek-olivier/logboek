@@ -1,4 +1,4 @@
-import { ChevronRight, Coins, Receipt, Wallet } from 'lucide-react'
+import { CalendarRange, ChevronRight, Coins, Receipt, Wallet } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
 import type { Notify } from '../components/EditSheets'
@@ -19,6 +19,7 @@ import { tipsPerCountry, tipsPerGuest, tipsPerTrip, tipsPerTripType } from '../m
 import { weekTypeLabel } from '../components/WeekSheet'
 import { booked } from '../domain/geldmodel'
 import { MoneyConversionScreen, useNeedsConversion } from '../components/MoneyConversion'
+import { EarlierSeasonSheet } from '../components/EarlierSeason'
 import { useIsDemo } from '../components/DemoBar'
 import { eurOf, isIncome, monthSeries, perMonth, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
 import { groupOf, type TaxGroup } from '../model/tax-year'
@@ -57,6 +58,7 @@ export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; 
 
 function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [season, setSeason] = useState(false)
   // Opnieuw tekenen zodra de koersen geladen zijn.
   useSyncExternalStore(subscribeRates, getRates)
   const transactions = useCollection(store, 'transactions.json.enc')
@@ -86,6 +88,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
     return [...map.entries()].map(([group, txs]) => ({ group, ...totals(txs) })).sort((a, b) => b.incomeEur - a.incomeEur)
   }, [live, tripMap])
   const periodName = (tx: Transaction) => {
+    if (!tx.tripId && tx.season) return t('tripPicker.seasonLabel', { org: organisationLabel(tx.season.org), year: tx.season.year })
     const trip = tx.tripId ? tripMap.get(tx.tripId) : undefined
     if (trip) return trip.name
     const stay = tx.tripId ? stayMap.get(tx.tripId) : undefined
@@ -108,6 +111,10 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
     <section className="stack-lg">
       <header className="page-header">
         <h1>{t('nav.money')}</h1>
+        <button type="button" className="btn small" onClick={() => setSeason(true)}>
+          <Icon icon={CalendarRange} />
+          {t('earlier.button')}
+        </button>
       </header>
       {/* Twee weergaven: Werkelijk (wat er gebeurd is) en Verwacht (de toekomst), per apparaat onthouden. */}
       <div className="segments money-view" role="tablist" aria-label={t('money.view')}>
@@ -325,6 +332,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
         </>
       )}
       {editing && <TransactionView store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
+      {season && <EarlierSeasonSheet store={store} notify={notify} onClose={() => setSeason(false)} />}
     </section>
   )
 }

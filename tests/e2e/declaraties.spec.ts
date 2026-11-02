@@ -66,7 +66,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.locator('.claim-preview')).toBeVisible()
       await page.getByLabel(L('claims.note')).fill('Nepdiesel')
       await page.getByLabel(L('claims.amount')).fill(lang === 'nl' ? '42,50' : '42.50')
-      await expect(page.getByRole('combobox', { name: L('field.trip') })).toHaveValue(/.+/)
+      await expect(page.getByRole('button', { name: new RegExp(`^${L('field.trip')}: (?!${L('tripPicker.none')})`) })).toBeVisible()
       await shots(page, 'nieuw', lang)
       await page.getByRole('button', { name: L('common.save') }).click()
       await expect(toast).toContainText(L('claims.saved'))

@@ -1,3 +1,4 @@
+import { TripPickerField } from './TripPicker'
 import { Camera, Check, FileText, FileUp, Images, Share2, Trash2, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { DecryptError, type Bytes } from '../crypto/encrypt'
@@ -45,28 +46,6 @@ function CurrencySelect({ value, onChange }: { value: Currency; onChange: (c: Cu
   )
 }
 
-function TripSelect({ store, value, onChange }: { store: Store; value: string; onChange: (id: string) => void }) {
-  const counters = useCounters(store)
-  const all = active(useCollection(store, 'trips.json.enc'))
-  const recent = [...all].sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1)).slice(0, 30)
-  // De gekozen trip staat er altijd bij, ook als hij ouder is of geen startdatum heeft.
-  const chosen = all.find((x) => x.id === value)
-  const trips = chosen && !recent.some((x) => x.id === value) ? [chosen, ...recent] : recent
-  return (
-    <label>
-      {t('field.trip')}
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{t('quick.noTrip')}</option>
-        {trips.map((x) => (
-          <option key={x.id} value={x.id}>
-            {nameWithCounter(x, counters.get(x.id))}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
 /** De velden van een declaratie (nieuw of bewerken); de trip volgt de datum zolang Olivier zelf niets kiest. */
 function useClaimFields(store: Store, claim: Claim | null, preset?: string) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
@@ -107,13 +86,12 @@ function ClaimFieldsView({ store, f }: { store: Store; f: ReturnType<typeof useC
         </label>
         <CurrencySelect value={f.currency} onChange={f.setCurrency} />
       </div>
-      <div className="two">
-        <label>
-          {t('field.date')}
-          <input type="date" max={todayIso()} value={f.date} onChange={(e) => f.setDate(e.target.value)} />
-        </label>
-        <TripSelect store={store} value={f.tripId} onChange={f.setTripId} />
-      </div>
+      <label>
+        {t('field.date')}
+        <input type="date" max={todayIso()} value={f.date} onChange={(e) => f.setDate(e.target.value)} />
+      </label>
+      {/* Dezelfde tochtkiezer als bij inkomsten; een declaratie hoort bij een tocht of bij niets. */}
+      <TripPickerField store={store} value={f.tripId ? { kind: 'tocht', tripId: f.tripId } : { kind: 'geen' }} onChange={(next) => f.setTripId(next.kind === 'tocht' ? next.tripId : '')} date={f.date} seasons={false} />
     </>
   )
 }

@@ -1,3 +1,4 @@
+import { organisationLabel } from '../i18n/labels'
 import { salaryStatus } from '../domain/geldmodel'
 import { BookOpen, Check } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
@@ -113,7 +114,7 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
         <ViewRows
           rows={[
             [t('field.date'), formatDate(current.date)],
-            [t('belongsTo.title'), trip ? nameWithCounter(trip, counters.get(trip.id)) : stay && stayName(stay)],
+            [t('belongsTo.title'), trip ? nameWithCounter(trip, counters.get(trip.id)) : stay ? stayName(stay) : current.season && t('tripPicker.seasonLabel', { org: organisationLabel(current.season.org), year: current.season.year })],
             [t('tip.from'), current.kind === 'fooi' && tipFromText(current, trip)],
             [t('costs.category'), (current.kind === 'kosten' || current.kind === 'investering') && category && t(`costCategory.${category}`)],
             [t('salary.status'), current.kind === 'loon' && t(`salaryStatus.${salaryStatus(current)}`)],
