@@ -23,7 +23,14 @@ function run(command, args, options = {}) {
 }
 
 function previousRef() {
-  if (process.env.UPGRADE_FROM) return process.env.UPGRADE_FROM
+  // "voorvorige": de release vóór de vorige (de eerste ouder op main), zodat de upgradetest ook vanaf de twee vorige
+  // releases draait (regel 16).
+  if (process.env.UPGRADE_FROM && process.env.UPGRADE_FROM !== 'voorvorige') return process.env.UPGRADE_FROM
+  const previous = latestRelease()
+  return process.env.UPGRADE_FROM === 'voorvorige' ? git('rev-parse', `${previous}^1`) : previous
+}
+
+function latestRelease() {
   try {
     git('fetch', '--quiet', '--depth=50', 'origin', 'main')
   } catch {

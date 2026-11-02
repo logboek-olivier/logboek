@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { careerStart, DEFAULT_CAREER_START, difference, forecast, payoutMoment, positionAt, type PositionInput } from '../src/model/position'
+import { careerStart, difference, forecast, netWorthChange, payoutMoment, positionAt, type PositionInput } from '../src/model/position'
 import type { RatesFile } from '../src/model/rates'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
 import type { Account, Balance, Settings, Transaction, Trip } from '../src/model/types'
@@ -58,12 +58,17 @@ describe('Mijn positie', () => {
     expect(positionAt(data, '2026-09-30').receivable.map((r) => r.trip.id)).toEqual(['t'])
   })
 
-  it('sinds het begin van de zeilcarrière: zonder stand op die dag telt de eerste stand daarna', () => {
+  it('sinds een begindatum: zonder stand op of vóór die dag is de verandering onbekend (nooit een latere stand)', () => {
     const data = input({ accounts: [account('asn', 'betaal')], balances: [balance('asn', '2026-09-20', 1000), balance('asn', '2026-10-20', 2500)] })
-    const start = careerStart(settings())
-    expect(start).toBe(DEFAULT_CAREER_START)
-    expect(difference(positionAt(data, TODAY).totals.net, positionAt(data, start, true).totals.net)).toBe(1500)
+    // Geen start van de zeilcarrière ingesteld: geen datum van iemand anders.
+    expect(careerStart(settings())).toBeNull()
     expect(careerStart(settings({ careerStart: '2026-10-01' }))).toBe('2026-10-01')
+    const unknown = netWorthChange(data, { from: '2026-09-11', to: TODAY }, TODAY)
+    expect(unknown.state).toBe('onbekend')
+    expect(unknown.state === 'onbekend' && unknown.missing.map((a) => a.id)).toEqual(['asn'])
+    // Met een stand op of vóór de begindag: eind min begin.
+    const known = netWorthChange(data, { from: '2026-09-20', to: TODAY }, TODAY)
+    expect(known.state === 'bekend' && known.change).toBe(1500)
     // Iets zonder koers: geen verschil (niet te zeggen).
     expect(difference({ eur: 1, provisional: false, other: { GBP: 1 } }, { eur: 0, provisional: false, other: {} })).toBeNull()
   })

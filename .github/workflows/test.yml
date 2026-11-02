@@ -48,16 +48,17 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Upgradetest over meerdere versies (regel 16): naast de vorige release (job test) ook vanaf twee vaste, oudere
-  # releases: het einde van ronde 2 (6fc2e72, vóór de boekhouding) en 29 oktober 's ochtends (41071c6, vóór ronde 2).
-  # Zo blijft een telefoon die een paar updates oversloeg ook leesbaar. Parallel aan de job test.
+  # Upgradetest over meerdere versies (regel 16): naast de vorige release (job test) ook vanaf de release daarvóór
+  # (voorvorige: de eerste ouder van de vorige release op main) en vanaf twee vaste, oudere releases: het einde van
+  # ronde 2 (6fc2e72, vóór de boekhouding) en 29 oktober 's ochtends (41071c6, vóór ronde 2). Zo blijft een telefoon
+  # die een paar updates oversloeg ook leesbaar. Parallel aan de job test.
   upgrade-ouder:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        vanaf: [6fc2e72, 41071c6]
+        vanaf: [voorvorige, 6fc2e72, 41071c6]
     steps:
       - uses: actions/checkout@v5
         with:

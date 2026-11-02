@@ -49,9 +49,14 @@ export function usePeriodChoice(): PeriodChoice {
   return useSyncExternalStore(subscribe, read, () => DEFAULT)
 }
 
-/** Snelkeuzes en zelf kiezen, met de periode die eruit volgt. */
-export function PeriodPicker({ period }: { period: Period }) {
-  const choice = usePeriodChoice()
+/**
+ * Snelkeuzes en zelf kiezen, met de periode die eruit volgt. "Sinds start zeilcarrière" staat er alleen als die start
+ * is ingesteld (Instellingen); anders geldt "dit jaar".
+ */
+export function PeriodPicker({ period, preset, careerSet }: { period: Period; /** De snelkeuze die echt geldt (effectivePreset). */ preset: PeriodPreset; careerSet: boolean }) {
+  const stored = usePeriodChoice()
+  const choice = { ...stored, preset }
+  const presets = PRESETS.filter((p) => p !== 'carriere' || careerSet)
   return (
     <div className="section card card-body stack-sm money-period">
       <div className="section-head">
@@ -64,7 +69,7 @@ export function PeriodPicker({ period }: { period: Period }) {
         </span>
       </div>
       <div className="type-buttons" role="radiogroup" aria-label={t('period.title')}>
-        {PRESETS.map((p) => (
+        {presets.map((p) => (
           <button
             key={p}
             type="button"

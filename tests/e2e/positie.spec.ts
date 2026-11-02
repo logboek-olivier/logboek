@@ -6,8 +6,9 @@ import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, ope
 
 // Geld → Mijn positie en de vooruitblik: de rekeningen plus wat nog te ontvangen is (geen contant meer). Een
 // betaalrekening en een studieschuld, een stand in een paar seconden vanuit Mijn positie, een voorbije trip met salaris te
-// ontvangen, een komende trip in de planning; de netto waarde nu en "Sinds <start zeilcarrière>"; de vooruitblik met
-// "Netto waarde eind …" en "Wat je planning toevoegt". Alle gegevens verzonnen.
+// ontvangen, een komende trip in de planning; de netto waarde vandaag en de verandering in de periode (eerst onbekend,
+// dan "Beginsaldo invoeren" en de uitsplitsing om door te klikken); de vooruitblik met "Netto waarde op …" en "Wat je
+// planning toevoegt". Alle gegevens verzonnen.
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -111,11 +112,40 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(position).toContainText(L('position.bank'))
       await expect(position).toContainText(L('position.studentDebt'))
       await expect(position).toContainText(L('position.receivable'))
-      // Netto waarde: 2.500 + 1.000 te ontvangen − 12.000.
-      await expect(position.locator('.position-totals')).toContainText(money(-8500))
-      // Sinds de start van de zeilcarrière (11 september 2026): er was toen nog geen stand, dus vanaf de eerste stand.
-      await expect(position.locator('.position-totals')).toContainText(lang === 'nl' ? 'Sinds' : 'Since')
+      // Netto waarde vandaag: 2.500 + 1.000 te ontvangen − 12.000.
+      const totalsBox = position.locator('.position-totals')
+      await expect(totalsBox).toContainText(L('position.netAll'))
+      await expect(totalsBox).toContainText(money(-8500))
+      // De verandering sinds een begindag zonder stand: onbekend, nooit een verzonnen getal. Beginsaldo invoeren: één
+      // bedrag per rekening op de begindag.
+      const periodBox = page.locator('.money-period')
+      await periodBox.getByRole('radio', { name: L('period.eigen') }).click()
+      await periodBox.getByLabel(L('period.from')).fill(iso(-30))
+      await periodBox.getByLabel(L('period.to')).fill(iso(150))
+      const unknown = position.locator('.change-unknown')
+      await expect(unknown).toContainText(L('accounts.provider.asn'))
+      await expect(totalsBox).not.toContainText(L('position.partSailing'))
+      await shots(page, 'verandering-onbekend', lang)
+      await unknown.getByRole('button', { name: L('position.enterStart') }).click()
+      const startSheet = page.getByRole('dialog')
+      await startSheet.getByLabel(`${L('accounts.provider.asn')} (EUR)`).fill('2000')
+      await startSheet.getByLabel(`${L('accounts.provider.duo')} (EUR)`).fill('12500')
+      await startSheet.getByRole('button', { name: L('common.save') }).click()
+      await expect(toast).toContainText(L('position.startSaved'))
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      // Begin: 2.000 − 12.500 = −10.500; vandaag −8.500: +2.000 = zeilresultaat 0 + te ontvangen +1.000 + overig +1.000.
+      await expect(totalsBox).toContainText(`+${money(2000)}`)
+      await expect(totalsBox.getByRole('button', { name: new RegExp(L('position.partReceivable')) })).toContainText(`+${money(1000)}`)
+      await expect(totalsBox.getByRole('button', { name: new RegExp(L('position.partOther').replace(/[()]/g, '.')) })).toContainText(`+${money(1000)}`)
       await shots(page, 'positie', lang)
+      // Doorklikken: te ontvangen op het einde min op de begindag; terug = Geld op dezelfde plek.
+      await totalsBox.getByRole('button', { name: new RegExp(L('position.partReceivable')) }).click()
+      const drill = page.getByRole('dialog', { name: L('position.partReceivable') })
+      await expect(drill.locator('.drill-total')).toContainText(`+${money(1000)}`)
+      await expect(drill).toContainText('Nepweek voorbij')
+      await page.goBack()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect(position).toBeVisible()
 
       // De vooruitblik (Verwacht): het salaris van de komende trip komt erbij.
       await page.getByRole('tab', { name: L('money.expected') }).click()
@@ -137,14 +167,19 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.reload()
       await openMore(page, L('nav.money'), L('nav.more'))
       await expect(page.locator('.money-period').getByRole('radio', { name: L('period.eigen') })).toHaveAttribute('aria-checked', 'true')
-      await page.locator('.money-period').getByRole('radio', { name: L('period.carriere') }).click()
+      // Zonder start van de zeilcarrière is er geen snelkeuze "sinds de start" (geen datum van een ander).
+      await expect(page.locator('.money-period').getByRole('radio', { name: L('period.carriere') })).toHaveCount(0)
+      await page.locator('.money-period').getByRole('radio', { name: L('period.jaar') }).click()
 
-      // Instellingen → Start zeilcarrière.
+      // Instellingen → Start zeilcarrière: daarna staat de snelkeuze er wel.
       await openMore(page, L('nav.settings'), L('nav.more'))
+      await expect(page.getByRole('button', { name: new RegExp(`^${L('position.careerStart')}`) })).toContainText(L('position.careerStartNotSet'))
       await page.getByRole('button', { name: new RegExp(`^${L('position.careerStart')}`) }).click()
       await page.getByRole('dialog').getByLabel(L('position.careerStartDate')).fill(iso(-1))
       await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
       await expect(page.getByRole('dialog')).toHaveCount(0)
+      await openMore(page, L('nav.money'), L('nav.more'))
+      await expect(page.locator('.money-period').getByRole('radio', { name: L('period.carriere') })).toBeVisible()
       expect(errors).toEqual([])
     })
   })

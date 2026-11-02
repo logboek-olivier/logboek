@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastBoat: '',
   lastRole: 'schipper',
   lastCurrency: 'EUR',
-  lastSource: 'yacht-week',
+  lastSource: 'overig',
 }
 
 export const DEFAULT_YEAR_GOAL_NM = 2500

@@ -134,5 +134,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'balances.json.enc': [
     { id: 'stand:upg-acc-1:2026-09', accountId: 'upg-acc-1', date: '2026-09-30', amount: 1234.56, source: 'import', updatedAt: T, deletedAt: null },
     { id: 'stand:upg-acc-2:2026-09', accountId: 'upg-acc-2', date: '2026-09-15', amount: -9876.5, source: 'handmatig', updatedAt: T, deletedAt: null },
+    // Saldo-geschiedenis (november 2026): een stand per dag (id met de datum), naast een stand van vóór de geschiedenis
+    // (id per maand) in dezelfde maand. Beide blijven staan.
+    { id: 'stand:upg-acc-1:2026-09-02', accountId: 'upg-acc-1', date: '2026-09-02', amount: 1000, source: 'handmatig', updatedAt: T, deletedAt: null },
   ],
 }

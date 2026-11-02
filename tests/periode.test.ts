@@ -47,14 +47,14 @@ describe('periode kiezen', () => {
   })
 })
 
-describe('"Sinds 11 september"', () => {
+describe('verandering sinds een begindatum', () => {
   it('een salaris dat op de begindatum al te ontvangen was, telt dan al mee (dus +€ 0); een latere trip telt als verschil', () => {
     const start = '2026-09-11'
     const early = trip('yw1', '2026-09-01', '2026-09-07', { organisation: 'yacht-week' })
     const before = input({ trips: [early], transactions: [salary(early, 600)] })
-    expect(difference(positionAt(before, TODAY).totals.net, positionAt(before, start, true).totals.net)).toBe(0)
+    expect(difference(positionAt(before, TODAY).totals.net, positionAt(before, start).totals.net)).toBe(0)
     const late = trip('yw1', '2026-10-01', '2026-10-07', { organisation: 'yacht-week' })
     const after = input({ trips: [late], transactions: [salary(late, 600)] })
-    expect(difference(positionAt(after, TODAY).totals.net, positionAt(after, start, true).totals.net)).toBe(600)
+    expect(difference(positionAt(after, TODAY).totals.net, positionAt(after, start).totals.net)).toBe(600)
   })
 })

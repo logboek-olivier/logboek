@@ -6,9 +6,10 @@ import { newId, type Account, type AccountKind, type AccountProvider, type Balan
 import { parseStand, round2 } from '../basis/bedrag'
 import { monthEnd, shiftMonth, todayIso } from '../basis/datum'
 
-// Rekeningen en netto waarde (Meer → Rekeningen). Per rekening één stand per maand (balances.json.enc): handmatig
-// ingevuld of uit een export (src/import/accounts.ts). Alleen standen, nooit losse mutaties, omschrijvingen of
-// tegenrekeningen. Een schuld (studieschuld) staat als negatief bedrag. De netto waarde telt per rekening de laatste
+// Rekeningen en netto waarde (Meer → Rekeningen). Standen hebben een geschiedenis (balances.json.enc): elke stand is een
+// eigen record met zijn datum, hoogstens één per rekening per dag, handmatig ingevuld of uit een export
+// (src/import/accounts.ts, per maand de laatste stand). Een nieuwe stand overschrijft nooit een stand van een andere dag.
+// Alleen standen, nooit losse mutaties, omschrijvingen of tegenrekeningen. Een schuld (studieschuld) staat als negatief bedrag. De netto waarde telt per rekening de laatste
 // stand, omgerekend naar euro met de ECB-koers uit rates.json; het tempo is de gemiddelde verandering per maand.
 
 /** De soort die bij een aanbieder past (te wijzigen). */
@@ -23,9 +24,19 @@ export const DEFAULT_KIND: Record<AccountProvider, AccountKind> = {
 
 export const isDebt = (account: Pick<Account, 'kind'>): boolean => account.kind === 'schuld'
 
-/** Eén stand per rekening per maand: twee apparaten en een nieuwe import voegen dezelfde maand samen. */
+/**
+ * Eén stand per rekening per dag: twee apparaten en een nieuwe import voegen dezelfde dag samen, en een stand van een
+ * andere dag blijft altijd staan (de geschiedenis). Standen van vóór deze versie hebben een id per maand
+ * (`stand:<rekening>:<jjjj-mm>`); die blijven gewoon een stand op hun eigen datum (`sameDayBalance`).
+ */
 export function balanceId(accountId: string, date: string): string {
-  return `stand:${accountId}:${date.slice(0, 7)}`
+  return `stand:${accountId}:${date.slice(0, 10)}`
+}
+
+/** De levende stand van een rekening op precies die dag (ook met een id per maand van vóór de geschiedenis). */
+export function sameDayBalance(balances: readonly Balance[], accountId: string, date: string): Balance | undefined {
+  const own = balances.find((b) => b.id === balanceId(accountId, date) && b.deletedAt === null)
+  return own ?? balances.find((b) => b.deletedAt === null && b.accountId === accountId && b.date === date)
 }
 
 /** Een ingetypt bedrag als stand: bij een schuld altijd negatief, wat Olivier ook typt. */
@@ -41,12 +52,12 @@ export function accountBalances(balances: readonly Balance[], accountId: string)
   return balances.filter((b) => b.deletedAt === null && b.accountId === accountId).sort((a, b) => b.date.localeCompare(a.date))
 }
 
-/** De laatste stand van een rekening op of vóór `date`. */
+/** De laatste stand van een rekening op of vóór `date` (twee op dezelfde dag: de laatst gewijzigde). */
 export function balanceOn(balances: readonly Balance[], accountId: string, date: string): Balance | null {
   let best: Balance | null = null
   for (const b of balances) {
     if (b.deletedAt !== null || b.accountId !== accountId || b.date > date) continue
-    if (!best || b.date > best.date) best = b
+    if (!best || b.date > best.date || (b.date === best.date && b.updatedAt > best.updatedAt)) best = b
   }
   return best
 }
@@ -206,8 +217,8 @@ export async function saveAccount(store: Tx, id: string | null, fields: Omit<Acc
 }
 
 /**
- * Een stand met de hand: geldt voor zijn maand; een stand van een latere dag in die maand blijft staan. Een datum in de
- * toekomst wordt geweigerd (null), zodat een tikfout nooit een juiste stand blokkeert.
+ * Een stand met de hand op een dag: een stand van een andere dag blijft staan (de geschiedenis), een stand van dezelfde
+ * dag wordt bijgewerkt. Een datum in de toekomst wordt geweigerd (null), zodat een tikfout nooit een juiste stand blokkeert.
  */
 export async function setBalance(store: Tx, account: Account, date: string, amount: number, today = todayIso()): Promise<Balance | null> {
   if (date > today) return null
@@ -215,8 +226,8 @@ export async function setBalance(store: Tx, account: Account, date: string, amou
   const [written] = await writeBalances(store, account, [{ date, amount: signed }], 'handmatig', true, today)
   if (written) return written
   // Precies deze stand stond er al (niet opnieuw geschreven): dat is gewoon opgeslagen, geen "nieuwere stand".
-  const same = store.list('balances.json.enc').find((b) => b.id === balanceId(account.id, date) && b.date === date && b.amount === signed)
-  return same ?? null
+  const same = sameDayBalance(store.list('balances.json.enc'), account.id, date)
+  return same && same.amount === signed ? same : null
 }
 
 export interface BalancePoint {
@@ -226,33 +237,29 @@ export interface BalancePoint {
 }
 
 /**
- * Standen opslaan, één per maand. Bestaat er voor die maand al een stand van een latere dag, dan blijft die staan
- * (een oude export overschrijft nooit een nieuwere stand). Een import vervangt een stand uit een export van dezelfde
- * dag (zo herstelt opnieuw importeren met de juiste kolommen een verkeerde import), maar niet een stand die Olivier zelf
- * op die dag invulde; `force` (met de hand, dezelfde of een latere dag) wint wel. Datums in de toekomst gaan niet mee.
+ * Standen opslaan, hoogstens één per dag (twee punten op dezelfde dag: het laatste telt). Een stand van een andere dag
+ * wordt nooit overschreven. Op dezelfde dag vervangt een import een stand uit een export (zo herstelt opnieuw importeren
+ * met de juiste kolommen een verkeerde import), maar niet een stand die Olivier zelf op die dag invulde; `force` (met de
+ * hand) wint wel. Precies dezelfde stand wordt niet opnieuw geschreven. Datums in de toekomst gaan niet mee.
  */
 export async function writeBalances(store: Tx, account: Account, points: readonly BalancePoint[], source: Balance['source'], force = false, today = todayIso()): Promise<Balance[]> {
-  const perMonth = new Map<string, BalancePoint>()
+  const perDay = new Map<string, BalancePoint>()
   for (const p of points) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date) || !Number.isFinite(p.amount) || p.date > today) continue
-    const month = p.date.slice(0, 7)
-    const known = perMonth.get(month)
-    if (!known || p.date >= known.date) perMonth.set(month, p)
+    perDay.set(p.date, p)
   }
-  const existing = new Map(store.get('balances.json.enc').map((b) => [b.id, b]))
+  const existing = store.get('balances.json.enc')
   const now = new Date().toISOString()
   const out: Balance[] = []
-  for (const p of perMonth.values()) {
-    const id = balanceId(account.id, p.date)
-    const old = existing.get(id)
+  for (const p of perDay.values()) {
+    const old = sameDayBalance(existing, account.id, p.date)
     const amount = round2(p.amount)
-    if (old && old.deletedAt === null) {
-      if (old.date > p.date) continue
-      if (!force && old.date === p.date && old.source === 'handmatig') continue
+    if (old) {
+      if (!force && old.source === 'handmatig') continue
       // Precies dezelfde stand: niets schrijven (geen onnodige sync).
-      if (old.date === p.date && old.amount === amount && old.source === source) continue
+      if (old.amount === amount && old.source === source) continue
     }
-    out.push({ id, accountId: account.id, date: p.date, amount, source, updatedAt: now, deletedAt: null })
+    out.push({ id: old?.id ?? balanceId(account.id, p.date), accountId: account.id, date: p.date, amount, source, updatedAt: now, deletedAt: null })
   }
   if (out.length > 0) await store.putMany('balances.json.enc', out)
   return out

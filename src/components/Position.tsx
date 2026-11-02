@@ -6,7 +6,7 @@ import { organisationLabel } from '../i18n/labels'
 import { isDebt } from '../model/accounts'
 import { buildIndex, planningEnd, type CalendarIndex } from '../model/calendar'
 import { nameWithCounter } from '../model/counters'
-import { careerStart, difference, earliestDate, forecast, positionAt, resolvePeriod, type AccountRow, type Period, type PositionInput, type Sum } from '../model/position'
+import { careerStart, earliestDate, effectivePreset, forecast, netWorthChange, positionAt, resolvePeriod, type AccountRow, type Period, type PeriodPreset, type PositionInput, type Sum } from '../model/position'
 import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
@@ -18,8 +18,10 @@ import { LineChart } from './LineChart'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
-import { PeriodPicker, usePeriodChoice } from './money-period'
-import { standOpslaan } from '../domain/geld'
+import { usePeriodChoice } from './money-period'
+import { beginsaldiInvoeren, standOpslaan } from '../domain/geld'
+import { changeDrills, receivableDrill } from '../domain/doorklik'
+import { DrillSheet, type DrillRequest } from './DrillSheet'
 import { instellingenOpslaan } from '../domain/instellingen'
 import { parseStand } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
@@ -49,9 +51,10 @@ function signed(n: number): string {
 }
 
 /**
- * Mijn positie en de vooruitblik met één periode bovenaan (snelkeuze of zelf van en tot, per apparaat onthouden).
+ * De periode bovenaan Geld (snelkeuze of zelf van en tot, per apparaat onthouden), voor alle bedragen in Geld: Mijn
+ * positie, de vooruitblik, de totalen, kosten per maand, per organisatie en de transacties.
  */
-export function PositionAndForecast({ store, notify, part = 'beide' }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik. */ part?: 'werkelijk' | 'verwacht' | 'beide' }) {
+export function useMoneyPeriod(store: Store): { period: Period; hasData: boolean; preset: PeriodPreset; careerSet: boolean } {
   const input = usePositionInput(store)
   const settingsRecords = useCollection(store, 'settings.json.enc')
   const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
@@ -62,25 +65,34 @@ export function PositionAndForecast({ store, notify, part = 'beide' }: { store: 
   const today = todayIso()
   const period = useMemo(() => resolvePeriod(choice, settings, today, planningEnd(index), earliestDate(input)), [choice, settings, today, index, input])
   const hasData = input.accounts.some((a) => a.deletedAt === null) || input.trips.some((x) => x.deletedAt === null) || input.transactions.some((x) => x.deletedAt === null)
-  return (
-    <>
-      {hasData && <PeriodPicker period={period} />}
-      {part !== 'verwacht' && <PositionSection store={store} notify={notify} input={input} settings={settings} period={period} />}
-      {part !== 'werkelijk' && <ForecastSection store={store} input={input} settings={settings} index={index} period={period} />}
-    </>
-  )
+  return { period, hasData, preset: effectivePreset(choice, settings), careerSet: careerStart(settings) !== null }
 }
 
-function PositionSection({ store, notify, input, period }: { store: Store; notify: Notify; input: PositionInput; settings: Settings; period: Period }) {
+/** Mijn positie (Werkelijk) of de vooruitblik (Verwacht), in de periode bovenaan Geld. */
+export function PositionAndForecast({ store, notify, part, period }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik. */ part: 'werkelijk' | 'verwacht'; period: Period }) {
+  const input = usePositionInput(store)
+  const settingsRecords = useCollection(store, 'settings.json.enc')
+  const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
+  const calendar = useCollection(store, 'calendar.json.enc')
+  const stays = useCollection(store, 'periods.json.enc')
+  const index = useMemo(() => buildIndex(calendar, input.trips, input.legs, [], stays), [calendar, input.trips, input.legs, stays])
+  return part === 'werkelijk' ? <PositionSection store={store} notify={notify} input={input} period={period} /> : <ForecastSection store={store} input={input} settings={settings} index={index} period={period} />
+}
+
+function signedPart(n: number): string {
+  return `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n), 'EUR')}`
+}
+
+function PositionSection({ store, notify, input, period }: { store: Store; notify: Notify; input: PositionInput; period: Period }) {
   const counters = useCounters(store)
   const [stand, setStand] = useState<Account | null>(null)
+  const [drill, setDrill] = useState<DrillRequest | null>(null)
+  const [starting, setStarting] = useState<{ date: string; accounts: Account[] } | null>(null)
   const today = todayIso()
-  // De verandering in de gekozen periode, tot en met vandaag (de toekomst staat in de vooruitblik).
-  const start = period.from
-  const end = period.to < today ? period.to : today
   // Alleen opnieuw rekenen als de gegevens veranderen (niet bij elke render): over alle trips en transacties.
-  const { now, then, atEnd } = useMemo(() => ({ now: positionAt(input, today), then: positionAt(input, start, true), atEnd: positionAt(input, end) }), [input, today, start, end])
-  const since = end > start ? difference(atEnd.totals.net, then.totals.net) : null
+  const now = useMemo(() => positionAt(input, today), [input, today])
+  // De verandering in de gekozen periode, tot en met vandaag (de toekomst staat in de vooruitblik).
+  const change = useMemo(() => netWorthChange(input, period, today), [input, period, today])
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
   const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0
   if (empty) return null
@@ -98,6 +110,20 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
         </button>
       </li>
     ))
+  const range = change.to > change.from && change.to === today ? t('position.since', { date: formatDate(change.from) }) : t('position.between', { from: formatDate(change.from), to: formatDate(change.to) })
+  const drillPeriod = t('drill.period', { from: formatDate(change.from), to: formatDate(change.to) })
+  const openPart = (part: 'sailing' | 'receivable' | 'other') => {
+    if (change.state !== 'bekend') return
+    const drills = changeDrills(change, input.transactions, input.trips, input.rates)
+    const at = (date: string) => t('position.receivableAt', { date: formatDate(date) })
+    setDrill(
+      part === 'sailing'
+        ? { title: t('position.partSailing'), drill: drills.sailing, period: drillPeriod, hint: t('drill.sailingHint', { from: formatDate(change.from) }), signed: true }
+        : part === 'receivable'
+          ? { title: t('position.partReceivable'), drill: drills.receivable, period: drillPeriod, hint: t('drill.receivableHint'), labels: { eind: at(change.to), begin: at(change.from) }, signed: true }
+          : { title: t('position.partOther'), drill: drills.other, period: drillPeriod, hint: t('drill.otherHint'), signed: true },
+    )
+  }
 
   return (
     <div className="section card card-body stack-sm position">
@@ -114,10 +140,15 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
         <PositionGroup label={t('position.cash')} sum={now.totals.cash} show={now.cashAccounts.length > 0}>
           <ul className="plain-list">{accountRows(now.cashAccounts)}</ul>
         </PositionGroup>
-        <PositionGroup label={t('position.receivable')} sum={now.totals.receivable} show={now.receivable.length > 0 || now.claims.length > 0}>
+        <PositionGroup
+          label={t('position.receivable')}
+          sum={now.totals.receivable}
+          show={now.receivable.length > 0 || now.claims.length > 0}
+          onOpen={() => setDrill({ title: t('position.receivable'), drill: receivableDrill(now, input.trips, input.rates), hint: t('drill.receivableNowHint', { date: formatDate(today) }) })}
+        >
           <ul className="plain-list">
             {now.receivable.map((r) => (
-              <li key={r.trip.id} className="row muted small">
+              <li key={r.tx.id} className="row muted small">
                 <span className="grow">{t('position.salaryOf', { trip: nameWithCounter(r.trip, counters.get(r.trip.id)) })}</span>
                 <span className="num">{formatMoney(r.amount, r.currency)}</span>
               </li>
@@ -137,33 +168,130 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
           <ul className="plain-list">{accountRows(now.debts)}</ul>
         </PositionGroup>
       </dl>
-      <div className="position-totals">
+      <div className="position-totals stack-sm">
         <p className="row">
           <strong className="grow">{t('position.netAll')}</strong>
           <strong className={`num ${now.totals.net.eur >= 0 ? 'positive' : 'negative'}`}>{sumText(now.totals.net)}</strong>
         </p>
-        {since !== null && (
-          <p className="row">
-            <span className="grow">{end === today ? t('position.since', { date: formatDate(start) }) : t('position.between', { from: formatDate(start), to: formatDate(end) })}</span>
-            <span className={`num ${since >= 0 ? 'positive' : 'negative'}`}>{signed(since)}</span>
-          </p>
+        {change.state === 'bekend' && (
+          <>
+            <p className="row">
+              <span className="grow">{range}</span>
+              <strong className={`num ${change.change >= 0 ? 'positive' : 'negative'}`}>{signedPart(change.change)}</strong>
+            </p>
+            <ul className="plain-list change-parts">
+              {(
+                [
+                  ['sailing', t('position.partSailing'), change.sailing],
+                  ['receivable', t('position.partReceivable'), change.receivable],
+                  ['other', t('position.partOther'), change.other],
+                ] as const
+              ).map(([part, label, eur]) => (
+                <li key={part}>
+                  <button type="button" className="row change-part" onClick={() => openPart(part)}>
+                    <span className="grow small">{label}</span>
+                    <span className="num small">{signedPart(eur)}</span>
+                    <Icon icon={ChevronRight} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="muted small">{t('position.sinceHint')}</p>
+          </>
         )}
-        {since !== null && <p className="muted small">{t('position.sinceHint')}</p>}
+        {change.state === 'onbekend' && (
+          <div className="notice stack-sm change-unknown" role="status">
+            <p>{t('position.changeUnknown', { date: formatDate(change.from), accounts: change.missing.map((a) => a.name).join(', ') })}</p>
+            <button type="button" className="btn" onClick={() => setStarting({ date: change.from, accounts: change.missing })}>
+              {t('position.enterStart')}
+            </button>
+          </div>
+        )}
+        {change.state === 'geen-koers' && <p className="muted small">{t('position.changeNoRate')}</p>}
+        {change.state === 'toekomst' && today < change.from && <p className="muted small">{t('position.periodFuture', { date: formatDate(change.from) })}</p>}
       </div>
       {!hasAccounts && <p className="muted small">{t('position.noAccounts')}</p>}
       {stand && <QuickStandSheet store={store} account={stand} notify={notify} onClose={() => setStand(null)} />}
+      {drill && <DrillSheet store={store} notify={notify} request={drill} onClose={() => setDrill(null)} />}
+      {starting && <StartBalanceSheet store={store} notify={notify} date={starting.date} accounts={starting.accounts} onClose={() => setStarting(null)} />}
     </div>
   )
 }
 
-function PositionGroup({ label, sum, show, children }: { label: string; sum: Sum; show: boolean; children: React.ReactNode }) {
+/** Beginsaldo invoeren: per rekening één bedrag, op de begindag van de periode. */
+function StartBalanceSheet({ store, notify, date, accounts, onClose }: { store: Store; notify: Notify; date: string; accounts: readonly Account[]; onClose: () => void }) {
+  const [amounts, setAmounts] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const parsed = accounts.map((account) => ({ account, text: (amounts[account.id] ?? '').trim(), value: parseStand(amounts[account.id] ?? '', getLang()) }))
+  const filled = parsed.filter((p) => p.text !== '')
+  const valid = filled.length > 0 && filled.every((p) => p.value !== null)
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!valid || busy) return
+    setBusy(true)
+    try {
+      const { undo } = await beginsaldiInvoeren(
+        store,
+        filled.map((p) => ({ account: p.account, amount: p.value! })),
+        date,
+      )
+      onClose()
+      notify(t('position.startSaved'), undo)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Sheet title={t('position.startTitle', { date: formatDate(date) })} onClose={onClose}>
+      <form className="stack" onSubmit={(e) => void submit(e)}>
+        {parsed.map((p) => (
+          <label key={p.account.id}>
+            {p.account.name} ({p.account.currency})
+            <input
+              className="amount"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={amounts[p.account.id] ?? ''}
+              aria-invalid={p.text !== '' && p.value === null}
+              onChange={(e) => setAmounts((prev) => ({ ...prev, [p.account.id]: e.target.value }))}
+            />
+          </label>
+        ))}
+        <p className="muted small">{t('position.startHint', { date: formatDate(date) })}</p>
+        <button className="btn primary" type="submit" disabled={!valid || busy}>
+          {t('common.save')}
+        </button>
+      </form>
+    </Sheet>
+  )
+}
+
+function PositionGroup({ label, sum, show, onOpen, children }: { label: string; sum: Sum; show: boolean; /** Doorklikken naar de posten. */ onOpen?: () => void; children: React.ReactNode }) {
   if (!show) return null
   return (
     <div className="position-group stack-sm">
-      <div className="row">
-        <dt className="grow">{label}</dt>
-        <dd className="num">{sumText(sum)}</dd>
-      </div>
+      {onOpen ? (
+        // Label en bedrag openen allebei de posten (een definitielijst mag geen knop om label en bedrag samen hebben).
+        <div className="row position-group-head">
+          <dt className="grow">
+            <button type="button" className="tap-row" onClick={onOpen}>
+              {label}
+            </button>
+          </dt>
+          <dd className="num">
+            <button type="button" className="tap-row num" onClick={onOpen} tabIndex={-1} aria-hidden="true">
+              {sumText(sum)}
+              <Icon icon={ChevronRight} />
+            </button>
+          </dd>
+        </div>
+      ) : (
+        <div className="row">
+          <dt className="grow">{label}</dt>
+          <dd className="num">{sumText(sum)}</dd>
+        </div>
+      )}
       {children}
     </div>
   )
@@ -281,7 +409,7 @@ function ForecastSection({ store, input, settings, index, period }: { store: Sto
 /** Instellingen → Start zeilcarrière: de datum voor "Sinds …" in Mijn positie. */
 export function CareerStartSheet({ store, notify, onClose }: { store: Store; notify: Notify; onClose: () => void }) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
-  const [date, setDate] = useState(careerStart(settings))
+  const [date, setDate] = useState(careerStart(settings) ?? '')
   const ok = /^\d{4}-\d{2}-\d{2}$/.test(date)
   async function submit(e: FormEvent) {
     e.preventDefault()

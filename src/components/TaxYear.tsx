@@ -1,4 +1,6 @@
 import { yearOverview } from '../domain/geldrapport'
+import { taxGroupDrill } from '../domain/doorklik'
+import type { DrillRequest } from './DrillSheet'
 import { Printer } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
@@ -65,15 +67,21 @@ function LinesTable({ lines }: { lines: readonly TaxLine[] }) {
   )
 }
 
-function Totals({ data }: { data: TaxYear }) {
+function Totals({ data, onOpen }: { data: TaxYear; onOpen?: (group: TaxGroup) => void }) {
   return (
     <table className="table tax-totals">
       <tbody>
         {data.groups.map((g) => (
           <tr key={g.group}>
-            <td>{groupLabel(g.group)}</td>
+            <td>{onOpen ? <button type="button" className="tap-cell start" onClick={() => onOpen(g.group)}>{groupLabel(g.group)}</button> : groupLabel(g.group)}</td>
             <td className="num">
-              {formatMoney(g.eur, 'EUR')}
+              {onOpen ? (
+                <button type="button" className="tap-cell" tabIndex={-1} aria-hidden="true" onClick={() => onOpen(g.group)}>
+                  {formatMoney(g.eur, 'EUR')}
+                </button>
+              ) : (
+                formatMoney(g.eur, 'EUR')
+              )}
               {Object.keys(g.other).length > 0 && <span className="muted small"> + {otherText(g.other)}</span>}
             </td>
           </tr>
@@ -93,7 +101,7 @@ function Totals({ data }: { data: TaxYear }) {
   )
 }
 
-export function TaxYearSection({ store }: { store: Store }) {
+export function TaxYearSection({ store, onDrill }: { store: Store; /** Doorklikken naar de inkomsten van een organisatie in dat jaar. */ onDrill?: (request: DrillRequest) => void }) {
   const rates = useSyncExternalStore(subscribeRates, getRates)
   const transactions = useCollection(store, 'transactions.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
@@ -124,7 +132,20 @@ export function TaxYearSection({ store }: { store: Store }) {
           ))}
         </select>
       </label>
-      <Totals data={data} />
+      <Totals
+        data={data}
+        onOpen={
+          onDrill
+            ? (group) =>
+                onDrill({
+                  title: `${groupLabel(group)} · ${chosen}`,
+                  drill: taxGroupDrill(transactions, trips, chosen, group, rates),
+                  period: t('drill.period', { from: formatDate(`${chosen}-01-01`), to: formatDate(`${chosen}-12-31`) }),
+                  hint: t('drill.taxHint'),
+                })
+            : undefined
+        }
+      />
       {data.provisional && <p className="muted small">{t('tax.provisionalHint')}</p>}
       <button type="button" className="btn" onClick={() => setPrintRequest((n) => n + 1)}>
         <Icon icon={Printer} />

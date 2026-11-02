@@ -110,7 +110,7 @@ export function Settings({ store, notify }: { store: Store; notify: Notify }) {
             <button className="settings-row" onClick={() => setStartOpen(true)}>
               <Icon icon={Anchor} />
               <span className="row-main">{t('position.careerStart')}</span>
-              <span className="muted">{formatDate(careerStart(settings))}</span>
+              <span className="muted">{careerStart(settings) ? formatDate(careerStart(settings)!) : t('position.careerStartNotSet')}</span>
               <Icon icon={ChevronRight} className="chevron" />
             </button>
           </li>

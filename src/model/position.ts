@@ -2,7 +2,7 @@ import { balanceOn, toEur, type EurAmount } from './accounts'
 import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
 import { active } from './derive'
-import { eurOf } from './money'
+import { eurOf, totals } from './money'
 import { booked } from '../domain/geldmodel'
 import { payoutRule } from './money-path'
 import { eurValue, type RatesFile } from './rates'
@@ -11,22 +11,22 @@ import { salaryStatus } from '../domain/geldmodel'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
 import { round2 } from '../basis/bedrag'
-import { monthOf, shiftMonth } from '../basis/datum'
+import { addDays, monthOf, shiftMonth } from '../basis/datum'
+import { transactionList } from '../domain/geldrapport'
 
-// Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. De rekeningen (op de bank, een
-// kasrekening, beleggingen en studieschuld) plus wat nog te ontvangen is (het salaris van voorbije tochten dat nog niet
-// binnen is, en declaraties), en de netto waarde: alles bij elkaar. Twee totalen: alles, en wat er sinds het begin van de zeilcarrière bijkwam. De vooruitblik telt bij de netto
-// waarde van nu het verwachte salaris van komende trips op (per uitbetaalmoment) en een geschatte fooi (eigen gemiddelde
-// per organisatie, als schatting gemarkeerd). Alles in euro met de koers van de dag; zonder koers apart per valuta.
+// Geld → Mijn positie: wat de gebruiker nu heeft, en waar de planning naartoe gaat. De rekeningen (op de bank, een
+// kasrekening, beleggingen en schulden) plus wat nog te ontvangen is (het salaris van voorbije tochten dat nog niet
+// binnen is, en declaraties), en de netto waarde: alles bij elkaar. Twee totalen: de netto waarde vandaag, en de
+// verandering in de gekozen periode (netto waarde op het einde min die op de begindag, met een uitsplitsing die precies
+// optelt; zonder stand op de begindag "onbekend", nooit verzonnen). De vooruitblik telt bij de netto waarde van vandaag
+// het verwachte salaris van komende trips op (per uitbetaalmoment), een geschatte fooi (eigen gemiddelde per organisatie,
+// als schatting gemarkeerd) en de kosten. Alles in euro met de koers van de dag; zonder koers apart per valuta. Geen
+// datums, bedragen of organisaties van een bepaalde gebruiker: alles komt uit de instellingen en de data.
 
-/** Standaard begin van de zeilcarrière (Instellingen → Start zeilcarrière). */
-export const DEFAULT_CAREER_START = '2026-09-11'
-
-export function careerStart(settings: Settings): string {
+/** De start van de zeilcarrière (Instellingen → Start zeilcarrière), of null als die niet is ingesteld. */
+export function careerStart(settings: Settings): string | null {
   const d = settings.careerStart
-  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d
-  // Een nieuw logboek heeft geen startdatum van een ander: het begin van dit jaar tot Olivier er zelf een kiest.
-  return settings.startedEmpty ? `${new Date().getFullYear()}-01-01` : DEFAULT_CAREER_START
+  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null
 }
 
 /** Periode voor Mijn positie en de vooruitblik (Geld): een snelkeuze of zelf gekozen van en tot. */
@@ -44,26 +44,36 @@ export interface Period {
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
 
+/** De snelkeuze die echt geldt: "sinds de start van de zeilcarrière" zonder ingestelde start is "dit jaar". */
+export function effectivePreset(choice: PeriodChoice, settings: Settings): PeriodPreset {
+  return choice.preset === 'carriere' && careerStart(settings) === null ? 'jaar' : choice.preset
+}
+
 /**
  * De periode bij een keuze: sinds de start van de zeilcarrière (tot het einde van de planning), dit kalenderjaar, van
  * vandaag tot het einde van de planning, alles (vanaf de eerste gegevens tot het einde van de planning), of zelf gekozen.
- * Zonder planning is het einde vandaag. Een ongeldige eigen keuze valt terug op sinds de start van de zeilcarrière.
+ * Zonder planning is het einde vandaag. Zonder ingestelde start van de zeilcarrière geldt "dit jaar"; een ongeldige eigen
+ * keuze valt terug op de standaard.
  */
 export function resolvePeriod(choice: PeriodChoice, settings: Settings, today: string, planningEnd: string | null, earliest: string | null): Period {
   const end = planningEnd && planningEnd > today ? planningEnd : today
-  const start = careerStart(settings)
-  switch (choice.preset) {
+  const career = careerStart(settings)
+  const year = { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` }
+  const standard = career ? { from: career, to: end > career ? end : career } : year
+  switch (effectivePreset(choice, settings)) {
     case 'jaar':
-      return { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` }
+      return year
     case 'planning':
       return { from: today, to: end }
-    case 'alles':
-      return { from: earliest && earliest < start ? earliest : start, to: end }
+    case 'alles': {
+      const first = [earliest, career].filter((d): d is string => !!d).sort()[0] ?? year.from
+      return { from: first, to: end > first ? end : first }
+    }
     case 'eigen':
       if (choice.from && choice.to && ISO.test(choice.from) && ISO.test(choice.to) && choice.from <= choice.to) return { from: choice.from, to: choice.to }
-      return { from: start, to: end }
+      return standard
     default:
-      return { from: start, to: end }
+      return standard
   }
 }
 
@@ -110,6 +120,8 @@ export interface AccountRow {
 
 export interface ReceivableRow {
   trip: Trip
+  /** Het salaris (een transactie van soort loon bij de tocht). */
+  tx: Transaction
   amount: number
   currency: Currency
 }
@@ -149,10 +161,11 @@ export interface PositionInput {
 }
 
 /**
- * De positie op `date`. `firstBalance`: zonder stand op of vóór die dag telt de eerste stand daarna (voor het begin
- * van de zeilcarrière, als de eerste stand pas later is ingevoerd).
+ * De positie op `date` (aan het einde van die dag): per rekening die dan open was de laatste stand op of vóór die dag,
+ * plus wat op die dag nog te ontvangen was. Een rekening zonder stand op of vóór die dag telt niet mee (nooit een latere
+ * stand: dat zou verzinnen zijn).
  */
-export function positionAt(input: PositionInput, date: string, firstBalance = false): Position {
+export function positionAt(input: PositionInput, date: string): Position {
   const { accounts, balances, trips, legs, transactions, rates } = input
   const out: Position = {
     date,
@@ -167,13 +180,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
   }
   for (const account of accounts) {
     if (account.deletedAt !== null || (account.closedAt && account.closedAt <= date)) continue
-    let balance = balanceOn(balances, account.id, date)
-    if (!balance && firstBalance) {
-      balance =
-        balances
-          .filter((b) => b.deletedAt === null && b.accountId === account.id && b.date > date)
-          .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null
-    }
+    const balance = balanceOn(balances, account.id, date)
     const row: AccountRow = { account, balance, eur: balance ? toEur(balance.amount, account.currency, date, rates) : null }
     const group = GROUP[account.kind] ?? 'bank'
     if (group === 'bank') out.bank.push(row)
@@ -194,7 +201,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     const trip = tripById.get(tx.tripId)
     const end = trip ? tripEnd(trip, legs) : ''
     if (!trip || !end || endedFor(trip, end) >= date) continue
-    out.receivable.push({ trip, amount: tx.amount, currency: tx.currency })
+    out.receivable.push({ trip, tx, amount: tx.amount, currency: tx.currency })
     add(out.totals.receivable, tx.amount, tx.currency, date, rates)
   }
   out.receivable.sort((a, b) => tripEnd(a.trip, legs).localeCompare(tripEnd(b.trip, legs)))
@@ -216,6 +223,88 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
 export function difference(now: Sum, then: Sum): number | null {
   if (Object.keys(now.other).length > 0 || Object.keys(then.other).length > 0) return null
   return round2(now.eur - then.eur)
+}
+
+/** Een rekening in de verandering van de netto waarde: de stand op de begindag en op het einde, in euro. */
+export interface AccountChange {
+  account: Account
+  start: AccountRow | null
+  end: AccountRow | null
+  /** Eind min begin in euro (een rekening die op het einde opgeheven is, telt daar als 0). */
+  eur: number
+}
+
+/**
+ * De verandering van de netto waarde in een periode: de netto waarde op het einde (de laatste dag van de periode, hoogstens
+ * vandaag) min die op de begindag, met een uitsplitsing die precies optelt:
+ * - zeilresultaat: het echte geld in Geld (inkomsten en terugbetalingen min uitgaven) ná de begindag tot en met het einde
+ *   (wat op de begindag zelf binnenkwam, zit al in de netto waarde van die dag);
+ * - te ontvangen: de verandering in wat nog te ontvangen is (salaris van voorbije tochten, declaraties);
+ * - overig: de rest van de verandering op de rekeningen (beleggingen, een lening, geld dat niet in Geld staat, koersen).
+ * Heeft een rekening die op de begindag open was geen stand op of vóór die dag, dan is de verandering onbekend: nooit
+ * een latere stand of een verzonnen bedrag. Zonder rekeningen staat er geen verandering (er is niets om te vergelijken).
+ */
+export type NetWorthChange =
+  | { state: 'toekomst' | 'geen-rekeningen' | 'geen-koers'; from: string; to: string }
+  | { state: 'onbekend'; from: string; to: string; missing: Account[] }
+  | {
+      state: 'bekend'
+      from: string
+      to: string
+      start: Position
+      end: Position
+      change: number
+      sailing: number
+      /** Zeilgeld zonder koers in de periode (niet in het zeilresultaat in euro; zit in overig). */
+      sailingOther: Partial<Record<Currency, number>>
+      receivable: number
+      other: number
+      accounts: AccountChange[]
+    }
+
+const cents = (n: number) => Math.round(n * 100)
+
+export function netWorthChange(input: PositionInput, period: Period, today: string): NetWorthChange {
+  const from = period.from
+  const to = period.to < today ? period.to : today
+  if (from >= today) return { state: 'toekomst', from, to }
+  const live = input.accounts.filter((a) => a.deletedAt === null)
+  if (live.length === 0) return { state: 'geen-rekeningen', from, to }
+  const missing = live.filter((a) => !(a.closedAt && a.closedAt <= from) && !balanceOn(input.balances, a.id, from)).sort((a, b) => a.name.localeCompare(b.name))
+  if (missing.length > 0) return { state: 'onbekend', from, to, missing }
+  const start = positionAt(input, from)
+  const end = positionAt(input, to)
+  if (Object.keys(start.totals.net.other).length > 0 || Object.keys(end.totals.net.other).length > 0) return { state: 'geen-koers', from, to }
+  const change = cents(end.totals.net.eur) - cents(start.totals.net.eur)
+  const receivable = cents(end.totals.receivable.eur) - cents(start.totals.receivable.eur)
+  const sailingTotals = totals(transactionList(input.transactions, { from: addDays(from, 1), to }))
+  const sailing = cents(sailingTotals.balanceEur)
+  const sailingOther: Partial<Record<Currency, number>> = {}
+  for (const [c, v] of Object.entries(sailingTotals.other)) sailingOther[c as Currency] = round2(v.income - v.costs)
+  const rows = (p: Position) => [...p.bank, ...p.cashAccounts, ...p.investments, ...p.debts]
+  const startRows = new Map(rows(start).map((r) => [r.account.id, r]))
+  const endRows = new Map(rows(end).map((r) => [r.account.id, r]))
+  const accounts: AccountChange[] = []
+  for (const account of live) {
+    const s = startRows.get(account.id)?.balance ? startRows.get(account.id)! : null
+    const e = endRows.get(account.id)?.balance ? endRows.get(account.id)! : null
+    if (!s && !e) continue
+    accounts.push({ account, start: s, end: e, eur: round2((cents(e?.eur?.eur ?? 0) - cents(s?.eur?.eur ?? 0)) / 100) })
+  }
+  accounts.sort((a, b) => a.account.name.localeCompare(b.account.name))
+  return {
+    state: 'bekend',
+    from,
+    to,
+    start,
+    end,
+    change: change / 100,
+    sailing: sailing / 100,
+    sailingOther,
+    receivable: receivable / 100,
+    other: (change - receivable - sailing) / 100,
+    accounts,
+  }
 }
 
 /** Wanneer het salaris van een trip waarschijnlijk binnenkomt: na de trip, of maandelijks rond dag N in de maand erna. */
