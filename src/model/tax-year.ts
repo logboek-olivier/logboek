@@ -1,4 +1,5 @@
 import { isEarned, isIncome } from './money'
+import { isBooked } from '../domain/geldmodel'
 import { eurValue, type RatesFile } from './rates'
 import type { Organisation, Transaction, Trip } from './types'
 import { organisations, tripOrganisation } from '../basis/organisatie'
@@ -56,8 +57,9 @@ function groupRank(group: TaxGroup): number {
   return own >= 0 ? own : 500
 }
 
-/** De organisatie van een inkomen of uitgave: van de trip (ook uit de naam), anders de oude bron. */
+/** De organisatie van een inkomen of uitgave: van de tocht (ook uit de naam), van het seizoen, anders de oude bron. */
 export function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxGroup {
+  if (!tx.tripId && tx.season && typeof tx.season.org === 'string') return tx.season.org
   const trip = tx.tripId ? trips.get(tx.tripId) : undefined
   // De organisatie van de trip, ook uit de naam ("Yacht week 7"), zoals de teller en de statistieken.
   const counted = trip ? tripOrganisation(trip) : null
@@ -69,7 +71,7 @@ export function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxG
 
 export function taxYears(transactions: readonly Transaction[]): number[] {
   const years = new Set<number>()
-  for (const tx of transactions) if (!tx.deletedAt && isIncome(tx.kind) && /^\d{4}-/.test(tx.date)) years.add(Number(tx.date.slice(0, 4)))
+  for (const tx of transactions) if (isBooked(tx) && isIncome(tx.kind) && /^\d{4}-/.test(tx.date)) years.add(Number(tx.date.slice(0, 4)))
   return [...years].sort((a, b) => b - a)
 }
 
@@ -79,7 +81,7 @@ export function taxYear(transactions: readonly Transaction[], trips: readonly Tr
   const reimbursed: TaxLine[] = []
   let provisional = false
   const income = transactions
-    .filter((tx) => !tx.deletedAt && isIncome(tx.kind) && tx.date.startsWith(`${year}-`))
+    .filter((tx) => isBooked(tx) && isIncome(tx.kind) && tx.date.startsWith(`${year}-`))
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
   for (const tx of income) {
     const value = eurValue(tx, rates)

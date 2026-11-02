@@ -1,3 +1,4 @@
+import { booked } from '../domain/geldmodel'
 import { strToU8, zipSync } from 'fflate'
 import { translate, type Lang } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
@@ -80,7 +81,8 @@ export function exportFiles(data: ExportData, lang: Lang): ExportFile[] {
   const byDate = (a: { date?: string }, b: { date?: string }) => String(a.date ?? '').localeCompare(String(b.date ?? ''))
   const legs = alive(data.legs).sort(byDate)
   const places = alive(data.places)
-  const transactions = alive(data.transactions).sort(byDate)
+  // Alleen echt geld: een verwacht salaris of "geen salaris" is geen inkomen (src/domain/geldmodel.ts).
+  const transactions = booked(alive(data.transactions)).sort(byDate)
   const tripName = new Map(trips.map((t) => [t.id, t.name]))
 
   const tripRows = trips

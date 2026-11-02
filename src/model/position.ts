@@ -3,18 +3,19 @@ import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
 import { active } from './derive'
 import { eurOf } from './money'
+import { booked } from '../domain/geldmodel'
 import { payoutRule } from './money-path'
-import { type RatesFile } from './rates'
-import { countedSalary, salaryEur, tipAverages, tripEnd } from './salary'
+import { eurValue, type RatesFile } from './rates'
+import { tipAverages, tripEnd } from './salary'
+import { salaryStatus } from '../domain/geldmodel'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
 import { round2 } from '../basis/bedrag'
 import { monthOf, shiftMonth } from '../basis/datum'
 
-// Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. Op de bank (betaal- en
-// spaarrekeningen), contant (contante fooien die nog niet gestort zijn, plus de stand van een kasrekening), te ontvangen
-// (salaris van voorbije trips dat nog niet betaald is), beleggingen en studieschuld, en de netto waarde: alles bij
-// elkaar. Twee totalen: alles, en wat er sinds het begin van de zeilcarrière bijkwam. De vooruitblik telt bij de netto
+// Geld → Mijn positie: wat Olivier nu heeft, en waar zijn planning naartoe gaat. De rekeningen (op de bank, een
+// kasrekening, beleggingen en studieschuld) plus wat nog te ontvangen is (het salaris van voorbije tochten dat nog niet
+// binnen is, en declaraties), en de netto waarde: alles bij elkaar. Twee totalen: alles, en wat er sinds het begin van de zeilcarrière bijkwam. De vooruitblik telt bij de netto
 // waarde van nu het verwachte salaris van komende trips op (per uitbetaalmoment) en een geschatte fooi (eigen gemiddelde
 // per organisatie, als schatting gemarkeerd). Alles in euro met de koers van de dag; zonder koers apart per valuta.
 
@@ -116,9 +117,8 @@ export interface ReceivableRow {
 export interface Position {
   date: string
   bank: AccountRow[]
-  /** Contant: de kasrekeningen en de contante fooien die nog niet gestort zijn. */
+  /** Contant: de kasrekeningen. */
   cashAccounts: AccountRow[]
-  cashTips: Partial<Record<Currency, number>>
   receivable: ReceivableRow[]
   /** Declaraties met een bedrag die op die dag nog niet terugbetaald waren (open of ingediend). */
   claims: Claim[]
@@ -135,21 +135,6 @@ const GROUP: Record<AccountKind, 'bank' | 'cash' | 'investments' | 'debts'> = {
   contant: 'cash',
   beleggen: 'investments',
   schuld: 'debts',
-}
-
-/**
- * Is het salaris van deze trip op `date` al betaald (het inkomen van "ontvangen" staat op of vóór die dag)? Een
- * salarisinkomen bij de trip telt ook als de status nog op verwacht staat (die viel bijvoorbeeld op een ander apparaat
- * terug): wat binnen is, is niet meer te ontvangen.
- */
-function paidBy(trip: Trip, transactions: readonly Transaction[], date: string): boolean {
-  const s = trip.salary
-  if (!s) return false
-  if (transactions.some((x) => x.deletedAt === null && x.kind === 'loon' && x.tripId === trip.id && x.date <= date)) return true
-  if (s.status !== 'ontvangen') return false
-  const tx = s.transactionId ? transactions.find((x) => x.id === s.transactionId) : undefined
-  // Zonder bekend inkomen (een oudere of handmatige ontvangst): betaald.
-  return !tx || tx.deletedAt !== null || tx.date <= date
 }
 
 export interface PositionInput {
@@ -173,7 +158,6 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     date,
     bank: [],
     cashAccounts: [],
-    cashTips: {},
     receivable: [],
     claims: [],
     investments: [],
@@ -181,7 +165,6 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     totals: { bank: emptySum(), cash: emptySum(), receivable: emptySum(), investments: emptySum(), debts: emptySum(), net: emptySum() },
     counted: 0,
   }
-  const cashStandDate = new Map<Currency, string>()
   for (const account of accounts) {
     if (account.deletedAt !== null || (account.closedAt && account.closedAt <= date)) continue
     let balance = balanceOn(balances, account.id, date)
@@ -200,28 +183,19 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     if (!balance) continue
     out.counted++
     add(out.totals[group], balance.amount, account.currency, date, rates)
-    if (group === 'cash') {
-      const prev = cashStandDate.get(account.currency)
-      if (!prev || balance.date > prev) cashStandDate.set(account.currency, balance.date)
-    }
   }
-  // Contante fooien op die dag nog niet gestort. Een kasrekening in dezelfde valuta met een stand telt de fooien tot en
-  // met die stand al mee; alleen latere fooien komen erbij.
+  // Te ontvangen: het salaris van tochten die op die dag voorbij waren en nog niet binnen (verwacht, of pas later
+  // ontvangen). Alleen salaris dat bij een tocht hoort; een eerder seizoen is al voorbij.
+  const tripById = new Map(active(trips).map((x) => [x.id, x]))
   for (const tx of active(transactions)) {
-    if (tx.kind !== 'fooi' || tx.tipVia !== 'contant' || tx.date > date) continue
-    if (tx.depositedAt && tx.depositedAt <= date) continue
-    const stand = cashStandDate.get(tx.currency)
-    if (stand && tx.date <= stand) continue
-    out.cashTips[tx.currency] = round2((out.cashTips[tx.currency] ?? 0) + tx.amount)
-    add(out.totals.cash, tx.amount, tx.currency, date, rates)
-  }
-  // Te ontvangen: salaris van trips die op die dag voorbij waren en nog niet betaald.
-  for (const trip of active(trips)) {
-    const s = countedSalary(trip)
-    const end = tripEnd(trip, legs)
-    if (!s || !end || endedFor(trip, end) >= date || paidBy(trip, transactions, date)) continue
-    out.receivable.push({ trip, amount: s.amount, currency: s.currency })
-    add(out.totals.receivable, s.amount, s.currency, date, rates)
+    if (tx.kind !== 'loon' || !tx.tripId || !(tx.amount > 0)) continue
+    const status = salaryStatus(tx)
+    if (status === 'geen' || (status === 'ontvangen' && tx.date <= date)) continue
+    const trip = tripById.get(tx.tripId)
+    const end = trip ? tripEnd(trip, legs) : ''
+    if (!trip || !end || endedFor(trip, end) >= date) continue
+    out.receivable.push({ trip, amount: tx.amount, currency: tx.currency })
+    add(out.totals.receivable, tx.amount, tx.currency, date, rates)
   }
   out.receivable.sort((a, b) => tripEnd(a.trip, legs).localeCompare(tripEnd(b.trip, legs)))
   // Declaraties: met een bedrag, op die dag al gedaan en nog niet terugbetaald.
@@ -230,7 +204,7 @@ export function positionAt(input: PositionInput, date: string, firstBalance = fa
     if (c.amount === undefined || c.currency === undefined || c.amount <= 0 || c.date > date) continue
     if (c.repaid && c.repaid.date <= date) continue
     // De terugbetaling staat er al (ook als de declaratie zelf nog niet op terugbetaald staat): niet meer te ontvangen.
-    if (transactions.some((tx) => tx.deletedAt === null && tx.kind === 'terugbetaling' && tx.claimId === c.id && tx.date <= date)) continue
+    if (booked(transactions).some((tx) => tx.kind === 'terugbetaling' && tx.claimId === c.id && tx.date <= date)) continue
     out.claims.push(c)
     add(out.totals.receivable, c.amount, c.currency, date, rates)
   }
@@ -307,7 +281,7 @@ function monthLast(month: string): string {
 
 /**
  * Vooruitblik tot het einde van de planning (de laatste trip, of `planningEnd` uit de agenda): de netto waarde van nu,
- * plus het verwachte salaris van trips die nog niet voorbij zijn (op het uitbetaalmoment) en een geschatte fooi per
+ * plus het verwachte salaris van tochten die nog niet voorbij zijn (op het uitbetaalmoment) en een geschatte fooi per
  * komende trip (eigen gemiddelde van de organisatie, min wat er die trip al binnenkwam). Salaris van voorbije trips staat
  * al in "te ontvangen" en telt dus niet nog eens. De laatste zes maanden gemeten, daarna verwacht.
  */
@@ -337,23 +311,24 @@ export function forecast(input: PositionInput, settings: Settings, today: string
     const end = tripEnd(trip, legs)
     if (!end || end < today) continue
     if (!range && monthOf(end) > until) until = monthOf(end)
-    const s = countedSalary(trip)
-    const moment = s && s.status === 'verwacht' ? (payoutMoment(trip, legs, settings) ?? end) : end
-    if (s && s.status === 'verwacht' && inRange(moment)) {
+    for (const s of active(transactions)) {
+      if (s.kind !== 'loon' || s.tripId !== trip.id || salaryStatus(s) !== 'verwacht' || !(s.amount > 0)) continue
+      const moment = payoutMoment(trip, legs, settings) ?? end
+      if (!inRange(moment)) continue
       if (!range && monthOf(moment) > until) until = monthOf(moment)
-      const eur = salaryEur(s, end, rates) ?? (s.currency === 'EUR' ? s.amount : null)
+      const eur = eurValue({ ...s, date: end }, rates)?.eur ?? null
       if (eur === null) other[s.currency] = round2((other[s.currency] ?? 0) + s.amount)
       else {
         const same = items.find((i) => i.kind === 'salaris' && i.date === moment && i.org === trip.organisation)
         if (same) {
-          same.trips.push(trip)
+          if (!same.trips.includes(trip)) same.trips.push(trip)
           same.eur = round2(same.eur + eur)
         } else items.push({ date: moment, kind: 'salaris', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], eur })
       }
     }
     const avg = trip.organisation ? averages[trip.organisation] : undefined
     if (avg !== undefined && inRange(end)) {
-      const already = active(transactions)
+      const already = booked(transactions)
         .filter((tx) => tx.kind === 'fooi' && tx.tripId === trip.id)
         .reduce((n, tx) => n + (eurOf(tx) ?? 0), 0)
       const estimate = round2(Math.max(0, avg - already))
@@ -383,7 +358,7 @@ export function forecast(input: PositionInput, settings: Settings, today: string
   for (let i = history - 1; i >= 1; i--) {
     const month = shiftMonth(current, -i)
     const p = positionAt(input, range && range.to < monthLast(month) ? range.to : monthLast(month))
-    const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0 || Object.keys(p.cashTips).length > 0
+    const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0
     months.push({ month, eur: known && Object.keys(p.totals.net.other).length === 0 ? p.totals.net.eur : null, future: false })
   }
   months.push({ month: current, eur: nowKnown ? now.eur : null, future: false })

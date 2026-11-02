@@ -1,4 +1,5 @@
-import { active, lastMonths, round1 } from './derive'
+import { lastMonths, round1 } from './derive'
+import { booked } from '../domain/geldmodel'
 import { eurValue } from './rates'
 import { INCOME_KIND_LIST, type Currency, type Transaction, type TransactionKind, type TransactionSource } from './types'
 import { round2 } from '../basis/bedrag'
@@ -6,6 +7,7 @@ import { addDays, mondayOf } from '../basis/datum'
 
 // Afgeleiden voor zeilgeld, alles in euro: EUR zelf, het ontvangen eurobedrag, de opgeslagen koers of de ECB-koers
 // van de transactiedatum (src/model/rates.ts). Alleen als er helemaal geen koers is, staat een bedrag apart per valuta.
+// Alleen echt geld telt (`booked`, src/domain/geldmodel.ts): een verwacht salaris of "geen salaris" nooit.
 
 export const INCOME_KINDS: readonly TransactionKind[] = INCOME_KIND_LIST
 
@@ -40,7 +42,7 @@ export function emptyTotals(): MoneyTotals {
 
 export function totals(transactions: readonly Transaction[]): MoneyTotals {
   const t = emptyTotals()
-  for (const tx of active(transactions)) {
+  for (const tx of booked(transactions)) {
     const eur = eurOf(tx)
     if (eur !== null) {
       if (tx.kind === 'terugbetaling') t.reimbursedEur += eur
@@ -71,7 +73,7 @@ export interface MonthTotals extends MoneyTotals {
 /** Per maand, nieuwste eerst. */
 export function perMonth(transactions: readonly Transaction[]): MonthTotals[] {
   const groups = new Map<string, Transaction[]>()
-  for (const tx of active(transactions)) {
+  for (const tx of booked(transactions)) {
     const key = tx.date.slice(0, 7)
     groups.set(key, [...(groups.get(key) ?? []), tx])
   }
@@ -93,7 +95,7 @@ export interface SourceTotals extends MoneyTotals {
 /** Per bron, grootste inkomsten eerst; bronnen zonder transacties vallen weg. */
 export function perSource(transactions: readonly Transaction[]): SourceTotals[] {
   const groups = new Map<TransactionSource, Transaction[]>()
-  for (const tx of active(transactions)) groups.set(tx.source, [...(groups.get(tx.source) ?? []), tx])
+  for (const tx of booked(transactions)) groups.set(tx.source, [...(groups.get(tx.source) ?? []), tx])
   return [...groups.entries()]
     .map(([source, txs]) => ({ source, ...totals(txs) }))
     .sort((a, b) => b.incomeEur - a.incomeEur)
@@ -114,7 +116,7 @@ export function tipsPerWeek(transactions: readonly Transaction[], today: string,
     result.push({ weekStart: addDays(start, -7 * i), eur: 0, other: {} })
   }
   const first = result[0]!.weekStart
-  for (const tx of active(transactions)) {
+  for (const tx of booked(transactions)) {
     if (tx.kind !== 'fooi' || tx.date < first || tx.date > addDays(start, 6)) continue
     const week = result.find((w) => tx.date >= w.weekStart && tx.date < addDays(w.weekStart, 7))
     if (!week) continue
@@ -128,7 +130,7 @@ export function tipsPerWeek(transactions: readonly Transaction[], today: string,
 /** Valuta's die in de transacties voorkomen zonder EUR-waarde. */
 export function otherCurrencies(transactions: readonly Transaction[]): Currency[] {
   const set = new Set<Currency>()
-  for (const tx of active(transactions)) if (eurOf(tx) === null) set.add(tx.currency)
+  for (const tx of booked(transactions)) if (eurOf(tx) === null) set.add(tx.currency)
   return [...set].sort()
 }
 

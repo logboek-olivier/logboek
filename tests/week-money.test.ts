@@ -9,8 +9,8 @@ import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx, put, putMany } from './helpers/schrijf'
 
-// Ronde 3 · PR 7: de geldstap van de weekafsluiting. De stand per rekening, ontvangen salaris en gestorte contanten in
-// één keer, met één ongedaan maken voor alles. Verzonnen data.
+// De geldstap van de weekafsluiting: de stand per rekening en ontvangen salaris in één keer, met één ongedaan maken voor
+// alles. Het salaris is één loon-transactie per tocht met een status (src/domain/geldmodel.ts). Verzonnen data.
 
 const T0 = '2026-01-01T00:00:00.000Z'
 const TODAY = '2026-11-08'
@@ -27,41 +27,44 @@ async function store(): Promise<Store> {
 }
 
 const account: Account = { id: 'asn', name: 'Nep ASN', provider: 'asn', kind: 'betaal', currency: 'EUR', updatedAt: T0, deletedAt: null }
-const trip = (id: string): Trip => ({ id, name: `Nep ${id}`, organisation: 'sailing-virgins', startDate: '2026-10-01', endDate: '2026-10-07', salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' }, updatedAt: T0, deletedAt: null })
-const tip: Transaction = { id: 'c', date: '2026-11-02', kind: 'fooi', amount: 60, currency: 'EUR', source: 'sailing-virgins', tipVia: 'contant', updatedAt: T0, deletedAt: null }
+const trip = (id: string): Trip => ({ id, name: `Nep ${id}`, organisation: 'sailing-virgins', startDate: '2026-10-01', endDate: '2026-10-07', updatedAt: T0, deletedAt: null })
+const salary = (tripId: string, extra: Partial<Transaction> = {}): Transaction => ({ id: `salaris:${tripId}`, date: '2026-10-07', kind: 'loon', amount: 1000, currency: 'EUR', source: 'sailing-virgins', tripId, status: 'verwacht', updatedAt: T0, deletedAt: null, ...extra })
+const tip: Transaction = { id: 'c', date: '2026-11-02', kind: 'fooi', amount: 60, currency: 'EUR', source: 'sailing-virgins', updatedAt: T0, deletedAt: null }
+const loon = (s: Store) => s.list('transactions.json.enc').filter((tx) => tx.kind === 'loon')
 
 describe('geldstap van de weekafsluiting', () => {
   it('alles overslaan is leeg', () => {
-    expect(isEmptyStep({ balances: [], received: [], deposited: [] })).toBe(true)
+    expect(isEmptyStep({ balances: [], received: [] })).toBe(true)
+    expect(isEmptyStep({ balances: [], received: [trip('a')] })).toBe(false)
   })
 
-  it('stand, ontvangen salaris en gestorte contanten in één keer; één ongedaan maken zet alles terug', async () => {
+  it('stand en ontvangen salaris in één keer; één ongedaan maken zet alles terug', async () => {
     const s = await store()
     await put(s, 'accounts.json.enc', account)
     await putMany(s, 'trips.json.enc', [trip('a'), trip('b')])
-    await put(s, 'transactions.json.enc', tip)
-    const { undo, result: { skipped } } = await geldstapOpslaan(s, { balances: [{ account, amount: 1500 }], received: [trip('a'), trip('b')], deposited: ['EUR'] }, TODAY, null)
+    await putMany(s, 'transactions.json.enc', [tip, salary('a'), salary('b')])
+    const { undo, result: { skipped } } = await geldstapOpslaan(s, { balances: [{ account, amount: 1500 }], received: [trip('a'), trip('b')] }, TODAY, null)
     expect(skipped).toEqual([])
     expect(s.list('balances.json.enc')).toEqual([expect.objectContaining({ accountId: 'asn', date: TODAY, amount: 1500 })])
-    const loon = s.list('transactions.json.enc').filter((tx) => tx.kind === 'loon')
-    expect(loon).toHaveLength(2)
-    expect(new Set(loon.map((tx) => tx.payoutId)).size).toBe(1)
-    expect(loon.reduce((n, tx) => n + tx.amount, 0)).toBe(2000)
-    expect(s.list('trips.json.enc').map((x) => x.salary!.status)).toEqual(['ontvangen', 'ontvangen'])
-    expect(s.list('transactions.json.enc').find((tx) => tx.id === 'c')!.depositedAt).toBe(TODAY)
+    // Per tocht één salaris (geen tweede loon), op ontvangen, samen precies de uitbetaling.
+    expect(loon(s)).toHaveLength(2)
+    expect(loon(s).map((tx) => tx.status)).toEqual(['ontvangen', 'ontvangen'])
+    expect(new Set(loon(s).map((tx) => tx.payoutId)).size).toBe(1)
+    expect(loon(s).reduce((n, tx) => n + tx.amount, 0)).toBe(2000)
     await undo()
     expect(s.list('balances.json.enc')).toEqual([])
-    expect(s.list('transactions.json.enc').filter((tx) => tx.kind === 'loon')).toEqual([])
-    expect(s.list('trips.json.enc').map((x) => x.salary!.status)).toEqual(['verwacht', 'verwacht'])
-    expect(s.list('transactions.json.enc').find((tx) => tx.id === 'c')!.depositedAt).toBeUndefined()
+    expect(loon(s).map((tx) => tx.status)).toEqual(['verwacht', 'verwacht'])
+    expect(loon(s).every((tx) => tx.payoutId === undefined)).toBe(true)
+    expect(s.list('transactions.json.enc').find((tx) => tx.id === 'c')).toMatchObject({ amount: 60 })
   })
 
   it('zonder koers voor een uitbetaling in een andere valuta: die organisatie wordt overgeslagen, de rest gaat door', async () => {
     const s = await store()
-    const usd = { ...trip('u'), salary: { amount: 900, currency: 'USD' as const, status: 'verwacht' as const, source: 'eigen' as const } }
+    const usd = trip('u')
     await putMany(s, 'trips.json.enc', [trip('a'), usd])
-    const { skipped } = await inTx(s, applyMoneyStep, { balances: [], received: [trip('a'), usd], deposited: [] }, TODAY, null)
+    await putMany(s, 'transactions.json.enc', [salary('a'), salary('u', { amount: 900, currency: 'USD' })])
+    const { skipped } = await inTx(s, applyMoneyStep, { balances: [], received: [trip('a'), usd] }, TODAY, null)
     expect(skipped).toEqual(['sailing-virgins'])
-    expect(s.list('transactions.json.enc')).toEqual([])
+    expect(loon(s).map((tx) => tx.status)).toEqual(['verwacht', 'verwacht'])
   })
 })

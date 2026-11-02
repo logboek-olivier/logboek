@@ -78,24 +78,17 @@ export type TipFrom =
   /** Eén of meer deelnemers van de trip; `amounts` per persoon, zonder = samen gegeven. */
   | { kind: 'personen'; participantIds: string[]; amounts?: Record<string, number> }
 
-/** Salaris van een trip: verwacht, ontvangen, of geen salaris (zelf zo gekozen; telt nergens mee). */
-export type SalaryStatus = 'verwacht' | 'ontvangen' | 'geen'
-/** standaard: het standaardbedrag van de organisatie (Instellingen); eigen: zelf ingevuld of aangepast. */
-export type SalarySource = 'standaard' | 'eigen'
-
 /**
- * Olivier wordt per trip betaald. Een eigen bedrag en een ontvangen salaris worden nooit automatisch overschreven
- * (src/model/salary.ts).
+ * Status van het salaris van een tocht (een transactie van soort loon): verwacht (nog niet binnen), ontvangen, of geen
+ * salaris (zelf zo gekozen; bedrag 0, telt nergens mee). Een loon zonder status is ontvangen (elk loon van vóór dit veld
+ * was echt geld).
  */
-export interface TripSalary {
-  amount: number
-  currency: Currency
-  status: SalaryStatus
-  source: SalarySource
-  /** Het inkomen dat bij "ontvangen" is gemaakt. */
-  transactionId?: string
-  /** jjjj-mm-dd: na "Nog niet" vraagt Vandaag pas vanaf deze datum opnieuw. */
-  askAfter?: string
+export type SalaryStatus = 'verwacht' | 'ontvangen' | 'geen'
+
+/** Een eerder seizoen: organisatie en jaar (Geld → Eerder seizoen), voor geld waarvan Olivier de tocht niet meer weet. */
+export interface Season {
+  org: Organisation
+  year: number
 }
 
 /** Standaardbedrag per organisatie (Instellingen → Salaris per organisatie). */
@@ -109,9 +102,6 @@ export interface SalaryDefault {
  * voor de trips van de vorige maand. Ontbreekt = na elke trip.
  */
 export type PayoutRule = { kind: 'per-trip' } | { kind: 'maandelijks'; day: number }
-
-/** Hoe een fooi binnenkwam: contant (staat in Contant tot hij gestort is) of op de bank. Ontbreekt = onbekend. */
-export type TipVia = 'contant' | 'bank'
 
 /**
  * Soort uitgave (docs/PERIODEMODEL.md): reizen (in de data 'vervoer'), eten en drinken, verblijf, opleiding, uitrusting,
@@ -221,8 +211,11 @@ export interface Trip extends SyncRecord {
    * weggaan. Stelt Olivier de datums zelf in, dan vervalt dit (src/model/trip-dates.ts).
    */
   datesFromDays?: boolean
-  /** Salaris voor deze trip (bedrag, valuta, verwacht of ontvangen, standaard of eigen). */
-  salary?: TripSalary
+  /**
+   * Aantal gasten als er geen deelnemers met naam zijn (Yacht Week): alleen een getal, voor de fooi per gast. Met
+   * deelnemers telt hun aantal.
+   */
+  guestCount?: number
 }
 
 export interface Leg extends SyncRecord {
@@ -276,10 +269,15 @@ export interface Transaction extends SyncRecord {
   note?: string
   /** Alleen bij een fooi: van wie. */
   tipFrom?: TipFrom
-  /** Alleen bij een fooi: contant of op de bank (ontbreekt = onbekend, ook bij oudere fooien). */
-  tipVia?: TipVia
-  /** Alleen bij een contante fooi: jjjj-mm-dd waarop hij gestort is (dan telt hij niet meer in Contant). */
-  depositedAt?: string
+  /**
+   * Alleen bij loon: het salaris van een tocht (precies één per tocht, src/domain/geldmodel.ts). Ontbreekt = ontvangen.
+   * Verwacht en geen zijn nog geen geld: ze tellen niet in verdiend, de transacties of het jaaroverzicht.
+   */
+  status?: SalaryStatus
+  /** Alleen bij een verwacht salaris: na "Nog niet" vraagt Vandaag pas vanaf deze datum (jjjj-mm-dd) opnieuw. */
+  askAfter?: string
+  /** Gekoppeld aan een eerder seizoen in plaats van een tocht (nooit allebei). */
+  season?: Season
   /** Alleen bij kosten: vervoer, eten en drinken of overig (ontbreekt = overig). */
   category?: CostCategory
   /** De declaratie waar deze uitgave of terugbetaling bij hoort (claims.json.enc). */
@@ -333,8 +331,6 @@ export interface Settings extends SyncRecord {
   dailyReminder?: { time: string; workdaysOnly: boolean }
   /** Uitbetaling per organisatie (na elke trip of maandelijks rond dag N); ontbreekt = na elke trip. */
   payouts?: Partial<Record<Organisation, PayoutRule>>
-  /** Laatst gekozen: fooi contant of op de bank. */
-  lastTipVia?: TipVia
   /** Begin van de zeilcarrière (jjjj-mm-dd) voor "Sinds …" in Mijn positie; ontbreekt = 11 september 2026. */
   careerStart?: string
   /** Standaard variabele kosten per dag in euro per dagsoort, zolang de app nog te weinig eigen gegevens heeft. */

@@ -6,8 +6,7 @@ import { setStayDays } from '../model/periods'
 import { STAY_FROM_DAY } from '../model/migrate-periods'
 import type { Lang } from '../i18n'
 import type { Tx } from '../domain/tx'
-import { withSalaryDefault } from '../model/salary'
-import { currentSettings } from '../model/settings'
+import { applySalaryDefault } from '../model/salary'
 import { FileFormatError, readRowSources, type SheetCell } from './rows'
 import { todayIso } from '../basis/datum'
 import { organisationChoices, organisations } from '../basis/organisatie'
@@ -179,7 +178,6 @@ export function needsChoice(item: PlanItem): boolean {
  * komt ernaast (ook als hij een andere overlapt), zelf ingestelde dagen veranderen alleen bij aangezette regels.
  */
 export async function applyPlan(store: Tx, items: readonly PlanItem[], include: ReadonlySet<number>, lang: Lang): Promise<{ trips: number; days: number }> {
-  const settings = currentSettings(store.list('settings.json.enc'))
   const now = new Date().toISOString()
   const trips: Trip[] = []
   const days = new Map<string, CalendarDay>()
@@ -204,7 +202,7 @@ export async function applyPlan(store: Tx, items: readonly PlanItem[], include: 
         note: row.note,
       }
       // Een werkregel met organisatie krijgt het standaardsalaris van die organisatie.
-      trips.push(withSalaryDefault({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null }, settings, undefined, [], todayIso()))
+      trips.push({ id: newId(), ...weekFields(input, lang), updatedAt: now, deletedAt: null })
     } else if (STAY_FROM_DAY[row.kind]) {
       stays.push({ dates: datesBetween(row.start, row.end), kind: STAY_FROM_DAY[row.kind]!, note: row.note, name: row.name })
     } else {
@@ -224,6 +222,8 @@ export async function applyPlan(store: Tx, items: readonly PlanItem[], include: 
   }
   if (trips.length > 0) {
     await store.putMany('trips.json.enc', trips)
+    // Een werkregel met organisatie krijgt het standaardsalaris van die organisatie (een verwacht salaris).
+    for (const trip of trips) await applySalaryDefault(store, trip, undefined, todayIso())
   }
   return { trips: trips.length, days: days.size + stays.reduce((n, st) => n + st.dates.length, 0) }
 }

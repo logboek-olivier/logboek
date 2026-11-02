@@ -100,7 +100,6 @@ export function demoData(today: string): DemoData {
       area: 'BVI',
       organisation: 'sailing-virgins',
       participants,
-      salary: { amount: 1600, currency: 'USD', status: 'verwacht', source: 'eigen' },
       checks: { 'seed-veiligheid': ['seed-veiligheid-1', 'seed-veiligheid-2', 'seed-veiligheid-3'], 'seed-check-in': ['seed-check-in-1'] },
       ...base,
     },
@@ -119,7 +118,6 @@ export function demoData(today: string): DemoData {
       charter: 'Demo Yachting',
       area: 'Dalmatia',
       organisation: 'yacht-week',
-      salary: { amount: 1400, currency: 'EUR', status: 'ontvangen', source: 'eigen', transactionId: 'salaris:demo-trip-cro' },
       review: { quotes: ['Best week of the summer', 'Calm, clear and fun'], score: 9.4, rating: 9, lesson: 'Reef early before the afternoon breeze.' },
       closedAt: addDays(croStart, 7),
       ...base,
@@ -155,7 +153,6 @@ export function demoData(today: string): DemoData {
       base: BVI.nanny!.name,
       area: 'BVI',
       organisation: 'sailing-virgins',
-      salary: { amount: 1600, currency: 'USD', status: 'verwacht', source: 'eigen' },
       ...base,
     },
     {
@@ -258,8 +255,11 @@ export function demoData(today: string): DemoData {
     money('cursus-eten', addDays(pastBvi, 2), 'demo-trip-bvi-old', 'kosten', 85, 'USD', { category: 'eten', note: 'Groceries' }),
     money('thuis-1', addDays(pastBvi, 20), 'demo-stay-thuis-1', 'kosten', 64, 'EUR', { category: 'eten', note: 'Groceries' }),
     money('vlucht-cro', addDays(croStart, -1), 'demo-trip-cro', 'kosten', 180, 'EUR', { category: 'vervoer', note: 'Flight to Split' }),
-    { ...money('salaris-cro', addDays(croStart, 10), 'demo-trip-cro', 'loon', 1400, 'EUR', { source: 'yacht-week' }), id: 'salaris:demo-trip-cro' },
-    money('fooi-cro', addDays(croStart, 6), 'demo-trip-cro', 'fooi', 650, 'EUR', { source: 'yacht-week', tipFrom: { kind: 'groep' }, tipVia: 'contant' }),
+    // Het salaris van een tocht is één loon-transactie met een status (src/domain/geldmodel.ts).
+    { ...money('salaris-cro', addDays(croStart, 10), 'demo-trip-cro', 'loon', 1400, 'EUR', { source: 'yacht-week', status: 'ontvangen' }), id: 'salaris:demo-trip-cro' },
+    { ...money('salaris-bvi', addDays(bviStart, 6), 'demo-trip-bvi', 'loon', 1600, 'USD', { source: 'sailing-virgins', status: 'verwacht' }), id: 'salaris:demo-trip-bvi' },
+    { ...money('salaris-next', addDays(nextStart, 6), 'demo-trip-next', 'loon', 1600, 'USD', { source: 'sailing-virgins', status: 'verwacht' }), id: 'salaris:demo-trip-next' },
+    money('fooi-cro', addDays(croStart, 6), 'demo-trip-cro', 'fooi', 650, 'EUR', { source: 'yacht-week', tipFrom: { kind: 'groep' } }),
     money('cro-eten', addDays(croStart, 3), 'demo-trip-cro', 'kosten', 42, 'EUR', { category: 'eten', note: 'Lunch ashore' }),
     money('vlucht-terug', addDays(croStart, 7), 'demo-stay-reis-cro-terug', 'kosten', 160, 'EUR', { category: 'vervoer', note: 'Flight home' }),
     money('thuis-2', addDays(croStart, 20), 'demo-stay-thuis-2', 'kosten', 55, 'EUR', { category: 'eten', note: 'Groceries' }),
@@ -268,7 +268,7 @@ export function demoData(today: string): DemoData {
     money('vrienden-eten', friendsStart, 'demo-trip-friends', 'kosten', 120, 'USD', { category: 'eten', note: 'Provisioning' }),
     money('vrienden-boei', addDays(friendsStart, 1), 'demo-trip-friends', 'kosten', 35, 'USD', { category: 'verblijf', note: 'Mooring ball' }),
     money('vrij-bvi', addDays(friendsStart, 4), 'demo-stay-vrij-bvi', 'kosten', 75, 'USD', { category: 'verblijf', note: 'Guesthouse' }),
-    money('fooi-bvi', addDays(bviStart, 2), 'demo-trip-bvi', 'fooi', 120, 'USD', { source: 'sailing-virgins', tipFrom: { kind: 'personen', participantIds: ['demo-p-0', 'demo-p-3'] }, tipVia: 'contant' }),
+    money('fooi-bvi', addDays(bviStart, 2), 'demo-trip-bvi', 'fooi', 120, 'USD', { source: 'sailing-virgins', tipFrom: { kind: 'personen', participantIds: ['demo-p-0', 'demo-p-3'] } }),
     money('bvi-eten', addDays(bviStart, 1), 'demo-trip-bvi', 'kosten', 28, 'USD', { category: 'eten', note: 'Ice and snacks' }),
   ]
   const calendar: CalendarDay[] = []

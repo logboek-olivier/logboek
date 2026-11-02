@@ -23,7 +23,7 @@ export const AUTOMATIC: ReadonlySet<string> = new Set(['periodemodelMigreren', '
  */
 // De planningsimport staat er niet bij: een werkregel die een periode aan land splitst, neemt het geld van die dagen
 // bewust mee (dezelfde periode in twee stukken); hij heeft zijn eigen voorbeeld vooraf.
-export const KEEPS_RELATIONS: ReadonlySet<string> = new Set([...AUTOMATIC, 'geschiedenisOpruimen', 'vasteLastenBoeken', 'mijlenImporteren', 'standenImporteren', 'backupTerugzetten'])
+export const KEEPS_RELATIONS: ReadonlySet<string> = new Set([...AUTOMATIC, 'geschiedenisOpruimen', 'vasteLastenBoeken', 'mijlenImporteren', 'standenImporteren', 'backupTerugzetten', 'geldOmzetten'])
 
 const LINK_FIELD: Partial<Record<CollectionPath, 'tripId' | 'weekId'>> = {
   'legs.json.enc': 'tripId',

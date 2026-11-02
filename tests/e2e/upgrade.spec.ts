@@ -62,6 +62,8 @@ function loadedScript(page: Page): Promise<string | null> {
 
 const repairHeading = (page: Page) => page.getByRole('heading', { name: L('repair.title') })
 const todayHeading = (page: Page) => page.getByRole('heading', { name: L('nav.today') })
+// Na het koppelen aan geld van vóór één waarheid voor geld: eenmalig het scherm Geld omzetten (src/domain/geld-omzetten.ts).
+const conversionHeading = (page: Page) => page.getByRole('heading', { name: L('convert.title') })
 const unlockButton = (page: Page) => page.getByRole('button', { name: L('unlock.unlock') })
 
 async function link(page: Page): Promise<void> {
@@ -69,7 +71,7 @@ async function link(page: Page): Promise<void> {
   await enterToken(page)
   await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
   await page.getByRole('button', { name: L('setup.linkButton') }).click()
-  await expect(todayHeading(page).or(repairHeading(page))).toBeVisible({ timeout: 30_000 })
+  await expect(todayHeading(page).or(repairHeading(page)).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
 }
 
 async function expectSynced(page: Page): Promise<void> {
@@ -208,7 +210,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
 
     await deployAndReopen(page, server)
     // Binnen 5 minuten hervat de sessie; anders ontgrendelen met de wachtzin.
-    await expect(todayHeading(page).or(unlockButton(page))).toBeVisible({ timeout: 30_000 })
+    // Na de eerste sync kan het scherm Geld omzetten al over Vandaag liggen (eenmalig, na een tik).
+    await expect(todayHeading(page).or(unlockButton(page)).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
     if (await unlockButton(page).isVisible()) {
       await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
       await unlockButton(page).click()
@@ -235,6 +238,32 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       // hebben; dat laat deze versie staan (ook nooit stil ontkoppelen). Vanaf een release zonder periodemodel (job
       // upgrade-ouder) blijft het dus ongekoppeld.
       expect([undefined, 'periode:thuis:2026-11-10']).toContain((transactions.find((r) => r.id === 'upg-tx-thuis') as { tripId?: string } | undefined)?.tripId)
+    }
+    // Eén waarheid voor geld (src/domain/geld-omzetten.ts): na de update eenmalig het scherm "Geld omzetten", met alleen
+    // aantallen. Pas na een tik verandert er iets: het salaris van de tocht wordt een transactie, contant en gestort gaan weg.
+    const conversion = page.locator('.money-conversion')
+    await expect(conversion).toBeVisible({ timeout: 30_000 })
+    await expect(conversion).toContainText(translate('nl', 'convert.cashMarks', { n: 3 }))
+    const moneyPuts = puts('transactions.json.enc')
+    await conversion.getByRole('button', { name: L('convert.button') }).click()
+    await expect(conversion).toHaveCount(0)
+    await expect.poll(() => puts('transactions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(moneyPuts)
+    await expectSynced(page)
+    {
+      const meta = parseMeta(Buffer.from(github.files.get(META_PATH)!.content, 'base64').toString('utf8'))
+      const key = await unlock(meta, { passphrase: PASSPHRASE })
+      const read = async (path: string) => decryptRecords(key, path as never, Uint8Array.from(Buffer.from(github.files.get(path)!.content, 'base64')))
+      await expect.poll(async () => (await read('trips.json.enc')).filter((x) => 'salary' in x).length, { timeout: 20_000 }).toBe(0)
+      const money = await read('transactions.json.enc')
+      expect(money.filter((x) => 'tipVia' in x || 'depositedAt' in x)).toEqual([])
+      expect(money).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'salaris:upg-trip-salaris', kind: 'loon', amount: 1200, currency: 'EUR', status: 'verwacht', tripId: 'upg-trip-salaris', deletedAt: null }),
+          expect.objectContaining({ kind: 'loon', amount: 0, status: 'geen', tripId: 'upg-trip-geen-salaris', deletedAt: null }),
+          // De fooien blijven met hetzelfde bedrag op hun eigen datum staan.
+          expect.objectContaining({ id: 'upg-tx-4', amount: 20, currency: 'USD', date: '2026-10-22', deletedAt: null }),
+        ]),
+      )
     }
     // Na de update controleert de app vanzelf (Controleer nu), met de schrijver per bestand uit de commits.
     await expect.poll(() => github.requests.some((r) => r.method === 'GET' && r.url.includes('/commits?path=')), { timeout: 30_000 }).toBe(true)
@@ -286,25 +315,14 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('settings.json.enc'), { timeout: 20_000 }).toBeGreaterThan(settingsPuts)
     await expectSynced(page)
-    // Salaris per trip (nieuw veld in trips, standaardbedragen in de instellingen): Vandaag vraagt na de einddatum of
-    // het salaris ontvangen is; "Ja" maakt een inkomen bij de trip en zet de status op ontvangen.
+    // Salaris per tocht (één loon-transactie met een status): Vandaag vraagt na de einddatum of het verwachte salaris
+    // binnen is; "Ja" zet die ene transactie op ontvangen.
     await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
     const salaryQuestion = page.locator('.salary-question', { hasText: 'Nepsalaris upgrade' })
     await expect(salaryQuestion).toBeVisible()
-    const salaryPuts = puts('trips.json.enc')
+    const salaryPuts = puts('transactions.json.enc')
     await salaryQuestion.getByRole('button', { name: L('salary.yes'), exact: true }).click()
-    await expect.poll(() => puts('trips.json.enc'), { timeout: 20_000 }).toBeGreaterThan(salaryPuts)
-    await expectSynced(page)
-    // Geldpad (nieuwe velden in transacties en instellingen): de contante fooien in euro (het voorbeeld en de nieuwe fooi
-    // van daarnet) storten; de al gestorte dollars blijven zoals ze waren.
-    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
-    await openMore(page, L('nav.money'), L('nav.more'))
-    const cashRow = page.locator('.cash-row', { hasText: '55' })
-    await expect(cashRow).toBeVisible()
-    await cashRow.getByRole('button', { name: L('cash.deposit') }).click()
-    const cashPuts = puts('transactions.json.enc')
-    await page.getByRole('dialog').getByRole('button', { name: L('cash.depositSave') }).click()
-    await expect.poll(() => puts('transactions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(cashPuts)
+    await expect.poll(() => puts('transactions.json.enc'), { timeout: 20_000 }).toBeGreaterThan(salaryPuts)
     await expectSynced(page)
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     // Weekafsluiting (weekreviews.json.enc, nieuw in ronde 2): de week van vandaag afsluiten via de dagkaart van de
@@ -411,15 +429,9 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
         expect.objectContaining({ amount: 25, tripId: 'upg-trip-1', tipFrom: { kind: 'personen', participantIds: ['upg-p-1'] } }),
       ]),
     )
-    // Geldpad: de contante euro's gestort (ook de nieuwe fooi, contant zoals laatst gekozen), de dollars en de bank en het
-    // deel van de uitbetaling ongewijzigd.
-    const cashed = (id: string) => transactions.find((tx) => tx.id === id) as { tipVia?: string; depositedAt?: string; payoutId?: string } | undefined
-    expect(cashed('upg-tx-3')).toMatchObject({ tipVia: 'contant', depositedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) })
-    expect(cashed('upg-tx-4')).toMatchObject({ tipVia: 'contant', depositedAt: '2026-10-23' })
-    expect(cashed('upg-tx-5')).toMatchObject({ tipVia: 'bank' })
-    expect(cashed('upg-tx-5')!.depositedAt).toBeUndefined()
-    expect(cashed('upg-tx-payout')).toMatchObject({ payoutId: 'upg-payout-1', deletedAt: null })
-    expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({ amount: 25, tipVia: 'contant', depositedAt: expect.any(String) })]))
+    // Geen contant of gestort meer; het deel van de uitbetaling blijft een ontvangen loon.
+    expect(transactions.filter((tx) => 'tipVia' in tx || 'depositedAt' in tx)).toEqual([])
+    expect(transactions.find((tx) => tx.id === 'upg-tx-payout')).toMatchObject({ payoutId: 'upg-payout-1', amount: 900, deletedAt: null })
     const settings = await decryptRecords(key, 'settings.json.enc', Uint8Array.from(Buffer.from(github.files.get('settings.json.enc')!.content, 'base64')))
     expect(settings.find((s) => s.id === 'settings')).toMatchObject({
       orgFirst: { 'sailing-virgins': 3, 'yacht-week': 10 },
@@ -427,7 +439,6 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       salaryDefaults: { 'sailing-virgins': { amount: 1100, currency: 'EUR' } },
       dailyReminder: { time: '19:30', workdaysOnly: true },
       payouts: { 'yacht-week': { kind: 'maandelijks', day: 5 } },
-      lastTipVia: 'contant',
       careerStart: '2026-09-01',
       costDefaults: { thuis: 25, reis: 40 },
       lastCostCategory: 'eten',
@@ -436,10 +447,9 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
     const legs = await decryptRecords(key, 'legs.json.enc', Uint8Array.from(Buffer.from(github.files.get('legs.json.enc')!.content, 'base64')))
     expect(legs).toEqual(expect.arrayContaining([expect.objectContaining({ tripId: 'upg-trip-dag', date: '2026-10-13', deletedAt: null })]))
-    // Het salaris is ontvangen (eigen bedrag blijft), met het inkomen bij de trip.
-    const salaryTrip = trips.find((t) => t.id === 'upg-trip-salaris') as { salary?: { transactionId?: string } } | undefined
-    expect(salaryTrip).toMatchObject({ salary: { amount: 1200, currency: 'EUR', status: 'ontvangen', source: 'eigen' } })
-    expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({ id: salaryTrip?.salary?.transactionId, kind: 'loon', amount: 1200, tripId: 'upg-trip-salaris', deletedAt: null })]))
+    // Het salaris is ontvangen: dezelfde ene transactie (vast id), het bedrag blijft; de tocht heeft geen salaris-veld meer.
+    expect(trips.find((t) => t.id === 'upg-trip-salaris')).not.toHaveProperty('salary')
+    expect((transactions as unknown as { kind: string; tripId?: string; deletedAt: string | null }[]).filter((tx) => tx.kind === 'loon' && tx.tripId === 'upg-trip-salaris' && tx.deletedAt === null)).toEqual([expect.objectContaining({ id: 'salaris:upg-trip-salaris', amount: 1200, status: 'ontvangen' })])
     expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
     // De weekafsluiting staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende).
     const closings = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
@@ -514,13 +524,14 @@ test('telefoon van 28 oktober: checklists onleesbaar op GitHub, lus op het herst
     const taps = await deployAndReopen(page, server)
     expect(taps).toBe(0)
     // Tik 2 (plus de wachtzin typen): ontgrendelen. Geen herstelscherm meer.
-    await expect(todayHeading(page).or(unlockButton(page))).toBeVisible({ timeout: 30_000 })
+    // Na de eerste sync kan het scherm Geld omzetten al over Vandaag liggen (eenmalig, na een tik).
+    await expect(todayHeading(page).or(unlockButton(page)).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
     await expect(repairHeading(page)).toHaveCount(0)
     if (await unlockButton(page).isVisible()) {
       await page.getByLabel(L('passphrase.label'), { exact: true }).fill(PASSPHRASE)
       await unlockButton(page).click()
     }
-    await expect(todayHeading(page)).toBeVisible({ timeout: 30_000 })
+    await expect(todayHeading(page).or(conversionHeading(page))).toBeVisible({ timeout: 30_000 })
     // Checklists herstelt de app vanzelf; de rest werkt gewoon.
     await expectSynced(page)
     await page.getByRole('status').first().click()

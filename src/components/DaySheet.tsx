@@ -1,3 +1,4 @@
+import { isBooked } from '../domain/geldmodel'
 import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Plus, Route } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatDateShort, formatHours, formatMoney, formatNm, formatWeekday } from '../format'
@@ -304,7 +305,7 @@ function resized(change: TripResize): string {
 
 /** Inkomsten van deze dag (fooi, loon, bonus, overig; geen terugbetalingen); bedragen pas na "Toon bedragen". */
 function DayIncome({ store, date }: { store: Store; date: string }) {
-  const income = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && isEarned(tx.kind) && tx.date === date)
+  const income = useCollection(store, 'transactions.json.enc').filter((tx) => isBooked(tx) && isEarned(tx.kind) && tx.date === date)
   useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
   // Alleen als er iets is (geen "geen inkomsten"-regel).
@@ -517,7 +518,7 @@ export function DayView({
  * bedragen pas na "Toon bedragen" (studenten kunnen meekijken).
  */
 function DayMoney({ store, date }: { store: Store; date: string }) {
-  const list = useCollection(store, 'transactions.json.enc').filter((tx) => tx.deletedAt === null && tx.date === date)
+  const list = useCollection(store, 'transactions.json.enc').filter((tx) => isBooked(tx) && tx.date === date)
   const trips = useCollection(store, 'trips.json.enc')
   const stays = useCollection(store, 'periods.json.enc')
   const counters = useCounters(store)

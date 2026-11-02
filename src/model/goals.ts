@@ -1,3 +1,4 @@
+import { booked } from '../domain/geldmodel'
 import { getLang } from '../i18n'
 import type { Tx } from '../domain/tx'
 import { active, totalNm } from './derive'
@@ -40,7 +41,7 @@ export function autoValue(goal: Pick<Goal, 'metric' | 'year' | 'organisation'>, 
       // Over alle dagen, net als in Statistieken: hoeveel van de eisen gehaald zijn.
       return ryaYachtmasterOffshore(data.legs).filter((item) => item.done).length
     case 'inkomsten':
-      return Math.round(active(data.transactions).filter((tx) => isIncome(tx.kind) && isEarned(tx.kind) && inYear(tx.date)).reduce((sum, tx) => sum + (eurValue(tx, data.rates)?.eur ?? 0), 0) * 100) / 100
+      return Math.round(booked(data.transactions).filter((tx) => isIncome(tx.kind) && isEarned(tx.kind) && inYear(tx.date)).reduce((sum, tx) => sum + (eurValue(tx, data.rates)?.eur ?? 0), 0) * 100) / 100
     default:
       return 0
   }

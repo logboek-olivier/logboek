@@ -28,7 +28,6 @@ import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
-import { SalaryFields, useSalaryDraft } from './SalaryFields'
 import { TripIncomeFields } from './TripMoney'
 import { PeriodDays } from './PeriodPage'
 import { useCollection } from './useCollection'
@@ -81,9 +80,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const [filledFrom, setFilledFrom] = useState(false)
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
-  // De datums uit het formulier: een voorbije trip krijgt geen standaardsalaris (zoals bij opslaan).
-  const formEnd = /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? addDays(startDate, Math.max(1, Math.round(Number(dayCount)) || 1) - 1) : ''
-  const salary = useSalaryDraft(trip, organisation, currentSettings(store.get('settings.json.enc')), { startDate, endDate: formEnd })
   // Nieuwe trip bij Sailing Virgins of Yacht Week: naamvoorstel met teller ("SV #4 · BVI").
   const namePlaceholder = newTripName(trips, legs, currentSettings(store.get('settings.json.enc')), organisation, startDate || todayIso(), area, defaultWeekName(startDate || todayIso(), lang, base))
   const [rows, setRows] = useState<ParticipantInput[]>(() => [...(trip?.participants ?? []), { firstName: '' }])
@@ -165,8 +161,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     if (busy) return
     setBusy(true)
     // Salaris alleen bij werk: training en plezier houden een bestaand salaris niet vast (wel als het al ontvangen is).
-    const salaryInput = kindForType(type) === 'werk' || trip?.salary?.status === 'ontvangen' ? salary.input() : null
-    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route, salary: salaryInput }
+    const input = { name: !trip && !name.trim() ? namePlaceholder : name, type, startDate, dayCount: days, boat, boatModel, boatLengthFt: lengthFt, boatKind, base, charter, area, organisation: organisation || undefined, participants: rows, note, route }
     try {
       if (trip) {
         await periodeBewerken(store, trip, input, getLang())
@@ -406,7 +401,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </datalist>
         </fieldset>
-        {kindForType(type) === 'werk' && <SalaryFields {...salary.props} />}
         {trip && <TripIncomeFields store={store} trip={trip} notify={notify} />}
         <NoteField label={t('field.note')} value={note} onChange={setNote} />
         <div className="sheet-actions">

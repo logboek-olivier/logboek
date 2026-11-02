@@ -76,14 +76,17 @@ describe('verwijderen en ongedaan maken', () => {
 
   it('de laatste dag van een trip verwijderen: de trip blijft altijd staan (de app verwijdert nooit vanzelf een trip)', async () => {
     const s = await store()
-    // Een trip die de dagen volgt, met een fooi; een met deelnemers; een met een eigen salaris; een met eigen datums.
+    // Een trip die de dagen volgt, met een fooi; een met deelnemers; een met een salaris (loon-transactie); een met eigen datums.
     await putMany(s, 'trips.json.enc', [
       { ...trip('fooi', 'Met fooi'), datesFromDays: true, startDate: '2026-05-01', endDate: '2026-05-01' },
       { ...trip('gasten', 'Met gasten'), participants: [{ id: 'p1', firstName: 'Nepnick' }] },
-      { ...trip('salaris', 'Met salaris'), salary: { amount: 900, currency: 'EUR', status: 'verwacht', source: 'eigen' } },
+      trip('salaris', 'Met salaris'),
       { ...trip('gepland', 'Gepland'), startDate: '2026-05-01', endDate: '2026-05-07' },
     ])
-    await put(s, 'transactions.json.enc', { ...tx('t1', '2026-05-01'), tripId: 'fooi' })
+    await putMany(s, 'transactions.json.enc', [
+      { ...tx('t1', '2026-05-01'), tripId: 'fooi' },
+      { ...tx('salaris:salaris', '2026-05-03'), kind: 'loon', amount: 900, tripId: 'salaris', status: 'verwacht' },
+    ])
     await putMany(s, 'legs.json.enc', [leg('l1', 'fooi', '2026-05-01'), leg('l2', 'gasten', '2026-05-02'), leg('l3', 'salaris', '2026-05-03'), leg('l4', 'gepland', '2026-05-04')])
     for (const l of s.list('legs.json.enc')) await dagVerwijderen(s, l)
     expect(s.list('legs.json.enc')).toHaveLength(0)

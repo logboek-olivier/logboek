@@ -27,14 +27,14 @@ export function endedFor(trip: Trip, endDate: string): string {
 
 /**
  * Hangt er nog iets aan de trip (inkomsten, deelnemers, studenten, planning, declaraties, review, afgerond, afgevinkte
- * lijsten, of een salaris dat Olivier zelf invulde of ontving)? Dan verdwijnt de trip nooit vanzelf.
+ * lijsten, een aantal gasten, of geld zoals het salaris)? Dan verdwijnt de trip nooit vanzelf.
  */
 export function hasOtherData(store: Reader, trip: Trip): boolean {
   return (
     (trip.participants?.length ?? 0) > 0 ||
     !!trip.review ||
     !!trip.closedAt ||
-    (!!trip.salary && (trip.salary.source === 'eigen' || trip.salary.status !== 'verwacht')) ||
+    (trip.guestCount ?? 0) > 0 ||
     Object.keys(trip.checks ?? {}).length > 0 ||
     store.list('transactions.json.enc').some((t) => t.tripId === trip.id) ||
     store.list('students.json.enc').some((s) => s.weekId === trip.id) ||

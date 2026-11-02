@@ -94,7 +94,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
   const ownPlans = plans.filter((p) => p.deletedAt === null && planWeek(p, trips, legs) === trip.id)
   const hasCourses = people.some((p) => p.curriculumId) || teaching || tripStudents.length > 0
   const Heading = mode === 'page' ? 'h2' : 'h3'
-  const hasMoney = !!trip.salary || transactions.some((tx) => tx.deletedAt === null && tx.tripId === trip.id)
+  const hasMoney = transactions.some((tx) => tx.deletedAt === null && tx.tripId === trip.id)
 
   return (
     <div className="stack-lg period-page">

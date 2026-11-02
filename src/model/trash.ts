@@ -9,7 +9,7 @@ import type { CollectionPath, HistoryChange, HistoryEntry, Leg, Participant, Syn
 // Alles komt uit de geschiedenis (history.json.enc): één regel per verwijderopdracht. Wat verwijderd werd vóór de
 // geschiedenis bestond, komt uit de tombstones (die houden hun inhoud): die van dezelfde opdracht hebben dezelfde tijd.
 
-export type TrashKind = 'periode' | 'dag' | 'geld' | 'deelnemer' | 'plaats' | 'boot' | 'document' | 'import'
+export type TrashKind = 'periode' | 'dag' | 'geld' | 'deelnemer' | 'plaats' | 'boot' | 'document' | 'import' | 'omzetten'
 
 export interface TrashItem {
   key: string
@@ -44,6 +44,8 @@ const DELETE_COMMANDS: Record<string, TrashKind> = {
   documentVerwijderen: 'document',
   // Excel importeren vervangt geïmporteerde trips en dagen: terugzetten zet het logboek terug zoals vóór die import.
   mijlenImporteren: 'import',
+  // Geld omzetten (eenmalig): een herstelpunt, volledig terug te zetten.
+  geldOmzetten: 'omzetten',
 }
 
 const DAY_MS = 86_400_000
@@ -95,6 +97,11 @@ function fromEntry(reader: Reader, entry: HistoryEntry): TrashItem | null {
     entry,
     legacy: [],
   })
+  if (kind === 'omzetten') {
+    // Alleen de laatste omzetting (een oudere terugzetten na een nieuwere zou geld dubbel maken).
+    if (reader.get(HISTORY_PATH).some((e) => e.command === entry.command && e.deletedAt === null && !e.undoneAt && e.at > entry.at)) return null
+    return item('', entry.at.slice(0, 10))
+  }
   if (kind === 'import') {
     // Alleen als de import iets weghaalde dat nog weg is, en alleen de laatste import: een eerdere terugzetten na een
     // nieuwere import zou trips dubbel maken.

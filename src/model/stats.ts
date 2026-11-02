@@ -1,3 +1,4 @@
+import { booked } from '../domain/geldmodel'
 import type { Lang } from '../i18n'
 import { boatKey, parseShip, suggestKind, tripShip } from './boats'
 import { dayInfo, tripRange, type CalendarIndex } from './calendar'
@@ -340,7 +341,7 @@ export interface MoneyStats {
 export const MAX_TIP_WEEKS = 26
 
 export function moneyStats(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], index: CalendarIndex, period: Period, today: string): MoneyStats {
-  const txs = active(transactions).filter((tx) => inPeriod(tx.date, period))
+  const txs = booked(transactions).filter((tx) => inPeriod(tx.date, period))
   const tripById = new Map(active(trips).map((t) => [t.id, t]))
   const perTrip = new Map<string, number>()
   const perOrg = new Map<string, number>()

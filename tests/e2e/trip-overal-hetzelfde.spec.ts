@@ -60,7 +60,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Dezelfde volgorde als de periodepagina: dagen vóór mensen, mensen vóór geld.
       const order = await edit.evaluate((root) => {
         const pos = (sel: string) => [...root.querySelectorAll('*')].indexOf(root.querySelector(sel)!)
-        return [pos('.leg-button'), pos('.participants'), pos('.salary-fields, .trip-income')]
+        return [pos('.leg-button'), pos('.participants'), pos('.trip-income')]
       })
       expect(order[0]).toBeLessThan(order[1]!)
       expect(order[1]).toBeLessThan(order[2]!)

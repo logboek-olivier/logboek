@@ -1,3 +1,4 @@
+import { isBooked } from '../domain/geldmodel'
 import type { Tx, Reader } from '../domain/tx'
 import { applyChanges } from './changes'
 import { active, compareLegs } from './derive'
@@ -80,8 +81,9 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
   // Geld zonder periode (declaraties volgen hun declaratie).
   const ids = new Set(periods.map((p) => p.id))
   for (const tx of active(input.transactions)) {
-    // Vaste lasten hangen aan de maand, niet aan een periode (docs/PERIODEMODEL.md).
-    if (tx.claimId || tx.fixedCostId || (tx.tripId && ids.has(tx.tripId))) continue
+    // Vaste lasten hangen aan de maand, geld van een eerder seizoen aan het seizoen (docs/PERIODEMODEL.md). Een verwacht
+    // salaris zonder tocht of "geen salaris" is geen geld.
+    if (tx.claimId || tx.fixedCostId || tx.season || (tx.tripId && ids.has(tx.tripId)) || !isBooked(tx)) continue
     items.push({ key: `geld:${tx.id}`, kind: 'geld-zonder-periode', tx, target: periodAt(periods, tx.date) })
   }
 

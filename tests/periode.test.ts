@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { difference, earliestDate, forecast, positionAt, resolvePeriod, type PositionInput } from '../src/model/position'
 import type { RatesFile } from '../src/model/rates'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
-import type { Account, Balance, Trip } from '../src/model/types'
+import type { Account, Balance, Transaction, Trip } from '../src/model/types'
 
 // Periodes zelf kiezen (Geld → Mijn positie en de vooruitblik): snelkeuzes en zelf van en tot; de vooruitblik loopt
 // van de maand van "van" tot "tot" en telt alleen wat er tot en met "tot" binnenkomt. En "Sinds 11 september": een
@@ -15,7 +15,8 @@ const trip = (id: string, startDate: string, endDate: string, extra: Partial<Tri
 const account: Account = { id: 'asn', name: 'Nep', provider: 'overig', kind: 'betaal', currency: 'EUR', updatedAt: T0, deletedAt: null }
 const balance = (date: string, amount: number): Balance => ({ id: `stand:asn:${date.slice(0, 7)}`, accountId: 'asn', date, amount, source: 'handmatig', updatedAt: T0, deletedAt: null })
 const input = (extra: Partial<PositionInput>): PositionInput => ({ accounts: [], balances: [], trips: [], legs: [], transactions: [], rates: RATES, ...extra })
-const salary = (amount: number) => ({ amount, currency: 'EUR' as const, status: 'verwacht' as const, source: 'eigen' as const })
+/** Het salaris van een tocht: één verwachte loon-transactie op de einddatum (src/domain/geldmodel.ts). */
+const salary = (trip: Trip, amount: number): Transaction => ({ id: `salaris:${trip.id}`, date: trip.endDate!, kind: 'loon', amount, currency: 'EUR', source: 'overig', tripId: trip.id, status: 'verwacht', updatedAt: T0, deletedAt: null })
 
 describe('periode kiezen', () => {
   it('snelkeuzes: sinds start zeilcarrière, dit jaar, tot einde planning, alles; zelf kiezen', () => {
@@ -31,8 +32,8 @@ describe('periode kiezen', () => {
   })
 
   it('de vooruitblik loopt van de maand van "van" tot "tot" en telt alleen salaris tot en met "tot"', () => {
-    const trips = [trip('nov', '2026-11-01', '2026-11-07', { salary: salary(1000) }), trip('apr', '2027-04-01', '2027-04-07', { salary: salary(2000) })]
-    const data = input({ accounts: [account], balances: [balance('2026-09-20', 500)], trips })
+    const trips = [trip('nov', '2026-11-01', '2026-11-07'), trip('apr', '2027-04-01', '2027-04-07')]
+    const data = input({ accounts: [account], balances: [balance('2026-09-20', 500)], trips, transactions: [salary(trips[0]!, 1000), salary(trips[1]!, 2000)] })
     const f = forecast(data, DEFAULT_SETTINGS, TODAY, '2027-04-07', 6, null, { from: '2026-09-11', to: '2027-03-31' })
     expect(f.months[0]!.month).toBe('2026-09')
     expect(f.months.at(-1)!.month).toBe('2027-03')
@@ -49,9 +50,11 @@ describe('periode kiezen', () => {
 describe('"Sinds 11 september"', () => {
   it('een salaris dat op de begindatum al te ontvangen was, telt dan al mee (dus +€ 0); een latere trip telt als verschil', () => {
     const start = '2026-09-11'
-    const before = input({ trips: [trip('yw1', '2026-09-01', '2026-09-07', { organisation: 'yacht-week', salary: salary(600) })] })
+    const early = trip('yw1', '2026-09-01', '2026-09-07', { organisation: 'yacht-week' })
+    const before = input({ trips: [early], transactions: [salary(early, 600)] })
     expect(difference(positionAt(before, TODAY).totals.net, positionAt(before, start, true).totals.net)).toBe(0)
-    const after = input({ trips: [trip('yw1', '2026-10-01', '2026-10-07', { organisation: 'yacht-week', salary: salary(600) })] })
+    const late = trip('yw1', '2026-10-01', '2026-10-07', { organisation: 'yacht-week' })
+    const after = input({ trips: [late], transactions: [salary(late, 600)] })
     expect(difference(positionAt(after, TODAY).totals.net, positionAt(after, start, true).totals.net)).toBe(600)
   })
 })

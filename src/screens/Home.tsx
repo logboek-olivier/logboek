@@ -26,6 +26,7 @@ import { useCollection } from '../components/useCollection'
 // Vandaag laadt direct; de andere schermen pas als ze geopend worden (src/lazy.ts), zodat de app snel opent.
 const Money = lazyComponent(() => import('./Money').then((m) => m.Money))
 const QuickAdd = lazyComponent(() => import('./QuickAdd').then((m) => m.QuickAdd))
+const MoneyConversionScreen = lazyComponent(() => import('../components/MoneyConversion').then((m) => m.MoneyConversionScreen))
 const Sailing = lazyComponent(() => import('./Sailing').then((m) => m.Sailing))
 const Settings = lazyComponent(() => import('./Settings').then((m) => m.Settings))
 const StudentArchive = lazyComponent(() => import('./StudentArchive').then((m) => m.StudentArchive))
@@ -198,6 +199,19 @@ export function Home({ store }: { store: Store }) {
       })
   }, [store, status, demo])
   const [blocked, setBlocked] = useState(false)
+  // Geld omzetten (eenmalig na de update, src/domain/geld-omzetten.ts): na de eerste geslaagde sync één keer per sessie
+  // het scherm, met "Later". Geld toont het tot het geld omgezet is. Pas na een tik verandert er iets.
+  const conversionAsked = useRef(false)
+  const [conversion, setConversion] = useState(false)
+  useEffect(() => {
+    if (conversionAsked.current || demo || !store.hasSynced()) return
+    conversionAsked.current = true
+    void import('../domain/geld-omzetten')
+      .then((m) => {
+        if (m.needsMoneyConversion(store)) setConversion(true)
+      })
+      .catch(recordError)
+  }, [store, status, demo])
 
   // De weg terug voor de terugknop van Android (src/back.ts): de schermen waar Olivier vandaan kwam, elk een stap terug.
   // Vandaag is het begin; teruggaan naar het vorige scherm (ook met "‹ Meer") haalt het van de weg af.
@@ -278,6 +292,13 @@ export function Home({ store }: { store: Store }) {
           </button>
         </div>
       )}
+      {conversion && !adding && (
+        <section className="add-layer">
+          <Suspense fallback={<ScreenLoading />}>
+            <MoneyConversionScreen store={store} notify={notify} onLater={() => setConversion(false)} />
+          </Suspense>
+        </section>
+      )}
       {adding && (
         <section className="add-layer">
           <BackToMore onBack={closeAdd} to="common.back" />
@@ -287,7 +308,7 @@ export function Home({ store }: { store: Store }) {
         </section>
       )}
       <Suspense fallback={<ScreenLoading />}>
-      <div className="screen" hidden={!!adding}>
+      <div className="screen" hidden={!!adding || conversion}>
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => openAdd(init)} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
       )}

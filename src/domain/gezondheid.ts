@@ -8,7 +8,7 @@ import type { Tx } from './tx'
 
 /** Welke overtredingen een fix van één tik hebben. */
 export function canFix(violation: Violation): boolean {
-  return violation.rule === 'lopende-trip-weg' || violation.rule === 'salaris-zonder-inkomen' || violation.rule === 'trip-datums'
+  return violation.rule === 'lopende-trip-weg' || violation.rule === 'trip-datums'
 }
 
 export async function fixViolation(tx: Tx, violation: Violation): Promise<void> {
@@ -16,14 +16,6 @@ export async function fixViolation(tx: Tx, violation: Violation): Promise<void> 
     case 'lopende-trip-weg':
       // De lopende trip wijst naar een trip die weg is: geen lopende trip (Vandaag kiest dan de trip van vandaag).
       return saveSettings(tx, { activeWeekId: undefined })
-    case 'salaris-zonder-inkomen': {
-      // "Ontvangen" maar het inkomen is weg: weer te ontvangen (het bedrag blijft staan).
-      const trip = tx.list('trips.json.enc').find((x) => x.id === violation.id)
-      if (!trip?.salary) return
-      const { transactionId: _t, ...salary } = trip.salary
-      void _t
-      return tx.put('trips.json.enc', { ...trip, salary: { ...salary, status: 'verwacht' }, updatedAt: tx.now })
-    }
     case 'trip-datums': {
       // Begin na eind: omdraaien (de dagen zelf blijven staan).
       const trip = tx.list('trips.json.enc').find((x) => x.id === violation.id)

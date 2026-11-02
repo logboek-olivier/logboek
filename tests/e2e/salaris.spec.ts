@@ -1,10 +1,12 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
-// PR C: salaris per trip. Standaardbedrag per organisatie, een eigen bedrag wordt nooit overschreven, een nieuw
-// standaardbedrag gaat alleen na "ja" naar komende trips met het oude bedrag. Vandaag vraagt na de einddatum
-// "Salaris van … ontvangen?" zonder bedragen; Geld → Vooruitblik toont bedragen pas na "Toon bedragen". Verzonnen data.
+// Salaris per tocht (src/domain/geldmodel.ts): precies één loon-transactie per tocht met een status. Het standaardbedrag
+// per organisatie is een instelling: een komende tocht krijgt het als verwacht salaris, een voorbije nooit vanzelf.
+// "Standaardbedrag gebruiken" vult alleen het bedrag in; een salaris dat er al staat, verandert niet door een nieuw
+// standaardbedrag. Vandaag vraagt na de einddatum "Salaris van … ontvangen?" zonder bedragen; Geld → Vooruitblik toont
+// bedragen pas na "Toon bedragen". Verzonnen data.
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -22,43 +24,64 @@ async function setDefault(page: Page, amount: string) {
   await sheet.getByRole('button', { name: 'Opslaan' }).click()
 }
 
-async function newTrip(page: Page, name: string, start: string, ownSalary?: string, past = false) {
+async function newTrip(page: Page, name: string, start: string) {
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
   await page.getByRole('main').getByRole('button', { name: 'Nieuwe trip' }).click()
   const sheet = page.getByRole('dialog')
   await sheet.getByLabel('Naam', { exact: true }).fill(name)
   await sheet.getByLabel('Startdatum').fill(start)
   await sheet.getByRole('combobox', { name: 'Organisatie' }).selectOption({ label: 'Sailing Virgins' })
-  // Het salaris staat ingeklapt: geen bedragen in beeld zolang Olivier er niet om vraagt.
+  // Geen salarisveld meer in het tripformulier: het salaris is een eigen transactie bij de tocht.
   await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveCount(0)
-  await sheet.getByRole('button', { name: /^Salaris/ }).click()
-  // Een voorbije trip krijgt nooit vanzelf het standaardbedrag: Olivier vult het zelf in als het nog moet komen.
-  if (past) await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveValue('')
-  if (ownSalary) await sheet.getByLabel('Salaris (bedrag)').fill(ownSalary)
-  else {
-    await expect(sheet.getByLabel('Salaris (bedrag)')).toHaveValue('1200')
-    await expect(sheet).toContainText('Standaardbedrag van Sailing Virgins')
-  }
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 }
 
-async function salaryOf(page: Page, name: string): Promise<string> {
-  await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
-  await page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Komende trips' }) }).getByRole('button', { name: new RegExp(name) }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Bewerken', exact: true }).click()
-  const sheet = page.getByRole('dialog')
-  await sheet.getByRole('button', { name: /^Salaris/ }).click()
-  const value = await sheet.getByLabel('Salaris (bedrag)').inputValue()
-  // Sluiten: eerst terug in het tripoverzicht (terug waar je was), dan dat ook dicht.
-  await sheet.getByRole('button', { name: 'Sluiten' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
+/**
+ * Het salarisblad van een tocht openen (Meer → Periodes → zoeken → tripoverzicht → Bewerken → Fooien en inkomsten →
+ * Salaris), `work` doen in het blad, en alles weer sluiten. Geeft de regel van het salaris terug (zoals vóór het blad).
+ */
+async function withSalarySheet(page: Page, name: string, work: (sheet: Locator) => Promise<void>): Promise<string> {
+  await openMore(page, 'Periodes')
+  await page.getByLabel('Zoeken op naam, boot, plaats of persoon').fill(name)
+  await page.locator('.period-row', { hasText: name }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Bewerken', exact: true }).first().click()
+  const edit = page.getByRole('dialog', { name: 'Trip bewerken' })
+  await edit.getByRole('button', { name: /^Fooien en inkomsten/ }).click()
+  const line = (await edit.locator('.salary-row').innerText()).replace(/\s+/g, ' ')
+  await edit.locator('.salary-row').click()
+  const sheet = page.getByRole('dialog', { name: new RegExp(`^Salaris van .*${name}`) })
+  await work(sheet)
+  // Opslaan sluit het salarisblad; anders zelf sluiten.
+  if (await sheet.isVisible()) await sheet.getByRole('button', { name: 'Sluiten', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Trip bewerken' }).getByRole('button', { name: 'Sluiten', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+  return line
+}
+
+/** Het bedrag van het salaris van een tocht zoals het blad het voorvult. */
+async function salaryOf(page: Page, name: string): Promise<string> {
+  let value = ''
+  await withSalarySheet(page, name, async (sheet) => {
+    value = await sheet.getByLabel('Salaris (bedrag)').inputValue()
+  })
   return value
 }
 
-test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieuw standaardbedrag, ontvangen op Vandaag, vooruitblik', async ({ page }) => {
-  test.setTimeout(120_000)
+/** Het salaris van een tocht zetten: een bedrag typen (of het standaardbedrag gebruiken) en opslaan. */
+async function setSalary(page: Page, name: string, amount: string | 'standaard') {
+  await withSalarySheet(page, name, async (sheet) => {
+    if (amount === 'standaard') await sheet.getByRole('button', { name: /^Standaardbedrag gebruiken/ }).click()
+    else await sheet.getByLabel('Salaris (bedrag)').fill(amount)
+    await sheet.getByRole('button', { name: 'Opslaan' }).click()
+    await expect(page.locator('.toast')).toContainText('Salaris opgeslagen')
+  })
+}
+
+test('salaris per tocht: standaardbedrag voor komende tochten, eigen bedrag blijft, ontvangen op Vandaag, vooruitblik', async ({ page }) => {
+  test.setTimeout(150_000)
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page, 'nl', { olivier: true })
@@ -68,22 +91,25 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   await expect(page.getByRole('button', { name: /^Salaris per organisatie/ })).toContainText('Sailing Virgins')
   await expect(page.getByRole('button', { name: /^Salaris per organisatie/ })).not.toContainText('1.200')
 
-  // Een voorbije trip (zonder standaardbedrag: dat komt alleen bij komende trips; Olivier typt het zelf), een komende
-  // met het standaardbedrag en een komende met een eigen bedrag.
-  await newTrip(page, 'Nepweek voorbij', iso(-12), '1200', true)
+  // Een voorbije tocht (geen standaardbedrag vanzelf: Olivier vult het zelf in), een komende met het standaardbedrag en
+  // een komende met een eigen bedrag.
+  await newTrip(page, 'Nepweek voorbij', iso(-12))
   await newTrip(page, 'Nepweek straks', iso(20))
-  await newTrip(page, 'Nepweek eigen', iso(40), '1500')
+  await newTrip(page, 'Nepweek eigen', iso(40))
+  expect(await withSalarySheet(page, 'Nepweek voorbij', async () => {})).toContain('Nog geen salaris')
+  await setSalary(page, 'Nepweek voorbij', '1200')
+  expect(await salaryOf(page, 'Nepweek straks')).toBe('1200')
+  await setSalary(page, 'Nepweek eigen', '1500')
 
-  // Nieuw standaardbedrag: eerst de vraag voor de ene komende trip met het oude bedrag; de eigen trip telt niet mee.
+  // Een nieuw standaardbedrag is alleen een instelling: wat er al staat, verandert niet (geen vraag meer).
   await setDefault(page, '1300')
-  const sheet = page.getByRole('dialog')
-  await expect(sheet).toContainText('Ook gebruiken voor 1 toekomstige trip die nog het oude standaardbedrag heeft?')
-  await expectNoHorizontalOverflow(page)
-  await page.screenshot({ path: 'screenshots/salaris/vraag-standaard.png' })
-  await sheet.getByRole('button', { name: 'Ja, ook voor die trips' }).click()
   await expect(page.locator('.toast')).toHaveText('Salaris opgeslagen')
-  expect(await salaryOf(page, 'Nepweek straks')).toBe('1300')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(await salaryOf(page, 'Nepweek straks')).toBe('1200')
   expect(await salaryOf(page, 'Nepweek eigen')).toBe('1500')
+  // "Standaardbedrag gebruiken" vult alleen het bedrag in.
+  await setSalary(page, 'Nepweek straks', 'standaard')
+  expect(await salaryOf(page, 'Nepweek straks')).toBe('1300')
 
   // Vandaag: de vraag na de einddatum, zonder bedragen; ander bedrag invullen.
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
@@ -100,9 +126,11 @@ test('salaris per trip: standaardbedrag, eigen bedrag blijft, vraag bij een nieu
   await receive.getByRole('button', { name: 'Ontvangen opslaan' }).click()
   await expect(page.locator('.toast')).toContainText('Salaris ontvangen')
   await expect(question).toHaveCount(0)
+  // Eén salaris per tocht: het blad toont nu het ontvangen bedrag, er komt geen tweede bij.
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+  expect(await salaryOf(page, 'Nepweek voorbij')).toBe('1250')
 
   // Geld → Vooruitblik: bedragen pas na Toon bedragen; verwacht 1.300 + 1.500, ontvangen 1.250 deze maand.
-  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
   await openMore(page, 'Geld')
   await page.getByRole('tab', { name: 'Verwacht' }).click()
   const outlook = page.locator('.outlook')

@@ -6,33 +6,41 @@ import { addFixedCost, changeFixedCost, deleteFixedCost } from '../model/costs'
 import { deleteTransaction, updateTransaction, type TransactionPatch } from '../model/edit'
 import { resolveTarget, sourceOnSave, type ExpenseTarget } from '../model/expenses'
 import { bookFixedCosts } from '../model/fixed-bookings'
-import { depositCash, recordPayout } from '../model/money-path'
+import { recordPayout } from '../model/money-path'
 import { finalRateFields } from '../model/rates'
-import { askSalaryLater, receiveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
+import { askSalaryLater, receiveSalary, saveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { saveSettings } from '../model/settings'
-import { newId, type Account, type Balance, type Settings, type Transaction, type Trip } from '../model/types'
+import { newId, type Account, type Balance, type Settings, type Transaction } from '../model/types'
 import { applyMoneyStep } from '../model/week-money'
+import { salaryOf, salaryStatus } from './geldmodel'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
 import { sourceForPeriod } from '../basis/organisatie'
 
 type Remember = Partial<Omit<Settings, 'id' | 'updatedAt' | 'deletedAt'>>
 
-/** Het salaris van een trip zetten of wijzigen (de rest van de trip blijft zoals hij is). */
-export async function setTripSalary(tx: Tx, tripId: string, salary: Trip['salary']): Promise<void> {
-  const trip = tx.list('trips.json.enc').find((x) => x.id === tripId)
-  if (!trip) return
-  const { salary: _old, ...rest } = trip
-  void _old
-  await tx.put('trips.json.enc', { ...rest, ...(salary ? { salary } : {}), updatedAt: tx.now })
-}
+export type NewMoney = Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur' | 'status'>
 
-export type NewMoney = Omit<Transaction, 'id' | 'updatedAt' | 'deletedAt' | 'tripId' | 'amountEur'>
-
-/** Een inkomen of uitgave toevoegen, met de koers als die definitief is, en de laatst gebruikte keuzes onthouden. */
+/**
+ * Een inkomen of uitgave toevoegen, met de koers als die definitief is, en de laatst gebruikte keuzes onthouden. Een loon
+ * bij een tocht is zijn salaris: dat is er maar één, dus dan wordt een verwacht salaris ontvangen; een ontvangen salaris
+ * nooit nog eens.
+ */
 export async function addMoney(tx: Tx, fields: NewMoney, tripId: string | null, remember: Remember = {}): Promise<Transaction> {
+  if (fields.kind === 'loon' && tripId) {
+    // Een salaris dat al binnen is, wordt nooit overschreven (het scherm opent dan het bestaande salaris).
+    const current = salaryOf(tripId, tx.list('transactions.json.enc'))
+    if (current && salaryStatus(current) === 'ontvangen') throw new Error('salaris bestaat al')
+    const record = await saveSalary(tx, tripId, { amount: fields.amount, currency: fields.currency, status: 'ontvangen', date: fields.date })
+    await saveSettings(tx, { lastCurrency: fields.currency, ...remember })
+    return record
+  }
   const record: Transaction = { ...fields, id: newId(), updatedAt: tx.now, deletedAt: null }
-  if (tripId) record.tripId = tripId
+  if (fields.kind === 'loon') record.status = 'ontvangen'
+  if (tripId) {
+    record.tripId = tripId
+    delete record.season
+  }
   if (fields.currency === 'EUR') record.amountEur = fields.amount
   else Object.assign(record, finalRateFields(fields) ?? {})
   await tx.put('transactions.json.enc', record)
@@ -61,7 +69,6 @@ export async function changeBalance(tx: Tx, account: Account, balance: Balance, 
   await tx.put('balances.json.enc', { ...current, amount: signedAmount(account, amount), source: 'handmatig', updatedAt: tx.now })
 }
 
-export const contantGestort = opdracht('contantGestort', depositCash)
 export const declaratieBewerken = opdracht('declaratieBewerken', updateClaim)
 export const declaratieIngediend = opdracht('declaratieIngediend', markSubmitted)
 export const declaratieTerugbetaald = opdracht('declaratieTerugbetaald', markRepaid)
@@ -76,7 +83,7 @@ export const rekeningOpslaan = opdrachtMet('rekeningOpslaan', saveAccount)
 export const rekeningVerwijderen = opdracht('rekeningVerwijderen', deleteAccount)
 export const salarisLaterVragen = opdracht('salarisLaterVragen', askSalaryLater)
 export const salarisOntvangen = opdracht('salarisOntvangen', receiveSalary)
-export const salarisZetten = opdracht('salarisZetten', setTripSalary)
+export const salarisOpslaan = opdrachtMet('salarisOpslaan', saveSalary)
 export const standOpslaan = opdrachtMet('standOpslaan', setBalance)
 export const standVerwijderen = opdracht('standVerwijderen', deleteBalance)
 export const standWijzigen = opdracht('standWijzigen', changeBalance)

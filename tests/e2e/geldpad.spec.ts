@@ -3,10 +3,10 @@ import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
-// Ronde 3 · PR 3: het geldpad per trip. Uitbetaling per organisatie (maandelijks), het salaris van een voorbije trip
-// direct vanuit de agenda zetten (bolletje grijs, oranje, groen), op Vandaag "Uitbetaling van … ontvangen?" zonder
-// bedragen, een uitbetaling met een verschil die de trips in één keer afvinkt, en een contante fooi die na "Gestort"
-// uit Contant gaat. Alle gegevens verzonnen.
+// Het geldpad per tocht (src/domain/geldmodel.ts: het salaris is één loon-transactie met een status). Uitbetaling per
+// organisatie (maandelijks), het salaris van een voorbije tocht direct vanuit de agenda zetten (bolletje grijs, oranje,
+// groen), op Vandaag "Uitbetaling van … ontvangen?" zonder bedragen, en een uitbetaling met een verschil die de tochten
+// in één keer afvinkt. Contant en gestort bestaan niet meer. Alle gegevens verzonnen.
 
 test.use({ viewport: { width: 360, height: 800 } })
 
@@ -23,7 +23,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
   test.describe(lang, () => {
     test.use({ locale: lang === 'nl' ? 'nl-NL' : 'en-GB' })
 
-    test(`geldpad: salaris vanuit de agenda, maandelijkse uitbetaling met verschil, contant gestort (${lang})`, async ({ page }) => {
+    test(`geldpad: salaris vanuit de agenda, maandelijkse uitbetaling met verschil (${lang})`, async ({ page }) => {
       test.setTimeout(150_000)
       const L = (key: MessageKey, ...args: unknown[]) => (translate as (l: Lang, k: MessageKey, ...a: unknown[]) => string)(lang, key, ...args)
       const errors = collectConsoleErrors(page)
@@ -131,26 +131,18 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await openMore(page, L('nav.money'), L('nav.more'))
       await expect(page.locator('.stat.hero dd')).toContainText(lang === 'nl' ? '€ 1.950,00' : '€2,000.00')
 
-      // Een contante fooi (de standaard), dan in Geld → Contant en "Gestort": daarna is Contant leeg.
+      // Een fooi: geen keuze contant of bank meer, en bij Geld geen Contant.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
       await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
       await page.getByLabel(L('field.amount')).fill('40')
-      await expect(page.getByRole('radio', { name: L('tipVia.contant') })).toHaveAttribute('aria-checked', 'true')
+      await expect(page.getByRole('radio', { name: lang === 'nl' ? 'Contant' : 'Cash' })).toHaveCount(0)
       await page.getByRole('button', { name: L('common.save') }).click()
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
       await openMore(page, L('nav.money'), L('nav.more'))
-      const cash = page.locator('.cash-row')
-      await expect(cash).toContainText(lang === 'nl' ? '€ 40,00' : '€40.00')
-      await page.locator('.money-path').scrollIntoViewIfNeeded()
-      await shoot('contant')
-      await cash.getByRole('button', { name: L('cash.deposit') }).click()
-      await page.getByRole('dialog').getByRole('button', { name: L('cash.depositSave') }).click()
-      await expect(page.locator('.toast')).toContainText(L('cash.deposited'))
+      await expect(page.locator('.money-path')).toBeVisible()
       await expect(page.locator('.cash-row')).toHaveCount(0)
-      await expect(page.locator('.money-path')).toContainText(L('cash.none'))
-      // Ongedaan maken zet de fooi terug in Contant.
-      await page.locator('.toast').getByRole('button', { name: L('common.undo') }).click()
-      await expect(page.locator('.cash-row')).toContainText(lang === 'nl' ? '€ 40,00' : '€40.00')
+      await page.locator('.money-path').scrollIntoViewIfNeeded()
+      await shoot('uitbetalingen')
       expect(errors).toEqual([])
     })
   })

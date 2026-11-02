@@ -2,7 +2,10 @@
 // een hogere versie alleen met migratie en een test die data van de vorige versie inleest (zie CLAUDE.md, Werkwijze).
 // Ziet de app een hogere versie dan hij kent, dan schrijft hij niets naar GitHub en vraagt hij om een update.
 
-export const SCHEMA_VERSION = 1
+// 2: één waarheid voor geld (src/domain/geldmodel.ts): het salaris is een transactie met een status, contant en gestort
+// bestaan niet meer. Versie 1 blijft leesbaar; "Geld omzetten" (na één tik, src/domain/geld-omzetten.ts) zet het geld om.
+// Een build van vóór de schrijfversie (die alleen de schemaversie kent) schrijft daardoor niet meer over deze bestanden.
+export const SCHEMA_VERSION = 2
 
 // Schrijfversie van deze build: elk databestand dat deze build schrijft, krijgt hem mee als `minWriterVersion` (in de
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
@@ -19,7 +22,9 @@ export const SCHEMA_VERSION = 1
 // bij het opslaan weggooien.
 // 5: start- en einddatum van een trip zijn gewone velden (CLAUDE.md, uitgangspunten 1, 2 en 5). Een oudere build rekent
 // ze uit de dagen, verlengt of verkort trips vanzelf en zet koppelingen "terug"; dat mag niet meer over deze bestanden.
-export const WRITER_VERSION = 5
+// 6: één waarheid voor geld. Een oudere build leest het salaris van de tocht en contant/gestort bij een fooi, telt een
+// verwacht salaris als verdiend en zou de omzetting ongedaan maken; hij schrijft niet meer over deze bestanden.
+export const WRITER_VERSION = 6
 
 let writer = WRITER_VERSION
 

@@ -27,7 +27,7 @@ export function yearGoal(settings: Settings): number {
  * een dag of uitgave loggen op een telefoon zonder verbinding nooit een instelling die intussen op een ander apparaat
  * veranderde (het samenvoegen gaat per record: de laatste wijziging wint). Oudere versies lezen alleen 'settings'.
  */
-export const LAST_USED_KEYS = ['lastBoat', 'lastRole', 'lastCurrency', 'lastSource', 'lastTripId', 'lastIncomeKind', 'lastCostKind', 'lastWater', 'lastTipVia', 'lastCostCategory'] as const
+export const LAST_USED_KEYS = ['lastBoat', 'lastRole', 'lastCurrency', 'lastSource', 'lastTripId', 'lastIncomeKind', 'lastCostKind', 'lastWater', 'lastCostCategory'] as const
 
 export function lastUsedId(device: string = deviceId()): `laatst:${string}` {
   return `laatst:${device}`

@@ -3,10 +3,10 @@ import { endedFor } from './trip-dates'
 import type { Tx } from '../domain/tx'
 import { active, compareLegs, round1, totalNm, tripForDate } from './derive'
 import { MAX_COUNTRY, MAX_TAG } from './guests'
-import { currentSettings, saveSettings } from './settings'
-import { cleanSalary, withSalaryDefault } from './salary'
+import { saveSettings } from './settings'
+import { applySalaryDefault } from './salary'
 import { kindForType, tripKind } from './trip-kind'
-import { firstNameOnly, newId, type WaterKind, type TripSalary, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { firstNameOnly, newId, type WaterKind, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 import { addDays, todayIso } from '../basis/datum'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
@@ -223,11 +223,6 @@ export interface WeekInput {
   note: string
   /** Geplande etappes (sjabloon of vorige trip); ontbreekt het, dan blijft een bestaande planning staan. */
   route?: PlannedLeg[]
-  /**
-   * Salaris zoals in het bewerkscherm gekozen; null = weggehaald. Ontbreekt het, dan geldt het standaardbedrag van de
-   * organisatie (alleen zonder eigen of ontvangen salaris, src/model/salary.ts).
-   */
-  salary?: TripSalary | null
 }
 
 /** Geplande etappes: korte plaatsnamen, hoogstens 120 dagen. */
@@ -286,10 +281,10 @@ export function weekFields(input: WeekInput, lang: Lang): Omit<Trip, 'id' | 'upd
 
 /** Nieuwe trip: opslaan maakt hem lopend als vandaag erin valt; eerdere en komende trips laten de lopende staan. */
 export async function startWeek(store: Tx, input: WeekInput, lang: Lang, today: string = todayIso()): Promise<Trip> {
-  const fields: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
-  const settings = currentSettings(store.list('settings.json.enc'))
-  const trip = input.salary ? { ...fields, salary: cleanSalary(input.salary) } : input.salary === null ? fields : withSalaryDefault(fields, settings, undefined, store.list('legs.json.enc'), today)
+  const trip: Trip = { id: newId(), ...weekFields(input, lang), updatedAt: new Date().toISOString(), deletedAt: null }
   await store.put('trips.json.enc', trip)
+  // Het standaardbedrag van de organisatie als verwacht salaris (een transactie, src/model/salary.ts).
+  await applySalaryDefault(store, trip, undefined, today)
   await syncParticipants(store, trip)
   const current = !!trip.startDate && !!trip.endDate && trip.startDate <= today && today <= trip.endDate
   await saveSettings(store, { ...(current ? { activeWeekId: trip.id } : {}), ...(trip.boat ? { lastBoat: trip.boat } : {}) })
@@ -302,19 +297,12 @@ export async function updateWeek(store: Tx, trip: Trip, input: WeekInput, lang: 
   void [_s, _e, _b, _m, _l, _k, _ba, _c, _a, _o, _n]
   // Zonder route in de invoer blijft de bestaande planning; een lege lijst wist hem.
   const keep = input.route === undefined && route ? { route } : {}
-  const merged: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
-  // Salaris: wat in het bewerkscherm staat; anders volgt een standaardbedrag de (nieuwe) organisatie.
-  const { salary: _old, ...withoutSalary } = merged
-  void _old
-  const next: Trip =
-    input.salary === undefined
-      ? withSalaryDefault(merged, currentSettings(store.list('settings.json.enc')), trip, store.list('legs.json.enc'), todayIso())
-      : input.salary === null
-        ? withoutSalary
-        : { ...merged, salary: cleanSalary(input.salary) }
+  const next: Trip = { ...rest, ...keep, ...weekFields(input, lang), updatedAt: new Date().toISOString() }
   // Zelf andere datums gekozen: die staan voortaan vast en volgen de dagen niet meer.
   if (next.datesFromDays && (next.startDate !== trip.startDate || next.endDate !== trip.endDate)) delete next.datesFromDays
   await store.put('trips.json.enc', next)
+  // Een standaardbedrag volgt de (nieuwe) organisatie; een ander bedrag of een ontvangen salaris blijft staan.
+  await applySalaryDefault(store, next, trip.organisation, todayIso())
   await syncParticipants(store, next)
 }
 

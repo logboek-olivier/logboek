@@ -10,7 +10,7 @@ import { careerStart, difference, earliestDate, forecast, positionAt, resolvePer
 import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
-import { type Account, type Currency, type Settings } from '../model/types'
+import { type Account, type Settings } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -82,7 +82,7 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
   const { now, then, atEnd } = useMemo(() => ({ now: positionAt(input, today), then: positionAt(input, start, true), atEnd: positionAt(input, end) }), [input, today, start, end])
   const since = end > start ? difference(atEnd.totals.net, then.totals.net) : null
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
-  const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0 && Object.keys(now.cashTips).length === 0
+  const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0
   if (empty) return null
 
   const accountRows = (rows: AccountRow[]) =>
@@ -111,16 +111,8 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
         <PositionGroup label={t('position.bank')} sum={now.totals.bank} show={now.bank.length > 0}>
           <ul className="plain-list">{accountRows(now.bank)}</ul>
         </PositionGroup>
-        <PositionGroup label={t('position.cash')} sum={now.totals.cash} show={now.cashAccounts.length > 0 || Object.keys(now.cashTips).length > 0}>
-          <ul className="plain-list">
-            {accountRows(now.cashAccounts)}
-            {(Object.entries(now.cashTips) as [Currency, number][]).map(([c, v]) => (
-              <li key={c} className="row muted small">
-                <span className="grow">{t('position.cashTips')}</span>
-                <span className="num">{formatMoney(v, c)}</span>
-              </li>
-            ))}
-          </ul>
+        <PositionGroup label={t('position.cash')} sum={now.totals.cash} show={now.cashAccounts.length > 0}>
+          <ul className="plain-list">{accountRows(now.cashAccounts)}</ul>
         </PositionGroup>
         <PositionGroup label={t('position.receivable')} sum={now.totals.receivable} show={now.receivable.length > 0 || now.claims.length > 0}>
           <ul className="plain-list">
