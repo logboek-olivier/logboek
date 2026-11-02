@@ -296,7 +296,9 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()
     await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
     await page.getByLabel(L('field.amount')).fill('25')
-    await page.getByRole('combobox', { name: new RegExp(`^${L('field.trip')}`) }).selectOption({ label: 'Nepweek upgrade' })
+    // De tochtkiezer (alle tochten, met zoeken).
+    await page.getByRole('button', { name: new RegExp(`^${L('field.trip')}: `) }).click()
+    await page.getByRole('dialog', { name: L('tripPicker.title') }).locator('.trip-pick', { hasText: 'Nepweek upgrade' }).click()
     await page.getByRole('button', { name: 'Nepnick', exact: true }).click()
     const tipPuts = puts('transactions.json.enc')
     await page.getByRole('button', { name: L('common.save') }).click()

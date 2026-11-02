@@ -215,9 +215,9 @@ for (const { width, scheme, lang } of RUNS) {
       // Trip bewerken: het salaris (één regel) en de fooien en inkomsten van de trip.
       await overview.getByRole('button', { name: L('common.edit') }).click()
       const tripEdit = page.getByRole('dialog')
-      await tripEdit.getByRole('button', { name: new RegExp(L('tripIncome.title')) }).click()
+      await tripEdit.getByRole('button', { name: new RegExp(`^${L('tripMoney.title')}`) }).click()
       await expect(tripEdit.locator('.salary-row')).toBeVisible()
-      await tripEdit.locator('.trip-income').scrollIntoViewIfNeeded()
+      await tripEdit.locator('.trip-money').scrollIntoViewIfNeeded()
       await shot('trip-bewerken-geld')
       // Sluiten: terug in het tripoverzicht, dan dat ook dicht.
       await tripEdit.getByRole('button', { name: L('common.close'), exact: true }).click()

@@ -19,7 +19,7 @@ async function setSalary(page: Page, L: (key: MessageKey, ...args: unknown[]) =>
   await page.locator('.period-row', { hasText: name }).click()
   await page.getByRole('dialog').getByRole('button', { name: L('common.edit'), exact: true }).first().click()
   const edit = page.getByRole('dialog', { name: L('week.edit') })
-  await edit.getByRole('button', { name: new RegExp(`^${L('tripIncome.title')}`) }).click()
+  await edit.getByRole('button', { name: new RegExp(`^${L('tripMoney.title')}`) }).click()
   await edit.locator('.salary-row').click()
   const sheet = page.getByRole('dialog').last()
   await sheet.getByLabel(L('salary.amount')).fill(amount)

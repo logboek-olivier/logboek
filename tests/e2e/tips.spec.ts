@@ -82,7 +82,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       // Fooi van twee personen, per persoon: het totaal is de som.
       await nav.getByRole('button', { name: L('nav.add'), exact: true }).click()
       await page.getByRole('tab', { name: L('quick.tabIncome') }).click()
-      await expect(page.getByRole('combobox', { name: new RegExp(`^${L('field.trip')}`) })).toHaveValue(/.+/)
+      await expect(page.getByRole('button', { name: new RegExp(`^${L('field.trip')}: (?!${L('tripPicker.none')})`) })).toBeVisible()
       await page.getByRole('button', { name: 'Nick (VS)', exact: true }).click()
       await page.getByRole('button', { name: 'Nepanna', exact: true }).click()
       await page.getByRole('radio', { name: L('tip.perPerson') }).click()

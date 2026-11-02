@@ -33,7 +33,7 @@ test('Toevoegen: Dag · Inkomsten · Uitgave; inkomsten horen bij een trip, de t
   await page.getByRole('tab', { name: 'Inkomsten' }).click()
   const kinds = page.getByRole('radiogroup', { name: 'Soort' })
   await expect(kinds.getByRole('radio')).toHaveText(['Fooi', 'Loon of dagtarief', 'Bonus of provisie', 'Terugbetaling onkosten', 'Overig'])
-  await expect(page.getByRole('combobox', { name: 'Trip', exact: true }).locator('option:checked')).toHaveText('Neptrip nu')
+  await expect(page.getByRole('button', { name: /^Trip: Neptrip nu/ })).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/trips/inkomsten.png', fullPage: true })
 
@@ -41,7 +41,7 @@ test('Toevoegen: Dag · Inkomsten · Uitgave; inkomsten horen bij een trip, de t
   await page.getByLabel('Bedrag').fill('900')
   await kinds.getByRole('radio', { name: 'Loon of dagtarief' }).click()
   await page.getByLabel('Datum', { exact: true }).fill(iso(-38))
-  await expect(page.getByRole('combobox', { name: 'Trip', exact: true }).locator('option:checked')).toHaveText('Neptrip vroeger')
+  await expect(page.getByRole('button', { name: /^Trip: Neptrip vroeger/ })).toBeVisible()
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toContainText('Loon of dagtarief')
 

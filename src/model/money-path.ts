@@ -3,8 +3,9 @@ import { salaryOf, salaryStatus } from '../domain/geldmodel'
 import { active } from './derive'
 import { finalRateFields, rateFor, type RatesFile } from './rates'
 import { saveSalary, tripEnd } from './salary'
-import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type TransactionSource, type Trip } from './types'
+import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type Trip } from './types'
 import { round2 } from '../basis/bedrag'
+import { sourceForOrganisation } from '../basis/organisatie'
 
 // Uitbetalingen per organisatie: een uitbetaling ("SV betaalde € X op <datum>") vinkt de tochten die erbij horen in één
 // keer af. Per tocht wordt zijn salaris (de ene loon-transactie, src/domain/geldmodel.ts) ontvangen, met het betaalde
@@ -110,10 +111,6 @@ export function minimumPayout(trips: number): number {
   return trips * 0.01
 }
 
-function orgSource(org: Organisation): TransactionSource {
-  return org === 'sailing-virgins' || org === 'yacht-week' ? org : 'overig'
-}
-
 export interface Payout {
   org: Organisation
   amount: number
@@ -144,7 +141,7 @@ export async function recordPayout(tx: Tx, payout: Payout, chosen: readonly Trip
       id: newId(),
       ...base,
       kind: 'loon',
-      source: orgSource(payout.org),
+      source: sourceForOrganisation(payout.org),
       status: 'ontvangen',
       payoutId,
       ...(payout.currency === 'EUR' ? { amountEur: amount } : (finalRateFields(base, rates) ?? {})),

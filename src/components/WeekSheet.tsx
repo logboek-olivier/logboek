@@ -28,7 +28,7 @@ import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { IncompleteLine } from './Incomplete'
 import { Sheet } from './Sheet'
-import { TripIncomeFields } from './TripMoney'
+import { TripMoneyBlock } from './TripMoneyBlock'
 import { PeriodDays } from './PeriodPage'
 import { useCollection } from './useCollection'
 import { openAdd } from '../navigation'
@@ -178,7 +178,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
 
   return (
     <Sheet title={trip ? t('week.edit') : t('week.new')} onClose={onClose}>
-      <form className="stack week-form" onSubmit={(e) => void submit(e)}>
+      <form id="week-form" className="stack week-form" onSubmit={(e) => void submit(e)}>
         {(previous || templates.length > 0) && (
           <div className="stack-sm">
             <span className="label">{t('route.quickStart')}</span>
@@ -401,10 +401,14 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </datalist>
         </fieldset>
-        {trip && <TripIncomeFields store={store} trip={trip} notify={notify} />}
+      </form>
+      {/* Het geld staat buiten het formulier: het slaat zelf direct op, en zijn bladen hebben hun eigen formulier (een
+          genest formulier verstuurt het buitenste). Opslaan hieronder hoort via form= bij het formulier hierboven. */}
+      <div className="stack week-form-rest">
+        {trip && <TripMoneyBlock store={store} trip={trip} notify={notify} />}
         <NoteField label={t('field.note')} value={note} onChange={setNote} />
         <div className="sheet-actions">
-          <button className="btn primary" type="submit" disabled={busy}>
+          <button className="btn primary" type="submit" form="week-form" disabled={busy}>
             {trip ? (
               t('common.save')
             ) : (
@@ -415,7 +419,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             )}
           </button>
         </div>
-      </form>
+      </div>
     </Sheet>
   )
 }

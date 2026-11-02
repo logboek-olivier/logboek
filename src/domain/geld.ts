@@ -10,12 +10,15 @@ import { recordPayout } from '../model/money-path'
 import { finalRateFields } from '../model/rates'
 import { askSalaryLater, receiveSalary, saveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { saveSettings } from '../model/settings'
-import { newId, type Account, type Balance, type Settings, type Transaction } from '../model/types'
+import { newId, type Account, type Balance, type Currency, type Leg, type Organisation, type Settings, type Transaction, type Trip } from '../model/types'
+import { active } from '../model/derive'
+import { weekView } from '../model/weeks'
+import { round2 } from '../basis/bedrag'
 import { applyMoneyStep } from '../model/week-money'
 import { salaryOf, salaryStatus } from './geldmodel'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
-import { sourceForPeriod } from '../basis/organisatie'
+import { sourceForOrganisation, sourceForPeriod, tripOrganisation } from '../basis/organisatie'
 
 type Remember = Partial<Omit<Settings, 'id' | 'updatedAt' | 'deletedAt'>>
 
@@ -69,6 +72,67 @@ export async function changeBalance(tx: Tx, account: Account, balance: Balance, 
   await tx.put('balances.json.enc', { ...current, amount: signedAmount(account, amount), source: 'handmatig', updatedAt: tx.now })
 }
 
+/** Een bedrag van een eerder seizoen: bedrag en valuta. */
+export interface SeasonAmount {
+  amount: number
+  currency: Currency
+}
+
+export interface EarlierSeason {
+  org: Organisation
+  year: number
+  salary?: SeasonAmount
+  tips?: SeasonAmount
+  costs?: SeasonAmount
+}
+
+/** Datum van seizoensgeld: de laatste dag van de laatste tocht van de organisatie in dat jaar, anders 31 december. */
+export function seasonDate(trips: readonly Trip[], legs: readonly Leg[], org: Organisation, year: number): string {
+  let last = ''
+  for (const trip of active(trips)) {
+    const own = tripOrganisation(trip) ?? trip.organisation
+    if (own !== org) continue
+    const end = weekView(trip, legs).endDate
+    if (end.startsWith(`${year}-`) && end > last) last = end
+  }
+  return last || `${year}-12-31`
+}
+
+/**
+ * Money → "Eerder seizoen": voor geld waarvan Olivier de tocht niet meer weet. Elk ingevuld bedrag (salaris, fooien,
+ * kosten) wordt één transactie, gekoppeld aan het seizoen (organisatie en jaar), op de laatste dag van de laatste tocht
+ * van die organisatie in dat jaar (anders 31 december). Telt mee in de totalen, per organisatie, het jaaroverzicht en
+ * per werkdag (op die datum), niet in de fooi per gast.
+ */
+export async function addEarlierSeason(tx: Tx, input: EarlierSeason): Promise<Transaction[]> {
+  const date = seasonDate(tx.list('trips.json.enc'), tx.list('legs.json.enc'), input.org, input.year)
+  const season = { org: input.org, year: input.year }
+  const source = sourceForOrganisation(input.org)
+  const out: Transaction[] = []
+  const add = async (kind: Transaction['kind'], value: SeasonAmount | undefined, extra: Partial<Transaction> = {}) => {
+    if (!value || !(value.amount > 0)) return
+    const base = { date, amount: round2(value.amount), currency: value.currency }
+    const record: Transaction = {
+      id: newId(),
+      ...base,
+      kind,
+      source,
+      season,
+      ...extra,
+      ...(value.currency === 'EUR' ? { amountEur: base.amount } : (finalRateFields(base) ?? {})),
+      updatedAt: tx.now,
+      deletedAt: null,
+    }
+    await tx.put('transactions.json.enc', record)
+    out.push(record)
+  }
+  await add('loon', input.salary, { status: 'ontvangen' })
+  await add('fooi', input.tips)
+  await add('kosten', input.costs, { category: 'overig' })
+  return out
+}
+
+export const eerderSeizoenInvoeren = opdrachtMet('eerderSeizoenInvoeren', addEarlierSeason)
 export const declaratieBewerken = opdracht('declaratieBewerken', updateClaim)
 export const declaratieIngediend = opdracht('declaratieIngediend', markSubmitted)
 export const declaratieTerugbetaald = opdracht('declaratieTerugbetaald', markRepaid)

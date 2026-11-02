@@ -20,6 +20,9 @@ import { kindForCategory } from '../model/expenses'
 import { useCollection } from '../components/useCollection'
 import { defaultTripName } from '../model/trip-name'
 import { active, compareLegs, summarizeTrips, tripForDate } from '../model/derive'
+import { salaryOf, salaryStatus, type MoneyLink } from '../domain/geldmodel'
+import { TripPickerField } from '../components/TripPicker'
+import { TripSalarySheet } from '../components/MoneyPath'
 import { parseNonNegative } from '../model/edit'
 import { currentSettings } from '../model/settings'
 import { activeWeek, roleForType } from '../model/weeks'
@@ -34,7 +37,7 @@ import { geldToevoegen, uitgaveToevoegen } from '../domain/geld'
 import type { NewMoney } from '../domain/geld'
 import { parseAmount } from '../basis/bedrag'
 import { addDays, todayIso } from '../basis/datum'
-import { sourceForPeriod } from '../basis/organisatie'
+import { sourceForOrganisation, sourceForPeriod } from '../basis/organisatie'
 
 // Snel toevoegen: Dag · Inkomsten · Uitgave, opent op Dag. Bij Dag staan alle velden in beeld, voorgevuld met de vorige
 // bestemming en de laatst gebruikte boot, rol en week; niets is verplicht. Opslaan = één tik.
@@ -135,49 +138,23 @@ async function saveTransaction(
 }
 
 /**
- * Trips om uit te kiezen: de lopende trip en de trip van de datum eerst, dan komende en recente trips. Standaard de
- * trip waarin de datum valt (of de lopende trip); verandert de datum en heeft Olivier zelf niets gekozen, dan volgt
- * de trip mee. Bij een uitgave alleen de trip van de datum: thuis boodschappen doen hoort bij geen trip.
+ * Waar nieuw inkomen bij hoort: standaard de tocht waarin de datum valt (anders de lopende tocht, anders de laatste tocht
+ * die vóór de datum begon); verandert de datum en heeft Olivier zelf niets gekozen, dan volgt de tocht mee. Kiezen gaat
+ * met de tochtkiezer (alle tochten, een eerder seizoen of geen tocht).
  */
-function useTripChoice(store: Store, date: string, expense = false, preset?: string) {
+function useMoneyLink(store: Store, date: string, preset?: string) {
   const { settings, trips, legs } = useDefaults(store)
   const running = activeWeek(trips, settings, date)
   const byDate = tripForDate(trips, legs, date)
-  // Geen trip op die datum: de laatste trip die vóór de datum begon, anders de eerstvolgende. Nooit blokkeren.
   const nearest = useMemo(() => {
     const dated = active(trips).filter((trip) => trip.startDate)
     const before = dated.filter((trip) => trip.startDate! <= date).sort((a, b) => (a.startDate! < b.startDate! ? 1 : -1))[0]
     return before ?? dated.sort((a, b) => (a.startDate! < b.startDate! ? -1 : 1))[0] ?? active(trips)[0]
   }, [trips, date])
-  const fallback = expense ? (byDate?.id ?? '') : (byDate?.id ?? running?.id ?? nearest?.id ?? '')
-  const [chosen, setChosen] = useState<string | null>(preset ?? null)
-  const options = useMemo(() => {
-    const list = active(trips)
-      .filter((trip) => !trip.closedAt || trip.id === byDate?.id)
-      .sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
-      .slice(0, 20)
-    const given = preset ? active(trips).find((x) => x.id === preset) : undefined
-    for (const extra of [nearest, running, byDate, given]) if (extra && !list.some((x) => x.id === extra.id)) list.unshift(extra)
-    return list
-  }, [trips, byDate, running, nearest, preset])
-  const tripId = chosen ?? fallback
-  return { tripId, setTripId: setChosen, options }
-}
-
-function TripField({ value, options, onChange, required }: { value: string; options: Trip[]; onChange: (id: string) => void; required: boolean }) {
-  return (
-    <label>
-      {t('field.trip')}
-      <select value={value} onChange={(e) => onChange(e.target.value)} required={required}>
-        {(!required || value === '') && <option value="">{t('quick.noTrip')}</option>}
-        {options.map((trip) => (
-          <option key={trip.id} value={trip.id}>
-            {trip.name}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
+  const fallback = byDate ?? running ?? nearest
+  const [chosen, setChosen] = useState<MoneyLink | null>(preset ? { kind: 'tocht', tripId: preset } : null)
+  const link: MoneyLink = chosen ?? (fallback ? { kind: 'tocht', tripId: fallback.id } : { kind: 'geen' })
+  return { link, setLink: setChosen, trips }
 }
 
 /** Voor een gekozen trip (vanaf de periodepagina): vandaag als die in de trip valt, anders de dichtstbijzijnde dag ervan. */
@@ -196,11 +173,16 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
   const [date, setDate] = useState(() => dateIn(store.list('trips.json.enc'), preset, todayIso()))
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const { tripId, setTripId, options } = useTripChoice(store, date, false, preset)
-  // Inkomsten horen bij een trip; alleen zonder enige trip mag het leeg blijven.
-  const tripOk = tripId !== '' || options.length === 0
-  // Fooi: van wie (deelnemers van de gekozen trip); een andere trip begint weer bij onbekend.
-  const people = kind === 'fooi' ? (options.find((x) => x.id === tripId)?.participants ?? []) : []
+  const { link, setLink, trips } = useMoneyLink(store, date, preset)
+  const tripId = link.kind === 'tocht' ? link.tripId : ''
+  const trip = tripId ? trips.find((x) => x.id === tripId && x.deletedAt === null) : undefined
+  // Precies één salaris per tocht: een salaris dat al binnen is, opent het bestaande in plaats van een tweede.
+  const existingSalary = kind === 'loon' && tripId ? salaryOf(tripId, store.list('transactions.json.enc')) : undefined
+  const salaryTaken = !!existingSalary && salaryStatus(existingSalary) === 'ontvangen'
+  const [salarySheet, setSalarySheet] = useState(false)
+  const tripOk = !salaryTaken
+  // Fooi: van wie (deelnemers van de gekozen tocht); een andere tocht begint weer bij onbekend.
+  const people = kind === 'fooi' ? (trip?.participants ?? []) : []
   const [tip, setTip] = useState<{ tripId: string; draft: TipDraft }>({ tripId, draft: EMPTY_TIP })
   const draft = tip.tripId === tripId ? tip.draft : EMPTY_TIP
   const total = people.length > 0 ? draftTotal(draft) : undefined
@@ -212,11 +194,11 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
     setBusy(true)
     try {
       const tipFrom = people.length > 0 ? tipFromDraft(draft, people) : undefined
-      // Geen bron meer in beeld: die volgt uit de organisatie van de trip (oudere versies lezen hem nog).
-      const source = sourceForPeriod(options.find((x) => x.id === tripId))
+      // Geen bron meer in beeld: die volgt uit de organisatie van de tocht of het seizoen (oudere versies lezen hem nog).
+      const source = link.kind === 'seizoen' ? sourceForOrganisation(link.season.org) : sourceForPeriod(trip)
       await saveTransaction(
         store,
-        { date, kind, amount: parsed, currency, source, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}) },
+        { date, kind, amount: parsed, currency, source, ...(link.kind === 'seizoen' ? { season: link.season } : {}), ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}), ...(tipFrom ? { tipFrom } : {}) },
         { lastIncomeKind: kind },
         tripId,
       )
@@ -249,7 +231,16 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
           </button>
         ))}
       </div>
-      <TripField value={tripId} options={options} onChange={setTripId} required={options.length > 0} />
+      <TripPickerField store={store} value={link} onChange={setLink} date={date} />
+      {salaryTaken && trip && (
+        <div className="notice stack-sm">
+          <p className="small">{t('quick.salaryExists')}</p>
+          <button type="button" className="btn small" onClick={() => setSalarySheet(true)}>
+            {t('quick.openSalary')}
+          </button>
+        </div>
+      )}
+      {salarySheet && trip && <TripSalarySheet store={store} trip={trip} notify={(text) => onDone(text)} onClose={() => setSalarySheet(false)} />}
       {people.length > 0 && (
         <TipFromPicker
           participants={people}

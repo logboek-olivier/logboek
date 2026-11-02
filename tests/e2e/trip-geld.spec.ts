@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
 // Salaris en geld per tocht (src/domain/geldmodel.ts: het salaris is één loon-transactie met een status): "Geen
 // salaris" op Vandaag, het salaris en de fooien in "Trip bewerken", het resultaat van de tocht (de som van zijn
@@ -24,7 +24,7 @@ async function setSalary(page: Page, name: string, amount: string) {
   await openTripFromLog(page, name)
   await page.getByRole('dialog').getByRole('button', { name: 'Bewerken' }).click()
   const edit = page.getByRole('dialog', { name: 'Trip bewerken' })
-  await edit.getByRole('button', { name: /^Fooien en inkomsten/ }).click()
+  await edit.getByRole('button', { name: /^Geld/ }).click()
   await expect(edit.locator('.salary-row')).toContainText('Nog geen salaris')
   await edit.locator('.salary-row').click()
   const sheet = page.getByRole('dialog').last()
@@ -72,11 +72,11 @@ test('geen salaris, fooi toevoegen bij de trip, resultaat van de trip en zeilgel
   await expect(page.locator('.toast')).toContainText('Geen salaris voor deze trip')
   await expect(question).toHaveCount(0)
 
-  // Trip bewerken: fooien en inkomsten van de trip, met toevoegen.
+  // Trip bewerken: één blok Geld met het salaris, de fooien en inkomsten, de kosten en het resultaat (direct opgeslagen).
   await openTripFromLog(page, 'Nep trainingsweek')
   await page.getByRole('dialog').getByRole('button', { name: 'Bewerken' }).click()
   sheet = page.getByRole('dialog', { name: 'Trip bewerken' })
-  await sheet.getByRole('button', { name: /Fooien en inkomsten/ }).click()
+  await sheet.getByRole('button', { name: /^Geld/ }).click()
   // Het salaris is één regel; een tik opent het salarisblad, met "Geen salaris" gekozen.
   await expect(sheet.locator('.salary-row')).toContainText('Geen salaris')
   await sheet.locator('.salary-row').click()
@@ -84,18 +84,37 @@ test('geen salaris, fooi toevoegen bij de trip, resultaat van de trip en zeilgel
   await expect(salarySheet.getByRole('radio', { name: 'Geen salaris' })).toHaveAttribute('aria-checked', 'true')
   await salarySheet.getByRole('button', { name: 'Sluiten' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(1)
-  await sheet.locator('.trip-income').getByLabel('Bedrag').fill('100')
-  await sheet.getByRole('button', { name: 'Inkomsten toevoegen' }).click()
+  const money = sheet.locator('.trip-money')
+  await money.getByRole('button', { name: 'Fooi of inkomen toevoegen' }).click()
+  await money.locator('.add-line').getByLabel('Bedrag').fill('100')
+  await money.getByRole('button', { name: 'Inkomsten toevoegen' }).click()
   await expect(page.locator('.toast')).toContainText('Inkomsten opgeslagen')
-  await expect(sheet.locator('.trip-income')).toContainText('Fooi')
+  await expect(money).toContainText('Fooi')
   await expect(sheet.locator('.trip-result')).toContainText('€ 100,00')
+  // Kosten bij de tocht: toevoegen, dan bekijken en bewerken (tik op de regel, potlood), net als een fooi.
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+  await money.getByRole('button', { name: 'Kosten toevoegen' }).click()
+  await money.getByRole('radio', { name: 'Eten en drinken' }).click()
+  await money.locator('.add-line').getByLabel('Bedrag').fill('30')
+  await money.getByRole('button', { name: 'Kosten toevoegen' }).click()
+  await expect(page.locator('.toast')).toContainText('Kosten opgeslagen')
+  await expect(sheet.locator('.trip-result')).toContainText('€ 70,00')
+  await money.locator('.money-rows').getByRole('button', { name: /Eten en drinken/ }).click()
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Bewerken' }).click()
+  const costSheet = page.getByRole('dialog', { name: 'Uitgave bewerken' })
+  await costSheet.getByLabel('Bedrag').fill('35')
+  await costSheet.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(costSheet).toHaveCount(0)
+  await expect(sheet.locator('.trip-result')).toContainText('€ 65,00')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: 'screenshots/geld/tocht-geld.png', fullPage: true })
   await sheet.getByRole('button', { name: 'Opslaan', exact: true }).click()
   // Na opslaan weer het tripoverzicht (terug waar je was): het resultaat achter "Toon bedragen".
   await expect(page.getByRole('dialog')).toHaveCount(1)
   const overview = page.getByRole('dialog')
   await overview.getByRole('button', { name: 'Toon bedragen' }).click()
   await expect(overview.locator('.trip-result')).toContainText('Resultaat van de trip')
-  await expect(overview.locator('.trip-result')).toContainText('€ 100,00')
+  await expect(overview.locator('.trip-result')).toContainText('€ 65,00')
   await expect(overview).toContainText('Geen salaris')
   await overview.getByRole('button', { name: 'Sluiten' }).click()
 
