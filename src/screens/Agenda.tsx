@@ -17,7 +17,8 @@ import { parsePlanning, planImport, PlanningError, type PlanItem } from '../impo
 import { buildIndex, dayInfo, dayLabelKey, monthIncome, monthSummary, monthWeeks, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
 import { closingFor } from '../model/week-close'
-import { salaryState, type SalaryState } from '../model/money-path'
+import type { SalaryState } from '../domain/geldmodel'
+import { tripSalary } from '../components/MoneyPath'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import { type Reminder, type StayPeriod, type Trip } from '../model/types'
@@ -62,10 +63,10 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [viewStay, setViewStay] = useState<StayPeriod | null>(null)
   const counters = useCounters(store)
   // Het salaris per trip als bolletje in de balk (grijs verwacht, oranje te ontvangen, groen ontvangen).
-  const salaryStates = useMemo(() => new Map(trips.filter((x) => x.deletedAt === null).map((x) => [x.id, salaryState(x, legs, today)])), [trips, legs, today])
+  const transactions = useCollection(store, 'transactions.json.enc')
+  const salaryStates = useMemo(() => new Map(trips.filter((x) => x.deletedAt === null).map((x) => [x.id, tripSalary(x, legs, transactions, today).state])), [trips, legs, transactions, today])
   const fileInput = useRef<HTMLInputElement>(null)
   const touch = useRef<{ x: number; y: number } | null>(null)
-  const transactions = useCollection(store, 'transactions.json.enc')
   useSyncExternalStore(subscribeRates, getRates)
   // Termijnen op hun dag: eigen termijnen (in de index) en de vervaldatum van de token.
   const due = useDueItems(store)

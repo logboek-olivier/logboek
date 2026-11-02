@@ -1,5 +1,5 @@
 import { tripKind } from '../model/trip-kind'
-import { ChevronDown, ChevronRight, ChevronUp, Coins, Eye, EyeOff, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Coins, Eye, EyeOff, Pencil, Plus } from 'lucide-react'
 import { useState, useSyncExternalStore } from 'react'
 import { formatDate, formatMoney } from '../format'
 import { t } from '../i18n'
@@ -7,7 +7,9 @@ import { kindLabel } from '../i18n/labels'
 import { claimCounts, tripClaims } from '../model/claims'
 import { active } from '../model/derive'
 import { totals } from '../model/money'
-import { tripMoney, tripResult, type MoneySum, type TripResult } from '../model/money-path'
+import type { MoneySum } from '../model/money-path'
+import { tripResult, type TripResult } from '../domain/geldrapport'
+import { booked } from '../domain/geldmodel'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { tripEnd } from '../model/salary'
 import { currentSettings } from '../model/settings'
@@ -15,17 +17,17 @@ import { CURRENCIES, type Currency, type IncomeKind, type Trip } from '../model/
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
-import { SalaryDot, salaryAmountText, salaryStateLabel } from './MoneyPath'
+import { SalaryDot, salaryAmountText, salaryStateLabel, tripSalary, TripSalarySheet } from './MoneyPath'
 import { useCollection } from './useCollection'
 import { geldToevoegen } from '../domain/geld'
 import { parseAmount } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
 import { sourceForPeriod } from '../basis/organisatie'
 
-// Geld van één trip, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee): inkomsten en uitgaven, het
-// resultaat van de trip (salaris + fooi + overige inkomsten − uitgaven, kan negatief zijn; declaraties die nog niet
-// terugbetaald zijn apart), het geldpad (salaris verwacht, te ontvangen of ontvangen; fooi contant, bank of onbekend).
-// In "Trip bewerken" daarnaast de fooien en inkomsten van de trip, met toevoegen.
+// Geld van één tocht, verborgen tot Olivier op "Toon bedragen" tikt (studenten kijken mee): het resultaat van de tocht
+// (de som van zijn transacties: salaris + fooi + overige inkomsten − uitgaven, kan negatief zijn), inkomsten en uitgaven
+// en het salaris met zijn status (src/domain/geldmodel.ts). In "Trip bewerken" daarnaast het salaris (tik = bewerken) en
+// de fooien en inkomsten van de tocht, met toevoegen.
 
 /** "€ 1.250,00", met wat zonder koers per valuta blijft erachter. */
 export function sumText(sum: MoneySum, sign = false): string {
@@ -75,28 +77,24 @@ export function TripResultLines({ result, work = true }: { result: TripResult; /
 }
 
 /**
- * Inkomsten en uitgaven van de trip (Deze trip en het tripoverzicht), verborgen tot "Toon bedragen": het resultaat van
- * de trip, inkomsten en uitgaven, het salaris met zijn status en de fooi naar contant, bank en onbekend.
+ * Inkomsten en uitgaven van de tocht (Deze trip en het tripoverzicht), verborgen tot "Toon bedragen": het resultaat van
+ * de tocht, inkomsten en uitgaven, en het salaris met zijn status.
  */
 export function TripMoneySection({ store, trip, heading = 'h2' }: { store: Store; trip: Trip; heading?: 'h2' | 'h3' }) {
   const all = useCollection(store, 'transactions.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const claims = tripClaims(useCollection(store, 'claims.json.enc'), trip.id)
   const counts = claimCounts(claims)
-  const transactions = all.filter((tx) => tx.deletedAt === null && tx.tripId === trip.id)
-  const rates = useSyncExternalStore(subscribeRates, getRates)
+  const own = active(all).filter((tx) => tx.tripId === trip.id)
+  useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
-  const salary = trip.salary
-  if (transactions.length === 0 && !salary) return null
-  const path = tripMoney(trip, legs, all, todayIso())
-  const state = path.salary?.state ?? null
-  const tipParts = (['contant', 'bank', 'onbekend'] as const)
-    .map((via) => ({ via, sum: path.tips[via] }))
-    .filter((p) => p.sum.eur > 0 || Object.keys(p.sum.other).length > 0)
-    .map((p) => `${t(`tipVia.${p.via}`)} ${[p.sum.eur > 0 ? formatMoney(p.sum.eur, 'EUR') : '', ...Object.entries(p.sum.other).map(([c, v]) => formatMoney(v, c))].filter(Boolean).join(' + ')}`)
-  const sum = totals(transactions)
-  const provisional = transactions.some((tx) => eurValue(tx)?.provisional)
+  const { salary, state } = tripSalary(trip, legs, all, todayIso())
+  if (own.length === 0) return null
+  const real = booked(own)
+  const sum = totals(real)
+  const provisional = own.some((tx) => eurValue(tx)?.provisional)
   const Heading = heading
+  const salaryText = salary ? (state === null ? t('salaryStatus.geen') : t('salary.lineShort', { amount: salaryAmountText(trip, all), status: salaryStateLabel(state) })) : ''
   return (
     <div className="section">
       <div className="section-head">
@@ -108,7 +106,7 @@ export function TripMoneySection({ store, trip, heading = 'h2' }: { store: Store
       </div>
       {shown ? (
         <div className="stack-sm">
-          <TripResultLines result={tripResult(trip, legs, all, rates)} work={tripKind(trip, legs).kind === 'werk'} />
+          <TripResultLines result={tripResult(trip, all)} work={tripKind(trip, legs).kind === 'werk'} />
           <dl className="grid">
             <div className="stat">
               <dt>{t('week.income')}</dt>
@@ -128,20 +126,15 @@ export function TripMoneySection({ store, trip, heading = 'h2' }: { store: Store
           {salary && (
             <p className="salary-line row">
               <SalaryDot state={state} />
-              <span>
-                {salary.status === 'geen'
-                  ? t('salaryStatus.geen')
-                  : t('salary.line', { amount: salaryAmountText(trip, all), status: salaryStateLabel(state), source: t(salary.source === 'standaard' ? 'salary.sourceStandard' : 'salary.sourceOwn') })}
-              </span>
+              <span>{salaryText}</span>
             </p>
           )}
-          {tipParts.length > 0 && <p className="muted small">{t('tipVia.line', { parts: tipParts.join(' · ') })}</p>}
           {claims.length > 0 && <p className="muted small">{t('claims.counts', { open: counts.open, submitted: counts.ingediend, repaid: counts.terugbetaald })}</p>}
         </div>
       ) : (
         <p className="muted small">
           <Icon icon={ChevronRight} />
-          {[transactions.length > 0 ? t('week.amountsHidden', { n: transactions.length }) : '', salary ? t('salary.hiddenLine', { status: salary.status === 'geen' ? t('salaryStatus.geen') : salaryStateLabel(state) }) : ''].filter(Boolean).join(' · ')}
+          {[real.length > 0 ? t('week.amountsHidden', { n: real.length }) : '', salary ? t('salary.hiddenLine', { status: state === null ? t('salaryStatus.geen') : salaryStateLabel(state) }) : ''].filter(Boolean).join(' · ')}
         </p>
       )}
     </div>
@@ -166,14 +159,16 @@ export function TripIncomeFields({ store, trip, notify }: { store: Store; trip: 
   const all = useCollection(store, 'transactions.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
-  const rates = useSyncExternalStore(subscribeRates, getRates)
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState('')
   const [kind, setKind] = useState<(typeof INCOME_KINDS)[number]>('fooi')
   const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [busy, setBusy] = useState(false)
+  const [salaryOpen, setSalaryOpen] = useState(false)
+  const { salary, state } = tripSalary(trip, legs, all, todayIso())
+  useSyncExternalStore(subscribeRates, getRates)
   const income = active(all)
-    .filter((tx) => tx.tripId === trip.id && (tx.kind === 'fooi' || tx.kind === 'bonus' || tx.kind === 'overig-inkomen' || tx.kind === 'loon'))
+    .filter((tx) => tx.tripId === trip.id && (tx.kind === 'fooi' || tx.kind === 'bonus' || tx.kind === 'overig-inkomen'))
     .sort((a, b) => a.date.localeCompare(b.date))
   const parsed = parseAmount(amount)
   const valid = parsed !== null && parsed > 0
@@ -183,7 +178,7 @@ export function TripIncomeFields({ store, trip, notify }: { store: Store; trip: 
     setBusy(true)
     try {
       const date = dateForTrip(trip, tripEnd(trip, legs), todayIso())
-      const { undo } = await geldToevoegen(store, { date, amount: parsed!, currency, kind, source: sourceForPeriod(trip), ...(kind === 'fooi' ? { tipVia: settings.lastTipVia ?? 'contant' } : {}) }, trip.id)
+      const { undo } = await geldToevoegen(store, { date, amount: parsed!, currency, kind, source: sourceForPeriod(trip) }, trip.id)
       setAmount('')
       notify(t('tripIncome.saved'), undo)
     } finally {
@@ -201,7 +196,15 @@ export function TripIncomeFields({ store, trip, notify }: { store: Store; trip: 
       </button>
       {open && (
         <div className="stack-sm">
-          <TripResultLines result={tripResult(trip, legs, all, rates)} work={tripKind(trip, legs).kind === 'werk'} />
+          <button type="button" className="row-item salary-row" onClick={() => setSalaryOpen(true)}>
+            <SalaryDot state={state} />
+            <span className="row-main">
+              <span className="row-title">{t('salary.title')}</span>
+              <span className="muted small">{salary ? (state === null ? t('salaryStatus.geen') : t('salary.lineShort', { amount: salaryAmountText(trip, all), status: salaryStateLabel(state) })) : t('salary.none')}</span>
+            </span>
+            <Icon icon={Pencil} />
+          </button>
+          <TripResultLines result={tripResult(trip, all)} work={tripKind(trip, legs).kind === 'werk'} />
           {income.length > 0 && (
             <ul className="plain-list">
               {income.map((tx) => (
@@ -257,6 +260,7 @@ export function TripIncomeFields({ store, trip, notify }: { store: Store; trip: 
           <p className="muted small">{t('tripIncome.hint')}</p>
         </div>
       )}
+      {salaryOpen && <TripSalarySheet store={store} trip={trip} notify={notify} onClose={() => setSalaryOpen(false)} />}
     </fieldset>
   )
 }

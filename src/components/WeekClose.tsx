@@ -4,7 +4,7 @@ import { formatDate, formatDateRange, formatHours, formatMoney, formatNm } from 
 import { getLang, t } from '../i18n'
 import { balanceOn, liveAccounts } from '../model/accounts'
 import { nameWithCounter } from '../model/counters'
-import { cashOnHand, hasSalaryIncome, openSalaryTrips } from '../model/money-path'
+import { expectedSalary, openSalaryTrips } from '../model/money-path'
 import { getRates } from '../model/rates'
 import { isEmptyStep, type MoneyStep } from '../model/week-money'
 import { useIsDemo } from './DemoBar'
@@ -12,7 +12,7 @@ import { organisationLabel } from '../i18n/labels'
 import { useCounters } from './useCounters'
 import type { CalendarIndex } from '../model/calendar'
 import { canClose, closingFor, LESSON_MAX, weekSummary, weekToClose, type WeekSummary } from '../model/week-close'
-import type { Currency, WeekClosing } from '../model/types'
+import type { WeekClosing } from '../model/types'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -61,19 +61,16 @@ function useMoneyStep(store: Store, enabled: boolean) {
   const [open, setOpen] = useState(false)
   const [stands, setStands] = useState<Record<string, string>>({})
   const [received, setReceived] = useState<ReadonlySet<string>>(new Set())
-  const [deposited, setDeposited] = useState<ReadonlySet<Currency>>(new Set())
   const today = todayIso()
-  const openTrips = organisationChoices(trips).flatMap((org) => openSalaryTrips(trips, legs, org, today)).filter((x) => !hasSalaryIncome(x, transactions))
-  const cash = Object.entries(cashOnHand(transactions)) as [Currency, number][]
+  const openTrips = organisationChoices(trips).flatMap((org) => openSalaryTrips(trips, legs, transactions, org, today))
   const lang = getLang()
   const parsedStands = accounts.map((a) => ({ account: a, text: stands[a.id] ?? '', value: (stands[a.id] ?? '').trim() === '' ? null : parseStand(stands[a.id]!, lang) }))
   const invalid = parsedStands.some((s) => s.text.trim() !== '' && s.value === null)
   const step: MoneyStep = {
     balances: parsedStands.filter((s) => s.value !== null).map((s) => ({ account: s.account, amount: s.value! })),
     received: openTrips.filter((x) => received.has(x.id)),
-    deposited: cash.map(([c]) => c).filter((c) => deposited.has(c)),
   }
-  const available = enabled && !demo && (accounts.length > 0 || openTrips.length > 0 || cash.length > 0)
+  const available = enabled && !demo && (accounts.length > 0 || openTrips.length > 0)
   const view = !available ? null : (
     <div className="money-step stack-sm">
       <button type="button" className="btn quiet disclosure" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -115,30 +112,10 @@ function useMoneyStep(store: Store, enabled: boolean) {
                     }}
                   />
                   <span className="grow">{nameWithCounter(x, counters.get(x.id))}</span>
-                  <span className="num small">{formatMoney(x.salary!.amount, x.salary!.currency)}</span>
+                  <span className="num small">{formatMoney(expectedSalary(x, transactions)!.amount, expectedSalary(x, transactions)!.currency)}</span>
                 </label>
               ))}
               <p className="muted small">{t('weekMoney.receivedHint')}</p>
-            </>
-          )}
-          {cash.length > 0 && (
-            <>
-              <h3>{t('weekMoney.cash')}</h3>
-              {cash.map(([c, v]) => (
-                <label key={c} className="check">
-                  <input
-                    type="checkbox"
-                    checked={deposited.has(c)}
-                    onChange={() => {
-                      const next = new Set(deposited)
-                      if (next.has(c)) next.delete(c)
-                      else next.add(c)
-                      setDeposited(next)
-                    }}
-                  />
-                  <span className="grow">{t('weekMoney.deposited', { amount: formatMoney(v, c) })}</span>
-                </label>
-              ))}
             </>
           )}
         </div>

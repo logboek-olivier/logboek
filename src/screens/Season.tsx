@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronUp, Eye, EyeOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
-import { SalaryDot, salaryAmountText, salaryStateLabel } from '../components/MoneyPath'
+import { SalaryDot, salaryAmountText, salaryStateLabel, tripSalary } from '../components/MoneyPath'
 import { useCollection } from '../components/useCollection'
 import { useCounters } from '../components/useCounters'
 import { weekTypeLabel } from '../components/WeekSheet'
@@ -9,7 +9,6 @@ import { formatDateRange } from '../format'
 import { t } from '../i18n'
 import { buildIndex, planningEnd, seasonWeeks, type SeasonItem } from '../model/calendar'
 import { nameWithCounter, type TripCounter } from '../model/counters'
-import { salaryState } from '../model/money-path'
 import { isoWeek } from '../model/weeks'
 import type { Store } from '../storage/store'
 import { addDays, mondayOf, todayIso } from '../basis/datum'
@@ -79,13 +78,13 @@ export function Season({ store, onBack }: { store: Store; onBack: () => void }) 
                   <li key={i} className={`season-item day-${item.kind === 'trip' ? 'werk' : item.type}`}>
                     {item.kind === 'trip' ? (
                       <>
-                        {item.view.trip.salary && <SalaryDot state={salaryState(item.view.trip, legs, today)} />}
+                        {tripSalary(item.view.trip, legs, transactions, today).salary && <SalaryDot state={tripSalary(item.view.trip, legs, transactions, today).state} />}
                         <span>{itemLabel(item, counters)}</span>
                         <span className="muted small"> · {formatDateRange(item.view.startDate, item.view.endDate)}</span>
-                        {item.view.trip.salary && (
+                        {tripSalary(item.view.trip, legs, transactions, today).salary && (
                           <span className="muted small">
                             {' · '}
-                            {salaryStateLabel(salaryState(item.view.trip, legs, today))}
+                            {salaryStateLabel(tripSalary(item.view.trip, legs, transactions, today).state)}
                             {showAmounts && ` ${salaryAmountText(item.view.trip, transactions)}`}
                           </span>
                         )}

@@ -1,3 +1,4 @@
+import { salaryStatus } from '../domain/geldmodel'
 import { BookOpen, Check } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { formatDate, formatHours, formatMoney, formatNm } from '../format'
@@ -115,7 +116,7 @@ export function TransactionView({ store, tx, notify, onClose }: { store: Store; 
             [t('belongsTo.title'), trip ? nameWithCounter(trip, counters.get(trip.id)) : stay && stayName(stay)],
             [t('tip.from'), current.kind === 'fooi' && tipFromText(current, trip)],
             [t('costs.category'), (current.kind === 'kosten' || current.kind === 'investering') && category && t(`costCategory.${category}`)],
-            [t('tipVia.label'), current.kind === 'fooi' && current.tipVia && `${t(`tipVia.${current.tipVia}`)}${current.depositedAt ? ` · ${t('tipVia.deposited', { date: formatDate(current.depositedAt) })}` : ''}`],
+            [t('salary.status'), current.kind === 'loon' && t(`salaryStatus.${salaryStatus(current)}`)],
             [t(current.kind === 'kosten' || current.kind === 'investering' ? 'view.paid' : 'view.received'), typeof current.receivedEur === 'number' && formatMoney(current.receivedEur, 'EUR')],
             [t('payout.partLabel'), current.payoutId && t('payout.part', { n: all.filter((x) => x.payoutId === current.payoutId && x.deletedAt === null).length })],
             [t('field.note'), current.note],

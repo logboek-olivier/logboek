@@ -2,7 +2,8 @@ import { Ban, Check, Clock, Pencil, Wallet } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { t } from '../i18n'
 import { nameWithCounter } from '../model/counters'
-import { defaultChanges, salaryQuestions } from '../model/salary'
+import { salaryQuestions } from '../model/salary'
+import { salaryOf } from '../domain/geldmodel'
 import { asksPerTrip, payoutRule } from '../model/money-path'
 import { currentSettings } from '../model/settings'
 import { CURRENCIES, type Currency, type Organisation, type PayoutRule, type SalaryDefault, type Trip } from '../model/types'
@@ -27,7 +28,10 @@ type PayoutRow = { kind: PayoutRule['kind']; day: string }
 const EMPTY_ROW: Row = { amount: '', currency: 'EUR' }
 const EMPTY_PAYOUT: PayoutRow = { kind: 'per-trip', day: '1' }
 
-/** Instellingen → Salaris per organisatie. Een gewijzigd bedrag vraagt eerst of het ook voor komende trips geldt. */
+/**
+ * Instellingen → Salaris per organisatie: het standaardbedrag is een instelling. Komende tochten van die organisatie
+ * zonder salaris krijgen het als verwacht salaris; een salaris dat er al staat, verandert niet.
+ */
 export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; onClose: () => void; notify: Notify }) {
   const settings = currentSettings(store.get('settings.json.enc'))
   const [rows, setRows] = useState<Record<Organisation, Row>>(() => {
@@ -47,7 +51,6 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
     }
     return out
   })
-  const [asking, setAsking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
 
   // Wat bij een organisatie hoort die nu niet in de lijst staat, blijft bewaard (terugzetten = dezelfde instellingen).
@@ -71,10 +74,10 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
     return out
   }
 
-  async function save(alsoStale: boolean) {
+  async function save() {
     setBusy(true)
     try {
-      await standaardsalarisOpslaan(store, next(), alsoStale, todayIso())
+      await standaardsalarisOpslaan(store, next(), todayIso())
       await instellingenOpslaan(store, { payouts: nextPayouts() })
       onClose()
       notify(t('salary.saved'))
@@ -85,26 +88,11 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    const changes = defaultChanges(store.list('trips.json.enc'), store.list('legs.json.enc'), settings, next(), todayIso())
-    const stale = changes.reduce((n, c) => n + c.stale.length, 0)
-    if (stale > 0) setAsking(stale)
-    else void save(false)
+    void save()
   }
 
   return (
     <Sheet title={t('salary.defaults')} onClose={onClose}>
-      {asking !== null ? (
-        <div className="stack">
-          <p>{t('salary.askStale', { n: asking })}</p>
-          <p className="muted small">{t('salary.askStaleHint')}</p>
-          <button type="button" className="btn primary" disabled={busy} onClick={() => void save(true)}>
-            {t('salary.yesAlso')}
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => void save(false)}>
-            {t('salary.onlyNew')}
-          </button>
-        </div>
-      ) : (
         <form className="stack" onSubmit={submit}>
           <p className="muted small">{t('salary.defaultsHint')}</p>
           {organisationChoices().map((org) => (
@@ -152,7 +140,6 @@ export function SalaryDefaultsSheet({ store, onClose, notify }: { store: Store; 
             {t('common.save')}
           </button>
         </form>
-      )}
     </Sheet>
   )
 }
@@ -176,6 +163,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
   const [busy, setBusy] = useState(false)
   // Een organisatie die maandelijks uitbetaalt, krijgt één vraag per uitbetaling (PayoutQuestions), niet per trip.
   const questions = salaryQuestions(trips, legs, todayIso(), transactions)
+    .map((q) => q.trip)
     .filter((x) => asksPerTrip(settings, x))
     .slice(0, 3)
   if (questions.length === 0 && !other) return null
@@ -198,7 +186,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
                   if (busy) return
                   setBusy(true)
                   try {
-                    const undo = await salarisOntvangen(store, trip, todayIso())
+                    const undo = await salarisOntvangen(store, trip.id, todayIso())
                     notify(t('salary.receivedToast'), undo)
                   } finally {
                     setBusy(false)
@@ -216,7 +204,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
                 type="button"
                 className="btn small quiet"
                 onClick={async () => {
-                  const undo = await salarisLaterVragen(store, trip, todayIso())
+                  const undo = await salarisLaterVragen(store, trip.id, todayIso())
                   notify(t('salary.laterToast'), undo)
                 }}
               >
@@ -231,7 +219,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
                   if (busy) return
                   setBusy(true)
                   try {
-                    const undo = await geenSalaris(store, trip)
+                    const undo = await geenSalaris(store, trip.id)
                     notify(t('salary.noneToast'), undo)
                   } finally {
                     setBusy(false)
@@ -253,7 +241,7 @@ export function SalaryQuestions({ store, notify }: { store: Store; notify: Notif
 /** Het werkelijk ontvangen bedrag invullen (voorgevuld met het verwachte bedrag). */
 function ReceiveSheet({ store, trip, notify, onClose }: { store: Store; trip: Trip; notify: Notify; onClose: () => void }) {
   const counters = useCounters(store)
-  const s = trip.salary
+  const s = salaryOf(trip.id, store.list('transactions.json.enc'))
   const [amount, setAmount] = useState(s ? amountInput(s.amount) : '')
   const [currency, setCurrency] = useState<Currency>(s?.currency ?? 'EUR')
   const parsed = parseAmount(amount)
@@ -266,7 +254,7 @@ function ReceiveSheet({ store, trip, notify, onClose }: { store: Store; trip: Tr
     if (!valid || busy) return
     setBusy(true)
     try {
-      const undo = await salarisOntvangen(store, trip, todayIso(), { amount: parsed, currency })
+      const undo = await salarisOntvangen(store, trip.id, todayIso(), { amount: parsed, currency })
       onClose()
       notify(t('salary.receivedToast'), undo)
     } finally {

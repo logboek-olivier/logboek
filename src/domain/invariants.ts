@@ -1,6 +1,7 @@
 import { isDate } from '../basis/datum'
 import { currentSettings } from '../model/settings'
 import type { CollectionPath } from '../model/types'
+import { salaryStatus } from './geldmodel'
 import type { Reader } from './tx'
 
 // Invarianten als code (docs/FUNDERING.md). Twee soorten:
@@ -15,7 +16,8 @@ export type Rule =
   | 'trip-datums'
   | 'dag-zonder-trip'
   | 'geld-zonder-periode'
-  | 'salaris-zonder-inkomen'
+  | 'salaris-zonder-bedrag'
+  | 'meerdere-salarissen'
   | 'lopende-trip-weg'
   | 'student-zonder-trip'
 
@@ -58,14 +60,21 @@ export function violations(reader: Reader): Violation[] {
   for (const trip of trips) {
     if ((trip.startDate && !isDate(trip.startDate)) || (trip.endDate && !isDate(trip.endDate))) out.push(v('datum', 'trips.json.enc', trip.id))
     else if (trip.startDate && trip.endDate && trip.startDate > trip.endDate) out.push(v('trip-datums', 'trips.json.enc', trip.id))
-    const salary = trip.salary
-    if (salary?.status === 'ontvangen' && salary.transactionId && !money.some((tx) => tx.id === salary.transactionId)) out.push(v('salaris-zonder-inkomen', 'trips.json.enc', trip.id))
   }
+  const salaries = new Map<string, number>()
   for (const tx of money) {
     if (!isDate(tx.date)) out.push(v('datum', 'transactions.json.enc', tx.id))
-    if (!(finite(tx.amount) && tx.amount > 0)) out.push(v('getal', 'transactions.json.enc', tx.id))
-    if (!tx.claimId && !tx.fixedCostId && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
+    // Een salaris mag 0 zijn (geen salaris, of nog geen bedrag); al het andere geld heeft een bedrag.
+    if (!(finite(tx.amount) && (tx.amount > 0 || (tx.kind === 'loon' && tx.amount === 0)))) out.push(v('getal', 'transactions.json.enc', tx.id))
+    // Geld bij een eerder seizoen hoort bij geen tocht of periode, en dat klopt.
+    if (!tx.claimId && !tx.fixedCostId && !tx.season && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
+    if (tx.kind === 'loon' && tx.tripId) {
+      salaries.set(tx.tripId, (salaries.get(tx.tripId) ?? 0) + 1)
+      if (salaryStatus(tx) === 'ontvangen' && tx.amount === 0) out.push(v('salaris-zonder-bedrag', 'transactions.json.enc', tx.id))
+    }
   }
+  // Precies één salaris per tocht: meer dan één voegt de app niet zelf samen (Olivier kiest, Te controleren).
+  for (const [tripId, n] of salaries) if (n > 1 && live.has(tripId)) out.push(v('meerdere-salarissen', 'trips.json.enc', tripId))
   for (const stay of stays) if (!isDate(stay.startDate) || !isDate(stay.endDate) || stay.startDate > stay.endDate) out.push(v('datum', 'periods.json.enc', stay.id))
   for (const student of reader.list('students.json.enc')) if (student.weekId && !live.has(student.weekId) && !student.archivedAt) out.push(v('student-zonder-trip', 'students.json.enc', student.id))
   const settings = currentSettings(reader.list('settings.json.enc'))

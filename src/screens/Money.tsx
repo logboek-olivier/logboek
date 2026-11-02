@@ -17,7 +17,9 @@ import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth
 import { buildIndex, incomePerWorkday } from '../model/calendar'
 import { tipsPerCountry, tipsPerGuest, tipsPerTrip, tipsPerTripType } from '../model/guests'
 import { weekTypeLabel } from '../components/WeekSheet'
-import { active } from '../model/derive'
+import { booked } from '../domain/geldmodel'
+import { MoneyConversionScreen, useNeedsConversion } from '../components/MoneyConversion'
+import { useIsDemo } from '../components/DemoBar'
 import { eurOf, isIncome, monthSeries, perMonth, tipsPerWeek, totals, type MoneyTotals } from '../model/money'
 import { groupOf, type TaxGroup } from '../model/tax-year'
 import { careerInvestment } from '../model/expenses'
@@ -47,11 +49,19 @@ function readView(): MoneyView {
 }
 
 export function Money({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
+  // Zolang het geld nog niet omgezet is (src/domain/geld-omzetten.ts), kloppen de bedragen niet: eerst omzetten.
+  const needs = useNeedsConversion(store)
+  const demo = useIsDemo()
+  return needs && !demo ? <MoneyConversionScreen store={store} notify={notify} /> : <MoneyContent store={store} notify={notify} onAdd={onAdd} />
+}
+
+function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; onAdd: () => void }) {
   const [editing, setEditing] = useState<Transaction | null>(null)
   // Opnieuw tekenen zodra de koersen geladen zijn.
   useSyncExternalStore(subscribeRates, getRates)
   const transactions = useCollection(store, 'transactions.json.enc')
-  const live = active(transactions).sort((a, b) =>
+  // Alleen echt geld (geen verwacht salaris): dezelfde transacties als per organisatie, per werkdag en het jaaroverzicht.
+  const live = booked(transactions).sort((a, b) =>
     a.date < b.date ? 1 : a.date > b.date ? -1 : a.updatedAt < b.updatedAt ? 1 : -1,
   )
   const today = todayIso()
@@ -346,7 +356,7 @@ function TipOverview({ trips, transactions, legs, view, onView }: { trips: reado
   if (views.length === 0) return null
   const shown = all[view].length > 0 ? view : views[0]!.view
   const rows = all[shown]
-  const noRate = active(transactions).some((tx) => tx.kind === 'fooi' && tx.tripId && eurOf(tx) === null)
+  const noRate = booked(transactions).some((tx) => tx.kind === 'fooi' && tx.tripId && eurOf(tx) === null)
   return (
     <div className="section card card-body tip-overview">
       <div className="section-head">

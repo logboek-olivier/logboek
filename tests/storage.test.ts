@@ -447,7 +447,7 @@ describe('sync tussen twee apparaten', () => {
     expect(encoded.schemaVersion).toBe(SCHEMA_VERSION)
     const legacy = utf8(JSON.stringify({ format: 'logboek-collection', version: 1, records: [trip('a', 'x')] }))
     expect(decodeRecords('trips.json.enc', legacy)).toHaveLength(1)
-    const newer = utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, records: [] }))
+    const newer = utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: SCHEMA_VERSION + 1, records: [] }))
     expect(() => decodeRecords('trips.json.enc', newer)).toThrow(NewerSchemaError)
     const broken = utf8(JSON.stringify({ format: 'logboek-collection', schemaVersion: 0, records: [] }))
     expect(() => decodeRecords('trips.json.enc', broken)).toThrow('ongeldig')

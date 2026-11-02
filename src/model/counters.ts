@@ -1,4 +1,4 @@
-import { withSalaryDefault } from './salary'
+import { applySalaryDefault } from './salary'
 import type { Tx } from '../domain/tx'
 import { tripRange } from './calendar'
 import { active } from './derive'
@@ -103,8 +103,11 @@ export function counterName(org: CountedOrganisation, n: number, area: string): 
 /** Twijfelgeval beantwoorden: ja = de trip hoort bij de organisatie (opgeslagen), nee = niet meer vragen. */
 export async function answerDoubt(store: Tx, trip: Trip, org: CountedOrganisation, yes: boolean): Promise<void> {
   // Hoort de trip bij de organisatie, dan krijgt hij ook het standaardsalaris daarvan (alleen zonder eigen bedrag).
-  if (yes) await store.put('trips.json.enc', withSalaryDefault({ ...trip, organisation: org, updatedAt: new Date().toISOString() }, currentSettings(store.get('settings.json.enc')), trip, store.list('legs.json.enc'), todayIso()))
-  else {
+  if (yes) {
+    const next = { ...trip, organisation: org, updatedAt: new Date().toISOString() }
+    await store.put('trips.json.enc', next)
+    await applySalaryDefault(store, next, trip.organisation, todayIso())
+  } else {
     const settings = currentSettings(store.get('settings.json.enc'))
     await saveSettings(store, { orgAnswered: [...new Set([...answeredIds(settings), trip.id])] })
   }

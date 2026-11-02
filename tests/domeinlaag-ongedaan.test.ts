@@ -41,11 +41,14 @@ describe('ongedaan maken', () => {
 
   it('weekafsluiting met geldstap: ongedaan maken zet alleen de geldstap terug, cijfer en zin blijven', async () => {
     const { store } = await open()
-    await geldToevoegen(store, { date: '2026-10-20', kind: 'fooi', amount: 50, currency: 'EUR', source: 'overig', tipVia: 'contant' }, null)
-    const { undo } = await weekAfsluitenMetGeld(store, '2026-10-25', { rating: 8, lesson: 'Nep zin' }, { balances: [], received: [], deposited: ['EUR'] }, '2026-10-25', null)
-    expect(store.list('transactions.json.enc')[0]!.depositedAt).toBe('2026-10-25')
+    await put(store, 'accounts.json.enc', account)
+    await geldToevoegen(store, { date: '2026-10-20', kind: 'fooi', amount: 50, currency: 'EUR', source: 'overig' }, null)
+    const { undo } = await weekAfsluitenMetGeld(store, '2026-10-25', { rating: 8, lesson: 'Nep zin' }, { balances: [{ account, amount: 900 }], received: [] }, '2026-10-25', null)
+    expect(store.list('balances.json.enc')).toEqual([expect.objectContaining({ accountId: 'acc', amount: 900 })])
     await undo()
-    expect(store.list('transactions.json.enc')[0]!.depositedAt).toBeUndefined()
+    expect(store.list('balances.json.enc')).toEqual([])
+    // De fooi van vóór de weekafsluiting blijft staan.
+    expect(store.list('transactions.json.enc')).toHaveLength(1)
     expect(closingFor(store.get('weekreviews.json.enc'), '2026-10-25')).toMatchObject({ rating: 8, lesson: 'Nep zin' })
   })
 

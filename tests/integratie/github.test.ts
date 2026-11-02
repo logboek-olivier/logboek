@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { encryptRecords } from '../../src/storage/sync'
 import { META_PATH, serializeMeta } from '../../src/crypto/keys'
 import { toBase64, utf8 } from '../../src/crypto/encrypt'
-import { COLLECTION_PATHS, type CollectionPath, type Place, type Reminder, type Trip } from '../../src/model/types'
+import { COLLECTION_PATHS, type CollectionPath, type Place, type Reminder, type Transaction, type Trip } from '../../src/model/types'
 import { classify } from '../../src/storage/evidence'
 import { GithubClient } from '../../src/storage/github'
 import { openLogboekDb, putObject } from '../../src/storage/idb'
@@ -164,25 +164,28 @@ describe.skipIf(!TOKEN)('echte GitHub-API (tijdelijke branch)', () => {
   it('twee apparaten zonder sync ertussen: het salaris één keer, de instelling van het andere apparaat blijft', async () => {
     const laptop = await device('geld-laptop')
     const phone = await device('geld-telefoon')
-    const trip: Trip = { id: 'it-salaris', name: 'Neptrip salaris', organisation: 'sailing-virgins', startDate: '2026-09-01', endDate: '2026-09-07', salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' }, updatedAt: T(), deletedAt: null }
+    const trip: Trip = { id: 'it-salaris', name: 'Neptrip salaris', organisation: 'sailing-virgins', startDate: '2026-09-01', endDate: '2026-09-07', updatedAt: T(), deletedAt: null }
+    // Het salaris van de trip: één verwachte loon-transactie (src/domain/geldmodel.ts).
+    const salary: Transaction = { id: `salaris:${trip.id}`, date: '2026-09-07', kind: 'loon', amount: 1000, currency: 'EUR', source: 'sailing-virgins', tripId: trip.id, status: 'verwacht', updatedAt: T(), deletedAt: null }
     await put(laptop, 'trips.json.enc', trip)
+    await put(laptop, 'transactions.json.enc', salary)
     await settle(laptop)
-    // GitHub kan vlak na schrijven nog de vorige versie teruggeven: wachten tot de telefoon de trip ziet.
+    // GitHub kan vlak na schrijven nog de vorige versie teruggeven: wachten tot de telefoon de trip en het salaris ziet.
     await eventually(async () => {
       await settle(phone)
-      return phone.list('trips.json.enc').some((x) => x.id === trip.id)
+      return phone.list('trips.json.enc').some((x) => x.id === trip.id) && phone.list('transactions.json.enc').some((x) => x.id === salary.id)
     })
     // Laptop: een instelling en het salaris ontvangen. Telefoon (nog zonder die wijzigingen): een dag loggen onthoudt de
     // boot, en ook daar "salaris ontvangen".
     await instellingenOpslaan(laptop, { salaryDefaults: { 'sailing-virgins': { amount: 1200, currency: 'EUR' } } })
-    await salarisOntvangen(laptop, laptop.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-10')
+    await salarisOntvangen(laptop, trip.id, '2026-09-10')
     await settle(laptop)
     await instellingenOpslaan(phone, { lastBoat: 'Nepboot telefoon' })
-    await salarisOntvangen(phone, phone.list('trips.json.enc').find((x) => x.id === trip.id)!, '2026-09-11')
+    await salarisOntvangen(phone, trip.id, '2026-09-11')
     await settle(phone)
     await settle(laptop)
     for (const store of [laptop, phone]) {
-      expect(store.list('transactions.json.enc').filter((tx) => tx.kind === 'loon' && tx.tripId === trip.id)).toHaveLength(1)
+      expect(store.list('transactions.json.enc').filter((tx) => tx.kind === 'loon' && tx.tripId === trip.id)).toEqual([expect.objectContaining({ id: salary.id, status: 'ontvangen' })])
       expect(currentSettings(store.list('settings.json.enc')).salaryDefaults?.['sailing-virgins']?.amount).toBe(1200)
     }
     await everythingReadable(['trips.json.enc', 'transactions.json.enc', 'settings.json.enc'])

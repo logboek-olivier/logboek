@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { addClaim } from '../src/model/claims'
-import { salaryState } from '../src/model/money-path'
+import { salaryOf, salaryState } from '../src/domain/geldmodel'
 import { positionAt } from '../src/model/position'
-import { salaryQuestions } from '../src/model/salary'
+import { salaryQuestions, tripEnd } from '../src/model/salary'
 import { startWeek, type WeekInput } from '../src/model/weeks'
 import type { Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
@@ -37,7 +37,19 @@ const trip = (id: string): Trip => ({
   organisation: 'sailing-virgins',
   startDate: '2026-10-01',
   endDate: '2026-10-07',
-  salary: { amount: 1000, currency: 'EUR', status: 'verwacht', source: 'standaard' },
+  updatedAt: T0,
+  deletedAt: null,
+})
+/** Het salaris van een trip: één loon-transactie met een status (src/domain/geldmodel.ts). */
+const salary = (tripId: string, amount = 1000): Transaction => ({
+  id: `salaris:${tripId}`,
+  date: '2026-10-07',
+  kind: 'loon',
+  amount,
+  currency: 'EUR',
+  source: 'sailing-virgins',
+  tripId,
+  status: 'verwacht',
   updatedAt: T0,
   deletedAt: null,
 })
@@ -64,18 +76,22 @@ describe('salaris en uitbetaling', () => {
   it('twee keer tegelijk "salaris ontvangen" boekt één inkomen', async () => {
     const s = await store()
     await put(s, 'trips.json.enc', trip('a'))
-    const t = s.list('trips.json.enc')[0]!
-    await Promise.all([salarisOntvangen(s, t, '2026-10-10', { amount: 950, currency: 'EUR' }), salarisOntvangen(s, t, '2026-10-10', { amount: 950, currency: 'EUR' })])
+    await put(s, 'transactions.json.enc', salary('a'))
+    await Promise.all([salarisOntvangen(s, 'a', '2026-10-10', { amount: 950, currency: 'EUR' }), salarisOntvangen(s, 'a', '2026-10-10', { amount: 950, currency: 'EUR' })])
     expect(loon(s)).toHaveLength(1)
+    expect(loon(s)[0]).toMatchObject({ amount: 950, status: 'ontvangen', date: '2026-10-10' })
   })
 
   it('twee keer tegelijk dezelfde uitbetaling invoeren boekt per trip één inkomen', async () => {
     const s = await store()
     await putMany(s, 'trips.json.enc', [trip('a'), trip('b')])
+    await putMany(s, 'transactions.json.enc', [salary('a'), salary('b')])
     const trips = s.list('trips.json.enc')
     const payout = { org: 'sailing-virgins' as const, amount: 2000, currency: 'EUR' as const, date: '2026-11-01' }
     await Promise.all([uitbetalingInvoeren(s, payout, trips, null), uitbetalingInvoeren(s, payout, trips, null)])
     expect(loon(s).map((tx) => tx.tripId).sort()).toEqual(['a', 'b'])
+    expect(loon(s).every((tx) => tx.status === 'ontvangen')).toBe(true)
+    expect(loon(s).reduce((n, tx) => n + tx.amount, 0)).toBe(2000)
   })
 
   it('op twee apparaten ontvangen (zonder sync ertussen) geeft na de sync één inkomen', async () => {
@@ -83,10 +99,11 @@ describe('salaris en uitbetaling', () => {
     const laptop = await store(github)
     const phone = await store(github)
     await put(laptop, 'trips.json.enc', trip('a'))
+    await put(laptop, 'transactions.json.enc', salary('a'))
     await laptop.sync()
     await phone.sync()
-    await salarisOntvangen(laptop, laptop.list('trips.json.enc')[0]!, '2026-10-10')
-    await salarisOntvangen(phone, phone.list('trips.json.enc')[0]!, '2026-10-11')
+    await salarisOntvangen(laptop, 'a', '2026-10-10')
+    await salarisOntvangen(phone, 'a', '2026-10-11')
     await laptop.sync()
     await phone.sync()
     await laptop.sync()
@@ -94,17 +111,17 @@ describe('salaris en uitbetaling', () => {
     expect(loon(phone)).toHaveLength(1)
   })
 
-  it('een salarisinkomen terwijl de status (op een ander apparaat) terugviel naar verwacht: niet opnieuw vragen of boeken, niet te ontvangen', async () => {
+  it('een loon zonder status (van vóór de status) is ontvangen: niet opnieuw vragen of boeken, niet te ontvangen', async () => {
     const s = await store()
     await put(s, 'trips.json.enc', trip('a'))
-    // Het inkomen staat er (bijvoorbeeld van de laptop), de trip zelf staat nog op verwacht.
+    // Een met de hand ingevoerd inkomen van soort loon bij de trip, zonder status: dat was al echt geld.
     const income: Transaction = { id: 'loon-1', date: '2026-10-10', kind: 'loon', amount: 1000, currency: 'EUR', amountEur: 1000, source: 'sailing-virgins', tripId: 'a', updatedAt: T0, deletedAt: null }
     await put(s, 'transactions.json.enc', income)
     expect(salaryQuestions(s.list('trips.json.enc'), [], '2026-10-12', s.list('transactions.json.enc'))).toHaveLength(0)
     expect(position(s, '2026-10-12').totals.receivable.eur).toBe(0)
-    await salarisOntvangen(s, s.list('trips.json.enc')[0]!, '2026-10-12')
+    await salarisOntvangen(s, 'a', '2026-10-12')
     expect(loon(s)).toHaveLength(1)
-    expect(s.list('trips.json.enc')[0]!.salary).toMatchObject({ status: 'ontvangen', transactionId: 'loon-1' })
+    expect(loon(s)[0]).toMatchObject({ id: 'loon-1', amount: 1000 })
   })
 })
 
@@ -138,16 +155,16 @@ describe('voorbije trips krijgen nooit vanzelf een salaris', () => {
     await put(s, 'legs.json.enc', { id: 'l1', tripId: 'oud', date: '2025-03-01', fromPlace: 'Nep', fromCountry: '', toPlace: 'Nep', toCountry: '', role: 'instructeur', boat: 'Nepboot', nmInland: 0, nmSea: 10, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'import', updatedAt: T0, deletedAt: null })
     await organisatieBeantwoorden(s, old, 'sailing-virgins', true)
     expect(s.list('trips.json.enc').find((t) => t.id === 'oud')).toMatchObject({ organisation: 'sailing-virgins' })
-    expect(s.list('trips.json.enc').find((t) => t.id === 'oud')!.salary).toBeUndefined()
+    expect(salaryOf('oud', s.list('transactions.json.enc'))).toBeUndefined()
     // Een oude trip met eigen datums bewerken (alleen de boot): geen salaris erbij.
     const past = await inTx(s, startWeek, weekInput('2025-06-01', 7), 'nl', '2026-10-30')
-    expect(past.salary).toBeUndefined()
+    expect(salaryOf(past.id, s.list('transactions.json.enc'))).toBeUndefined()
     await periodeBewerken(s, s.list('trips.json.enc').find((t) => t.id === past.id)!, { ...weekInput('2025-06-01', 7), boat: 'Andere nepboot' }, 'nl')
-    expect(s.list('trips.json.enc').find((t) => t.id === past.id)!.salary).toBeUndefined()
-    expect(salaryQuestions(s.list('trips.json.enc'), s.list('legs.json.enc'), '2026-10-30')).toHaveLength(0)
-    // Een komende trip krijgt het standaardbedrag wel.
+    expect(salaryOf(past.id, s.list('transactions.json.enc'))).toBeUndefined()
+    expect(salaryQuestions(s.list('trips.json.enc'), s.list('legs.json.enc'), '2026-10-30', s.list('transactions.json.enc'))).toHaveLength(0)
+    // Een komende trip krijgt het standaardbedrag wel, als verwacht salaris.
     const next = await inTx(s, startWeek, weekInput('2099-01-01', 7), 'nl', '2026-10-30')
-    expect(next.salary).toMatchObject({ amount: 1200, status: 'verwacht', source: 'standaard' })
+    expect(salaryOf(next.id, s.list('transactions.json.enc'))).toMatchObject({ kind: 'loon', amount: 1200, currency: 'EUR', status: 'verwacht' })
   })
 })
 
@@ -156,12 +173,15 @@ describe('een trip die de dagen volgt, is pas na drie dagen voorbij (ook voor he
     const s = await store()
     const t: Trip = { ...trip('d'), startDate: '2026-10-20', endDate: '2026-10-22', datesFromDays: true }
     await put(s, 'trips.json.enc', t)
+    await put(s, 'transactions.json.enc', { ...salary('d'), date: '2026-10-22' })
     const legs = s.list('legs.json.enc')
-    expect(salaryQuestions([t], legs, '2026-10-23')).toHaveLength(0)
-    expect(salaryState(t, legs, '2026-10-23')).toBe('verwacht')
+    const txs = s.list('transactions.json.enc')
+    const sal = salaryOf('d', txs)!
+    expect(salaryQuestions([t], legs, '2026-10-23', txs)).toHaveLength(0)
+    expect(salaryState(sal, t, tripEnd(t, legs), '2026-10-23')).toBe('verwacht')
     expect(position(s, '2026-10-23').totals.receivable.eur).toBe(0)
-    expect(salaryQuestions([t], legs, '2026-10-26').map((x) => x.id)).toEqual(['d'])
-    expect(salaryState(t, legs, '2026-10-26')).toBe('te-ontvangen')
+    expect(salaryQuestions([t], legs, '2026-10-26', txs).map((x) => x.trip.id)).toEqual(['d'])
+    expect(salaryState(sal, t, tripEnd(t, legs), '2026-10-26')).toBe('te-ontvangen')
     expect(position(s, '2026-10-26').totals.receivable.eur).toBe(1000)
   })
 })

@@ -11,7 +11,7 @@ import {
 } from '../model/edit'
 import type { Undo } from '../domain/commit'
 import { eurValue } from '../model/rates'
-import { CURRENCIES, INCOME_KIND_LIST, ROLES, type Currency, type Leg, type Role, type TipVia, type CostCategory, COST_CATEGORIES, type Transaction, type TransactionKind } from '../model/types'
+import { CURRENCIES, INCOME_KIND_LIST, ROLES, type Currency, type Leg, type Role, type CostCategory, COST_CATEGORIES, type Transaction, type TransactionKind } from '../model/types'
 import type { Store } from '../storage/store'
 import { defaultTripName } from '../model/trip-name'
 import { Icon } from './Icon'
@@ -19,7 +19,6 @@ import { NoteField } from './NoteField'
 import { kindLabel, roleLabel } from '../i18n/labels'
 import { Sheet } from './Sheet'
 import { TipFromPicker } from './TipFromPicker'
-import { TipViaPicker } from './TipViaPicker'
 import { draftFromTip, draftTotal, EMPTY_TIP, formatAmountInput, tipFromDraft, totalWhenLeavingSplit, type TipDraft } from '../model/tip-draft'
 import { stayName } from '../model/periods'
 import { getLang, t } from '../i18n'
@@ -27,7 +26,6 @@ import { dagBewerkenMetTrip, dagVerwijderen } from '../domain/dagen'
 import { geldBewerken, geldVerwijderen, uitgaveBewerken } from '../domain/geld'
 import { instellingenOpslaan } from '../domain/instellingen'
 import { parseAmount } from '../basis/bedrag'
-import { todayIso } from '../basis/datum'
 
 // Onderbladen om een transactie, dag of tocht te bewerken. Verwijderen zonder bevestigingsvraag; de aanroeper toont
 // "Verwijderd · Ongedaan maken".
@@ -61,11 +59,9 @@ export function TransactionSheet({
   const [note, setNote] = useState(tx.note ?? '')
   const [received, setReceived] = useState(tx.receivedEur !== undefined ? tx.receivedEur.toFixed(2).replace('.', ',') : '')
   const [tripId, setTripId] = useState(tx.tripId ?? '')
-  const [tipVia, setTipVia] = useState<TipVia | null>(tx.tipVia ?? null)
   // Een oude investering zonder soort: geen gok, Olivier kiest zelf (anders blijft hij zonder soort, in Nakijken).
   const [category, setCategory] = useState<CostCategory | null>(expenseCategory(tx))
   const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId, true)
-  const [depositedAt, setDepositedAt] = useState(tx.depositedAt ?? '')
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const stayOf = (id: string) => active(store.get('periods.json.enc')).find((p) => p.id === id)
   const [busy, setBusy] = useState(false)
@@ -94,10 +90,7 @@ export function TransactionSheet({
         receivedEur: currency === 'EUR' ? undefined : (parsedReceived ?? undefined),
         // Zonder deelnemers in beeld (de trip is weg) blijft van wie de fooi kwam zoals het was.
         tipFrom: people.length > 0 ? (tipFromDraft(draft, people) ?? null) : undefined,
-        tipVia: kind === 'fooi' ? tipVia : null,
         category: expense ? (category ?? undefined) : null,
-        // Gestort kan niet vóór de fooi zelf.
-        depositedAt: kind === 'fooi' && tipVia === 'contant' && depositedAt ? (depositedAt < date ? date : depositedAt) : null,
       }
       if (expense && !tx.claimId) await uitgaveBewerken(store, tx, belongs.current, patch)
       else {
@@ -221,14 +214,6 @@ export function TransactionSheet({
               setTip({ tripId, draft: next })
             }}
           />
-        )}
-        {kind === 'fooi' && <TipViaPicker value={tipVia} onChange={setTipVia} allowUnknown />}
-
-        {kind === 'fooi' && tipVia === 'contant' && (
-          <label>
-            {t('tipVia.depositedAt')}
-            <input type="date" value={depositedAt} min={date} max={todayIso()} onChange={(e) => setDepositedAt(e.target.value)} />
-          </label>
         )}
         <label>
           {t('field.description')}

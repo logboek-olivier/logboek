@@ -3,7 +3,7 @@ import { scrubbedCareer } from './career'
 import { tripForDate } from './derive'
 import { scrubbedDocument } from './documents'
 import { finalRateFields } from './rates'
-import type { CareerRecord, Claim, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, SyncRecord, TipFrom, TipVia, CostCategory, Transaction, Trip, VaultDocument, WeekClosing } from './types'
+import type { CareerRecord, Claim, CollectionPath, Collections, Goal, Leg, Reminder, Session, Skill, SyncRecord, TipFrom, CostCategory, Season, Transaction, Trip, VaultDocument, WeekClosing } from './types'
 import { round2 } from '../basis/bedrag'
 
 // Bewerken en verwijderen, in de transactie van een opdracht (src/domain). Verwijderen is een tombstone; ongedaan maken
@@ -55,19 +55,10 @@ export function deleteSession(tx: Tx, session: Session): Promise<void> {
  * saldo en "te ontvangen" blijven kloppen.
  */
 export async function deleteTransaction(tx: Tx, transaction: Transaction): Promise<void> {
-  const paid = tx.list('trips.json.enc').filter((x) => x.salary?.status === 'ontvangen' && x.salary.transactionId === transaction.id)
   const claim = transaction.claimId ? tx.list('claims.json.enc').find((c) => c.id === transaction.claimId) : undefined
   const claimNext = claim ? claimWithout(claim, transaction) : null
   await removeAll(tx, 'transactions.json.enc', [transaction])
   if (claimNext) await tx.put('claims.json.enc', { ...claimNext, updatedAt: tx.now })
-  await tx.putMany(
-    'trips.json.enc',
-    paid.map((x) => {
-      const { transactionId: _t, ...salary } = x.salary!
-      void _t
-      return { ...x, salary: { ...salary, status: 'verwacht' as const }, updatedAt: tx.now }
-    }),
-  )
 }
 
 /**
@@ -104,28 +95,19 @@ export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'c
   receivedEur?: number
   /** Gekozen trip; null = geen trip; ontbreekt het, dan volgt de trip uit de datum. */
   tripId?: string | null
+  /** Een eerder seizoen in plaats van een tocht; null = geen seizoen; ontbreekt het, dan blijft het zoals het was. */
+  season?: Season | null
   /** Van wie een fooi komt; null = onbekend; ontbreekt het, dan blijft het zoals het was. */
   tipFrom?: TipFrom | null
-  /** Fooi contant of op de bank; null = onbekend; ontbreekt het, dan blijft het zoals het was. */
-  tipVia?: TipVia | null
-  /** Contante fooi gestort op (jjjj-mm-dd); null = nog niet gestort; ontbreekt het, dan blijft het zoals het was. */
-  depositedAt?: string | null
   /** Soort losse uitgave; null = weg; ontbreekt het, dan blijft het zoals het was. */
   category?: CostCategory | null
 }
 
 /** Werkt een transactie bij; amountEur volgt uit valuta en datum, de trip uit de keuze of anders de datum. */
 export async function updateTransaction(store: Tx, tx: Transaction, patch: TransactionPatch): Promise<void> {
-  const { tripId: chosenTrip, tipFrom, tipVia, depositedAt, category, ...fields } = patch
+  const { tripId: chosenTrip, season, tipFrom, category, ...fields } = patch
   const next: Transaction = { ...tx, ...fields, amount: round2(patch.amount), updatedAt: store.now }
   if (tipFrom) next.tipFrom = tipFrom
-  if (tipVia) next.tipVia = tipVia
-  if (tipVia === null) delete next.tipVia
-  if (depositedAt) next.depositedAt = depositedAt
-  if (depositedAt === null) delete next.depositedAt
-  // Contant of bank en gestort horen alleen bij een fooi; gestort alleen bij contant.
-  if (next.kind !== 'fooi') delete next.tipVia
-  if (next.tipVia !== 'contant') delete next.depositedAt
   if (category) next.category = category
   // Een soort hoort bij een uitgave (kosten of investering, docs/PERIODEMODEL.md).
   if (category === null || (next.kind !== 'kosten' && next.kind !== 'investering')) delete next.category
@@ -149,6 +131,14 @@ export async function updateTransaction(store: Tx, tx: Transaction, patch: Trans
   }
   if (trip) next.tripId = trip.id
   else delete next.tripId
+  // Tocht óf seizoen óf niets: een tocht gaat voor.
+  if (season) next.season = season
+  if (season === null || next.tripId) delete next.season
+  // De status hoort alleen bij loon; een ander soort inkomen is altijd echt geld.
+  if (next.kind !== 'loon') {
+    delete next.status
+    delete next.askAfter
+  }
   await store.put('transactions.json.enc', next)
 }
 

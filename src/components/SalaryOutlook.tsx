@@ -20,7 +20,7 @@ export function SalaryOutlook({ store }: { store: Store }) {
   const rates = useSyncExternalStore(subscribeRates, getRates)
   const [shown, setShown] = useState(false)
   const [tips, setTips] = useState(false)
-  const any = trips.some((x) => x.deletedAt === null && x.salary) || transactions.some((tx) => tx.deletedAt === null && tx.kind === 'loon')
+  const any = transactions.some((tx) => tx.deletedAt === null && tx.kind === 'loon')
   if (!any) return null
   const o = salaryOutlook(trips, legs, transactions, todayIso(), rates)
   const expectedTrips = o.months.reduce((n, m) => n + m.trips.length, 0)

@@ -12,7 +12,7 @@ import { formatDateRange, formatMoney, formatMonth, formatNm } from '../format'
 import { t } from '../i18n'
 import { nameWithCounter } from '../model/counters'
 import { totals } from '../model/money'
-import { tripResult } from '../model/money-path'
+import { tripResult } from '../domain/geldrapport'
 import { PERIOD_FILTERS, periodSections, type MonthGroup, type PeriodFilter, type PeriodRow } from '../model/period-list'
 import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
@@ -115,9 +115,9 @@ function Months({ store, groups, shown, onOpen, openAll }: { store: Store; group
 
 function Rows({ store, rows, shown, onOpen }: { store: Store; rows: PeriodRow[]; shown: boolean; onOpen: (row: PeriodRow) => void }) {
   const counters = useCounters(store)
-  const legs = useCollection(store, 'legs.json.enc')
   const transactions = useCollection(store, 'transactions.json.enc')
-  const rates = useSyncExternalStore(subscribeRates, getRates)
+  // Opnieuw tekenen zodra de koersen geladen zijn.
+  useSyncExternalStore(subscribeRates, getRates)
   return (
     <ul className="rows period-rows">
       {rows.map(({ period, nm }) => {
@@ -127,7 +127,7 @@ function Rows({ store, rows, shown, onOpen }: { store: Store; rows: PeriodRow[];
         // Resultaat: bij een trip salaris + fooi + inkomsten − uitgaven; aan land de uitgaven.
         const result = shown
           ? trip
-            ? sumText(tripResult(trip, legs, transactions, rates).result, true)
+            ? sumText(tripResult(trip, transactions).result, true)
             : landResult(transactions.filter((tx) => tx.deletedAt === null && tx.tripId === period.id))
           : ''
         return (
