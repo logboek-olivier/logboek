@@ -5,7 +5,10 @@ import type { Notify } from '../components/EditSheets'
 import { TransactionView } from '../components/Views'
 import { SalaryOutlook } from '../components/SalaryOutlook'
 import { MoneyPathSection } from '../components/MoneyPath'
-import { PositionAndForecast } from '../components/Position'
+import { PositionAndForecast, useMoneyPeriod } from '../components/Position'
+import { PeriodPicker } from '../components/money-period'
+import { DrillSheet, type DrillRequest } from '../components/DrillSheet'
+import { costsDrill, incomeDrill, investmentDrill, organisationDrill, reimbursedDrill, resultDrill } from '../domain/doorklik'
 import { CostsSection } from '../components/Costs'
 import { ActualCostsSection } from '../components/ActualCosts'
 import { ClaimsSection } from '../components/Claims'
@@ -32,7 +35,7 @@ import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { type Leg, type Transaction, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { t } from '../i18n'
-import { todayIso } from '../basis/datum'
+import { monthEnd, todayIso } from '../basis/datum'
 
 // Geld: alles in euro (ECB-koers van de transactiedatum, of het ontvangen eurobedrag), het originele bedrag klein
 // eronder. Twee weergaven: Werkelijk (Mijn positie, kosten per maand, zeilgeld, uitbetalingen, declaraties, per werkdag,
@@ -66,15 +69,20 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
   // Opnieuw tekenen zodra de koersen geladen zijn.
   useSyncExternalStore(subscribeRates, getRates)
   const transactions = useCollection(store, 'transactions.json.enc')
+  // De periode bovenaan Geld geldt voor alle bedragen: de totalen, kosten per maand, per organisatie en de transacties.
+  const { period, hasData, preset, careerSet } = useMoneyPeriod(store)
+  const [drill, setDrill] = useState<DrillRequest | null>(null)
+  const periodText = t('drill.period', { from: formatDate(period.from), to: formatDate(period.to) })
   // Alleen echt geld (geen verwacht salaris): dezelfde transacties als per organisatie, per werkdag en het jaaroverzicht
   // (src/domain/geldrapport.ts).
-  const live = transactionList(transactions)
+  const everything = transactionList(transactions)
+  const live = transactionList(transactions, period)
   const today = todayIso()
   const all = totals(live)
   const months = perMonth(live)
 
-  const weeks = tipsPerWeek(live, today)
-  const series = monthSeries(live, today)
+  const weeks = tipsPerWeek(everything, today)
+  const series = monthSeries(everything, today)
   const weekOther = mergeOther(weeks.map((w) => w.other))
   // Per werkdag: verdiend per maand gedeeld door de werkdagen in de agenda.
   const calendar = useCollection(store, 'calendar.json.enc')
@@ -85,7 +93,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
   // Per organisatie (de organisatie van de periode, docs/PERIODEMODEL.md) en de naam van de periode bij elke regel.
   const tripMap = useMemo(() => new Map(trips.filter((x) => x.deletedAt === null).map((x) => [x.id, x])), [trips])
   const stayMap = useMemo(() => new Map(stays.filter((x) => x.deletedAt === null).map((x) => [x.id, x])), [stays])
-  const groups = useMemo(() => perOrganisation(transactions, trips), [transactions, trips])
+  const groups = useMemo(() => perOrganisation(transactions, trips, period), [transactions, trips, period])
   const periodName = (tx: Transaction) => {
     if (!tx.tripId && tx.season) return t('tripPicker.seasonLabel', { org: organisationLabel(tx.season.org), year: tx.season.year })
     const trip = tx.tripId ? tripMap.get(tx.tripId) : undefined
@@ -140,15 +148,16 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
           </button>
         ))}
       </div>
+      {hasData && <PeriodPicker period={period} preset={preset} careerSet={careerSet} />}
       {view === 'verwacht' && (
         <>
           <p className="muted small">{t('money.expectedHint')}</p>
-          <PositionAndForecast store={store} notify={notify} part="verwacht" />
+          <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} />
           <SalaryOutlook store={store} />
           <CostsSection store={store} notify={notify} />
         </>
       )}
-      {view === 'werkelijk' && live.length === 0 && (
+      {view === 'werkelijk' && everything.length === 0 && (
         <Empty
           icon={Wallet}
           action={
@@ -160,30 +169,38 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
           {t('money.empty')}
         </Empty>
       )}
-      {view === 'werkelijk' && <PositionAndForecast store={store} notify={notify} part="werkelijk" />}
-      {view === 'werkelijk' && <ActualCostsSection store={store} />}
+      {view === 'werkelijk' && <PositionAndForecast store={store} notify={notify} part="werkelijk" period={period} />}
+      {view === 'werkelijk' && <ActualCostsSection store={store} period={period} onDrill={setDrill} />}
       {view === 'werkelijk' && <ClaimsSection store={store} notify={notify} />}
-      {view === 'werkelijk' && live.length === 0 && <MoneyPathSection store={store} notify={notify} />}
-      {view === 'werkelijk' && live.length > 0 && (
+      {view === 'werkelijk' && everything.length === 0 && <MoneyPathSection store={store} notify={notify} />}
+      {view === 'werkelijk' && everything.length > 0 && (
         <>
+          {/* Elk bedrag opent de posten eronder in de periode bovenaan (src/domain/doorklik.ts). */}
           <dl className="grid">
             <Stat
               label={t('money.result')}
               value={formatMoney(all.balanceEur, 'EUR')}
               tone={all.balanceEur >= 0 ? 'positive' : 'negative'}
               hero
+              onOpen={() => setDrill({ title: t('money.result'), drill: resultDrill(transactions, trips, period), period: periodText, hint: t('money.resultHint') })}
             />
-            <Stat label={t('money.income')} value={formatMoney(all.incomeEur, 'EUR')} />
-            <Stat label={t('money.costs')} value={formatMoney(all.costsEur, 'EUR')} />
-            {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} />}
-            {investment.count > 0 && <Stat label={t('money.investment')} value={[formatMoney(investment.eur, 'EUR'), ...Object.entries(investment.other).map(([c, v]) => formatMoney(v, c))].join(' + ')} />}
+            <Stat label={t('money.income')} value={formatMoney(all.incomeEur, 'EUR')} onOpen={() => setDrill({ title: t('money.income'), drill: incomeDrill(transactions, trips, period), period: periodText, hint: t('drill.incomeHint'), byYear: true })} />
+            <Stat label={t('money.costs')} value={formatMoney(all.costsEur, 'EUR')} onOpen={() => setDrill({ title: t('money.costs'), drill: costsDrill(transactions, trips, period), period: periodText, hint: t('drill.costsHint') })} />
+            {all.reimbursedEur > 0 && <Stat label={t('money.reimbursed')} value={formatMoney(all.reimbursedEur, 'EUR')} onOpen={() => setDrill({ title: t('money.reimbursed'), drill: reimbursedDrill(transactions, trips, period), period: periodText, hint: t('drill.reimbursedHint') })} />}
+            {investment.count > 0 && (
+              <Stat
+                label={t('money.investment')}
+                value={[formatMoney(investment.eur, 'EUR'), ...Object.entries(investment.other).map(([c, v]) => formatMoney(v, c))].join(' + ')}
+                onOpen={() => setDrill({ title: t('money.investment'), drill: investmentDrill(transactions, trips, period), period: periodText, hint: t('drill.investmentHint') })}
+              />
+            )}
             <OtherStat other={all.other} />
           </dl>
           <p className="muted small">{t('money.resultHint')}</p>
 
           <MoneyPathSection store={store} notify={notify} />
 
-          <TaxYearSection store={store} />
+          <TaxYearSection store={store} onDrill={setDrill} />
 
           <div className="section card card-body">
             <div className="section-head">
@@ -245,9 +262,24 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
                       {formatMonthShort(m.month)} {m.month.slice(0, 4)}
                       <OtherLine other={m.other} />
                     </td>
-                    <td className="num">{formatMoney(m.incomeEur, 'EUR')}</td>
-                    <td className="num">{formatMoney(m.costsEur, 'EUR')}</td>
-                    <td className={`num ${m.balanceEur >= 0 ? 'positive' : 'negative'}`}>{formatMoney(m.balanceEur, 'EUR')}</td>
+                    {(
+                      [
+                        ['in', m.incomeEur, incomeDrill, t('money.income')],
+                        ['out', m.costsEur, costsDrill, t('money.costs')],
+                        ['result', m.balanceEur, resultDrill, t('money.result')],
+                      ] as const
+                    ).map(([key, eur, make, label]) => {
+                      // De maand binnen de periode bovenaan (de tabel telt alleen wat in beide valt).
+                      const within = { from: `${m.month}-01` > period.from ? `${m.month}-01` : period.from, to: monthEnd(m.month) < period.to ? monthEnd(m.month) : period.to }
+                      const title = `${label} · ${formatMonth(m.month)}`
+                      return (
+                        <td key={key} className={`num${key === 'result' ? (eur >= 0 ? ' positive' : ' negative') : ''}`}>
+                          <button type="button" className="tap-cell" aria-label={`${title}: ${formatMoney(eur, 'EUR')}`} onClick={() => setDrill({ title, drill: make(transactions, trips, within), period: t('drill.period', { from: formatDate(within.from), to: formatDate(within.to) }) })}>
+                            {formatMoney(eur, 'EUR')}
+                          </button>
+                        </td>
+                      )
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -291,19 +323,25 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
           <div className="section">
             <h2>{t('money.perOrganisation')}</h2>
             <ul className="rows">
-              {groups.map((s) => (
-                <li key={s.group} className="row-item">
-                  <div className="row-main">
-                    <span className="row-title">{s.group === 'delivery' ? sourceLabel('delivery') : organisationLabel(s.group)}</span>
-                    <OtherLine other={s.other} />
-                  </div>
-                  <span className="row-value">
-                    <span className="positive">+{formatMoney(s.incomeEur, 'EUR')}</span>
-                    <br />
-                    <span className="muted">−{formatMoney(s.costsEur, 'EUR')}</span>
-                  </span>
-                </li>
-              ))}
+              {groups.map((s) => {
+                const name = s.group === 'delivery' ? sourceLabel('delivery') : organisationLabel(s.group)
+                return (
+                  <li key={s.group}>
+                    <button type="button" className="row-item" onClick={() => setDrill({ title: `${t('money.perOrganisation')}: ${name}`, drill: organisationDrill(transactions, trips, s.group, period), period: periodText, hint: t('drill.organisationHint') })}>
+                      <div className="row-main">
+                        <span className="row-title">{name}</span>
+                        <OtherLine other={s.other} />
+                      </div>
+                      <span className="row-value">
+                        <span className="positive">+{formatMoney(s.incomeEur, 'EUR')}</span>
+                        <br />
+                        <span className="muted">−{formatMoney(s.costsEur, 'EUR')}</span>
+                      </span>
+                      <Icon icon={ChevronRight} className="chevron" />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </div>
 
@@ -348,6 +386,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
         </>
       )}
       {editing && <TransactionView store={store} tx={editing} onClose={() => setEditing(null)} notify={notify} />}
+      {drill && <DrillSheet store={store} notify={notify} request={drill} onClose={() => setDrill(null)} />}
       {season && <EarlierSeasonSheet store={store} notify={notify} onClose={() => setSeason(false)} />}
       {checkTrip && <TripOverviewSheet key={checkTrip.id} store={store} trip={checkTrip} notify={notify} onClose={() => setCheckTrip(null)} />}
     </section>
@@ -503,16 +542,34 @@ function Stat({
   value,
   tone,
   hero = false,
+  onOpen,
 }: {
   label: string
   value: string
   tone?: 'positive' | 'negative'
   hero?: boolean
+  /** Doorklikken naar de posten eronder. */
+  onOpen?: () => void
 }) {
+  if (!onOpen)
+    return (
+      <div className={`stat${hero ? ' hero wide' : ''}`}>
+        <dt>{label}</dt>
+        <dd className={tone}>{value}</dd>
+      </div>
+    )
+  // Het hele vakje opent de posten: de knop staat in het label en beslaat het hele vakje (CSS .stat-button).
   return (
-    <div className={`stat${hero ? ' hero wide' : ''}`}>
-      <dt>{label}</dt>
-      <dd className={tone}>{value}</dd>
+    <div className={`stat tap${hero ? ' hero wide' : ''}`}>
+      <dt>
+        <button type="button" className="stat-button" aria-label={`${label}: ${value}`} onClick={onOpen}>
+          {label}
+        </button>
+      </dt>
+      <dd className={tone}>
+        {value}
+        <Icon icon={ChevronRight} className="chevron" />
+      </dd>
     </div>
   )
 }

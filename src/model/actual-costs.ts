@@ -18,13 +18,20 @@ export interface ActualMonth {
   other: Record<string, number>
 }
 
-/** De laatste `count` maanden tot en met deze maand, nieuwste eerst; maanden zonder iets vallen weg. */
-export function actualCosts(transactions: readonly Transaction[], today: string, count = 6): ActualMonth[] {
+/**
+ * De laatste `count` maanden tot en met deze maand, nieuwste eerst; maanden zonder iets vallen weg. Met `period` (de
+ * periode bovenaan Geld): de maanden van die periode tot en met deze maand, en alleen kosten binnen de periode.
+ */
+export function actualCosts(transactions: readonly Transaction[], today: string, count = 6, period?: { from: string; to: string }): ActualMonth[] {
   const current = today.slice(0, 7)
-  const months = Array.from({ length: count }, (_, i) => shiftMonth(current, -i))
+  const last = period ? (period.to < today ? period.to : today).slice(0, 7) : current
+  const first = period ? period.from.slice(0, 7) : shiftMonth(current, -(count - 1))
+  const months: string[] = []
+  for (let m = last; m >= first && months.length < 600; m = shiftMonth(m, -1)) months.push(m)
   const byMonth = new Map(months.map((m) => [m, { month: m, fixedEur: 0, looseEur: 0, totalEur: 0, other: {} as Record<string, number> }]))
   for (const tx of active(transactions)) {
     if (tx.kind !== 'kosten' || tx.claimId) continue
+    if (period && (tx.date < period.from || tx.date > period.to)) continue
     const row = byMonth.get(tx.date.slice(0, 7))
     if (!row) continue
     const v = eurOf(tx)

@@ -62,12 +62,16 @@ describe('ongedaan maken', () => {
 })
 
 describe('uitkomsten en velden', () => {
-  it('een stand vóór een nieuwere stand in dezelfde maand: niets geschreven, en de uitkomst zegt dat', async () => {
+  it('een stand vóór een nieuwere stand in dezelfde maand komt erbij (de geschiedenis); een datum in de toekomst niet', async () => {
     const { store } = await open()
     await put(store, 'accounts.json.enc', account)
     expect((await standOpslaan(store, account, '2026-10-20', 100, '2026-10-31')).result).not.toBeNull()
-    expect((await standOpslaan(store, account, '2026-10-03', 50, '2026-10-31')).result).toBeNull()
-    expect(store.list('balances.json.enc')).toEqual([expect.objectContaining({ date: '2026-10-20', amount: 100 })])
+    expect((await standOpslaan(store, account, '2026-10-03', 50, '2026-10-31')).result).toMatchObject({ date: '2026-10-03', amount: 50 })
+    expect((await standOpslaan(store, account, '2026-11-03', 70, '2026-10-31')).result).toBeNull()
+    expect(store.list('balances.json.enc').map((b) => [b.date, b.amount]).sort()).toEqual([
+      ['2026-10-03', 50],
+      ['2026-10-20', 100],
+    ])
   })
 
   it('een stand wijzigen houdt velden van een nieuwere versie', async () => {

@@ -7,7 +7,7 @@ import { nameWithCounter, tripCounters } from '../src/model/counters'
 import { tellerBeginnummersOpslaan } from '../src/domain/trips'
 import { organisationLabel } from '../src/i18n/labels'
 import { parsePlanning } from '../src/import/planning'
-import { careerStart } from '../src/model/position'
+import { careerStart, resolvePeriod } from '../src/model/position'
 import { currentSettings, DEFAULT_SETTINGS } from '../src/model/settings'
 import type { Trip } from '../src/model/types'
 import { taxYear } from '../src/model/tax-year'
@@ -67,9 +67,10 @@ describe('leeg beginnen', () => {
     const settings = currentSettings(store.list('settings.json.enc'))
     expect(settings).toMatchObject({ startedEmpty: true, organisations: [], curriculumPacks: [] })
     expect(organisationsFrom(settings)).toEqual([])
-    expect(careerStart(settings)).toBe(`${new Date().getFullYear()}-01-01`)
-    // Bestaand logboek: de startdatum zoals altijd.
-    expect(careerStart(DEFAULT_SETTINGS)).toBe('2026-09-11')
+    // Geen start van de zeilcarrière van iemand anders: niet ingesteld, en de periode in Geld is dan dit jaar.
+    expect(careerStart(settings)).toBeNull()
+    expect(careerStart(DEFAULT_SETTINGS)).toBeNull()
+    expect(resolvePeriod({ preset: 'carriere' }, settings, '2026-11-02', null, null)).toEqual({ from: '2026-01-01', to: '2026-12-31' })
   })
 
   it('cursuspakketten: alle in een bestaand logboek, alleen de gekozen in een nieuw', () => {

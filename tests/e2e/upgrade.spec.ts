@@ -478,6 +478,10 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     expect(bank).toMatchObject({ provider: 'asn', kind: 'betaal', currency: 'EUR', deletedAt: null })
     const balances = await decryptRecords(key, 'balances.json.enc', Uint8Array.from(Buffer.from(github.files.get('balances.json.enc')!.content, 'base64')))
     expect(balances).toEqual(expect.arrayContaining([expect.objectContaining({ accountId: bank!.id, amount: 321, source: 'handmatig', deletedAt: null })]))
+    // Saldo-geschiedenis: de nieuwe stand heeft een id per dag; de standen van de vorige release (een id per maand en
+    // een per dag in dezelfde maand) blijven allebei staan.
+    expect((balances.find((b) => (b as { accountId?: string }).accountId === bank!.id) as unknown as { id: string }).id).toMatch(/^stand:.+:\d{4}-\d{2}-\d{2}$/)
+    expect(balances.map((b) => (b as { id: string }).id)).toEqual(expect.arrayContaining(['stand:upg-acc-1:2026-09', 'stand:upg-acc-1:2026-09-02']))
     // De vaste last staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende); de soort
     // van een uitgave, de schatting bij de weekafsluiting en de standaardbedragen komen ongeschonden over.
     const claims = await decryptRecords(key, 'claims.json.enc', Uint8Array.from(Buffer.from(github.files.get('claims.json.enc')!.content, 'base64')))

@@ -24,7 +24,10 @@ export const SCHEMA_VERSION = 2
 // ze uit de dagen, verlengt of verkort trips vanzelf en zet koppelingen "terug"; dat mag niet meer over deze bestanden.
 // 6: één waarheid voor geld. Een oudere build leest het salaris van de tocht en contant/gestort bij een fooi, telt een
 // verwacht salaris als verdiend en zou de omzetting ongedaan maken; hij schrijft niet meer over deze bestanden.
-export const WRITER_VERSION = 6
+// 7: standen van rekeningen hebben een geschiedenis (een stand per dag, id `stand:<rekening>:<jjjj-mm-dd>`). Een oudere
+// build houdt één stand per maand bij en zou een beginsaldo eerder in de maand weigeren of een tweede stand op dezelfde
+// dag maken; hij schrijft niet meer over deze bestanden.
+export const WRITER_VERSION = 7
 
 let writer = WRITER_VERSION
 

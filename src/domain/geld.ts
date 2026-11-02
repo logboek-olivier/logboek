@@ -65,6 +65,19 @@ export async function editExpense(tx: Tx, record: Transaction, target: ExpenseTa
   await updateTransaction(tx, record, { ...patch, tripId, source: sourceOnSave(trip, record.source) })
 }
 
+/**
+ * Beginsaldo invoeren (Mijn positie, "Verandering onbekend"): per rekening een stand op de begindag van de periode. Een
+ * stand van een andere dag blijft staan (de geschiedenis); een datum in de toekomst wordt niet opgeslagen.
+ */
+export async function setStartBalances(tx: Tx, entries: readonly { account: Account; amount: number }[], date: string): Promise<Balance[]> {
+  const out: Balance[] = []
+  for (const { account, amount } of entries) {
+    const written = await setBalance(tx, account, date, amount)
+    if (written) out.push(written)
+  }
+  return out
+}
+
 /** Een stand met de hand wijzigen. */
 export async function changeBalance(tx: Tx, account: Account, balance: Balance, amount: number): Promise<void> {
   // Het record zoals het nu is, met alleen bedrag en bron gewijzigd: velden van een nieuwere versie blijven staan.
@@ -149,6 +162,7 @@ export const salarisLaterVragen = opdracht('salarisLaterVragen', askSalaryLater)
 export const salarisOntvangen = opdracht('salarisOntvangen', receiveSalary)
 export const salarisOpslaan = opdrachtMet('salarisOpslaan', saveSalary)
 export const standOpslaan = opdrachtMet('standOpslaan', setBalance)
+export const beginsaldiInvoeren = opdrachtMet('beginsaldiInvoeren', setStartBalances)
 export const standVerwijderen = opdracht('standVerwijderen', deleteBalance)
 export const standWijzigen = opdracht('standWijzigen', changeBalance)
 export const standaardsalarisOpslaan = opdrachtMet('standaardsalarisOpslaan', saveSalaryDefaults)

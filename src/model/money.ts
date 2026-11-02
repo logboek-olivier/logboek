@@ -41,28 +41,25 @@ export function emptyTotals(): MoneyTotals {
 }
 
 export function totals(transactions: readonly Transaction[]): MoneyTotals {
-  const t = emptyTotals()
+  // In centen, zodat de subtotalen bij doorklikken (src/domain/doorklik.ts) altijd precies optellen tot dit bedrag.
+  let income = 0
+  let reimbursed = 0
+  let costs = 0
+  const other: Record<string, { income: number; costs: number }> = {}
   for (const tx of booked(transactions)) {
     const eur = eurOf(tx)
     if (eur !== null) {
-      if (tx.kind === 'terugbetaling') t.reimbursedEur += eur
-      else if (isIncome(tx.kind)) t.incomeEur += eur
-      else t.costsEur += eur
+      const c = Math.round(eur * 100)
+      if (tx.kind === 'terugbetaling') reimbursed += c
+      else if (isIncome(tx.kind)) income += c
+      else costs += c
     } else {
-      const bucket = (t.other[tx.currency] ??= { income: 0, costs: 0 })
-      if (isIncome(tx.kind)) bucket.income += tx.amount
-      else bucket.costs += tx.amount
+      const bucket = (other[tx.currency] ??= { income: 0, costs: 0 })
+      if (isIncome(tx.kind)) bucket.income = round2(bucket.income + tx.amount)
+      else bucket.costs = round2(bucket.costs + tx.amount)
     }
   }
-  t.incomeEur = round2(t.incomeEur)
-  t.reimbursedEur = round2(t.reimbursedEur)
-  t.costsEur = round2(t.costsEur)
-  t.balanceEur = round2(t.incomeEur + t.reimbursedEur - t.costsEur)
-  for (const b of Object.values(t.other)) {
-    b.income = round2(b.income)
-    b.costs = round2(b.costs)
-  }
-  return t
+  return { incomeEur: income / 100, reimbursedEur: reimbursed / 100, costsEur: costs / 100, balanceEur: (income + reimbursed - costs) / 100, other }
 }
 
 export interface MonthTotals extends MoneyTotals {

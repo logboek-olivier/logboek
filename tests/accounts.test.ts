@@ -2,14 +2,14 @@ import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { columnChoices, dateOrder, decimalSeparator, detectPreset, guessMapping, MappingIncompleteError, monthlyPoints, parseDate, parseNumber, readBalances, type ColumnMapping } from '../src/import/accounts'
 import { readRowSources, type SheetRow } from '../src/import/rows'
-import { balanceId, netWorth, netWorthSeries, pace, saveAccount, setBalance, writeBalances } from '../src/model/accounts'
+import { balanceId, balanceOn, netWorth, netWorthSeries, pace, saveAccount, setBalance, writeBalances } from '../src/model/accounts'
 import type { RatesFile } from '../src/model/rates'
 import type { Account, Balance } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
-import { inTx } from './helpers/schrijf'
+import { inTx, putMany } from './helpers/schrijf'
 import { rekeningVerwijderen, standVerwijderen } from '../src/domain/geld'
 import { parseStand } from '../src/basis/bedrag'
 
@@ -254,7 +254,7 @@ describe('netto waarde en tempo', () => {
 })
 
 describe('opslaan', () => {
-  it('één stand per maand; een oudere export overschrijft nooit een nieuwere stand, met de hand wint op dezelfde dag', async () => {
+  it('standen hebben een geschiedenis: één per dag, een andere dag wordt nooit overschreven, met de hand wint op dezelfde dag', async () => {
     const store = await newStore()
     const bank = await inTx(store, saveAccount, null, { name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR' })
     await inTx(store, writeBalances, bank, [
@@ -262,12 +262,11 @@ describe('opslaan', () => {
       { date: '2026-09-15', amount: 2300 },
       { date: '2026-10-03', amount: 1600 },
     ], 'import')
-    expect(store.list('balances.json.enc').map((b) => [b.id, b.date, b.amount])).toEqual(
-      expect.arrayContaining([
-        [`stand:${bank.id}:2026-09`, '2026-09-15', 2300],
-        [`stand:${bank.id}:2026-10`, '2026-10-03', 1600],
-      ]),
-    )
+    expect(store.list('balances.json.enc').map((b) => [b.id, b.date, b.amount]).sort()).toEqual([
+      [`stand:${bank.id}:2026-09-02`, '2026-09-02', 800],
+      [`stand:${bank.id}:2026-09-15`, '2026-09-15', 2300],
+      [`stand:${bank.id}:2026-10-03`, '2026-10-03', 1600],
+    ])
     // Opnieuw importeren met de juiste kolommen vervangt een stand uit een export van dezelfde dag; precies dezelfde
     // stand wordt niet opnieuw geschreven.
     expect((await inTx(store, writeBalances, bank, [{ date: '2026-09-15', amount: 2400 }], 'import')).map((b) => b.amount)).toEqual([2400])
@@ -278,13 +277,31 @@ describe('opslaan', () => {
     expect(await inTx(store, setBalance, bank, '2026-10-20', 1750)).toMatchObject({ amount: 1750, source: 'handmatig' })
     // Een export van dezelfde dag vervangt een stand met de hand niet.
     expect(await inTx(store, writeBalances, bank, [{ date: '2026-10-20', amount: 1 }], 'import')).toEqual([])
-    // Een oude export (3 oktober) laat de stand van 20 oktober staan; een stand met de hand van eerder ook.
-    expect(await inTx(store, writeBalances, bank, [{ date: '2026-10-03', amount: 1600 }], 'import')).toEqual([])
-    expect(await inTx(store, setBalance, bank, '2026-10-10', 1)).toBeNull()
+    // Een stand van een eerdere dag (een beginsaldo) komt erbij en laat de latere staan.
+    expect(await inTx(store, setBalance, bank, '2026-10-10', 1)).toMatchObject({ amount: 1, date: '2026-10-10' })
     expect(await inTx(store, setBalance, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
     // Precies dezelfde stand nog eens: opgeslagen (niet "er staat al een nieuwere stand").
     expect(await inTx(store, setBalance, bank, '2026-10-20', 1800)).toMatchObject({ amount: 1800 })
-    expect(store.list('balances.json.enc').filter((b) => b.date.startsWith('2026-10')).map((b) => b.amount)).toEqual([1800])
+    expect(store.list('balances.json.enc').filter((b) => b.date.startsWith('2026-10')).map((b) => [b.date, b.amount]).sort()).toEqual([
+      ['2026-10-03', 1600],
+      ['2026-10-10', 1],
+      ['2026-10-20', 1800],
+    ])
+    expect(balanceOn(store.list('balances.json.enc'), bank.id, '2026-10-15')).toMatchObject({ amount: 1 })
+  })
+
+  it('een stand van vóór de geschiedenis (een id per maand) blijft een stand op zijn eigen dag en wordt op die dag bijgewerkt', async () => {
+    const store = await newStore()
+    const bank = await inTx(store, saveAccount, null, { name: 'Nepbank', provider: 'asn', kind: 'betaal', currency: 'EUR' })
+    await putMany(store, 'balances.json.enc', [{ id: `stand:${bank.id}:2026-09`, accountId: bank.id, date: '2026-09-15', amount: 2300, source: 'import', updatedAt: T, deletedAt: null }])
+    // Een stand eerder in dezelfde maand overschrijft hem niet meer (vroeger: één per maand, de oudere werd geweigerd).
+    expect(await inTx(store, setBalance, bank, '2026-09-01', 500)).toMatchObject({ id: `stand:${bank.id}:2026-09-01`, amount: 500 })
+    // Dezelfde dag: hetzelfde record (geen tweede stand op 15 september).
+    expect(await inTx(store, setBalance, bank, '2026-09-15', 2350)).toMatchObject({ id: `stand:${bank.id}:2026-09`, amount: 2350 })
+    expect(store.list('balances.json.enc').map((b) => [b.date, b.amount]).sort()).toEqual([
+      ['2026-09-01', 500],
+      ['2026-09-15', 2350],
+    ])
   })
 
   it('een schuld is altijd negatief; van soort wisselen draait de standen mee, ook terug', async () => {

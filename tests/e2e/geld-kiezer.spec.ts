@@ -83,6 +83,8 @@ test('tochtkiezer: zoeken in alle tochten (ook een eerder seizoen), seizoen kiez
   await page.screenshot({ path: 'screenshots/geld/eerder-seizoen.png', fullPage: true })
   await season.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toContainText('2 bedragen opgeslagen bij het seizoen')
+  // De transacties volgen de periode bovenaan Geld: eerdere jaren staan onder Alles.
+  await page.locator('.money-period').getByRole('radio', { name: 'Alles' }).click()
   await expect(page.getByRole('main')).toContainText(`Seizoen Yacht Week ${Number(oldYear) - 1}`)
   await expect(page.getByRole('main')).toContainText(`Seizoen Yacht Week ${oldYear}`)
   expect(errors).toEqual([])
