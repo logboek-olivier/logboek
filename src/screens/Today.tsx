@@ -1,7 +1,7 @@
 import { ReviewNotice, useReviewItems } from '../components/ReviewNotice'
 import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane, Plus } from 'lucide-react'
 import { plannedFor, plannedNm } from '../model/routes'
-import { activeWeek, dayCountOf, missingDays, weekView } from '../model/weeks'
+import { dayCountOf, missingDays, tripOfToday, weekView } from '../model/weeks'
 import { routeOf } from '../model/trip-route'
 import { totalNm } from '../model/derive'
 import { nameWithCounter } from '../model/counters'
@@ -91,8 +91,9 @@ export function Today({
   const trips = useCollection(store, 'trips.json.enc')
   const gaps = useMemo(() => (isSunday(today) ? collectGaps(trips, legs) : []), [trips, legs, today])
   const [filling, setFilling] = useState(false)
-  // Geplande etappe van vandaag in de lopende trip (sjabloon of vorige trip): "Zoals gepland" logt hem met één tik.
-  const running = activeWeek(trips, settings, today)
+  // Alleen een trip waarin vandaag valt (Vandaag toont wat nu belangrijk is; een voorbije trip staat in Deze trip).
+  // Geplande etappe van vandaag (sjabloon of vorige trip): "Zoals gepland" logt hem met één tik.
+  const running = tripOfToday(trips, settings, today)
   // Dagsoort van vandaag: eigen instelling, anders uit trips en dagen.
   const calendar = useCollection(store, 'calendar.json.enc')
   const reminders = useCollection(store, 'reminders.json.enc')
@@ -104,7 +105,8 @@ export function Today({
   const [dayOpen, setDayOpen] = useState(false)
   const [reminderFromDay, setReminderFromDay] = useState<{ reminder: Reminder | null } | null>(null)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
-  const [viewTrip, setViewTrip] = useState<Trip | null>(null)
+  // Een trip die vanaf de dagkaart geopend is, heeft een terugknop naar die dag.
+  const [viewTrip, setViewTrip] = useState<{ trip: Trip; fromDay?: boolean } | null>(null)
   const planned = nothingToLog ? null : plannedFor(running, legs, today)
   // Open vragen: vergeten dagen van de lopende trip tot en met gisteren (vandaag heeft zijn eigen knop).
   const forgotten = running ? missingDays(weekView(running, legs), addDays(today, -1)) : []
@@ -156,7 +158,7 @@ export function Today({
         />
       )}
       {running ? (
-        <TodayTrip store={store} trip={running} day={day} onOpen={() => setViewTrip(running)} onDay={() => setDayOpen(true)} />
+        <TodayTrip store={store} trip={running} day={day} onOpen={() => setViewTrip({ trip: running })} onDay={() => setDayOpen(true)} />
       ) : (
         <DayKind day={day} onOpen={() => setDayOpen(true)} />
       )}
@@ -272,11 +274,30 @@ export function Today({
           }}
           onOpenTrip={(trip) => {
             setDayOpen(false)
-            setViewTrip(trip)
+            setViewTrip({ trip, fromDay: true })
           }}
         />
       )}
-      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} />}
+      {viewTrip && (
+        <TripOverviewSheet
+          key={viewTrip.trip.id}
+          store={store}
+          trip={viewTrip.trip}
+          notify={notify}
+          onClose={() => setViewTrip(null)}
+          back={
+            viewTrip.fromDay
+              ? {
+                  label: formatDate(today),
+                  onBack: () => {
+                    setViewTrip(null)
+                    setDayOpen(true)
+                  },
+                }
+              : undefined
+          }
+        />
+      )}
       {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
       {reminderFromDay &&
         (reminderFromDay.reminder ? (

@@ -175,7 +175,6 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
       )}
       {error && <p className="error small">{error}</p>}
       <ClaimFieldsView store={store} f={f} />
-      <p className="muted small">{t('claims.vaultHint')}</p>
       <button className="btn primary" type="submit" disabled={busy || f.invalid || empty}>
         {t('common.save')}
       </button>
@@ -414,7 +413,6 @@ function RepaySheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
           {t('claims.repaidDate')}
           <input type="date" max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <p className="muted small">{t('claims.repaidHint')}</p>
         <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
           <Icon icon={Check} />
           {t('claims.saveRepaid')}

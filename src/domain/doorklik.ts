@@ -1,3 +1,4 @@
+import { isCareerInvestment } from '../model/expenses'
 import { active } from '../model/derive'
 import { expenseCategory } from '../model/expenses'
 import { isEarned, isIncome } from '../model/money'
@@ -5,7 +6,7 @@ import { GROUP, receivableValue, type Forecast, type ForecastItem, type NetWorth
 import type { BlockRange } from '../model/scenario'
 import { eurValue, toEur, type RatesFile } from '../model/rates'
 import { groupOf, type TaxGroup } from '../model/tax-year'
-import type { Account, Claim, CostCategory, Currency, Transaction, TransactionKind, Trip } from '../model/types'
+import type { Account, Claim, CostCategory, Currency, Transaction, TransactionKind, Trip, Leg } from '../model/types'
 import { transactionList, type ReportPeriod } from './geldrapport'
 
 // Doorklikken in Geld: elk bedrag toont de posten die eronder vallen, gegroepeerd per soort en organisatie, met
@@ -148,12 +149,12 @@ export function costsDrill(transactions: readonly Transaction[], trips: readonly
 }
 
 /**
- * Investering in de zeilcarrière in de periode: alle uitgaven van soort investering (opleiding en uitrusting, en oudere
- * investeringen zonder soort), per soort. Gelijk aan `careerInvestment`.
+ * Investering in de zeilcarrière in de periode (`isCareerInvestment`: opleiding en uitrusting, en de uitgaven bij werk-
+ * en trainingstrips), per soort. Gelijk aan `careerInvestment`.
  */
-export function investmentDrill(transactions: readonly Transaction[], trips: readonly Trip[], period?: ReportPeriod): Drill {
+export function investmentDrill(transactions: readonly Transaction[], trips: readonly Trip[], period?: ReportPeriod, legs: readonly Leg[] = []): Drill {
   const byId = tripMap(trips)
-  return build(transactionList(transactions, period).filter((tx) => tx.kind === 'investering').map((tx) => ({ post: txPost(tx, 1, byId), section: 'kosten', kind: costKind(tx), org: groupOf(tx, byId) })))
+  return build(transactionList(transactions, period).filter((tx) => isCareerInvestment(tx, byId, legs)).map((tx) => ({ post: txPost(tx, 1, byId), section: 'kosten', kind: costKind(tx), org: groupOf(tx, byId) })))
 }
 
 /** Zeilgeld: resultaat in de periode: inkomsten plus terugbetalingen min uitgaven. Gelijk aan `totals().balanceEur`. */

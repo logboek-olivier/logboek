@@ -70,7 +70,7 @@ describe.each([
       expect(drills.costs.eur).toBe(shown.costsEur)
       expect(drills.reimbursed.eur).toBe(shown.reimbursedEur)
       expect(drills.result.eur).toBe(shown.balanceEur)
-      expect(drills.investment.eur).toBe(careerInvestment(list, eurOf).eur)
+      expect(drills.investment.eur).toBe(careerInvestment(list, eurOf, undefined, undefined, trips).eur)
       // Inkomsten = de som van de posten in Inkomsten in dezelfde periode.
       const posts = drills.income.groups.flatMap((g) => g.posts)
       expect(posts.every((x) => x.date >= period.from && x.date <= period.to)).toBe(true)
@@ -134,10 +134,14 @@ describe('profiel A (met de hand uitgerekend)', () => {
     expect(both.eur).toBe(5820)
     expect(yearOverview(input.transactions, input.trips, 2026, RATES).totalEur).toBe(4070)
     expect(yearOverview(input.transactions, input.trips, 2025, RATES).totalEur).toBe(1750)
-    // Investering: alleen de cursus in 2026; de oude investering zonder soort in 2025 staat als "zonder soort".
+    // Investering: de cursus in 2026, de oude investering zonder soort in 2025 ("zonder soort"), en de kosten van de
+    // werktrips (vlucht, eten, verblijf): die maken het zeiljaar ook mogelijk. Kosten aan land tellen niet.
     expect(investmentDrill(input.transactions, input.trips, { from: '2025-01-01', to: '2026-12-31' }).groups.map((g) => [g.kind, g.eur])).toEqual([
       ['opleiding', 650],
+      ['vervoer', 300],
       ['onbekend', 200],
+      ['eten', 120],
+      ['verblijf', 64],
     ])
   })
 

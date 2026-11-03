@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { buildIndex, dayInfo, extendOptions, incomePerWorkday, monthIncome, setDay } from '../src/model/calendar'
+import { buildIndex, dayInfo, extendOptions, incomePerWorkday, monthIncome, monthIncomeOutlook, setDay } from '../src/model/calendar'
 import { startWeek, type WeekInput } from '../src/model/weeks'
 import type { Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
@@ -103,6 +103,11 @@ describe('geld per werkdag', () => {
     // Halverwege de trip: alleen de werkdagen tot en met vandaag.
     expect(monthIncome(idx, txs, '2027-03', '2027-03-09')).toMatchObject({ workdays: 4, perWorkday: 200 })
     expect(monthIncome(idx, [], '2027-02', '2027-03-31')).toEqual({ month: '2027-02', workdays: 0, eur: 0, perWorkday: null })
+    // De agenda: een lopende of komende maand toont het verwachte inkomen (al binnen plus verwacht salaris van die maand),
+    // per werkdag over alle werkdagen van de maand; een voorbije maand wat er echt binnenkwam.
+    const expected: Transaction = { id: 'sal', date: '2027-03-31', kind: 'loon', amount: 1200, currency: 'EUR', source: 'overig', status: 'verwacht', updatedAt: NOW, deletedAt: null }
+    expect(monthIncomeOutlook(idx, [...txs, expected], '2027-03', '2027-03-09')).toEqual({ month: '2027-03', workdays: 8, eur: 2000, perWorkday: 250, expected: true })
+    expect(monthIncomeOutlook(idx, [...txs, expected], '2027-03', '2027-04-02')).toMatchObject({ eur: 800, expected: false })
     const table = incomePerWorkday(idx, txs, '2027-04-15', 3)
     expect(table.map((m) => m.month)).toEqual(['2027-04', '2027-03', '2027-02'])
   })

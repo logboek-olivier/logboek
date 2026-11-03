@@ -219,9 +219,8 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
 
           {/* 5. Geld */}
           <div className="stack-sm period-money">
-            {/* Zonder geld en zonder salaris toont het geldblok zelf niets: dan de kop met "nog niets". */}
+            {/* Zonder geld en zonder salaris toont het geldblok zelf niets: dan alleen de kop met de knoppen. */}
             {!hasMoney && <Heading>{t('week.money')}</Heading>}
-            {!hasMoney && <p className="muted small">{t('period.noMoney')}</p>}
             <TripMoneySection store={store} trip={trip} heading={Heading} />
             <TripClaims store={store} trip={trip} notify={notify} heading={mode === 'page' ? 'h2' : 'h3'} />
             <MoneyButtons onAdd={setAdding} claims={view.kind === 'werk' && !demo} />
@@ -323,9 +322,7 @@ function PeriodTransactions({ store, periodId, notify }: { store: Store; periodI
           </button>
         )}
       </div>
-      {list.length === 0 ? (
-        <p className="muted small">{t('period.noMoney')}</p>
-      ) : shown ? (
+      {list.length > 0 && shown && (
         <ul className="rows">
           {list.map((tx) => {
             const eur = eurValue(tx)
@@ -342,8 +339,6 @@ function PeriodTransactions({ store, periodId, notify }: { store: Store; periodI
             )
           })}
         </ul>
-      ) : (
-        <p className="muted small">{t('week.amountsHidden', { n: list.length })}</p>
       )}
       {open && <TransactionView store={store} tx={open} notify={notify} onClose={() => setOpen(null)} />}
     </>

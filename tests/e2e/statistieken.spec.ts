@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
 import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
 
-// PR F: Meer → Statistieken. Zeilen, RYA Yachtmaster Offshore, werk, geld (pas na "Toon bedragen") en de filters.
+// PR F: Meer → Statistieken. Zeilen (zonder RYA-blok), werk, geld (pas na "Toon bedragen") en de filters.
 // Verzonnen gegevens; er gaat niets naar buiten.
 
 test.use({ viewport: { width: 360, height: 800 } })
@@ -13,7 +13,7 @@ function iso(offset: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-test('statistieken: zeilen, RYA, werk en geld achter Toon bedragen; filters', async ({ page }) => {
+test('statistieken: zeilen, werk en geld achter Toon bedragen; filters', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page, 'nl', { olivier: true })
@@ -51,15 +51,14 @@ test('statistieken: zeilen, RYA, werk en geld achter Toon bedragen; filters', as
   const main = page.locator('main')
   await expect(main).toContainText('Totaal77 nm')
   await expect(main).toContainText('Dagen op het water2')
-  await expect(page.getByRole('list', { name: 'Per gebied' })).toContainText('Nepgebied')
-  await expect(page.getByRole('list', { name: 'Trips per organisatie' })).toContainText('Yacht Week · t/m YW #1')
+  await page.getByRole('radio', { name: 'Gebied', exact: true }).click()
+  await expect(page.getByRole('list', { name: 'Gebied', exact: true })).toContainText('Nepgebied')
+  await page.getByRole('radio', { name: 'Organisatie', exact: true }).first().click()
+  await expect(page.getByRole('list', { name: 'Organisatie', exact: true }).first()).toContainText('Yacht Week · t/m YW #1')
   await expect(main).toContainText('Langste dagtocht')
   await expect(main).toContainText('65 nm')
-  // RYA Yachtmaster Offshore als checklist met de vermelding.
-  // Beide dagen staan op vandaag: één datum op zee.
-  await expect(main).toContainText('1 van 50 dagen op zee')
-  await expect(main).toContainText('1 van 5 passages van meer dan 60 nm')
-  await expect(main).toContainText('Controleer tegen de actuele RYA-eisen')
+  // Geen RYA Yachtmaster Offshore-blok meer.
+  await expect(main).not.toContainText('Yachtmaster')
   // Werk: de dagen van de trip uit de agenda.
   await expect(main).toContainText('Werkdagen per maand')
 
@@ -67,7 +66,8 @@ test('statistieken: zeilen, RYA, werk en geld achter Toon bedragen; filters', as
   await expect(main).not.toContainText('€ 140,00')
   await page.getByRole('button', { name: 'Toon bedragen' }).click()
   await expect(main).toContainText('Verdiend€ 140,00')
-  await expect(page.getByRole('list', { name: 'Inkomsten per organisatie' })).toContainText('Yacht Week')
+  await page.getByRole('radio', { name: 'Organisatie', exact: true }).last().click()
+  await expect(page.getByRole('list', { name: 'Organisatie', exact: true }).last()).toContainText('Yacht Week')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/statistieken/dit-jaar.png', fullPage: true })
 

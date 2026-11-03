@@ -14,7 +14,7 @@ import { recordError } from '../errors'
 import { formatDate, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
 import { t, useLang } from '../i18n'
 import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
-import { buildIndex, dayInfo, dayLabelKey, monthIncome, monthSummary, monthWeeks, tripBars, type CalendarIndex } from '../model/calendar'
+import { buildIndex, dayInfo, dayLabelKey, monthIncomeOutlook, monthSummary, monthWeeks, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
 import { closingFor } from '../model/week-close'
 import type { SalaryState } from '../domain/geldmodel'
@@ -59,8 +59,9 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [reminder, setReminder] = useState<{ reminder: Reminder | null; date: string } | null>(null)
   const [showAmounts, setShowAmounts] = useState(false)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
-  const [viewTrip, setViewTrip] = useState<Trip | null>(null)
-  const [viewStay, setViewStay] = useState<StayPeriod | null>(null)
+  // Een trip of periode die vanaf een dag geopend is, onthoudt die dag: terug brengt de dagkaart terug.
+  const [viewTrip, setViewTrip] = useState<{ trip: Trip; from?: string } | null>(null)
+  const [viewStay, setViewStay] = useState<{ stay: StayPeriod; from?: string } | null>(null)
   const counters = useCounters(store)
   // Het salaris per trip als bolletje in de balk (grijs verwacht, oranje te ontvangen, groen ontvangen).
   const transactions = useCollection(store, 'transactions.json.enc')
@@ -86,7 +87,10 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
 
   const weeks = monthWeeks(month)
   const summary = monthSummary(index, month, today)
-  const income = showAmounts ? monthIncome(index, transactions, month, today) : null
+  const income = showAmounts ? monthIncomeOutlook(index, transactions, month, today) : null
+  // Het laatste vakje: in een voorbije maand de nm; in de lopende maand de dagen die nog vrij zijn (zijn die er niet
+  // meer, dan de nm); in een komende maand de vrije dagen. Altijd zes vakjes, zodat het raster niet verspringt.
+  const showNm = month < monthOf(today) || (month === monthOf(today) && summary.beschikbaar === 0)
 
   function onTouchStart(e: TouchEvent) {
     const p = e.touches[0]
@@ -101,6 +105,18 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
     const dx = p.clientX - start.x
     const dy = p.clientY - start.y
     if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) setMonth(shiftMonth(month, dx < 0 ? 1 : -1))
+  }
+
+  /** Terug van een trip of periode naar de dag waar je vandaan kwam. */
+  function backToDay(from: string | undefined, close: () => void): { label: string; onBack: () => void } | undefined {
+    if (!from) return undefined
+    return {
+      label: formatDate(from),
+      onBack: () => {
+        close()
+        setOpen(from)
+      },
+    }
   }
 
   function onDay(date: string) {
@@ -177,13 +193,14 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} salaryStates={salaryStates} onDay={onDay} />
         ))}
       </div>
-      <dl className={`agenda-summary${summary.onbeschikbaar > 0 ? ' six' : ''}`} aria-label={t('calendar.summaryTitle')}>
+      <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>
         {(
           [
             ['dayType.werk', 'werk', summary.werk],
             ['dayType.rust', 'rust', summary.rust],
             ['dayType.reis', 'reis', summary.reis],
             ['dayType.thuis', 'thuis', summary.thuis],
+            ['dayType.onbeschikbaar', 'onbeschikbaar', summary.onbeschikbaar],
           ] as const
         ).map(([label, type, value]) => (
           <div key={type} className={`agenda-stat day-${type}`}>
@@ -191,17 +208,17 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             <dd>{formatNumber(value)}</dd>
           </div>
         ))}
-        {/* Onbeschikbaar alleen in een maand die zulke dagen heeft; dan twee rijen van drie, zodat het woord past. */}
-        {summary.onbeschikbaar > 0 && (
-          <div className="agenda-stat day-onbeschikbaar">
-            <dt>{t('dayType.onbeschikbaar')}</dt>
-            <dd>{formatNumber(summary.onbeschikbaar)}</dd>
+        {showNm ? (
+          <div className="agenda-stat">
+            <dt>nm</dt>
+            <dd>{formatNumber(summary.nm)}</dd>
+          </div>
+        ) : (
+          <div className="agenda-stat day-beschikbaar">
+            <dt>{t('calendar.freeDays')}</dt>
+            <dd>{formatNumber(summary.beschikbaar)}</dd>
           </div>
         )}
-        <div className="agenda-stat">
-          <dt>nm</dt>
-          <dd>{formatNumber(summary.nm)}</dd>
-        </div>
       </dl>
       {/* Bedragen pas na een tik: de agenda staat soms open als gasten of studenten meekijken. */}
       <div className="agenda-income">
@@ -211,7 +228,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
         </button>
         {income && (
           <span>
-            {t('calendar.income')}: <strong>{formatMoney(income.eur, 'EUR')}</strong>
+            {t(income.expected ? 'calendar.expectedIncome' : 'calendar.income')}: <strong>{formatMoney(income.eur, 'EUR')}</strong>
             {income.perWorkday !== null && <span className="muted"> · {t('calendar.perWorkday', { amount: formatMoney(income.perWorkday, 'EUR') })}</span>}
           </span>
         )}
@@ -255,22 +272,22 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
             setEditTrip(trip)
           }}
           onOpenTrip={(trip) => {
+            setViewTrip({ trip, from: open })
             setOpen(null)
-            setViewTrip(trip)
           }}
           onNewTrip={(date) => {
             setOpen(null)
             setNewTrip({ startDate: date, dayCount: 1 })
           }}
           onOpenStay={(stay) => {
+            setViewStay({ stay, from: open })
             setOpen(null)
-            setViewStay(stay)
           }}
         />
       )}
       {editTrip && <WeekSheet key={editTrip.id} store={store} trip={editTrip} notify={notify} onClose={() => setEditTrip(null)} />}
-      {viewTrip && <TripOverviewSheet key={viewTrip.id} store={store} trip={viewTrip} notify={notify} onClose={() => setViewTrip(null)} />}
-      {viewStay && <StayOverviewSheet key={viewStay.id} store={store} stay={viewStay} notify={notify} onClose={() => setViewStay(null)} />}
+      {viewTrip && <TripOverviewSheet key={viewTrip.trip.id} store={store} trip={viewTrip.trip} notify={notify} onClose={() => setViewTrip(null)} back={backToDay(viewTrip.from, () => setViewTrip(null))} />}
+      {viewStay && <StayOverviewSheet key={viewStay.stay.id} store={store} stay={viewStay.stay} notify={notify} onClose={() => setViewStay(null)} back={backToDay(viewStay.from, () => setViewStay(null))} />}
       {reminder &&
         (reminder.reminder ? (
           <ReminderView store={store} reminder={reminder.reminder} notify={notify} onClose={() => setReminder(null)} />

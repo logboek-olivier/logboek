@@ -1,6 +1,7 @@
 import type { Tx } from '../domain/tx'
 import { active, lastMonths, round1, totalNm } from './derive'
-import { totals } from './money'
+import { eurOf, totals } from './money'
+import { salaryStatus } from '../domain/geldmodel'
 import { weekView, type WeekView } from './weeks'
 import { keepUnknownFields, type CalendarDay, type DayTravel, type DayType, type Leg, type PeriodKind, type Reminder, type StayKind, type StayPeriod, type Transaction, type Trip } from './types'
 import { round2 } from '../basis/bedrag'
@@ -182,14 +183,17 @@ export interface MonthSummary {
   reis: number
   thuis: number
   onbeschikbaar: number
+  /** Dagen die nog vrij te plannen zijn (vandaag en later zonder trip, periode of eigen dagtoestand, of zelf op beschikbaar). */
+  beschikbaar: number
   nm: number
 }
 
 export function monthSummary(index: CalendarIndex, month: string, today: string = todayIso()): MonthSummary {
-  const sum: MonthSummary = { werk: 0, rust: 0, reis: 0, thuis: 0, onbeschikbaar: 0, nm: 0 }
+  const sum: MonthSummary = { werk: 0, rust: 0, reis: 0, thuis: 0, onbeschikbaar: 0, beschikbaar: 0, nm: 0 }
   for (let d = `${month}-01`; monthOf(d) === month; d = addDays(d, 1)) {
     const info = dayInfo(index, d, today)
     if (info.type === 'werk' || info.type === 'rust' || info.type === 'reis' || info.type === 'thuis' || info.type === 'onbeschikbaar') sum[info.type]++
+    if (info.type === 'beschikbaar' && d >= today) sum.beschikbaar++
     sum.nm += info.nm
   }
   sum.nm = round1(sum.nm)
@@ -463,6 +467,26 @@ export function monthIncome(index: CalendarIndex, transactions: readonly Transac
   for (let d = `${month}-01`; monthOf(d) === month && d <= today; d = addDays(d, 1)) if (isWorkday(dayInfo(index, d, today))) workdays++
   const eur = totals(active(transactions).filter((tx) => tx.date.slice(0, 7) === month)).incomeEur
   return { month, workdays, eur, perWorkday: workdays > 0 ? round2(eur / workdays) : null }
+}
+
+/**
+ * Inkomen van een maand voor de agenda: een voorbije maand wat er echt binnenkwam (`monthIncome`); de lopende en
+ * komende maanden het verwachte inkomen: wat al binnen is plus het verwachte salaris van die maand (salaris komt pas
+ * na de trip, dus "ontvangen" zou daar 0 zijn). Geen geschatte fooi. Per werkdag over alle werkdagen van de maand.
+ */
+export function monthIncomeOutlook(index: CalendarIndex, transactions: readonly Transaction[], month: string, today: string = todayIso()): WorkdayIncome & { expected: boolean } {
+  if (month < monthOf(today)) return { ...monthIncome(index, transactions, month, today), expected: false }
+  let workdays = 0
+  for (let d = `${month}-01`; monthOf(d) === month; d = addDays(d, 1)) if (isWorkday(dayInfo(index, d, today))) workdays++
+  const inMonth = active(transactions).filter((tx) => tx.date.slice(0, 7) === month)
+  let cents = Math.round(totals(inMonth).incomeEur * 100)
+  for (const tx of inMonth) {
+    if (tx.kind !== 'loon' || salaryStatus(tx) !== 'verwacht' || !(tx.amount > 0)) continue
+    const eur = eurOf(tx)
+    if (eur !== null) cents += Math.round(eur * 100)
+  }
+  const eur = cents / 100
+  return { month, workdays, eur, perWorkday: workdays > 0 ? round2(eur / workdays) : null, expected: true }
 }
 
 /** De laatste `count` maanden, nieuwste eerst, voor de tabel onder Geld. */

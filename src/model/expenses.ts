@@ -3,7 +3,8 @@ import { isWaterKind, periodAt, setStayDays, type Period } from './periods'
 import type { Tx } from '../domain/tx'
 import { DAYS_TRIP_GRACE } from './trip-dates'
 import { REST_GAP_DAYS } from './calendar'
-import type { CostCategory, StayKind, Transaction, TransactionKind, TransactionSource, Trip } from './types'
+import type { CostCategory, Leg, StayKind, Transaction, TransactionKind, TransactionSource, Trip } from './types'
+import { tripKind } from './trip-kind'
 import { addDays } from '../basis/datum'
 import { sourceForPeriod } from '../basis/organisatie'
 
@@ -86,11 +87,26 @@ export interface InvestmentTotal {
   count: number
 }
 
-/** Investering in de zeilcarrière: opleiding en uitrusting (alle uitgaven van soort investering), in euro. */
-export function careerInvestment(transactions: readonly Transaction[], eurOf: (tx: Transaction) => number | null, from?: string, to?: string): InvestmentTotal {
+/**
+ * Investering in de zeilcarrière: opleiding en uitrusting (soort investering, waar ook geboekt), plus elke uitgave bij
+ * een werk- of trainingstrip (de vlucht naar de boot, de taxi naar de marina, verblijf). Niet: uitgaven bij plezier of
+ * aan land, en de uitgave van een declaratie (die komt terug). Zoekt de trip op id, ook in de prullenbak.
+ */
+export function isCareerInvestment(tx: Transaction, tripsById: ReadonlyMap<string, Trip>, legs: readonly Leg[] = []): boolean {
+  if (tx.kind === 'investering') return true
+  if (tx.kind !== 'kosten' || tx.claimId || !tx.tripId) return false
+  const trip = tripsById.get(tx.tripId)
+  if (!trip) return false
+  const kind = tripKind(trip, legs).kind
+  return kind === 'werk' || kind === 'training'
+}
+
+/** Het totaal van `isCareerInvestment` in euro (zonder koers apart per valuta), in de periode van `from` tot en met `to`. */
+export function careerInvestment(transactions: readonly Transaction[], eurOf: (tx: Transaction) => number | null, from?: string, to?: string, trips: readonly Trip[] = [], legs: readonly Leg[] = []): InvestmentTotal {
   const out: InvestmentTotal = { eur: 0, other: {}, count: 0 }
+  const byId = new Map(trips.map((x) => [x.id, x]))
   for (const tx of active(transactions)) {
-    if (tx.kind !== 'investering') continue
+    if (!isCareerInvestment(tx, byId, legs)) continue
     if ((from && tx.date < from) || (to && tx.date > to)) continue
     out.count++
     const eur = eurOf(tx)

@@ -126,7 +126,10 @@ describe('maandoverzicht', () => {
   it('per maand werk-, rust-, reis- en thuisdagen en nm', () => {
     const trips = [trip('a', { startDate: '2026-11-02', endDate: '2026-11-08' }), trip('b', { startDate: '2026-11-10', endDate: '2026-11-11' })]
     const index = buildIndex([own('2026-11-20', 'reis'), own('2026-11-21', 'thuis'), own('2026-11-22', 'thuis')], trips, [leg('l', 'a', '2026-11-03', 20)])
-    expect(monthSummary(index, '2026-11', TODAY)).toEqual({ werk: 9, rust: 1, reis: 1, thuis: 2, onbeschikbaar: 0, nm: 20 })
+    // Nog vrij: de dagen vanaf vandaag zonder trip, periode of eigen dagtoestand (voor het laatste vakje onder de agenda).
+    expect(monthSummary(index, '2026-11', TODAY)).toEqual({ werk: 9, rust: 1, reis: 1, thuis: 2, onbeschikbaar: 0, beschikbaar: 16, nm: 20 })
+    // Een voorbije maand heeft geen vrije dagen meer.
+    expect(monthSummary(index, '2026-11', '2026-12-05').beschikbaar).toBe(0)
   })
 
   it('onbeschikbaar: telt apart in de maand en geldt als zelf ingestelde dag (geen werk)', () => {

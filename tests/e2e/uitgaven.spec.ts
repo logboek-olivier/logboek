@@ -92,12 +92,12 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('button', { name: L('calendar.next') }).click()
       await day(4).click()
       await sheet.locator('.day-view-trip').click()
-      await expect(sheet.locator('.period-page')).toContainText(L('week.amountsHidden', { n: 1 }))
+      await expect(sheet.locator('.period-page').getByRole('button', { name: L('week.showAmounts') }).first()).toBeVisible()
       await sheet.getByRole('button', { name: L('common.close') }).first().click()
       await page.getByRole('button', { name: L('calendar.prev') }).click()
       await day(20).click()
       await sheet.locator('.day-view-trip').click()
-      await expect(sheet.locator('.period-page')).toContainText(L('week.amountsHidden', { n: 1 }))
+      await expect(sheet.locator('.period-page').getByRole('button', { name: L('week.showAmounts') }).first()).toBeVisible()
       await shots(page, 'thuisperiode', lang)
 
       // Niets onversleuteld naar GitHub.

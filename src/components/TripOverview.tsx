@@ -1,12 +1,12 @@
-import { MapPin, Pencil, Share2 } from 'lucide-react'
+import { ChevronRight, MapPin, Pencil, Share2 } from 'lucide-react'
 import { Suspense, useState, type ReactNode } from 'react'
-import { formatDateRangeShort, formatHours, formatNm, formatNumber } from '../format'
+import { formatDateRange, formatDateRangeShort, formatHours, formatNm, formatNumber } from '../format'
 import { t } from '../i18n'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { placeUses } from '../model/places'
 import { routeOf } from '../model/trip-route'
 import type { Leg, StayPeriod, Trip } from '../model/types'
-import { tripDayCounts, weekView, type WeekView } from '../model/weeks'
+import { feetToMetres, tripDayCounts, weekView, type WeekView } from '../model/weeks'
 import { stayPeriod, waterPeriod } from '../model/periods'
 import { PeriodPage } from './PeriodPage'
 import { StaySheet } from './StaySheet'
@@ -22,6 +22,7 @@ import { RouteMap } from './LazyMap'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
+import { ViewRows } from './Views'
 import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
 
 // Tripoverzicht (lopende trip in Deze trip, en elke eerdere trip uit het Logboek): kop "SV #3 · BVI · 8–21 nov ·
@@ -43,9 +44,16 @@ export function kindLine(view: Pick<WeekView, 'kind' | 'type'>): string {
   return view.type === 'overig' ? t('periodKind.werk') : `${t('periodKind.werk')} · ${weekTypeLabel(view.type)}`
 }
 
-/** `compact`: zonder de titel (in het tripoverzicht staat die al bovenaan het blad). */
+/**
+ * De kop van een trip, rustig: de naam (met teller), de datums met de dagen, en de boot. Alle andere gegevens (soort,
+ * organisatie, gebied, model, lengte, basis, charter) staan na een tik in "Tripgegevens". `compact`: zonder de titel
+ * (in het tripoverzicht staat die al bovenaan het blad).
+ */
 export function TripHead({ view, counter, onEdit, legs, compact = false, menu }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean; menu?: ReactNode }) {
   const trip = view.trip
+  const [details, setDetails] = useState(false)
+  const range = view.startDate && view.endDate ? formatDateRangeShort(view.startDate, view.endDate) : ''
+  const boat = trip.boat || trip.boatModel || legs.find((l) => l.tripId === trip.id)?.boat || ''
   return (
     <div className="card trip-head">
       <div className="trip-head-title">
@@ -53,7 +61,7 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
           tripIncomplete(trip, legs) && <IncompleteBadge />
         ) : (
           <h2>
-            {tripTitle(view, counter)} {tripIncomplete(trip, legs) && <IncompleteBadge />}
+            {nameWithCounter(trip, counter)} {tripIncomplete(trip, legs) && <IncompleteBadge />}
           </h2>
         )}
         {onEdit && (
@@ -63,11 +71,54 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
         )}
         {menu}
       </div>
-      <p className="muted small">{[kindLine(view), trip.organisation ? organisationLabel(trip.organisation) : '', trip.area].filter(Boolean).join(' · ')}</p>
-      <p className="muted small trip-day-count">{tripDaysText(view)}</p>
-      <p className="muted small">{boatLine(trip, legs.find((l) => l.tripId === trip.id)?.boat)}</p>
-      {(trip.base || trip.charter) && <p className="muted small">{[trip.base, trip.charter].filter(Boolean).join(' · ')}</p>}
+      <button type="button" className="trip-head-summary" onClick={() => setDetails(true)} aria-label={t('trip.detailsOpen', { name: trip.name })}>
+        <span className="trip-head-lines">
+          <span className="trip-day-count">{[range, tripDaysText(view)].filter(Boolean).join(' · ')}</span>
+          {boat && <span className="muted">{boat}</span>}
+        </span>
+        <Icon icon={ChevronRight} />
+      </button>
+      {details && <TripDetailsSheet view={view} counter={counter} legs={legs} onClose={() => setDetails(false)} onEdit={onEdit} />}
     </div>
+  )
+}
+
+/** Tripgegevens: alles wat de kop weglaat, eerst bekijken; bewerken via het potlood (als de trip hier te bewerken is). */
+function TripDetailsSheet({ view, counter, legs, onClose, onEdit }: { view: WeekView; counter: TripCounter | undefined; legs: readonly Leg[]; onClose: () => void; onEdit?: () => void }) {
+  const trip = view.trip
+  const length = trip.boatLengthFt ? t('boat.feet', { ft: formatNumber(trip.boatLengthFt), m: formatNumber(feetToMetres(trip.boatLengthFt)) }) : ''
+  return (
+    <Sheet
+      title={t('trip.details')}
+      onClose={onClose}
+      onEdit={
+        onEdit
+          ? () => {
+              onClose()
+              onEdit()
+            }
+          : undefined
+      }
+    >
+      <div className="view">
+        <ViewRows
+          rows={[
+            [t('trip.name'), nameWithCounter(trip, counter)],
+            [t('trip.kind'), kindLine(view)],
+            [t('week.organisation'), trip.organisation && organisationLabel(trip.organisation)],
+            [t('week.area'), trip.area],
+            [t('trip.dates'), view.startDate && view.endDate && formatDateRange(view.startDate, view.endDate)],
+            [t('stat.days'), tripDaysText(view)],
+            [t('boat.name'), trip.boat || legs.find((l) => l.tripId === trip.id)?.boat],
+            [t('boat.model'), trip.boatModel],
+            [t('boat.length'), length],
+            [t('boat.kind'), trip.boatKind && t(`boatKind.${trip.boatKind}`)],
+            [t('boat.base'), trip.base],
+            [t('boat.charter'), trip.charter],
+          ]}
+        />
+      </div>
+    </Sheet>
   )
 }
 
@@ -144,7 +195,7 @@ export function TripRouteSection({ store, view, notify }: { store: Store; view: 
  * Een trip in een onderblad (uit het Logboek, de agenda, Vandaag, de komende trips en de lijst met periodes): de
  * periodepagina, bewerken via het potlood.
  */
-export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Store; trip: Trip; notify: Notify; onClose: () => void }) {
+export function TripOverviewSheet({ store, trip, notify, onClose, back }: { store: Store; trip: Trip; notify: Notify; onClose: () => void; back?: { label: string; onBack: () => void } }) {
   const [editing, setEditing] = useState(false)
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
@@ -155,7 +206,7 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
   if (editing) return <WeekSheet store={store} trip={current} notify={notify} onClose={() => setEditing(false)} />
   const view = weekView(current, legs)
   return (
-    <Sheet title={tripTitle(view, counters.get(current.id))} onClose={onClose} onEdit={() => setEditing(true)}>
+    <Sheet kicker={t('sheet.trip')} back={back} title={tripTitle(view, counters.get(current.id))} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="view trip-overview">
         <PeriodPage store={store} period={waterPeriod(view)} notify={notify} mode="sheet" onDeleted={onClose} />
       </div>
@@ -164,14 +215,14 @@ export function TripOverviewSheet({ store, trip, notify, onClose }: { store: Sto
 }
 
 /** Een periode aan land (reis, thuis, vrij) in een onderblad; bewerken via het potlood. */
-export function StayOverviewSheet({ store, stay, notify, onClose }: { store: Store; stay: StayPeriod; notify: Notify; onClose: () => void }) {
+export function StayOverviewSheet({ store, stay, notify, onClose, back }: { store: Store; stay: StayPeriod; notify: Notify; onClose: () => void; back?: { label: string; onBack: () => void } }) {
   const [editing, setEditing] = useState(false)
   const current = useCollection(store, 'periods.json.enc').find((x) => x.id === stay.id)
   if (!current || current.deletedAt !== null) return null
   if (editing) return <StaySheet store={store} stay={current} notify={notify} onClose={() => setEditing(false)} />
   const period = stayPeriod(current)
   return (
-    <Sheet title={period.name} onClose={onClose} onEdit={() => setEditing(true)}>
+    <Sheet kicker={t('sheet.period')} back={back} title={period.name} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="view trip-overview">
         <PeriodPage store={store} period={period} notify={notify} mode="sheet" onDeleted={onClose} />
       </div>

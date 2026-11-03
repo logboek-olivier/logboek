@@ -211,7 +211,6 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
                 {t('money.noRateFor', { currency: c })}: {signed(v, c)}
               </p>
             ))}
-            <p className="muted small">{t('position.sinceHint')}</p>
           </>
         )}
         {change.state === 'onbekend' && (
@@ -423,7 +422,6 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
           </li>
         </ul>
       )}
-      {lines && <p className="muted small">{t('forecast.sumHint')}</p>}
       {lines && plan && plan.assumptions.investPct > 0 && <p className="muted small">{t('forecast.invested', { amount: formatMoney(lines.invested, 'EUR'), pct: String(plan.assumptions.investPct), end: formatMoney(lines.investmentsEnd, 'EUR') })}</p>}
       {!hasAccounts && <p className="muted small">{t('position.onlyReceivable')}</p>}
       {extended && lastDay && <p className="muted small">{t('forecast.toScenarioEnd', { date: formatDate(lastDay) })}</p>}
@@ -478,7 +476,6 @@ export function CareerStartSheet({ store, notify, onClose }: { store: Store; not
           {t('position.careerStartDate')}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <p className="muted small">{t('position.careerStartHint')}</p>
         <button className="btn primary" type="submit" disabled={!ok}>
           {t('common.save')}
         </button>

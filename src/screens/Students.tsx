@@ -648,7 +648,6 @@ function GroupTickSheet({
             </label>
           ))}
         </fieldset>
-        <p className="muted small">{t('students.neverLower')}</p>
         <button className="btn primary" type="submit" disabled={!topicId || selected.size === 0}>
           {t('students.applyTick', { n: inCourse.filter((s) => selected.has(s.id)).length })}
         </button>

@@ -2815,7 +2815,7 @@ body.presenting .bottom-bar {
 
 .agenda-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s-1);
   margin: 0;
 }
@@ -2841,10 +2841,6 @@ body.presenting .bottom-bar {
   /* Nooit afkappen: "Op het water" gaat op 360 px over twee regels (review D-8). */
   overflow-wrap: anywhere;
   min-height: 2.4em;
-}
-
-.agenda-summary.six {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .agenda-stat dd {
@@ -2894,7 +2890,6 @@ body.presenting .bottom-bar {
   padding-left: var(--s-4);
   font-variant-numeric: tabular-nums;
 }
-
 
 /* Periode markeren, planning importeren, seizoen en delen */
 .agenda-actions {
@@ -3365,31 +3360,6 @@ body.presenting .bottom-bar {
   fill: var(--accent);
 }
 
-.rya-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-}
-
-.rya-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  font-size: var(--fs-sm);
-  color: var(--text);
-}
-
-.rya-list li > svg {
-  flex: none;
-  color: var(--text-faint);
-}
-
-.rya-list li.done > svg {
-  color: var(--accent);
-}
 
 .rya-text {
   flex: 1;
@@ -3479,6 +3449,21 @@ body.presenting .bottom-bar {
   color: var(--accent);
 }
 
+/* Soort blad ("Dag", "Trip") klein boven de titel, en terug naar het blad waar je vandaan kwam. */
+.sheet-kicker {
+  display: block;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sheet-back {
+  align-self: flex-start;
+  margin: var(--s-2) var(--s-2) 0;
+}
+
 .view-rows {
   display: flex;
   flex-direction: column;
@@ -3553,6 +3538,36 @@ body.presenting .bottom-bar {
 
 .trip-head p {
   margin: 0;
+}
+
+/* De rest van de tripgegevens zit achter één tik (Tripgegevens): de kop blijft rustig. */
+.trip-head-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trip-head-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trip-head-summary > .icon {
+  flex: none;
+  color: var(--text-muted);
 }
 
 .trip-totals {
@@ -3642,8 +3657,41 @@ body.presenting .bottom-bar {
   margin: 0;
 }
 
+/* De trip of periode van een dag: een eigen kaart met "Hele trip bekijken", zodat duidelijk is dat de dag erbij hoort. */
+.day-view-trip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .day-view-trip:disabled {
   cursor: default;
+}
+
+.day-view-trip-label {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.day-view-trip-open {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
 }
 
 .pin-assistant h3 {
@@ -4652,7 +4700,6 @@ textarea.note {
   margin: var(--s-2) 0;
 }
 
-
 /* ---------- Geld per tocht, tochtkiezer, eerder seizoen ---------- */
 
 .trip-money {
@@ -4895,4 +4942,45 @@ button.drill-post {
   align-items: center;
   gap: var(--s-2);
   width: 100%;
+}
+
+/* Statistieken: de kerngetallen groot bovenaan, een hoogtepunt per onderwerp, één verdeling tegelijk. */
+.stats-hero {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.stats-hero-item {
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.stats-hero-item dt {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.stats-hero-item dd {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-highlight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-2);
+  margin: 0;
+}
+
+.stats-highlight-label {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
 }

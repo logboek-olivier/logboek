@@ -103,7 +103,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
     const stay = tx.tripId ? stayMap.get(tx.tripId) : undefined
     return stay ? stayName(stay) : ''
   }
-  const investment = careerInvestment(live, eurOf)
+  const investment = careerInvestment(live, eurOf, undefined, undefined, trips, legs)
   const workdays = perWorkday(index, transactions, today).filter((m) => m.workdays > 0 || m.eur > 0)
   const checks = useMemo(() => toCheck(transactions, trips), [transactions, trips])
   const [checkTrip, setCheckTrip] = useState<Trip | null>(null)
@@ -155,7 +155,6 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
       {hasData && <PeriodPicker period={period} preset={preset} careerSet={careerSet} />}
       {view === 'verwacht' && (
         <>
-          <p className="muted small">{t('money.expectedHint')}</p>
           {mode === 'scenario' && <ScenarioSection store={store} notify={notify} planningEnd={planningEnd(index)} today={today} />}
           <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} preset={preset} mode={mode} />
           <SalaryOutlook store={store} />
@@ -196,12 +195,11 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
               <Stat
                 label={t('money.investment')}
                 value={[formatMoney(investment.eur, 'EUR'), ...Object.entries(investment.other).map(([c, v]) => formatMoney(v, c))].join(' + ')}
-                onOpen={() => setDrill({ title: t('money.investment'), drill: investmentDrill(transactions, trips, period), period: periodText, hint: t('drill.investmentHint') })}
+                onOpen={() => setDrill({ title: t('money.investment'), drill: investmentDrill(transactions, trips, period, legs), period: periodText, hint: t('drill.investmentHint') })}
               />
             )}
             <OtherStat other={all.other} />
           </dl>
-          <p className="muted small">{t('money.resultHint')}</p>
 
           <MoneyPathSection store={store} notify={notify} />
 
@@ -319,7 +317,6 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
                   ))}
                 </tbody>
               </table>
-              <p className="muted small">{t('money.perWorkdayHint')}</p>
             </div>
           )}
 
@@ -476,7 +473,6 @@ function TipOverview({ store, notify, trips, transactions, legs, view, onView }:
           ))}
         </tbody>
       </table>
-      <p className="muted small">{t('money.tipsHint')}</p>
       {noRate && <p className="muted small">{t('money.tipsNoRate')}</p>}
       {asking && <GuestCountSheet store={store} notify={notify} trip={asking} onClose={() => setAsking(null)} />}
     </div>
@@ -502,7 +498,6 @@ function GuestCountSheet({ store, notify, trip, onClose }: { store: Store; notif
           {t('week.guestCount')}
           <input type="number" inputMode="numeric" min={1} max={500} value={count} onChange={(e) => setCount(e.target.value)} />
         </label>
-        <p className="muted small">{t('week.guestCountHint')}</p>
         <button className="btn primary" type="submit" disabled={!valid}>
           {t('common.save')}
         </button>

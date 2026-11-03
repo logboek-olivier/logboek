@@ -40,7 +40,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.getByRole('tab', { name: L('money.actual') })).toHaveAttribute('aria-selected', 'true')
       await page.getByRole('tab', { name: L('money.expected') }).click()
       const costs = page.locator('.costs')
-      await expect(costs).toContainText(L('actual.fixedHint'))
+      await expect(costs).toContainText(L('costs.fixed'))
       await costs.getByRole('button', { name: L('costs.addFixed') }).click()
       const sheet = page.getByRole('dialog')
       await sheet.getByLabel(L('costs.name')).fill('Nephuur')
