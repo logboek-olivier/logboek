@@ -8,7 +8,8 @@ import { MoneyPathSection } from '../components/MoneyPath'
 import { PositionAndForecast, useMoneyPeriod } from '../components/Position'
 import { PeriodPicker } from '../components/money-period'
 import { DrillSheet, type DrillRequest } from '../components/DrillSheet'
-import { ForecastModeSwitch, ScenarioSection, useForecastMode } from '../components/Scenario'
+import { ForecastModeSwitch, useForecastMode } from '../components/Scenario'
+import { ScenarioPlanner } from '../components/ScenarioPlanner'
 import { costsDrill, incomeDrill, investmentDrill, organisationDrill, reimbursedDrill, resultDrill } from '../domain/doorklik'
 import { CostsSection } from '../components/Costs'
 import { ActualCostsSection } from '../components/ActualCosts'
@@ -18,7 +19,7 @@ import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
-import { buildIndex, planningEnd } from '../model/calendar'
+import { buildIndex } from '../model/calendar'
 import { perOrganisation, perWorkday, tipReports, toCheck, transactionList } from '../domain/geldrapport'
 import { aantalGastenZetten } from '../domain/trips'
 import { TripOverviewSheet } from '../components/TripOverview'
@@ -152,11 +153,12 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
       </div>
       {/* Bovenaan Verwacht: Gepland of Scenario. */}
       {view === 'verwacht' && <ForecastModeSwitch />}
-      {hasData && <PeriodPicker period={period} preset={preset} careerSet={careerSet} />}
-      {view === 'verwacht' && (
+      {hasData && !(view === 'verwacht' && mode === 'scenario') && <PeriodPicker period={period} preset={preset} careerSet={careerSet} />}
+      {/* Scenario: het eigen stappenplan met zijn rapport, los van de planning (die is daar alleen een voorstel). */}
+      {view === 'verwacht' && mode === 'scenario' && <ScenarioPlanner store={store} notify={notify} today={today} />}
+      {view === 'verwacht' && mode === 'gepland' && (
         <>
-          {mode === 'scenario' && <ScenarioSection store={store} notify={notify} planningEnd={planningEnd(index)} today={today} />}
-          <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} preset={preset} mode={mode} />
+          <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} />
           <SalaryOutlook store={store} />
           <CostsSection store={store} notify={notify} />
         </>

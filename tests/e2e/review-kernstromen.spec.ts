@@ -493,8 +493,8 @@ test('7. rekening en saldo, netto waarde en de verandering, beginsaldo, Verwacht
   await expect(totals).toContainText('+€ 1.000,00')
   await shot(page, '63-verandering-uitgesplitst')
 
-  // Verwacht: Gepland, dan een scenario met één blok. Periode weer op Alles: anders knipt de zelf gekozen einddatum
-  // het scenario af (dat is bedoeld gedrag; de app zegt er dan bij dat het scenario langer loopt).
+  // Verwacht: Gepland, dan een scenario als stappenplan: vanaf vandaag (de netto waarde van Mijn positie), tien weken
+  // vooruit, één blok van tien weken met € 1.000 salaris en geen kosten.
   await periodBox.getByRole('radio', { name: 'Alles' }).click()
   await page.getByRole('tab', { name: 'Verwacht' }).click()
   const modes = page.getByRole('radiogroup', { name: 'Vooruitblik' })
@@ -504,15 +504,21 @@ test('7. rekening en saldo, netto waarde en de verandering, beginsaldo, Verwacht
   await page.getByRole('button', { name: 'Scenario maken' }).click()
   await page.getByRole('dialog').getByLabel('Naam').fill('Nepplan')
   await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Aanpassen: Start' }).click()
+  await page.getByRole('dialog').getByLabel('Kijk vooruit tot').fill(iso(69))
+  await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: 'Blok toevoegen' }).click()
   const block = page.getByRole('dialog')
   await block.getByLabel('Aantal weken').fill('10')
-  await block.getByLabel('Inkomen per week').fill('1000')
+  await block.getByLabel('Salaris per week').fill('1000')
+  await block.getByLabel('Kosten per week (optioneel)').fill('0')
   await block.getByRole('button', { name: 'Opslaan' }).click()
   await expect(toast).toHaveCount(0, { timeout: 15_000 })
-  const sum = page.locator('.forecast-sum')
-  await expect(sum.getByRole('button', { name: /Scenario-inkomen/ })).toContainText('+€ 10.000,00')
-  // De som sluit: −9.500 + 10.000 = 500 (zonder kosten: die zijn nog onbekend en tellen als 0).
+  const sum = page.locator('.scenario-report .forecast-sum')
+  await expect(sum.locator('li', { hasText: 'Salaris' })).toContainText('+€ 10.000,00')
+  // De som sluit: −9.500 + 10.000 = 500.
   await expect(sum.locator('.forecast-total')).toContainText('€ 500,00')
   await shot(page, '65-verwacht-scenario')
   expect(errors).toEqual([])

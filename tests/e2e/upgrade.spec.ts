@@ -414,7 +414,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
     await page.getByRole('button', { name: L('scenario.addBlock') }).click()
     await page.getByRole('dialog').getByLabel(L('scenario.weeks')).fill('4')
-    await page.getByRole('dialog').getByLabel(L('scenario.incomePerWeek')).fill('1000')
+    await page.getByRole('dialog').getByLabel(L('scenarioPlan.salaryPerWeek')).fill('1000')
     await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect.poll(() => puts('scenarios.json.enc'), { timeout: 20_000 }).toBeGreaterThan(scenarioPuts)
@@ -507,9 +507,12 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     if (sampleBalances.length > 0) expect(sampleBalances).toEqual(expect.arrayContaining(['stand:upg-acc-1:2026-09', 'stand:upg-acc-1:2026-09-02']))
     // De vaste last staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende); de soort
     // van een uitgave, de schatting bij de weekafsluiting en de standaardbedragen komen ongeschonden over.
-    // Het scenario staat leesbaar op GitHub, met zijn blok.
+    // Het scenario staat leesbaar op GitHub, met zijn blok (het stappenplan: salaris apart, de som als inkomen).
     const scenarios = await decryptRecords(key, 'scenarios.json.enc', Uint8Array.from(Buffer.from(github.files.get('scenarios.json.enc')!.content, 'base64')))
-    expect(scenarios).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nepscenario upgrade', blocks: [expect.objectContaining({ weeks: 4, incomePerWeek: 1000 })], deletedAt: null })]))
+    expect(scenarios).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nepscenario upgrade', version: 2, blocks: [expect.objectContaining({ weeks: 4, incomePerWeek: 1000, salaryPerWeek: 1000, tipsPerWeek: 0 })], deletedAt: null })]))
+    // Het voorbeeld-stappenplan komt ongeschonden over (alleen als de vorige release het al schreef).
+    const stepped = scenarios.find((sc) => (sc as { id: string }).id === 'upg-scenario-2')
+    if (stepped) expect(stepped).toMatchObject({ version: 2, startValue: 4000, goal: { kind: 'doel', amount: 25000, by: '2028-01-31' }, blocks: [expect.objectContaining({ salaryPerWeek: 1000, tipsPerWeek: 300 })] })
     const claims = await decryptRecords(key, 'claims.json.enc', Uint8Array.from(Buffer.from(github.files.get('claims.json.enc')!.content, 'base64')))
     expect(claims).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'Nepdeclaratie upgrade', amount: 12, status: 'open', deletedAt: null })]))
     const fixed = await decryptRecords(key, 'fixedcosts.json.enc', Uint8Array.from(Buffer.from(github.files.get('fixedcosts.json.enc')!.content, 'base64')))

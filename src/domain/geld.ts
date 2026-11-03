@@ -10,7 +10,7 @@ import { recordPayout } from '../model/money-path'
 import { finalRateFields } from '../model/rates'
 import { askSalaryLater, receiveSalary, saveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { rememberCurrency, saveSettings } from '../model/settings'
-import { addOneOff, addScenarioBlock, changeOneOff, changeScenarioBlock, createScenario, deleteScenario, moveScenarioBlock, removeOneOff, removeScenarioBlock, renameScenario, setAssumptions, setScenarioDates } from '../model/scenario'
+import { addOneOff, addScenarioBlock, changeOneOff, changeScenarioBlock, convertScenario, createScenario, deleteScenario, moveScenarioBlock, removeOneOff, removeScenarioBlock, renameScenario, setAssumptions, setScenarioDates, setScenarioGoal, setScenarioStartStep } from '../model/scenario'
 import { newId, type Account, type Balance, type Currency, type Leg, type Organisation, type Settings, type Transaction, type Trip } from '../model/types'
 import { active } from '../model/derive'
 import { weekView } from '../model/weeks'
@@ -184,6 +184,9 @@ export const blokVerwijderen = opdrachtMet('blokVerwijderen', removeScenarioBloc
 export const blokVerplaatsen = opdrachtMet('blokVerplaatsen', moveScenarioBlock)
 export const aannamesOpslaan = opdrachtMet('aannamesOpslaan', setAssumptions)
 export const scenarioDatumsAanpassen = opdrachtMet('scenarioDatumsAanpassen', setScenarioDates)
+export const scenarioStartZetten = opdrachtMet('scenarioStartZetten', setScenarioStartStep)
+export const scenarioDoelZetten = opdrachtMet('scenarioDoelZetten', setScenarioGoal)
+export const scenarioOmzetten = opdrachtMet('scenarioOmzetten', convertScenario)
 export const eenmaligToevoegen = opdrachtMet('eenmaligToevoegen', addOneOff)
 export const eenmaligWijzigen = opdrachtMet('eenmaligWijzigen', changeOneOff)
 export const eenmaligVerwijderen = opdrachtMet('eenmaligVerwijderen', removeOneOff)

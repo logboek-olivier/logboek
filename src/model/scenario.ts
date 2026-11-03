@@ -1,7 +1,7 @@
 import type { Tx } from '../domain/tx'
 import { active } from './derive'
 import { toEur, type RatesFile } from './rates'
-import { newId, type Currency, type Scenario, type ScenarioAssumptions, type ScenarioBlock, type ScenarioOneOff } from './types'
+import { newId, type Currency, type Scenario, type ScenarioAssumptions, type ScenarioBlock, type ScenarioGoal, type ScenarioOneOff } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, dayCount, monthEnd } from '../basis/datum'
 
@@ -198,19 +198,35 @@ export function activeScenario(scenarios: readonly Scenario[], activeId: string 
 
 export interface BlockInput {
   weeks: number
+  /** Zonder salaris en fooi apart (een ouder blok): het hele inkomen per week. */
   incomePerWeek: number
+  salaryPerWeek?: number
+  tipsPerWeek?: number
   currency: Currency
   costsPerWeek?: number
 }
 
+const money = (n: number | undefined) => (n !== undefined && Number.isFinite(n) ? round2(Math.max(0, n)) : undefined)
+
 function cleanBlock(id: string, input: BlockInput): ScenarioBlock {
+  const salary = money(input.salaryPerWeek)
+  const tips = money(input.tipsPerWeek)
+  const split = salary !== undefined || tips !== undefined
   return {
     id,
     weeks: Math.min(MAX_WEEKS, Math.max(1, Math.round(input.weeks))),
-    incomePerWeek: round2(Math.max(0, input.incomePerWeek)),
+    // Oudere versies lezen alleen incomePerWeek: dat is altijd de som, zodat hun vooruitblik hetzelfde inkomen ziet.
+    incomePerWeek: split ? round2((salary ?? 0) + (tips ?? 0)) : round2(Math.max(0, input.incomePerWeek)),
+    ...(split ? { salaryPerWeek: salary ?? 0, tipsPerWeek: tips ?? 0 } : {}),
     currency: input.currency,
     ...(input.costsPerWeek !== undefined && Number.isFinite(input.costsPerWeek) ? { costsPerWeek: round2(Math.max(0, input.costsPerWeek)) } : {}),
   }
+}
+
+/** Salaris en fooi per week van een blok (een ouder blok zonder de twee apart: alles salaris). */
+export function blockIncome(block: ScenarioBlock): { salary: number; tips: number } {
+  if (block.salaryPerWeek !== undefined || block.tipsPerWeek !== undefined) return { salary: block.salaryPerWeek ?? 0, tips: block.tipsPerWeek ?? 0 }
+  return { salary: block.incomePerWeek, tips: 0 }
 }
 
 function current(tx: Tx, id: string): Scenario {
@@ -225,9 +241,9 @@ async function write(tx: Tx, scenario: Scenario): Promise<Scenario> {
   return next
 }
 
-/** Een nieuw scenario met een naam (en meteen actief). */
+/** Een nieuw scenario met een naam (en meteen actief): het stappenplan, vanaf vandaag. */
 export async function createScenario(tx: Tx, name: string): Promise<Scenario> {
-  const scenario: Scenario = { id: newId(), name: name.trim().slice(0, 60) || 'Scenario', blocks: [], updatedAt: tx.now, deletedAt: null }
+  const scenario: Scenario = { id: newId(), name: name.trim().slice(0, 60) || 'Scenario', blocks: [], version: 2, updatedAt: tx.now, deletedAt: null }
   await tx.put('scenarios.json.enc', scenario)
   return scenario
 }
@@ -286,6 +302,42 @@ export async function setAssumptions(tx: Tx, id: string, input: ScenarioAssumpti
   const next: Scenario = { ...current(tx, id) }
   if (Object.keys(clean).length > 0) next.assumptions = clean
   else delete next.assumptions
+  return write(tx, next)
+}
+
+/**
+ * Stap 1 van het stappenplan: begindatum (leeg = vandaag), de netto waarde bij de start (leeg = die van vandaag) en de
+ * einddatum (leeg = anderhalf jaar na de start). Eén keer ongedaan maken.
+ */
+export async function setScenarioStartStep(tx: Tx, id: string, input: { startDate: string | null; startValue: number | null; endDate: string | null }): Promise<Scenario> {
+  const next: Scenario = { ...current(tx, id), version: 2 }
+  if (input.startDate && ISO.test(input.startDate)) next.startDate = input.startDate
+  else delete next.startDate
+  if (input.endDate && ISO.test(input.endDate)) next.endDate = input.endDate
+  else delete next.endDate
+  if (input.startValue !== null && Number.isFinite(input.startValue)) next.startValue = round2(input.startValue)
+  else delete next.startValue
+  return write(tx, next)
+}
+
+/** Stap 4: het doel (waar sta ik op de einddatum, of een bedrag met eventueel een datum). */
+export async function setScenarioGoal(tx: Tx, id: string, goal: ScenarioGoal): Promise<Scenario> {
+  const clean: ScenarioGoal =
+    goal.kind === 'doel' && Number.isFinite(goal.amount) ? { kind: 'doel', amount: round2(goal.amount), ...(goal.by && ISO.test(goal.by) ? { by: goal.by } : {}) } : { kind: 'stand' }
+  return write(tx, { ...current(tx, id), goal: clean })
+}
+
+/**
+ * Een ouder scenario (blokken na de planning) omzetten naar het stappenplan, na een tik: de planning tot het einde
+ * wordt het eerste blok (met de waarden die het rapport al liet zien), begin vandaag, de oude blokken erachter met hun
+ * inkomen als salaris. Daarna is alles zelf aan te passen. Ongedaan maken zet het oude scenario terug.
+ */
+export async function convertScenario(tx: Tx, id: string, planning: BlockInput | null): Promise<Scenario> {
+  const scenario = current(tx, id)
+  if (scenario.version === 2) return scenario
+  const old = scenario.blocks.map((b) => cleanBlock(b.id, { ...b, salaryPerWeek: blockIncome(b).salary, tipsPerWeek: blockIncome(b).tips }))
+  const next: Scenario = { ...scenario, version: 2, blocks: [...(planning ? [cleanBlock(newId(), planning)] : []), ...old].slice(0, MAX_BLOCKS) }
+  delete next.startDate
   return write(tx, next)
 }
 

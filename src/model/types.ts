@@ -741,11 +741,18 @@ export interface HistoryChange {
 export interface ScenarioBlock {
   id: string
   weeks: number
+  /** Salaris plus fooi per week (wat oudere versies lezen; bij het stappenplan altijd de som van de twee hieronder). */
   incomePerWeek: number
+  /** Stappenplan (schrijfversie 11): salaris en fooi per week apart. Ontbreken ze, dan is alles salaris. */
+  salaryPerWeek?: number
+  tipsPerWeek?: number
   currency: Currency
-  /** Leeg: de gemiddelde kosten per dagsoort, zoals bij Gepland. */
+  /** Leeg: de gemiddelde kosten (de laatste twaalf weken plus de vaste lasten). */
   costsPerWeek?: number
 }
+
+/** Het doel van een scenario: waar sta ik op de einddatum, of wanneer haal ik een bedrag (en wat is daarvoor nodig). */
+export type ScenarioGoal = { kind: 'stand' } | { kind: 'doel'; amount: number; by?: string }
 
 /** Aannames van een scenario, allemaal in procent per jaar (of van het inkomen); leeg = 0, nooit verzonnen. */
 export interface ScenarioAssumptions {
@@ -783,6 +790,11 @@ export interface Scenario {
   blocks: ScenarioBlock[]
   assumptions?: ScenarioAssumptions
   oneOffs?: ScenarioOneOff[]
+  /** Stappenplan: de netto waarde bij de start in euro, zelf gekozen; leeg = de netto waarde van vandaag. */
+  startValue?: number
+  goal?: ScenarioGoal
+  /** 2 = stappenplan: alles vanaf de begindatum in eigen blokken. Ontbreekt: een ouder scenario (blokken na de planning). */
+  version?: 2
   updatedAt: string
   deletedAt: string | null
 }
