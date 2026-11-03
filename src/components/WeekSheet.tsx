@@ -77,7 +77,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
   const [boatKind, setBoatKind] = useState<BoatKind | undefined>(trip?.boatKind)
   const [base, setBase] = useState(trip?.base ?? '')
   const [charter, setCharter] = useState(trip?.charter ?? '')
-  const [filledFrom, setFilledFrom] = useState(false)
   const [area, setArea] = useState(trip?.area ?? '')
   const [organisation, setOrganisation] = useState<Organisation | ''>(trip?.organisation ?? '')
   // Nieuwe trip bij Sailing Virgins of Yacht Week: naamvoorstel met teller ("SV #4 · BVI").
@@ -117,14 +116,11 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
       set(value)
       return true
     }
-    const filled = [
-      fill(!boatModel.trim(), profile.boatModel, setBoatModel),
-      fill(!boatLength.trim(), profile.boatLengthFt ? formatNumber(profile.boatLengthFt) : undefined, setBoatLength),
-      fill(!boatKind, profile.boatKind, (v) => setBoatKind(v as BoatKind)),
-      fill(!base.trim(), profile.base, setBase),
-      fill(!charter.trim(), profile.charter, setCharter),
-    ].some(Boolean)
-    setFilledFrom(filled)
+    fill(!boatModel.trim(), profile.boatModel, setBoatModel)
+    fill(!boatLength.trim(), profile.boatLengthFt ? formatNumber(profile.boatLengthFt) : undefined, setBoatLength)
+    fill(!boatKind, profile.boatKind, (v) => setBoatKind(v as BoatKind))
+    fill(!base.trim(), profile.base, setBase)
+    fill(!charter.trim(), profile.charter, setCharter)
   }
 
   /** Herhaal vorige trip of start vanuit een sjabloon: boot, gebied, organisatie, type en de geplande etappes. */
@@ -225,7 +221,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             ))}
           </div>
         )}
-        {view?.typeSuggested && <p className="muted small">{t('week.typeSuggested')}</p>}
         <div className="two">
           <label>
             {t('week.startDate')}
@@ -254,7 +249,6 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
               <input type="text" autoComplete="off" maxLength={120} placeholder={t('boat.modelPlaceholder')} value={boatModel} onChange={(e) => setBoatModel(e.target.value)} />
             </label>
           </div>
-          {filledFrom && <p className="muted small">{t('boat.fromEarlier')}</p>}
           <div className="two">
             <div className="stack-sm">
               <label>
@@ -532,7 +526,6 @@ export function CloseWeekSheet({ store, trip, notify, onClose }: { store: Store;
               {t('week.quotes')}
               <textarea rows={4} value={quotes} onChange={(e) => setQuotes(e.target.value)} />
             </label>
-            <p className="muted small">{t('week.quotesHint')}</p>
           </>
         ) : (
           <button type="button" className="btn link" onClick={() => setGuests(true)}>

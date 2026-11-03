@@ -93,6 +93,19 @@ describe('soort en bron', () => {
     expect(careerInvestment(list, (x) => x.amount, '2026-01-01', '2026-12-31')).toMatchObject({ eur: 450, count: 1 })
   })
 
+  it('investering: ook elke uitgave bij een werk- of trainingstrip; niet bij plezier, aan land of een declaratie', () => {
+    const trips: Trip[] = [
+      { id: 'werk', name: 'Nepweek', kind: 'werk', type: 'skipper-charter', startDate: '2026-06-01', endDate: '2026-06-07', updatedAt: T, deletedAt: null },
+      { id: 'cursus', name: 'Nepcursus', kind: 'training', type: 'zelf-trainen', startDate: '2026-07-01', endDate: '2026-07-03', updatedAt: T, deletedAt: null },
+      { id: 'plezier', name: 'Nepvrienden', kind: 'plezier', type: 'zelf-cruisen', startDate: '2026-08-01', endDate: '2026-08-03', updatedAt: T, deletedAt: null },
+    ]
+    const cost = (id: string, tripId: string | undefined, amount: number, extra: Partial<Transaction> = {}): Transaction => ({ id, date: '2026-06-02', kind: 'kosten', amount, currency: 'EUR', source: 'overig', ...(tripId ? { tripId } : {}), updatedAt: T, deletedAt: null, ...extra })
+    const list = [cost('vlucht', 'werk', 300, { category: 'vervoer' }), cost('taxi', 'cursus', 40), cost('drankjes', 'plezier', 80), cost('boodschappen', 'thuis', 60), cost('declaratie', 'werk', 25, { claimId: 'c' }), cost('zonder', undefined, 10)]
+    expect(careerInvestment(list, (x) => x.amount, undefined, undefined, trips)).toMatchObject({ eur: 340, count: 2 })
+    // Ook een trip in de prullenbak (op id).
+    expect(careerInvestment(list, (x) => x.amount, undefined, undefined, [{ ...trips[0]!, deletedAt: T }])).toMatchObject({ eur: 300 })
+  })
+
   it('bewerken: de soort blijft bij een investering (eerst rood: werd gewist)', async () => {
     const s = await store()
     await put(s, 'transactions.json.enc', tx('i', { kind: 'investering', category: 'opleiding' }))

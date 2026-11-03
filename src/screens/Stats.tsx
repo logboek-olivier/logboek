@@ -1,5 +1,5 @@
 import { SailedMap } from '../components/SailedMap'
-import { BarChart3, Check, Circle, Eye, EyeOff } from 'lucide-react'
+import { BarChart3, Eye, EyeOff } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { BarChart } from '../components/BarChart'
 import { HBars } from '../components/HBars'
@@ -17,16 +17,17 @@ import { getRates, subscribeRates } from '../model/rates'
 import { currentSettings } from '../model/settings'
 import { careerInvestment } from '../model/expenses'
 import { eurOf } from '../model/money'
-import { instructorStats, moneyStats, periodFor, ryaYachtmasterOffshore, sailingStats, seasonStart, workStats, type PeriodKind, type Row } from '../model/stats'
+import { instructorStats, moneyStats, periodFor, sailingStats, seasonStart, workStats, type PeriodKind, type Row } from '../model/stats'
 import { ROLES, type BoatKind, type WeekType } from '../model/types'
 import { nameWithCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
 import type { Store } from '../storage/store'
 import { todayIso } from '../basis/datum'
 
-// Meer → Statistieken: zeilen, RYA Yachtmaster Offshore, werk, geld (pas na "Toon bedragen") en instructeur, over dit
-// jaar, dit seizoen, alles of een eigen periode. Alles afgeleid uit het logboek (src/model/stats.ts), grafieken in eigen
-// SVG. Een onderdeel zonder gegevens in de periode staat er niet.
+// Meer → Statistieken: de kerngetallen groot bovenaan, dan zeilen (nm per maand, de langste dagtocht en één verdeling
+// tegelijk), de kaart, werk, geld (pas na "Toon bedragen") en instructeur, over dit jaar, dit seizoen, alles of een eigen
+// periode. Alles afgeleid uit het logboek (src/model/stats.ts), grafieken in eigen SVG. Een onderdeel zonder gegevens in
+// de periode staat er niet.
 
 const PERIODS: { kind: PeriodKind; label: 'stats.year' | 'stats.season' | 'stats.all' | 'stats.custom' }[] = [
   { kind: 'jaar', label: 'stats.year' },
@@ -63,15 +64,13 @@ export function Stats({ store }: { store: Store }) {
   const index = useMemo(() => buildIndex(calendar, trips, legs, [], stays), [calendar, trips, legs, stays])
 
   const sailing = period ? sailingStats(trips, legs, settings, period) : null
-  const rya = ryaYachtmasterOffshore(legs)
   const work = useMemo(() => (period ? workStats(index, period, today) : null), [index, period?.from, period?.to, today])
   const money = period && showAmounts ? moneyStats(trips, legs, transactions, index, period, today) : null
-  // Investering in de zeilcarrière: opleiding en uitrusting in de periode (docs/PERIODEMODEL.md).
-  const investment = careerInvestment(transactions, eurOf, period?.from, period?.to)
+  // Investering in de zeilcarrière in de periode: opleiding, uitrusting en de kosten van werk- en trainingstrips.
+  const investment = careerInvestment(transactions, eurOf, period?.from, period?.to, trips, legs)
   const instructor = period ? instructorStats(students, effectiveCurricula(storedCurricula), trips, legs, period, lang) : null
   const season = kind === 'seizoen' ? seasonStart(trips, legs, today) : null
   const hasWork = !!work && work.werk + work.rust + work.reis + work.thuis + work.onbeschikbaar > 0
-  const hasUnavailable = !!work && work.onbeschikbaar > 0
   const hasMoney = transactions.some((tx) => tx.deletedAt === null && !!period && period.from <= tx.date && tx.date <= period.to)
   const nothing = !sailing?.days && !hasWork && !hasMoney && !instructor?.students
 
@@ -110,88 +109,76 @@ export function Stats({ store }: { store: Store }) {
       {period && nothing && <Empty icon={BarChart3}>{t('stats.empty')}</Empty>}
 
       {sailing && sailing.days > 0 && (
-        <div className="section card card-body stack">
-          <h2>{t('stats.sailing')}</h2>
-          <dl className="grid grid-3">
-            <Stat label={t('stat.total')} value={formatNm(sailing.nm)} />
-            <Stat label={t('stats.daysOnWater')} value={formatNumber(sailing.days)} />
-            <Stat label={t('stat.trips')} value={formatNumber(sailing.trips)} />
-            <Stat label={t('stat.nightHours')} value={formatHours(sailing.nightHours)} />
+        <>
+          {/* De kerngetallen groot bovenaan; de rest daaronder per onderwerp, één verdeling tegelijk. */}
+          <dl className="stats-hero">
+            <HeroStat label={t('stat.total')} value={formatNm(sailing.nm)} />
+            <HeroStat label={t('stats.daysOnWater')} value={formatNumber(sailing.days)} />
+            <HeroStat label={t('stat.trips')} value={formatNumber(sailing.trips)} />
+            <HeroStat label={t('stat.nightHours')} value={formatHours(sailing.nightHours)} />
           </dl>
-          {sailing.perMonth.length > 1 && (
-            <>
-              <h3>{t(sailing.byYear ? 'stats.nmPerYear' : 'chart.nmPerMonth')}</h3>
+          <div className="section card card-body stack">
+            <h2>{t('stats.sailing')}</h2>
+            {sailing.perMonth.length > 1 && (
               <BarChart
                 label={`${t(sailing.byYear ? 'stats.nmPerYear' : 'chart.nmPerMonth')}: ${sailing.perMonth.map((b) => `${sailing.byYear ? b.key : formatMonth(b.key)} ${formatNm(b.value)}`).join(', ')}`}
                 groups={sailing.perMonth.map((b) => ({ key: b.key, label: sailing.byYear ? `’${b.key.slice(2)}` : formatMonthShort(b.key), values: [b.value] }))}
                 format={(n) => formatNm(Math.round(n))}
                 labelEvery={Math.max(1, Math.ceil(sailing.perMonth.length / 8))}
               />
-            </>
-          )}
-          <Breakdown title={t('stats.byRole')} rows={ROLES.filter((r) => sailing.byRole[r] > 0).map((r) => ({ key: r, label: roleLabel(r), value: sailing.byRole[r] }))} format={formatNm} />
-          <Breakdown
-            title={t('stats.byWater')}
-            rows={[
-              { key: 'inland', label: t('water.inland'), value: sailing.byWater.inland },
-              { key: 'sea', label: t('water.sea'), value: sailing.byWater.sea },
-              { key: 'tidal', label: t('water.tidal'), value: sailing.byWater.tidal },
-            ].filter((r) => r.value > 0)}
-            format={formatNm}
-          />
-          <Breakdown title={t('stats.byBoat')} rows={sailing.byBoat} format={formatNm} />
-          <Breakdown title={t('stats.byKind')} rows={sailing.byKind.map((r) => ({ ...r, label: kindLabel(r.key) }))} format={formatNm} />
-          <Breakdown title={t('stats.byArea')} rows={sailing.byArea.map((r) => ({ ...r, label: r.label || t('stats.noArea') }))} format={formatNm} />
-          {sailing.longest && (
-            <div className="stack-sm">
-              <h3>{t('stats.longest')}</h3>
-              <p className="small">
-                {[formatNm(totalNm(sailing.longest)), [sailing.longest.fromPlace, sailing.longest.toPlace].filter(Boolean).join(' → '), formatDate(sailing.longest.date)].filter(Boolean).join(' · ')}
+            )}
+            {sailing.longest && (
+              <p className="stats-highlight">
+                <span className="stats-highlight-label">{t('stats.longest')}</span>
+                <strong>{formatNm(totalNm(sailing.longest))}</strong>
+                <span>{[[sailing.longest.fromPlace, sailing.longest.toPlace].filter(Boolean).join(' → '), formatDate(sailing.longest.date)].filter(Boolean).join(' · ')}</span>
               </p>
+            )}
+            <Split
+              label={t('stats.split')}
+              options={[
+                { key: 'rol', label: t('stats.splitRole'), rows: ROLES.filter((r) => sailing.byRole[r] > 0).map((r) => ({ key: r, label: roleLabel(r), value: sailing.byRole[r] })), format: formatNm },
+                {
+                  key: 'water',
+                  label: t('stats.splitWater'),
+                  rows: [
+                    { key: 'inland', label: t('water.inland'), value: sailing.byWater.inland },
+                    { key: 'sea', label: t('water.sea'), value: sailing.byWater.sea },
+                    { key: 'tidal', label: t('water.tidal'), value: sailing.byWater.tidal },
+                  ],
+                  format: formatNm,
+                },
+                { key: 'boot', label: t('stats.splitBoat'), rows: sailing.byBoat, format: formatNm },
+                { key: 'boottype', label: t('stats.splitKind'), rows: sailing.byKind.map((r) => ({ ...r, label: kindLabel(r.key) })), format: formatNm },
+                { key: 'gebied', label: t('stats.splitArea'), rows: sailing.byArea.map((r) => ({ ...r, label: r.label || t('stats.noArea') })), format: formatNm },
+                { key: 'plaatsen', label: t('stats.splitPlaces'), rows: sailing.topPlaces, format: (n) => t('stats.arrivals', { n }) },
+                {
+                  key: 'organisatie',
+                  label: t('stats.splitOrg'),
+                  rows: sailing.perOrganisation.some((o) => o.org !== '') ? sailing.perOrganisation.map((o) => ({ key: o.org || 'geen', label: `${o.org ? organisationLabel(o.org) : t('stats.noOrganisation')}${o.last ? ` · ${t('stats.upTo', { label: o.last })}` : ''}`, value: o.trips })) : [],
+                  format: (n) => t('money.trips', { n }),
+                },
+              ]}
+            />
+          </div>
+          {period && (
+            <div className="section card card-body stack">
+              <SailedMap legs={legs} places={places} from={period.from} to={period.to} />
             </div>
           )}
-          <Breakdown title={t('stats.topPlaces')} rows={sailing.topPlaces} format={(n) => t('stats.arrivals', { n })} />
-          {period && <SailedMap legs={legs} places={places} from={period.from} to={period.to} />}
-          {sailing.perOrganisation.some((o) => o.org !== '') && (
-            <Breakdown
-              title={t('stats.perOrganisation')}
-              rows={sailing.perOrganisation.map((o) => ({ key: o.org || 'geen', label: `${o.org ? organisationLabel(o.org) : t('stats.noOrganisation')}${o.last ? ` · ${t('stats.upTo', { label: o.last })}` : ''}`, value: o.trips }))}
-              format={(n) => t('money.trips', { n })}
-            />
-          )}
-        </div>
-      )}
-
-      {rya.some((item) => item.value > 0) && (
-        <div className="section card card-body stack">
-          <h2>{t('stats.rya')}</h2>
-          <ul className="rya-list">
-            {rya.map((item) => (
-              <li key={item.id} className={item.done ? 'done' : ''}>
-                <Icon icon={item.done ? Check : Circle} />
-                <span className="rya-text">
-                  <span>{t(`rya.${item.id}`, { value: item.id === 'mijlen' ? formatNm(item.value) : formatNumber(item.value), target: item.id === 'mijlen' ? formatNm(item.target) : formatNumber(item.target) })}</span>
-                  <svg className="hbar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
-                    <rect className="hbar-track" x={0} y={0} width={100} height={4} rx={2} />
-                    <rect className="hbar-fill" x={0} y={0} width={Math.min(100, (item.value / item.target) * 100)} height={4} rx={2} />
-                  </svg>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="muted small">{t('stats.ryaHint')}</p>
-        </div>
+        </>
       )}
 
       {work && hasWork && (
         <div className="section card card-body stack">
           <h2>{t('stats.work')}</h2>
+          {/* Altijd zes vakjes, zoals onder de agenda: het raster verspringt niet. */}
           <dl className="grid grid-3">
             <Stat label={t('dayType.werk')} value={formatNumber(work.werk)} />
             <Stat label={t('dayType.rust')} value={formatNumber(work.rust)} />
             <Stat label={t('dayType.reis')} value={formatNumber(work.reis)} />
             <Stat label={t('dayType.thuis')} value={formatNumber(work.thuis)} />
-            {hasUnavailable && <Stat label={t('dayType.onbeschikbaar')} value={formatNumber(work.onbeschikbaar)} />}
+            <Stat label={t('dayType.onbeschikbaar')} value={formatNumber(work.onbeschikbaar)} />
             <Stat label={t('stats.workShare')} value={percent(work.share)} />
           </dl>
           {work.months.length > 1 && work.months.length <= 24 && (
@@ -205,32 +192,6 @@ export function Stats({ store }: { store: Store }) {
               />
             </>
           )}
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t('money.month')}</th>
-                <th className="num">{t('dayType.werk')}</th>
-                <th className="num">{t('dayType.rust')}</th>
-                <th className="num">{t('dayType.reis')}</th>
-                <th className="num">{t('dayType.thuis')}</th>
-                {hasUnavailable && <th className="num">{t('stats.unavailableShort')}</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {[...work.months].reverse().filter((m) => m.werk + m.rust + m.reis + m.thuis + m.onbeschikbaar > 0).map((m) => (
-                <tr key={m.month}>
-                  <td>
-                    {formatMonthShort(m.month)} {m.month.slice(0, 4)}
-                  </td>
-                  <td className="num">{m.werk}</td>
-                  <td className="num">{m.rust}</td>
-                  <td className="num">{m.reis}</td>
-                  <td className="num">{m.thuis}</td>
-                  {hasUnavailable && <td className="num">{m.onbeschikbaar}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
 
@@ -255,17 +216,8 @@ export function Stats({ store }: { store: Store }) {
                 <dl className="stack-sm best-worst">
                   <TripLine label={t('stats.best')} trip={nameWithCounter(money.best.trip, counters.get(money.best.trip.id))} eur={money.best.eur} perDay={money.best.perDay} />
                   <TripLine label={t('stats.worst')} trip={nameWithCounter(money.worst.trip, counters.get(money.worst.trip.id))} eur={money.worst.eur} perDay={money.worst.perDay} />
-                  <p className="muted small">{t('stats.bestHint')}</p>
                 </dl>
               )}
-              <Breakdown title={t('stats.perTrip')} rows={money.perTrip.map((m) => ({ key: m.trip.id, label: nameWithCounter(m.trip, counters.get(m.trip.id)), value: m.eur }))} format={(n) => formatMoney(n, 'EUR')} />
-              <Breakdown
-                title={t('stats.perOrgMoney')}
-                rows={[
-                  ...money.perOrganisation.map((o) => ({ key: o.org || 'geen', label: o.org ? organisationLabel(o.org) : t('stats.noOrganisation'), value: o.eur })),
-                ]}
-                format={(n) => formatMoney(n, 'EUR')}
-              />
               {money.tipsPerWeek.some((w) => w.eur > 0) && (
                 <>
                   <h3>{t('chart.tipsPerWeek')}</h3>
@@ -277,12 +229,15 @@ export function Stats({ store }: { store: Store }) {
                   />
                 </>
               )}
-              <Breakdown title={t('money.tipsByGuest')} rows={money.perGuest.map((g) => ({ key: g.key, label: g.label, value: g.eur }))} format={(n) => formatMoney(n, 'EUR')} />
-              <Breakdown title={t('money.tipsByCountry')} rows={money.perCountry.map((g) => ({ key: g.key || 'geen', label: g.label || t('money.noCountry'), value: g.eur }))} format={(n) => formatMoney(n, 'EUR')} />
-              <Breakdown
-                title={`${t('money.tipsByType')} · ${t('money.perGuest').toLowerCase()}`}
-                rows={money.perTripType.map((g) => ({ key: g.key, label: weekTypeLabel(g.key as WeekType), value: g.perGuest ?? 0 }))}
-                format={(n) => formatMoney(n, 'EUR')}
+              <Split
+                label={t('stats.split')}
+                options={[
+                  { key: 'trip', label: t('stats.splitTrip'), rows: money.perTrip.map((m) => ({ key: m.trip.id, label: nameWithCounter(m.trip, counters.get(m.trip.id)), value: m.eur })), format: (n) => formatMoney(n, 'EUR') },
+                  { key: 'organisatie', label: t('stats.splitOrg'), rows: money.perOrganisation.map((o) => ({ key: o.org || 'geen', label: o.org ? organisationLabel(o.org) : t('stats.noOrganisation'), value: o.eur })), format: (n) => formatMoney(n, 'EUR') },
+                  { key: 'gast', label: t('stats.splitGuest'), rows: money.perGuest.map((g) => ({ key: g.key, label: g.label, value: g.eur })), format: (n) => formatMoney(n, 'EUR') },
+                  { key: 'land', label: t('stats.splitCountry'), rows: money.perCountry.map((g) => ({ key: g.key || 'geen', label: g.label || t('money.noCountry'), value: g.eur })), format: (n) => formatMoney(n, 'EUR') },
+                  { key: 'soort', label: t('stats.splitTripType'), rows: money.perTripType.map((g) => ({ key: g.key, label: weekTypeLabel(g.key as WeekType), value: g.perGuest ?? 0 })), format: (n) => formatMoney(n, 'EUR') },
+                ]}
               />
             </>
           )}
@@ -331,6 +286,45 @@ function percent(share: number | null): string {
 
 function passRate(passed: number, exams: number): string {
   return exams > 0 ? `${formatNumber(Math.round((passed / exams) * 100))}%` : '–'
+}
+
+/** Een kerngetal groot bovenaan. */
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="stats-hero-item">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  )
+}
+
+interface SplitOption {
+  key: string
+  label: string
+  rows: Row[]
+  format: (n: number) => string
+}
+
+/** Eén verdeling tegelijk (per rol, per boot, …) met knoppen erboven: minder lijsten onder elkaar. Opties zonder regels vallen weg. */
+function Split({ label, options }: { label: string; options: SplitOption[] }) {
+  const usable = options.map((o) => ({ ...o, rows: o.rows.filter((r) => r.value > 0).slice(0, TOP) })).filter((o) => o.rows.length > 0)
+  const [chosen, setChosen] = useState<string | null>(null)
+  if (usable.length === 0) return null
+  const current = usable.find((o) => o.key === chosen) ?? usable[0]!
+  return (
+    <div className="stack-sm stats-split">
+      {usable.length > 1 && (
+        <div className="type-buttons" role="radiogroup" aria-label={label}>
+          {usable.map((o) => (
+            <button key={o.key} type="button" role="radio" aria-checked={o.key === current.key} className={`chip${o.key === current.key ? ' active' : ''}`} onClick={() => setChosen(o.key)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <HBars label={current.label} rows={current.rows} format={current.format} />
+    </div>
+  )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

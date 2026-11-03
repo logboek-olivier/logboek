@@ -1,4 +1,4 @@
-import { Pencil, X } from 'lucide-react'
+import { Pencil, X, ChevronLeft } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Icon } from './Icon'
 import { onBack } from '../back'
@@ -14,7 +14,23 @@ const openSheets: object[] = []
  * `onEdit`: een leesweergave. Rechtsboven dan een potloodknop naar het bewerkscherm (verwijderen zit pas daar); zo
  * opent tikken op iets altijd eerst de weergave en verandert er niets per ongeluk.
  */
-export function Sheet({ title, onClose, onEdit, children }: { title: string; onClose: () => void; onEdit?: () => void; children: ReactNode }) {
+export function Sheet({
+  title,
+  onClose,
+  onEdit,
+  kicker,
+  back,
+  children,
+}: {
+  title: string
+  onClose: () => void
+  onEdit?: () => void
+  /** Wat voor blad dit is ("Dag", "Trip"), klein boven de titel: zo is altijd duidelijk waar je staat. */
+  kicker?: string
+  /** Terug naar het blad waar je vandaan kwam (een trip die vanaf een dag geopend is: terug naar die dag). */
+  back?: { label: string; onBack: () => void }
+  children: ReactNode
+}) {
   const panel = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
@@ -44,8 +60,17 @@ export function Sheet({ title, onClose, onEdit, children }: { title: string; onC
     <div className="sheet-layer">
       <div className="sheet-scrim" onClick={onClose} aria-hidden="true" />
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} ref={panel} tabIndex={-1}>
+        {back && (
+          <button type="button" className="btn link small sheet-back" onClick={back.onBack}>
+            <Icon icon={ChevronLeft} />
+            {back.label}
+          </button>
+        )}
         <header className="sheet-header">
-          <h2>{title}</h2>
+          <h2>
+            {kicker && <span className="sheet-kicker">{kicker}</span>}
+            {title}
+          </h2>
           {onEdit && (
             <button type="button" className="btn icon sheet-edit" aria-label={t('common.edit')} onClick={onEdit}>
               <Icon icon={Pencil} />

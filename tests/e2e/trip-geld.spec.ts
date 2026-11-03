@@ -121,7 +121,6 @@ test('geen salaris, fooi toevoegen bij de trip, resultaat van de trip en zeilgel
   // Geld: zeilgeld als resultaat, met uitleg; geen salaris te ontvangen.
   await openMore(page, 'Geld', 'Meer')
   await expect(page.getByRole('main')).toContainText('Zeilgeld: resultaat')
-  await expect(page.getByRole('main')).toContainText('Dit is niet je netto waarde')
   // Geen rekeningen en niets te ontvangen (geen salaris, geen contant meer): geen Mijn positie.
   await expect(page.locator('.position')).toHaveCount(0)
   expect(errors).toEqual([])

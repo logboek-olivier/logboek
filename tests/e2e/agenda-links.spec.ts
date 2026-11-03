@@ -77,7 +77,7 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       for (const n of [14, 15]) await expect(day(n)).toHaveClass(/day-werk/)
       await expect(page.locator('.cal-week').nth(2).locator('.cal-bar')).toHaveText('Nepweek Koppel')
       await day(15).click()
-      await expect(sheet.getByText(L('day.source.trip'))).toBeVisible()
+      await expect(sheet.locator('.day-view-trip')).toContainText(L('day.partOfTrip'))
       await sheet.getByRole('button', { name: L('common.edit') }).click()
       await sheet.getByRole('radio', { name: L('dayType.rust') }).click()
       await expect(page.getByText(L('day.inTrip', { name: 'Nepweek Koppel' }))).toBeVisible()
@@ -103,9 +103,11 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
       await expect(page.locator('.agenda-income')).not.toContainText('300')
       await page.getByRole('button', { name: L('week.showAmounts') }).click()
-      // 6, 7 en 8 maart zijn tot en met vandaag werk: € 300 / 3 = € 100 per werkdag.
+      // De lopende maand toont het verwachte inkomen over de hele maand: € 300 over de 10 werkdagen van de trip.
+      await expect(page.locator('.agenda-income')).toContainText(L('calendar.expectedIncome'))
       await expect(page.locator('.agenda-income')).toContainText(lang === 'nl' ? '€ 300,00' : '€300.00')
-      await expect(page.locator('.agenda-income')).toContainText(L('calendar.perWorkday', { amount: lang === 'nl' ? '€ 100,00' : '€100.00' }))
+      await expect(page.locator('.agenda-income')).toContainText(L('calendar.perWorkday', { amount: lang === 'nl' ? '€ 30,00' : '€30.00' }))
+      // Geld per werkdag telt alleen de werkdagen tot en met vandaag: 6, 7 en 8 maart, € 100 per werkdag.
       await openMore(page, L('nav.money'), L('nav.more'))
       const table = page.locator('.workday-table')
       await expect(table).toContainText(lang === 'nl' ? '€ 100,00' : '€100.00')

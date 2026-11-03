@@ -64,7 +64,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const at = (text: string) => order.indexOf(text)
       expect(at(L('period.routeAndDays'))).toBeGreaterThanOrEqual(0)
       expect(at(L('period.routeAndDays'))).toBeLessThan(at(L('checklist.section')))
-      await expect(page.locator('.trip-head')).toContainText(`${L('periodKind.werk')} · ${L('weekType.skipper-charter')}`)
+      // De soort staat in Tripgegevens (een tik op de kop), niet meer in de kop zelf.
+      await page.locator('.trip-head-summary').click()
+      await expect(page.getByRole('dialog', { name: L('trip.details') })).toContainText(`${L('periodKind.werk')} · ${L('weekType.skipper-charter')}`)
+      await page.getByRole('dialog', { name: L('trip.details') }).getByRole('button', { name: L('common.close') }).click()
       await expect(page.locator('.leg-row')).toHaveCount(1)
       await shots(page, 'deze-trip', lang, true)
 
@@ -74,7 +77,9 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await sheet.getByLabel(L('field.amount')).fill('20')
       await sheet.getByRole('button', { name: L('common.save') }).click()
       await expect(sheet).toHaveCount(0)
-      await expect(page.locator('.period-page')).toContainText(L('week.amountsHidden', { n: 1 }))
+      // Bedragen blijven verborgen tot "Toon bedragen"; de uitgave staat er pas na die tik.
+      await expect(page.locator('.period-page .period-money')).not.toContainText('20')
+      await expect(page.locator('.period-page').getByRole('button', { name: L('week.showAmounts') }).first()).toBeVisible()
       // Geld komt na de checklists, in de vaste volgorde.
       const after = await page.locator('.period-page h2').allTextContents()
       expect(after.indexOf(L('checklist.section'))).toBeLessThan(after.indexOf(L('week.money')))

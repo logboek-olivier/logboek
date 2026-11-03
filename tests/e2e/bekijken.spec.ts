@@ -37,11 +37,16 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
     await expect(page.locator('.add-layer')).toHaveCount(0)
   }
 
-  // Deze trip: kop met teller, gebied, periode en model; plaatsen zonder pin staan onder de kaart.
+  // Deze trip: kop met teller en naam, de datums en de boot; plaatsen zonder pin staan onder de kaart.
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
   const head = page.locator('.trip-head')
-  await expect(head.locator('h2')).toContainText('SV #1 · Nepgebied · ')
-  await expect(head.locator('h2')).toContainText('Nepmodel 40')
+  await expect(head.locator('h2')).toContainText('SV #1 · Nepgebied')
+  await expect(head).toContainText('Nepboot')
+  await page.locator('.trip-head-summary').click()
+  const details = page.getByRole('dialog', { name: 'Tripgegevens' })
+  await expect(details).toContainText('Nepmodel 40')
+  await details.getByRole('button', { name: 'Sluiten' }).click()
+  await expect(details).toHaveCount(0)
   await expect(page.locator('.trip-route')).toContainText('Plaatsen zonder pin')
   await expect(page.locator('.trip-route')).toContainText('Vis')
 

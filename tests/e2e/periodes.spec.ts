@@ -53,7 +53,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(sheet.locator('.day-trip')).toContainText(L('periodKind.thuis'))
       await sheet.getByRole('button', { name: L('common.close') }).click()
       await day(3).click()
-      await expect(sheet.locator('.day-view-type')).toContainText(L('day.source.periode'))
+      // De dag hoort bij een periode: een eigen kaart met "Hele periode bekijken".
+      await expect(sheet.locator('.day-view-trip')).toContainText(L('day.partOfPeriod'))
       await expect(sheet.locator('.day-view-trip')).toContainText('6')
       await shots(page, 'dagkaart', lang)
       // Midden erin een dagtoestand: de periode splitst.

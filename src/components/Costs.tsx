@@ -68,7 +68,6 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
         </h2>
       </div>
       <h3>{t('costs.fixed')}</h3>
-      <p className="muted small">{t('actual.fixedHint')}</p>
       {fixed.length === 0 ? (
         <p className="muted small">{t('costs.noFixed')}</p>
       ) : (
@@ -113,7 +112,6 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
           )
         })}
       </ul>
-      <p className="muted small">{t('costs.variableHint')}</p>
       <button type="button" className="btn small" onClick={() => setDefaults(true)}>
         {t('costs.defaults')}
       </button>
@@ -218,7 +216,6 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
           {t('costs.fromMonth')}
           <input type="month" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
-        {cost && <p className="muted small">{t('costs.fromHint')}</p>}
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!valid || busy}>
             {t('common.save')}
@@ -279,7 +276,6 @@ function DefaultsSheet({ store, notify, onClose }: { store: Store; notify: Notif
   return (
     <Sheet title={t('costs.defaults')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
-        <p className="muted small">{t('costs.defaultsHint')}</p>
         {COST_DAY_TYPES.map((type) => (
           <label key={type}>
             {t('costs.defaultFor', { type: t(`dayType.${type}`) })}

@@ -1,5 +1,5 @@
 import { isBooked } from '../domain/geldmodel'
-import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Plus, Route } from 'lucide-react'
+import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Plus, Route, ChevronRight } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatDateShort, formatHours, formatMoney, formatNm, formatWeekday } from '../format'
 import { t, useLang } from '../i18n'
@@ -330,9 +330,7 @@ function DayIncome({ store, date }: { store: Store; date: string }) {
             )
           })}
         </ul>
-      ) : (
-        <p className="muted small">{t('day.amountsHidden', { n: income.length })}</p>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -407,30 +405,43 @@ export function DayView({
   }
 
   return (
-    <Sheet title={date.slice(0, 4) === today.slice(0, 4) ? formatWeekday(date) : `${formatWeekday(date)} ${date.slice(0, 4)}`} onClose={onClose} onEdit={() => setEditing(true)}>
+    <Sheet kicker={t('sheet.day')} title={date.slice(0, 4) === today.slice(0, 4) ? formatWeekday(date) : `${formatWeekday(date)} ${date.slice(0, 4)}`} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack view day-view">
         <p className="day-view-type">
           {info.type ? <span className={`chip-static day-chip day-${info.type}`}>{t(dayLabelKey(info))}</span> : <span className="muted">{t('dayType.leeg')}</span>}
-          <span className="muted small"> {t(`day.source.${info.source ?? 'leeg'}`)}</span>
         </p>
+        {/* De trip of periode van deze dag als duidelijke link: een tik opent de hele trip, met terug naar deze dag. */}
         {info.trips.map((v) => (
-          <button key={v.trip.id} type="button" className="row-button day-view-trip" onClick={() => onOpenTrip?.(v.trip)} disabled={!onOpenTrip}>
+          <button key={v.trip.id} type="button" className="card day-view-trip" onClick={() => onOpenTrip?.(v.trip)} disabled={!onOpenTrip}>
             <span className="row-main">
+              <span className="day-view-trip-label">{t('day.partOfTrip')}</span>
               <span className="row-title">{nameWithCounter(v.trip, counters.get(v.trip.id))}</span>
-              <span className="muted small">{formatDateRange(v.startDate, v.endDate)}</span>
+              <span className="muted">{formatDateRange(v.startDate, v.endDate)}</span>
             </span>
+            {onOpenTrip && (
+              <span className="day-view-trip-open">
+                {t('day.openTrip')}
+                <Icon icon={ChevronRight} />
+              </span>
+            )}
           </button>
         ))}
         {info.stay && (
-          <button type="button" className="row-button day-view-trip" onClick={() => onOpenStay?.(info.stay!)} disabled={!onOpenStay}>
+          <button type="button" className="card day-view-trip" onClick={() => onOpenStay?.(info.stay!)} disabled={!onOpenStay}>
             <span className="row-main">
+              <span className="day-view-trip-label">{t('day.partOfPeriod')}</span>
               <span className="row-title">{stayName(info.stay)}</span>
-              <span className="muted small">{formatDateRange(info.stay.startDate, info.stay.endDate)}</span>
+              <span className="muted">{formatDateRange(info.stay.startDate, info.stay.endDate)}</span>
             </span>
+            {onOpenStay && (
+              <span className="day-view-trip-open">
+                {t('day.openPeriod')}
+                <Icon icon={ChevronRight} />
+              </span>
+            )}
           </button>
         )}
         <RouteMap route={route} small />
-        {route.unpinned.length > 0 && route.stops.length > 0 && <p className="muted small">{t('day.unpinned', { names: route.unpinned.join(', ') })}</p>}
         <ViewRows
           rows={[
             [t('day.route'), dayLegs.length > 0 && dayLegs.map((l) => [l.fromPlace, l.toPlace].filter(Boolean).join(' → ')).join(' · ')],

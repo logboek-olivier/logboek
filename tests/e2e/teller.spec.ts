@@ -62,10 +62,9 @@ test('teller per organisatie: twijfel bevestigen, naamvoorstel, beginnummer, kop
   await expect(page.locator('.toast')).toHaveText('Teller opgeslagen')
   await expect(page.getByRole('button', { name: /^Teller per organisatie/ })).toContainText('SV #4 · YW #10')
 
-  // Kop van Deze trip en de komende trips: de nummers schuiven mee, ook in een naam die al een nummer had.
+  // Kop van Deze trip: het nummer schuift mee (de komende trips staan niet meer op Deze trip, wel in de agenda).
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
-  await expect(page.locator('.trip-head h2')).toContainText(/^SV #4 Nepweek · /)
-  await expect(page.locator('main')).toContainText('YW #10 · Nepgebied')
+  await expect(page.locator('.trip-head h2')).toHaveText(/^SV #4 Nepweek/)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/teller/deze-trip.png' })
 

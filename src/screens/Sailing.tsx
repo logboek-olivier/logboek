@@ -145,7 +145,6 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
       {withoutDays.length > 0 && (
         <div className="section">
           <h2>{t('sailing.withoutDays')}</h2>
-          <p className="muted small">{t('sailing.withoutDaysHint')}</p>
           <ul className="rows">
             {withoutDays.map((trip) => (
               <li key={trip.id} className="row-item">

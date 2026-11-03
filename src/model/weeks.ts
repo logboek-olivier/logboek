@@ -148,6 +148,18 @@ export function activeWeek(trips: readonly Trip[], settings: Settings, today: st
   return open.find((t) => t.datesFromDays && t.startDate && t.endDate && t.startDate <= today && today <= endedFor(t, t.endDate)) ?? null
 }
 
+/**
+ * De trip van vandaag (voor Vandaag): de lopende trip alleen als vandaag binnen zijn datums valt (bij een trip die de
+ * dagen volgt tot drie dagen na de laatste dag). Een trip die voorbij is maar nog niet afgerond, staat dan niet meer
+ * bovenaan Vandaag; die blijft in Deze trip om af te ronden.
+ */
+export function tripOfToday(trips: readonly Trip[], settings: Settings, today: string = todayIso()): Trip | null {
+  const week = activeWeek(trips, settings, today)
+  if (!week?.startDate || !week.endDate) return null
+  const end = week.datesFromDays ? endedFor(week, week.endDate) : week.endDate
+  return week.startDate <= today && today <= end ? week : null
+}
+
 /** Komende trips (start na vandaag), eerstvolgende eerst. */
 export function upcomingTrips(trips: readonly Trip[], today: string = todayIso()): Trip[] {
   return active(trips)

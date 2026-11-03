@@ -37,23 +37,27 @@ test('Deze trip: eerdere en komende trips invoeren, bootgegevens van een bekende
   await page.screenshot({ path: 'screenshots/trips/nieuwe-trip.png', fullPage: true })
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByText('Geen lopende trip.')).toBeVisible()
-  const upcoming = page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Komende trips' }) })
-  await expect(upcoming).toContainText('Nepbaai')
-  await expect(upcoming).toContainText('over 20 dagen')
-  await expect(upcoming).toContainText('Nepster · Nepcat 45 · 45 ft (13,7 m) · Catamaran')
+  // Deze trip toont geen komende trips meer.
+  await expect(page.getByRole('heading', { name: 'Komende trips' })).toHaveCount(0)
 
   // Lopende trip, begonnen drie dagen geleden, met dezelfde boot: model, lengte, soort, basis en charter komen vanzelf.
   await page.getByRole('button', { name: 'Nieuwe trip' }).click()
   sheet = page.getByRole('dialog')
   await sheet.getByLabel('Startdatum').fill(iso(-3))
   await sheet.getByLabel('Bootnaam', { exact: true }).fill('Nepster')
-  await expect(sheet.getByText('Gegevens van de vorige trip met deze boot ingevuld.')).toBeVisible()
   await expect(sheet.getByLabel('Model', { exact: true })).toHaveValue('Nepcat 45')
   await expect(sheet.getByLabel('Basis', { exact: true })).toHaveValue('Nepbaai')
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByRole('heading', { name: 'Deze trip' })).toBeVisible()
-  await expect(page.locator('.trip-head')).toContainText('Nepster · Nepcat 45 · 45 ft (13,7 m)')
-  await expect(page.locator('.trip-head')).toContainText('Nepbaai')
+  // De kop is rustig (naam, datums, boot); de rest staat na een tik in Tripgegevens.
+  await expect(page.locator('.trip-head')).toContainText('Nepster')
+  await expect(page.locator('.trip-head')).not.toContainText('45 ft')
+  await page.locator('.trip-head-summary').click()
+  const details = page.getByRole('dialog', { name: 'Tripgegevens' })
+  await expect(details).toContainText('Nepcat 45')
+  await expect(details).toContainText('45 ft (13,7 m)')
+  await expect(details).toContainText('Nepbaai')
+  await details.getByRole('button', { name: 'Sluiten' }).click()
 
   // Vergeten dagen: één tik opent Dag met die datum; de eerste dag begint op de basis.
   await expect(page.getByText('4 dagen in deze trip nog niet gelogd')).toBeVisible()
