@@ -25,6 +25,7 @@ export type Rule =
   | 'planning-zonder-trip'
   | 'declaratie-zonder-trip'
   | 'student-zonder-cursus'
+  | 'planning-zonder-cursus'
   | 'scenario-weg'
 
 export interface Violation {
@@ -68,12 +69,14 @@ export function violations(reader: Reader): Violation[] {
     else if (trip.startDate && trip.endDate && trip.startDate > trip.endDate) out.push(v('trip-datums', 'trips.json.enc', trip.id))
   }
   const salaries = new Map<string, number>()
+  // Geld van een declaratie volgt zijn declaratie; is die weg, dan is het weer gewoon geld dat een periode nodig heeft.
+  const liveClaims = new Set(reader.list('claims.json.enc').map((c) => c.id))
   for (const tx of money) {
     if (!isDate(tx.date)) out.push(v('datum', 'transactions.json.enc', tx.id))
     // Een salaris mag 0 zijn (geen salaris, of nog geen bedrag); al het andere geld heeft een bedrag.
     if (!(finite(tx.amount) && (tx.amount > 0 || (tx.kind === 'loon' && tx.amount === 0)))) out.push(v('getal', 'transactions.json.enc', tx.id))
     // Geld bij een eerder seizoen hoort bij geen tocht of periode, en dat klopt.
-    if (!tx.claimId && !tx.fixedCostId && !tx.season && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
+    if (!(tx.claimId && liveClaims.has(tx.claimId)) && !tx.fixedCostId && !tx.season && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
     if (tx.kind === 'loon' && tx.tripId) {
       salaries.set(tx.tripId, (salaries.get(tx.tripId) ?? 0) + 1)
       if (salaryStatus(tx) === 'ontvangen' && tx.amount === 0) out.push(v('salaris-zonder-bedrag', 'transactions.json.enc', tx.id))
@@ -90,6 +93,7 @@ export function violations(reader: Reader): Violation[] {
   // Een student (of deelnemer) met een cursus die weg is: de checklist heeft dan geen onderwerpen meer.
   const courses = new Set(effectiveCurricula(reader.get('curricula.json.enc')).map((c) => c.id))
   for (const student of students) if (!student.archivedAt && student.curriculumId && !courses.has(student.curriculumId)) out.push(v('student-zonder-cursus', 'students.json.enc', student.id))
+  for (const plan of reader.list('plans.json.enc')) for (const g of plan.groups) if (g.curriculumId && !courses.has(g.curriculumId)) out.push(v('planning-zonder-cursus', 'plans.json.enc', plan.id, g.id))
   const settings = currentSettings(reader.list('settings.json.enc'))
   if (settings.activeWeekId && !live.has(settings.activeWeekId)) out.push(v('lopende-trip-weg', 'settings.json.enc', 'settings'))
   // Het actieve scenario bestaat niet meer: de app valt zelf terug (activeScenario), maar het veld blijft fout staan.

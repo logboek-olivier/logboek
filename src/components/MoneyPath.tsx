@@ -126,7 +126,7 @@ export function PayoutSheet({ store, notify, onClose, org: initialOrg, preset }:
   const selected = chosen ? open.filter((x) => chosen.has(x.id)) : payoutSuggestion(trips, legs, settings, org, date, transactions)
   const tripCurrencies = new Set(selected.map((x) => expectedSalary(x, transactions)!.currency))
   const currency = pickedCurrency ?? (tripCurrencies.size === 1 ? [...tripCurrencies][0]! : 'EUR')
-  const expected = selected.length > 0 ? expectedPayout(selected, legs, transactions, currency, date, rates) : null
+  const expected = selected.length > 0 ? expectedPayout(selected, transactions, currency, date, rates) : null
   // Het verwachte bedrag staat er al, zolang Olivier zelf niets typt.
   const amountText = typedAmount ?? (expected !== null ? amountInput(expected) : '')
   const parsed = parseAmount(amountText)
@@ -341,7 +341,7 @@ export function PayoutQuestions({ store, notify }: { store: Store; notify: Notif
     if (busy) return
     const currencies = new Set(q.trips.map((x) => expectedSalary(x, transactions)!.currency))
     const currency = currencies.size === 1 ? [...currencies][0]! : 'EUR'
-    const expected = expectedPayout(q.trips, legs, transactions, currency, today, getRates())
+    const expected = expectedPayout(q.trips, transactions, currency, today, getRates())
     // Zonder koers is het verwachte bedrag niet op te tellen: dan het bedrag zelf invullen.
     if (expected === null) return setOther(q)
     setBusy(true)

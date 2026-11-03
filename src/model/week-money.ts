@@ -31,11 +31,10 @@ export async function applyMoneyStep(store: Tx, step: MoneyStep, today: string, 
     if (!trip.organisation || !expectedSalary(trip, all)) continue
     byOrg.set(trip.organisation, [...(byOrg.get(trip.organisation) ?? []), trip])
   }
-  const legs = store.list('legs.json.enc')
   for (const [org, trips] of byOrg) {
     const currencies = new Set(trips.map((x) => expectedSalary(x, all)!.currency))
     const currency: Currency = currencies.size === 1 ? [...currencies][0]! : 'EUR'
-    const amount = expectedPayout(trips, legs, all, currency, today, rates)
+    const amount = expectedPayout(trips, all, currency, today, rates)
     if (amount === null || amount <= 0) {
       skipped.push(org)
       continue

@@ -376,6 +376,12 @@ export async function savePlan(store: Tx, plan: WeekPlan): Promise<void> {
   await store.put('plans.json.enc', { ...plan, updatedAt: new Date().toISOString(), deletedAt: null })
 }
 
+/** De cursus van een groep zetten (Nakijken: planning met een cursus die niet meer bestaat). */
+export async function setGroupCurriculum(store: Tx, plan: WeekPlan, groupId: string, curriculumId: string): Promise<void> {
+  const latest = store.list('plans.json.enc').find((p) => p.id === plan.id) ?? plan
+  await savePlan(store, { ...latest, groups: latest.groups.map((g) => (g.id === groupId ? { ...g, curriculumId } : g)) })
+}
+
 /** De trip van een planning wijzigen (Nakijken: planning zonder trip); zonder trip hoort ze bij de trip van haar startdatum. */
 export async function setPlanTrip(store: Tx, plan: WeekPlan, tripId: string | null): Promise<void> {
   const latest = store.list('plans.json.enc').find((p) => p.id === plan.id) ?? plan

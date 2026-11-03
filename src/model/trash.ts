@@ -38,6 +38,7 @@ const DELETE_COMMANDS: Record<string, TrashKind> = {
   dagVerwijderen: 'dag',
   geldVerwijderen: 'geld',
   declaratieVerwijderen: 'geld',
+  vasteLastVerwijderen: 'geld',
   deelnemerVerwijderen: 'deelnemer',
   plaatsVerwijderen: 'plaats',
   bootVerwijderen: 'boot',
@@ -140,6 +141,7 @@ function fromEntry(reader: Reader, entry: HistoryEntry): TrashItem | null {
   if (!main || find(reader, main.path, main.id)?.deletedAt == null) return null
   const record = before(reader, main)
   if (kind === 'dag') return item(legLabel(record as Partial<Leg>), String(record.date ?? ''))
+  if (kind === 'geld' && main.path === 'fixedcosts.json.enc') return item(String(record.name ?? ''), null)
   if (kind === 'geld') return item(moneyLabel(record as Partial<Transaction>), String(record.date ?? ''))
   if (kind === 'plaats') return item(String(record.name ?? ''), null)
   return item(String(record.title ?? ''), null)

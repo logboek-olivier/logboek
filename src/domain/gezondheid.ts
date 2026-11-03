@@ -20,6 +20,7 @@ export function fixedAt(violation: Violation): 'nakijken' | 'geld' | null {
     case 'planning-zonder-trip':
     case 'declaratie-zonder-trip':
     case 'student-zonder-cursus':
+    case 'planning-zonder-cursus':
       return 'nakijken'
     case 'salaris-zonder-bedrag':
     case 'meerdere-salarissen':

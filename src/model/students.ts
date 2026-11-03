@@ -184,7 +184,7 @@ export function scrubbed(student: Student, now: string): Student {
  * maken zet alles uit het geheugen terug, alleen binnen de melding.
  */
 export async function deleteStudents(store: Tx, students: readonly Student[]): Promise<void> {
-  const now = new Date().toISOString()
+  const now = store.now
   const ids = new Set(students.map((s) => s.id))
   // Ook verwijderde trips (in de prullenbak) en verwijderde fooien: de naam mag nergens blijven staan.
   const trips = store.get('trips.json.enc').filter((t) => t.participants?.some((p) => ids.has(p.id)))
@@ -192,6 +192,9 @@ export async function deleteStudents(store: Tx, students: readonly Student[]): P
   await store.putMany('students.json.enc', students.map((s) => scrubbed(s, now)))
   if (trips.length > 0) await store.putMany('trips.json.enc', trips.map((t) => ({ ...t, participants: (t.participants ?? []).filter((p) => !ids.has(p.id)), updatedAt: now })))
   if (tips.length > 0) await store.putMany('transactions.json.enc', tips.map((tx) => ({ ...tx, tipFrom: withoutPeople(tx.tipFrom!, ids), updatedAt: now })))
+  // En uit de groepen van een planning (anders krimpt een groep stil).
+  const plans = store.get('plans.json.enc').filter((p) => p.deletedAt === null && p.groups.some((g) => g.studentIds.some((id) => ids.has(id))))
+  if (plans.length > 0) await store.putMany('plans.json.enc', plans.map((p) => ({ ...p, groups: p.groups.map((g) => ({ ...g, studentIds: g.studentIds.filter((id) => !ids.has(id)) })), updatedAt: now })))
   // En uit de geschiedenis (deelnemers staan daar in de lijst van hun trip, vooraf en erna).
   const without = (value: unknown) => (Array.isArray(value) ? (value as Participant[]).filter((p) => !ids.has(p.id)) : value)
   const touched = store.get(HISTORY_PATH).filter((h) => h.changes.some((c) => [c.before?.participants, c.after.participants].some((list) => Array.isArray(list) && (list as Participant[]).some((p) => ids.has(p.id)))))

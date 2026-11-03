@@ -197,6 +197,22 @@ niet herhaald, dus **vermoeden** voor wat de ruleset betreft; dat elke push op `
 (`deploy.yml`). Voorstel: een `github-pages`-environment met Olivier als verplichte reviewer, of de tag-deploy uit V-2;
 tweestapsverificatie met passkey. Omvang S (instellingen) en opgenomen in V-2/V-3.
 
+### Nacontrole (3 november, na #137)
+
+Een aparte review-agent die de code niet schreef, controleerde na de vier PR's drie dingen: dezelfde omrekening en organisatie op elk geldscherm, niets stil kwijt bij verwijderen, en de upgradetest voor de nieuwe velden. Wat hij vond, is **opgelost in #137**:
+
+- `expectedIn` in `src/model/money-path.ts` rekende het verwachte salaris van een uitbetaling zelf om (koers van het tripeinde, zonder `receivedEur`/`amountEur`); nu `eurValue`, dus hetzelfde bedrag als de tripkaart en Mijn positie.
+- `moneyStats` in `src/model/stats.ts` kende alleen levende trips: geld van een trip in de prullenbak viel in Statistieken terug op de oude bron; nu `tripsById` zoals Geld en het jaaroverzicht.
+- De fooischatting (`tipAverages`, de vooruitblik) groepeerde op `trip.organisation` in plaats van `organisationOfTrip`: een trip met de organisatie alleen in de naam telde niet mee.
+- De vooruitblik waardeerde een verwacht salaris met het tripeinde van nu als datum; nu de datum van het salaris, zoals `receivableValue`.
+- Geld van een verwijderde declaratie (`claimId` naar een tombstone) stond nergens; nu telt alleen een levende declaratie als uitzondering op "geld zonder periode".
+- Vaste last "behouden": de geboekte maanden hangen aan de periode van hun dag (anders Nakijken) en de keuzetekst zegt dat ze als losse kosten tellen; "alles" staat nu ook in Meer → Prullenbak (`vasteLastVerwijderen` in `DELETE_COMMANDS`).
+- Een student wissen haalt zijn id ook uit de groepen van een planning; een planningsgroep met een cursus die weg is, is een nakijk-invariant (`planning-zonder-cursus`) met een punt in Nakijken.
+- `saveSettings` bouwde het `laatst:`-record alleen uit de bekende velden op en gooide een veld van een nieuwere build weg; nu `keepUnknownFields`, met een test. De upgradetest controleert nu ook dat `laatst:<apparaat>.lastCurrencies` na het bijwerken compleet is.
+- Tombstones van `deleteFixedCost`, `deleteClaim`, `deleteStudents` en `deleteAccount` dragen de tijd van de transactie (`store.now`), dezelfde als de geschiedenisregel.
+
+Niet gewijzigd: `Claim.documentId` naar een verwijderd document (zichtbaar als "bonnetje weg"), en `putSessionKey`/`saveOutbox` als testgereedschap.
+
 ### Later
 
 **G-4 · Eén rekening zonder koers laat de hele verandering en vooruitblik verdwijnen.** **Opgelost in #135** (een valuta zonder koers staat apart (`unpriced`); het eurodeel van de verandering en de vooruitblik blijft staan). Categorie werking, later.

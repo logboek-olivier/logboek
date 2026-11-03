@@ -101,14 +101,14 @@ describe('uitbetaling per organisatie', () => {
   it('verwacht bedrag in de valuta van de uitbetaling, en verdeeld naar verhouding (de delen zijn samen precies het bedrag)', () => {
     const trips = [trip('a', '2026-10-01', '2026-10-07'), trip('b', '2026-10-08', '2026-10-14')]
     const txs = [salary('a', '2026-10-07'), salary('b', '2026-10-14', { amount: 2000 })]
-    expect(expectedPayout(trips, [], txs, 'EUR', '2026-11-05', null)).toBe(3000)
-    expect(expectedPayout(trips, [], txs, 'USD', '2026-11-05', null)).toBeNull()
-    expect(expectedPayout(trips, [], txs, 'USD', '2026-11-05', RATES)).toBe(3300)
-    expect(splitPayout(2900, trips, [], txs, 'EUR', '2026-11-05', null)).toEqual([966.67, 1933.33])
-    expect(splitPayout(100, trips, [], txs, 'USD', '2026-11-05', null)).toEqual([50, 50])
+    expect(expectedPayout(trips, txs, 'EUR', '2026-11-05', null)).toBe(3000)
+    expect(expectedPayout(trips, txs, 'USD', '2026-11-05', null)).toBeNull()
+    expect(expectedPayout(trips, txs, 'USD', '2026-11-05', RATES)).toBe(3300)
+    expect(splitPayout(2900, trips, txs, 'EUR', '2026-11-05', null)).toEqual([966.67, 1933.33])
+    expect(splitPayout(100, trips, txs, 'USD', '2026-11-05', null)).toEqual([50, 50])
     // In centen naar de grootste rest: samen precies het bedrag, nooit negatief.
     const three = [trip('a', '2026-10-01', '2026-10-07'), trip('b', '2026-10-08', '2026-10-14'), trip('c', '2026-10-15', '2026-10-21')]
-    const parts = splitPayout(1000, three, [], withSalaries(three), 'EUR', '2026-11-05', null)
+    const parts = splitPayout(1000, three, withSalaries(three), 'EUR', '2026-11-05', null)
     expect(parts).toEqual([333.34, 333.33, 333.33])
     expect(Math.round(parts.reduce((n, x) => n + x, 0) * 100)).toBe(100000)
     expect(minimumPayout(3)).toBe(0.03)

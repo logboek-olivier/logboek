@@ -272,7 +272,7 @@ export async function deleteBalance(store: Tx, balance: Balance): Promise<void> 
 
 /** Een rekening met al zijn standen verwijderen, met ongedaan maken (uit het geheugen). */
 export async function deleteAccount(store: Tx, account: Account): Promise<void> {
-  const now = new Date().toISOString()
+  const now = store.now
   const standen = accountBalances(store.get('balances.json.enc'), account.id).map((b) => ({ ...b }))
   if (standen.length > 0) await store.putMany('balances.json.enc', standen.map((b) => scrubbedBalance(b, now)))
   await store.put('accounts.json.enc', scrubbedAccount(account, now))

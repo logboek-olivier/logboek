@@ -464,6 +464,8 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       costDefaults: { thuis: 25, reis: 40 },
       lastCostCategory: 'eten',
     })
+    // Het record van het andere apparaat met de valuta per soort invoer (schrijfversie 10) is er nog, compleet.
+    expect(settings.find((s) => s.id === 'laatst:0a1b2c3d')).toMatchObject({ lastBoat: 'Nepboot ander apparaat', lastCurrencies: { fooi: 'USD', uitgave: 'EUR' } })
     const trips = await decryptRecords(key, 'trips.json.enc', Uint8Array.from(Buffer.from(github.files.get('trips.json.enc')!.content, 'base64')))
     expect(trips.find((t) => t.id === 'upg-trip-dag')).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-13', datesFromDays: true })
     const legs = await decryptRecords(key, 'legs.json.enc', Uint8Array.from(Buffer.from(github.files.get('legs.json.enc')!.content, 'base64')))

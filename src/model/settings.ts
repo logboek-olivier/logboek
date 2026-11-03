@@ -1,6 +1,6 @@
 import type { Tx } from '../domain/tx'
 import { deviceId } from '../storage/device'
-import type { Currency, CurrencyKind, Settings } from './types'
+import { keepUnknownFields, type Currency, type CurrencyKind, type Settings } from './types'
 
 // Laatst gebruikte waarden, zodat elke invoer maximaal drie velden kost.
 
@@ -65,7 +65,8 @@ export async function saveSettings(store: Tx, patch: Partial<Omit<Settings, 'id'
     const previous = records.find((s) => s.id === id && s.deletedAt === null)
     const remembered: Record<string, unknown> = {}
     for (const key of LAST_USED_KEYS) if (current[key] !== undefined) remembered[key] = current[key]
-    const next = { ...remembered, ...lastPatch, id, updatedAt: now, deletedAt: null } as Settings
+    // Een veld van een nieuwere build in dit record (geschreven op een ander apparaat of na een update) blijft staan.
+    const next = keepUnknownFields(previous, { ...remembered, ...lastPatch, id, updatedAt: now, deletedAt: null } as Settings, [...LAST_USED_KEYS, 'id', 'updatedAt', 'deletedAt'])
     if (!previous || !same(previous, next)) await store.put('settings.json.enc', next)
   }
 }
