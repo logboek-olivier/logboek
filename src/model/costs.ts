@@ -2,7 +2,7 @@ import type { Tx } from '../domain/tx'
 import { dayInfo, type CalendarIndex } from './calendar'
 import { active } from './derive'
 import { eurOf } from './money'
-import { rateFor, type RatesFile } from './rates'
+import { toEur, type RatesFile } from './rates'
 import { COST_DAY_TYPES, newId, type CostDayType, type Currency, type DayType, type FixedCost, type Settings, type Transaction } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, daysInMonth, mondayOf, shiftMonth } from '../basis/datum'
@@ -22,21 +22,15 @@ export function fixedAmount(cost: FixedCost, m: string): number {
   return amount
 }
 
-function eur(amount: number, currency: Currency, date: string, rates: RatesFile | null): number | null {
-  if (currency === 'EUR') return amount
-  const hit = rateFor(rates, currency, date)
-  return hit ? round2(amount / hit.rate) : null
-}
-
 /** Vaste lasten van een maand in euro; zonder koers per valuta apart. */
 export function fixedInMonth(costs: readonly FixedCost[], m: string, rates: RatesFile | null): { eur: number; other: Partial<Record<Currency, number>> } {
   const out = { eur: 0, other: {} as Partial<Record<Currency, number>> }
   for (const c of active(costs)) {
     const amount = fixedAmount(c, m)
     if (amount <= 0) continue
-    const v = eur(amount, c.currency, `${m}-01`, rates)
+    const v = toEur(amount, c.currency, `${m}-01`, rates)
     if (v === null) out.other[c.currency] = round2((out.other[c.currency] ?? 0) + amount)
-    else out.eur = round2(out.eur + v)
+    else out.eur = round2(out.eur + v.eur)
   }
   return out
 }

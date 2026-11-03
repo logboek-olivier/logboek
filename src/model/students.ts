@@ -2,7 +2,7 @@ import { HISTORY_PATH } from '../domain/history'
 import type { Tx } from '../domain/tx'
 import { allTopics } from './curricula'
 import { firstNameOnly, justAfter, newId, type Curriculum, type Participant, type Student, type StudentExam, type TipFrom, type StudentLevel, type Topic, type TopicStatus } from './types'
-import { addDays, mondayOf } from '../basis/datum'
+import { addDays, mondayOf, monthsBefore } from '../basis/datum'
 
 // Studenten en hun voortgang per onderwerp. Beveiligingsregel 14: alleen voornaam, cursus, niveau, voortgang en
 // examenuitslag; geen contact-, gezondheids- of identiteitsgegevens; nooit in logs of foutdetails. Na 12 maanden
@@ -81,12 +81,6 @@ export function lastActivity(s: Student): string {
 export function dueForArchive(list: readonly Student[], today: string): Student[] {
   const limit = monthsBefore(today, ARCHIVE_AFTER_MONTHS)
   return activeStudents(list).filter((s) => lastActivity(s) <= limit)
-}
-
-function monthsBefore(iso: string, months: number): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const date = new Date(Date.UTC(y!, m! - 1 - months, d!))
-  return date.toISOString().slice(0, 10)
 }
 
 /** Week (maandag) waarin de student begon. */

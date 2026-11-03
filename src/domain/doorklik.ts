@@ -1,13 +1,11 @@
-import { toEur } from '../model/accounts'
 import { active } from '../model/derive'
 import { expenseCategory } from '../model/expenses'
 import { isEarned, isIncome } from '../model/money'
-import { GROUP, type Forecast, type ForecastItem, type NetWorthChange, type Position } from '../model/position'
+import { GROUP, receivableValue, type Forecast, type ForecastItem, type NetWorthChange, type Position } from '../model/position'
 import type { BlockRange } from '../model/scenario'
-import { eurValue, type RatesFile } from '../model/rates'
+import { eurValue, toEur, type RatesFile } from '../model/rates'
 import { groupOf, type TaxGroup } from '../model/tax-year'
 import type { Account, Claim, CostCategory, Currency, Transaction, TransactionKind, Trip } from '../model/types'
-import { addDays } from '../basis/datum'
 import { transactionList, type ReportPeriod } from './geldrapport'
 
 // Doorklikken in Geld: elk bedrag toont de posten die eronder vallen, gegroepeerd per soort en organisatie, met
@@ -213,8 +211,8 @@ export function receivableDrill(position: Position, trips: readonly Trip[], rate
 function receivableEntries(position: Position, byId: ReadonlyMap<string, Trip>, rates: RatesFile | null, sign: 1 | -1, section?: 'begin' | 'eind'): Entry[] {
   const entries: Entry[] = []
   for (const r of position.receivable) {
-    // Zoals Mijn positie het telt: met de koers van die dag (src/model/position.ts).
-    const value = toEur(r.amount, r.currency, position.date, rates)
+    // Zoals Mijn positie, de tripkaart en de vooruitblik het tellen (src/model/position.ts, receivableValue).
+    const value = receivableValue(r.tx, rates)
     entries.push({
       post: { key: r.tx.id, tx: r.tx, trip: r.trip, date: position.date, amount: sign * r.amount, currency: r.currency, eur: value ? sign * value.eur : null, provisional: value?.provisional ?? false },
       section: section ?? 'salaris',
@@ -223,7 +221,7 @@ function receivableEntries(position: Position, byId: ReadonlyMap<string, Trip>, 
     })
   }
   for (const c of position.claims) {
-    const value = toEur(c.amount!, c.currency!, position.date, rates)
+    const value = toEur(c.amount!, c.currency!, c.date, rates)
     entries.push({
       post: { key: c.id, claim: c, date: position.date, amount: sign * c.amount!, currency: c.currency!, eur: value ? sign * value.eur : null, provisional: value?.provisional ?? false },
       section: section ?? 'declaraties',
@@ -235,7 +233,7 @@ function receivableEntries(position: Position, byId: ReadonlyMap<string, Trip>, 
 
 /** Uitsplitsing van de verandering van de netto waarde: elke regel apart te openen. */
 export interface ChangeDrills {
-  /** Zeilresultaat ná de begindag tot en met het einde (zelfde regels als Zeilgeld: resultaat). */
+  /** Zeilresultaat van de begindag tot en met het einde: hetzelfde getal als Zeilgeld: resultaat voor die periode. */
   sailing: Drill
   /** Te ontvangen op het einde (plus) en op de begindag (min). */
   receivable: Drill
@@ -249,7 +247,7 @@ export interface ChangeDrills {
 
 export function changeDrills(change: Extract<NetWorthChange, { state: 'bekend' }>, transactions: readonly Transaction[], trips: readonly Trip[], rates: RatesFile | null): ChangeDrills {
   const byId = tripMap(trips)
-  const sailing = resultDrill(transactions, trips, { from: addDays(change.from, 1), to: change.to })
+  const sailing = resultDrill(transactions, trips, { from: change.from, to: change.to })
   const receivable = build([...receivableEntries(change.end, byId, rates, 1, 'eind'), ...receivableEntries(change.start, byId, rates, -1, 'begin')])
   const accountEntry = (a: (typeof change.accounts)[number]): Entry => ({
     post: {

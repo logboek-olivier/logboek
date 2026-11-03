@@ -3,7 +3,7 @@ import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatMoney } from '../format'
 import { getLang, t } from '../i18n'
 import { activeScenario, assumptionsOf, blockRanges, liveScenarios, MAX_BLOCKS, MAX_ONE_OFFS, MAX_PCT, MAX_WEEKS, MIN_PCT, scenarioHorizon, scenarioStart, validOneOffs, type BlockInput, type OneOffInput } from '../model/scenario'
-import { currentSettings } from '../model/settings'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { CURRENCIES, type Currency, type Scenario, type ScenarioBlock, type ScenarioOneOff } from '../model/types'
 import type { Store } from '../storage/store'
 import { aannamesOpslaan, blokToevoegen, blokVerplaatsen, blokVerwijderen, blokWijzigen, eenmaligToevoegen, eenmaligVerwijderen, eenmaligWijzigen, scenarioActiveren, scenarioDatumsAanpassen, scenarioHernoemen, scenarioMaken, scenarioVerwijderen } from '../domain/geld'
@@ -259,7 +259,7 @@ function NameSheet({ store, notify, mode, scenario, suggested, onClose }: { stor
 /** Een blok: aantal weken, inkomen per week (met de valuta) en optioneel kosten per week. */
 function BlockSheet({ store, notify, scenario, block, onClose }: { store: Store; notify: Notify; scenario: Scenario; block: ScenarioBlock | null; onClose: () => void }) {
   const previous = scenario.blocks.at(-1)
-  const lastCurrency = currentSettings(useCollection(store, 'settings.json.enc')).lastCurrency
+  const lastCurrency = defaultCurrency(currentSettings(useCollection(store, 'settings.json.enc')), 'scenario')
   const [weeks, setWeeks] = useState(block ? String(block.weeks) : '')
   const [income, setIncome] = useState(block ? amountInput(block.incomePerWeek) : '')
   const [currency, setCurrency] = useState<Currency>(block?.currency ?? previous?.currency ?? lastCurrency ?? 'EUR')
@@ -387,7 +387,7 @@ function AssumptionsSheet({ store, notify, scenario, onClose }: { store: Store; 
 
 /** Een eenmalige uitgave: wat, wanneer en het bedrag (met de valuta). */
 function OneOffSheet({ store, notify, scenario, oneOff, onClose }: { store: Store; notify: Notify; scenario: Scenario; oneOff: ScenarioOneOff | null; onClose: () => void }) {
-  const lastCurrency = currentSettings(useCollection(store, 'settings.json.enc')).lastCurrency
+  const lastCurrency = defaultCurrency(currentSettings(useCollection(store, 'settings.json.enc')), 'scenario')
   const [name, setName] = useState(oneOff?.name ?? '')
   const [date, setDate] = useState(oneOff?.date ?? '')
   const [amount, setAmount] = useState(oneOff ? amountInput(oneOff.amount) : '')

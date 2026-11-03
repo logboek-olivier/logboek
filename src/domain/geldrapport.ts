@@ -5,6 +5,7 @@ import { eurOf, totals, type MoneyTotals } from '../model/money'
 import { addSums, addTo, emptySum, type MoneySum } from '../model/money-path'
 import type { RatesFile } from '../model/rates'
 import { groupOf, taxYear, type TaxGroup, type TaxYear } from '../model/tax-year'
+import { tripsById } from '../basis/organisatie'
 import type { Leg, Transaction, Trip } from '../model/types'
 import { booked, salariesOf, salaryStatus } from './geldmodel'
 
@@ -82,7 +83,8 @@ export interface OrganisationTotals extends MoneyTotals {
  * transacties als de transactielijst en het jaaroverzicht. Grootste inkomsten eerst.
  */
 export function perOrganisation(transactions: readonly Transaction[], trips: readonly Trip[], period?: ReportPeriod): OrganisationTotals[] {
-  const byId = new Map(active(trips).map((x) => [x.id, x]))
+  // Ook verwijderde trips: geld van een trip in de prullenbak blijft bij zijn organisatie.
+  const byId = tripsById(trips)
   const map = new Map<TaxGroup, Transaction[]>()
   for (const tx of transactionList(transactions, period)) {
     const group = groupOf(tx, byId)

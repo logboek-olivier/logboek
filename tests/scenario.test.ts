@@ -61,15 +61,17 @@ function sumCloses(p: Profile, f: Forecast): void {
   expect([drills.start.eur, drills.salary.eur, drills.tips.eur, drills.scenario.eur, drills.costs.eur, drills.oneOffs.eur, drills.growth.eur]).toEqual([lines.start, lines.salary, lines.tips, lines.scenario, lines.costs, lines.oneOffs, lines.growth])
 }
 
-describe('schemaversie 3', () => {
-  it('leest bestanden van versie 2 (standen, instellingen) ongewijzigd in en schrijft versie 3 met schrijfversie 9', () => {
+describe('schemaversie 4', () => {
+  it('leest bestanden van versie 2 en 3 (standen, instellingen) ongewijzigd in en schrijft versie 4 met schrijfversie 10', () => {
     const p = profileA()
     const v2 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, minWriterVersion: 6, records }))
     expect(decodeRecords('balances.json.enc', v2(p.input.balances))).toEqual(p.input.balances)
     expect(decodeRecords('settings.json.enc', v2([p.settings]))).toEqual([p.settings])
-    expect(SCHEMA_VERSION).toBe(3)
-    expect(WRITER_VERSION).toBe(9)
-    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 3, minWriterVersion: 9 })
+    expect(SCHEMA_VERSION).toBe(4)
+    expect(WRITER_VERSION).toBe(10)
+    const v3 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 3, minWriterVersion: 9, records }))
+    expect(decodeRecords('settings.json.enc', v3([p.settings]))).toEqual([p.settings])
+    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 4, minWriterVersion: 10 })
   })
 })
 
@@ -281,13 +283,21 @@ describe('bevindingen van de review (aannames)', () => {
     expect(f.items.every((i) => i.kind === 'vaste-lasten' || i.kind === 'kosten' || i.date <= '2026-11-30')).toBe(true)
   })
 
-  it('zonder koers voor de netto waarde van vandaag geen groei (ook niet op de inleg)', () => {
+  it('een stand zonder koers staat apart; de som en de groei gaan over het eurodeel (alleen de inleg groeit)', () => {
     const p = profileB()
     const input = { ...p.input, rates: null, accounts: [{ id: 'b-usd', name: 'Nepdollars', provider: 'revolut' as const, kind: 'beleggen' as const, currency: 'USD' as const, updatedAt: T, deletedAt: null }], balances: [{ id: 'stand:b-usd:2026-11-01', accountId: 'b-usd', date: '2026-11-01', amount: 1000, source: 'handmatig' as const, updatedAt: T, deletedAt: null }] }
     const s: Scenario = { ...scenario([{ id: 'b', weeks: 4, incomePerWeek: 1000, currency: 'EUR' }], '2026-11-03'), assumptions: { investmentGrowthPct: 12, investPct: 50 } }
     const f = outlook({ ...p, input }, null, s)
-    expect(f.lines).toBeNull()
-    expect(f.items.some((i) => i.kind === 'groei')).toBe(false)
+    // De dollars staan apart (niet in de euro-getallen): de stand van 1.000 en het te ontvangen salaris van 3.000 van de
+    // voorbije tocht; het eurodeel van vandaag is 0.
+    expect(f.unpriced).toEqual({ USD: 4000 })
+    expect(f.lines).not.toBeNull()
+    expect(f.lines!.start).toBe(0)
+    // Groei alleen over de belegde inleg (50% van 4.000), nooit over de stand zonder koers.
+    expect(f.lines!.invested).toBe(2000)
+    expect(f.lines!.growth).toBeGreaterThan(0)
+    expect(f.lines!.growth).toBeLessThan(2000 * 0.12 / 12 * 2)
+    expect(cents(f.lines!.start + f.lines!.scenario + f.lines!.growth)).toBe(cents(f.lines!.end))
   })
 })
 

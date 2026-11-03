@@ -2,7 +2,7 @@ import { isEarned, isIncome } from './money'
 import { isBooked } from '../domain/geldmodel'
 import { eurValue, type RatesFile } from './rates'
 import type { Organisation, Transaction, Trip } from './types'
-import { organisations, tripOrganisation } from '../basis/organisatie'
+import { organisationOfMoney, organisations, tripsById } from '../basis/organisatie'
 
 // Jaaroverzicht voor de belasting (Meer → Geld): alle inkomsten van één kalenderjaar per organisatie, in euro, met per
 // regel het oorspronkelijke bedrag en de gebruikte koers met datum, zoals overal in de app: het ontvangen eurobedrag,
@@ -57,16 +57,9 @@ function groupRank(group: TaxGroup): number {
   return own >= 0 ? own : 500
 }
 
-/** De organisatie van een inkomen of uitgave: van de tocht (ook uit de naam), van het seizoen, anders de oude bron. */
+/** De organisatie van een inkomen of uitgave: één regel voor elk geldscherm (`organisationOfMoney`, src/basis/organisatie.ts). */
 export function groupOf(tx: Transaction, trips: ReadonlyMap<string, Trip>): TaxGroup {
-  if (!tx.tripId && tx.season && typeof tx.season.org === 'string') return tx.season.org
-  const trip = tx.tripId ? trips.get(tx.tripId) : undefined
-  // De organisatie van de trip, ook uit de naam ("Yacht week 7"), zoals de teller en de statistieken.
-  const counted = trip ? tripOrganisation(trip) : null
-  if (counted) return counted
-  if (trip?.organisation && trip.organisation !== 'overig') return trip.organisation
-  if (tx.source === 'sailing-virgins' || tx.source === 'yacht-week' || tx.source === 'delivery') return tx.source
-  return 'overig'
+  return organisationOfMoney(tx, trips)
 }
 
 export function taxYears(transactions: readonly Transaction[]): number[] {
@@ -76,7 +69,8 @@ export function taxYears(transactions: readonly Transaction[]): number[] {
 }
 
 export function taxYear(transactions: readonly Transaction[], trips: readonly Trip[], year: number, rates: RatesFile | null): TaxYear {
-  const tripById = new Map(trips.filter((t) => !t.deletedAt).map((t) => [t.id, t]))
+  // Ook verwijderde trips: geld van een trip in de prullenbak blijft bij zijn organisatie.
+  const tripById = tripsById(trips)
   const groups = new Map<TaxGroup, TaxGroupTotal>()
   const reimbursed: TaxLine[] = []
   let provisional = false

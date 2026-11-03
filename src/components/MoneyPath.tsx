@@ -11,7 +11,7 @@ import { expectedPayout, expectedSalary, minimumPayout, openSalaryTrips, payoutQ
 import { getRates, subscribeRates } from '../model/rates'
 import { salaryDefault, tripEnd } from '../model/salary'
 import { weekView } from '../model/weeks'
-import { currentSettings } from '../model/settings'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { CURRENCIES, type Currency, type Leg, type Organisation, type SalaryStatus, type Transaction, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -248,7 +248,7 @@ export function TripSalarySheet({ store, trip, notify, onClose }: { store: Store
   const def = salaryDefault(settings, current.organisation)
   const [status, setStatus] = useState<SalaryStatus>(existing ? salaryStatus(existing) : 'verwacht')
   const [amount, setAmount] = useState(existing && existing.amount > 0 ? amountInput(existing.amount) : !existing && def ? amountInput(def.amount) : '')
-  const [currency, setCurrency] = useState<Currency>(existing?.currency ?? def?.currency ?? settings.lastCurrency)
+  const [currency, setCurrency] = useState<Currency>(existing?.currency ?? def?.currency ?? defaultCurrency(settings, 'salaris'))
   const [date, setDate] = useState(existing && salaryStatus(existing) === 'ontvangen' ? existing.date : today)
   const [busy, setBusy] = useState(false)
   const parsed = status === 'geen' ? 0 : amount.trim() === '' ? 0 : parseAmount(amount)

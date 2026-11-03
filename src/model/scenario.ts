@@ -1,10 +1,9 @@
 import type { Tx } from '../domain/tx'
-import { toEur } from './accounts'
 import { active } from './derive'
-import type { RatesFile } from './rates'
+import { toEur, type RatesFile } from './rates'
 import { newId, type Currency, type Scenario, type ScenarioAssumptions, type ScenarioBlock, type ScenarioOneOff } from './types'
 import { round2 } from '../basis/bedrag'
-import { addDays, monthEnd } from '../basis/datum'
+import { addDays, dayCount, monthEnd } from '../basis/datum'
 
 // Geld → Verwacht → Scenario: wat er ná de planning zou kunnen gebeuren. Een scenario is een naam en een rij blokken
 // (aantal weken, inkomen per week, valuta, optioneel kosten per week). Het eerste blok begint op de dag na het einde van
@@ -178,11 +177,6 @@ export function scenarioParts(ranges: readonly BlockRange[], until: string, rate
     }
   }
   return out
-}
-
-/** Dagen van `from` tot en met `to`. */
-function dayCount(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1
 }
 
 /** Of een dag in een blok met eigen kosten valt (dan geldt niet het gemiddelde per dagsoort). */

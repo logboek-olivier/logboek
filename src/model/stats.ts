@@ -12,8 +12,8 @@ import { placeKey } from './places'
 import { ROLES, type BoatKind, type CalendarDay, type Curriculum, type Leg, type Organisation, type Role, type Settings, type Student, type Transaction, type Trip } from './types'
 import { dayCountOf, weekView } from './weeks'
 import { round2 } from '../basis/bedrag'
-import { addDays, isDate, mondayOf, monthOf } from '../basis/datum'
-import { tripOrganisation } from '../basis/organisatie'
+import { addDays, isDate, mondayOf, monthOf, monthsInRange } from '../basis/datum'
+import { organisationOfTrip } from '../basis/organisatie'
 
 // Statistieken (Meer → Statistieken): zeilen, werk, geld en instructeur over een periode, plus de voortgang naar RYA
 // Yachtmaster Offshore. Alles afgeleid, niets opgeslagen; zonder netwerk.
@@ -75,16 +75,8 @@ export function periodFor(
 
 const inPeriod = (date: string, p: Period) => p.from <= date && date <= p.to
 
-export function monthsBetween(from: string, to: string): string[] {
-  const out: string[] = []
-  for (let m = monthOf(from); m <= monthOf(to); ) {
-    out.push(m)
-    const y = Number(m.slice(0, 4))
-    const n = Number(m.slice(5, 7))
-    m = n === 12 ? `${y + 1}-01` : `${y}-${String(n + 1).padStart(2, '0')}`
-  }
-  return out
-}
+/** Alle maanden in de periode (zie src/basis/datum.ts). */
+export const monthsBetween = monthsInRange
 
 // ---------- Zeilen ----------
 
@@ -197,7 +189,9 @@ export function sailingStats(trips: readonly Trip[], legs: readonly Leg[], setti
   for (const trip of active(trips)) {
     const range = tripRange(trip, allLegs)
     if (!range || !inPeriod(range.start, period)) continue
-    const org: Organisation | '' = tripOrganisation(trip) ?? trip.organisation ?? ''
+    // Dezelfde groep als per organisatie en het jaaroverzicht; `overig` zonder opgeslagen organisatie is "geen organisatie".
+    const group = organisationOfTrip(trip)
+    const org: Organisation | '' = group === 'overig' && !trip.organisation ? '' : group
     const entry = orgs.get(org) ?? { org, trips: 0, lastN: 0 }
     entry.trips++
     const c = counters.get(trip.id)

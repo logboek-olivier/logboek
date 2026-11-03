@@ -1,6 +1,6 @@
 import type { Tx } from '../domain/tx'
 import { deviceId } from '../storage/device'
-import type { Settings } from './types'
+import type { Currency, CurrencyKind, Settings } from './types'
 
 // Laatst gebruikte waarden, zodat elke invoer maximaal drie velden kost.
 
@@ -27,7 +27,7 @@ export function yearGoal(settings: Settings): number {
  * een dag of uitgave loggen op een telefoon zonder verbinding nooit een instelling die intussen op een ander apparaat
  * veranderde (het samenvoegen gaat per record: de laatste wijziging wint). Oudere versies lezen alleen 'settings'.
  */
-export const LAST_USED_KEYS = ['lastBoat', 'lastRole', 'lastCurrency', 'lastSource', 'lastTripId', 'lastIncomeKind', 'lastCostKind', 'lastWater', 'lastCostCategory'] as const
+export const LAST_USED_KEYS = ['lastBoat', 'lastRole', 'lastCurrency', 'lastCurrencies', 'lastSource', 'lastTripId', 'lastIncomeKind', 'lastCostKind', 'lastWater', 'lastCostCategory'] as const
 
 export function lastUsedId(device: string = deviceId()): `laatst:${string}` {
   return `laatst:${device}`
@@ -72,4 +72,18 @@ export async function saveSettings(store: Tx, patch: Partial<Omit<Settings, 'id'
 
 function same(a: Settings, b: Settings): boolean {
   return JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' })
+}
+
+/**
+ * De valuta om voor te stellen bij een soort invoer: de laatst gebruikte van die soort, anders de terugval (euro). Nooit
+ * de laatst gebruikte van een andere soort: één fooi in dollars maakt een uitgave niet stil dollars (CLAUDE.md, Zeilgeld).
+ */
+export function defaultCurrency(settings: Pick<Settings, 'lastCurrencies'>, kind: CurrencyKind, fallback: Currency = 'EUR'): Currency {
+  return settings.lastCurrencies?.[kind] ?? fallback
+}
+
+/** De laatst gebruikte valuta van een soort onthouden (per apparaat, naast `lastCurrency` voor oudere versies). */
+export async function rememberCurrency(store: Tx, kind: CurrencyKind, currency: Currency): Promise<void> {
+  const current = currentSettings(store.get('settings.json.enc'))
+  await saveSettings(store, { lastCurrency: currency, lastCurrencies: { ...current.lastCurrencies, [kind]: currency } })
 }

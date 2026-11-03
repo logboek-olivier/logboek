@@ -61,7 +61,7 @@ Wat waar draait:
 | GitHub Actions | Bouwen, testen, deployen; ophalen van koersen, weer en kaartdata. De app zelf haalt nooit iets van ECB, Open-Meteo of OSM. | `.github/workflows/*.yml`, CSP in `index.html:5` |
 
 **Afwijking (docs):** `docs/ARCHITECTUUR.md` zegt "alle bestanden staan op `SCHEMA_VERSION = 1`" en "schrijfversie nu 3". De
-code staat op schemaversie 3 en schrijfversie 9 (`src/model/schema.ts:11,36`).
+code staat op schemaversie 4 en schrijfversie 10 (`src/model/schema.ts`; de versies veranderen per PR, de test `tests/review-versies.test.ts` uit PR 4 bewaakt dit document).
 
 ## 2. Mappen en modules
 
@@ -117,7 +117,7 @@ Te groot of te verweven (bewijs: regels en imports hierboven, `npx vite build`-w
 ## 3. Data
 
 Alle 24 databestanden hebben hetzelfde formaat: `versie(1) | iv(12) | AES-GCM(ciphertext + tag)` onder de hoofdsleutel met
-het pad als AAD (`src/crypto/encrypt.ts`); de inhoud is `{format: 'logboek-collection', schemaVersion: 3, minWriterVersion: 9,
+het pad als AAD (`src/crypto/encrypt.ts`); de inhoud is `{format: 'logboek-collection', schemaVersion: 4, minWriterVersion: 10,
 records: [...]}` (`src/storage/sync.ts:49`). Elk record heeft `id`, `updatedAt` (ISO) en `deletedAt` (ISO of null; een
 tombstone). `meta.json.enc` is de uitzondering: platte JSON met salts en de ingepakte hoofdsleutel (zie 4). De kluis
 bewaart documenten los als `documents/<uuid>.bin`.
@@ -341,7 +341,8 @@ en een melding met foutdetails. `geschiedenisOpruimen`, `vasteLastenBoeken` en d
 | `schemaVersion` 1 | 24 okt | Eerste formaat (`version: 1` in heel oude bestanden wordt ook herkend) | — |
 | `schemaVersion` 2 | 2 nov (PR #126) | Eén waarheid voor geld: salaris als transactie met status; `tipVia`/`depositedAt` vervallen | Versie 1 blijft leesbaar; "Geld omzetten" na een tik (`src/domain/geld-omzetten.ts`) |
 | `schemaVersion` 3 | 2 nov (PR #130) | `scenarios.json.enc` | Niets om te zetten |
-| `minWriterVersion` 2 … 9 | 31 okt – 3 nov | Zie `src/model/schema.ts:17-35`: periodemodel (2), prullenbak (3), organisaties (4), tripdatums als velden (5), één waarheid voor geld (6), standen per dag (7), scenario's (8), bezittingen en aannames (9) | Een oudere build schrijft niets over een bestand met een hogere schrijfversie |
+| `schemaVersion` 4 | 3 nov | Laatst gebruikte valuta per soort invoer (`lastCurrencies`); Mijn positie telt de begindag en waardeert te ontvangen zoals Geld | Niets om te zetten |
+| `minWriterVersion` 2 … 10 | 31 okt – 3 nov | Zie `src/model/schema.ts`: periodemodel (2), prullenbak (3), organisaties (4), tripdatums als velden (5), één waarheid voor geld (6), standen per dag (7), scenario's (8), bezittingen en aannames (9), valuta per soort invoer (10) | Een oudere build schrijft niets over een bestand met een hogere schrijfversie |
 
 Omzettingen van bestaande gegevens (allemaal gevonden in de code):
 

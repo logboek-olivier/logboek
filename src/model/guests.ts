@@ -1,7 +1,7 @@
 import type { Tx } from '../domain/tx'
 import { active } from './derive'
 import { booked } from '../domain/geldmodel'
-import { tripOrganisation } from '../basis/organisatie'
+import { organisationOfTrip } from '../basis/organisatie'
 import { eurOf } from './money'
 import { weekView } from './weeks'
 import type { Leg, Participant, TipFrom, Transaction, Trip, WeekType } from './types'
@@ -262,7 +262,9 @@ export function tipsPerTrip(trips: readonly Trip[], transactions: readonly Trans
       const view = weekView(trip, legs)
       const guests = guestCountOf(trip)
       const eur = round2(sums.get(trip.id)!)
-      const org = tripOrganisation(trip) ?? (trip.organisation && trip.organisation !== 'overig' && trip.organisation !== 'eigen' ? trip.organisation : null)
+      // Dezelfde groep als per organisatie en het jaaroverzicht; eigen, delivery en overig tellen hier als geen organisatie.
+      const group = organisationOfTrip(trip)
+      const org = group === 'eigen' || group === 'overig' || group === 'delivery' ? null : group
       return { tip: { trip, type: view.type, org, guests, eur, perGuest: guests > 0 ? round2(eur / guests) : null }, start: view.startDate }
     })
     .sort((a, b) => (a.start < b.start ? 1 : -1))

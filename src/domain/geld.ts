@@ -9,7 +9,7 @@ import { bookFixedCosts } from '../model/fixed-bookings'
 import { recordPayout } from '../model/money-path'
 import { finalRateFields } from '../model/rates'
 import { askSalaryLater, receiveSalary, saveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
-import { saveSettings } from '../model/settings'
+import { rememberCurrency, saveSettings } from '../model/settings'
 import { addOneOff, addScenarioBlock, changeOneOff, changeScenarioBlock, createScenario, deleteScenario, moveScenarioBlock, removeOneOff, removeScenarioBlock, renameScenario, setAssumptions, setScenarioDates, setScenarioEnd, setScenarioStart } from '../model/scenario'
 import { newId, type Account, type Balance, type Currency, type Leg, type Organisation, type Settings, type Transaction, type Trip } from '../model/types'
 import { active } from '../model/derive'
@@ -36,7 +36,8 @@ export async function addMoney(tx: Tx, fields: NewMoney, tripId: string | null, 
     const current = salaryOf(tripId, tx.list('transactions.json.enc'))
     if (current && salaryStatus(current) === 'ontvangen') throw new Error('salaris bestaat al')
     const record = await saveSalary(tx, tripId, { amount: fields.amount, currency: fields.currency, status: 'ontvangen', date: fields.date })
-    await saveSettings(tx, { lastCurrency: fields.currency, ...remember })
+    await rememberCurrency(tx, 'salaris', fields.currency)
+    if (Object.keys(remember).length > 0) await saveSettings(tx, remember)
     return record
   }
   const record: Transaction = { ...fields, id: newId(), updatedAt: tx.now, deletedAt: null }
@@ -48,7 +49,9 @@ export async function addMoney(tx: Tx, fields: NewMoney, tripId: string | null, 
   if (fields.currency === 'EUR') record.amountEur = fields.amount
   else Object.assign(record, finalRateFields(fields) ?? {})
   await tx.put('transactions.json.enc', record)
-  await saveSettings(tx, { lastCurrency: fields.currency, ...remember })
+  // De valuta per soort onthouden: een fooi in dollars zet een uitgave daarna niet in dollars.
+  await rememberCurrency(tx, fields.kind === 'fooi' ? 'fooi' : fields.kind === 'kosten' || fields.kind === 'investering' ? 'uitgave' : 'inkomen', fields.currency)
+  if (Object.keys(remember).length > 0) await saveSettings(tx, remember)
   return record
 }
 
@@ -143,6 +146,8 @@ export async function addEarlierSeason(tx: Tx, input: EarlierSeason): Promise<Tr
   await add('loon', input.salary, { status: 'ontvangen' })
   await add('fooi', input.tips)
   await add('kosten', input.costs, { category: 'overig' })
+  const first = out[0]
+  if (first) await rememberCurrency(tx, 'seizoen', first.currency)
   return out
 }
 

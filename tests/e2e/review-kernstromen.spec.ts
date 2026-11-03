@@ -388,8 +388,8 @@ test('6. geld: eigen organisatie, salaris, fooi in dollars, uitgave, eerder seiz
   await page.getByRole('navigation').getByRole('button', { name: 'Toevoegen', exact: true }).click()
   await page.getByRole('tab', { name: 'Uitgave' }).click()
   await page.getByLabel('Bedrag').fill('42,80')
-  // De valuta volgt de laatst gebruikte (hier USD, na de fooi): voor een uitgave in euro moet je dat zelf terugzetten.
-  await page.getByLabel('Valuta').selectOption('EUR')
+  // Na een fooi in dollars staat een uitgave gewoon in euro: elke soort onthoudt zijn eigen valuta (review D-7).
+  await expect(page.getByLabel('Valuta')).toHaveValue('EUR')
   await page.getByLabel('Omschrijving').fill('Havengeld Nephaven')
   await page.getByLabel('Datum', { exact: true }).fill(iso(-15))
   await shot(page, '54-uitgave')

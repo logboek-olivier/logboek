@@ -1,4 +1,4 @@
-import type { Settings, TransactionSource, Trip } from '../model/types'
+import type { Settings, Transaction, TransactionSource, Trip } from '../model/types'
 
 // Organisaties: één plek die zegt welke organisaties er zijn en bij welke een trip hoort (de teller, de bron van geld,
 // het jaaroverzicht en de statistieken gebruiken allemaal deze regels; docs/FUNDERING.md). Instelbaar onder
@@ -102,6 +102,38 @@ export function tripOrganisation(trip: Trip): string | null {
   if (trip.organisation) return isCounted(trip.organisation) ? trip.organisation : null
   const guess = orgFromName(trip.name)
   return guess?.sure && isCounted(guess.org) ? guess.org : null
+}
+
+/**
+ * De groep waaronder een trip in het geld telt (per organisatie, het jaaroverzicht, de statistieken, de fooi per gast):
+ * de organisatie waarvoor hij telt (ook uit de naam), anders de opgeslagen organisatie (ook `eigen`), anders `delivery`
+ * bij een delivery, anders `overig`. Eén regel voor elk scherm, ook voor een trip die in de prullenbak ligt.
+ */
+export function organisationOfTrip(trip: Trip): string {
+  const counted = tripOrganisation(trip)
+  if (counted) return counted
+  if (trip.organisation && trip.organisation !== 'overig') return trip.organisation
+  return trip.type === 'delivery' ? 'delivery' : 'overig'
+}
+
+/**
+ * De groep van een inkomen of uitgave: van zijn tocht (ook een verwijderde: `trips` bevat ook tombstones, zodat geld van
+ * een trip in de prullenbak bij zijn organisatie blijft), van het seizoen, anders de oude bron (`source`) uit een tijd
+ * dat een trip nog geen organisatie had; anders `overig`.
+ */
+export function organisationOfMoney(tx: Pick<Transaction, 'tripId' | 'season' | 'source'>, trips: ReadonlyMap<string, Trip>): string {
+  if (!tx.tripId && tx.season && typeof tx.season.org === 'string') return tx.season.org
+  const trip = tx.tripId ? trips.get(tx.tripId) : undefined
+  const group = trip ? organisationOfTrip(trip) : 'overig'
+  if (group !== 'overig') return group
+  // Een tocht zonder organisatie (of geen tocht): de oude bron, uit de tijd dat een tocht nog geen organisatie had.
+  if (tx.source === 'sailing-virgins' || tx.source === 'yacht-week' || tx.source === 'delivery') return tx.source
+  return 'overig'
+}
+
+/** Alle trips op id, ook de verwijderde (voor de organisatie van geld dat bij een trip in de prullenbak hoort). */
+export function tripsById(trips: readonly Trip[]): Map<string, Trip> {
+  return new Map(trips.map((t) => [t.id, t]))
 }
 
 /**

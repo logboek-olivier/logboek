@@ -1,3 +1,4 @@
+import { monthOf, monthStart, shiftMonth } from '../basis/datum'
 import type { Tx } from '../domain/tx'
 import { salaryOf, salaryStatus } from '../domain/geldmodel'
 import { active } from './derive'
@@ -40,15 +41,6 @@ export function openSalaryTrips(trips: readonly Trip[], legs: readonly Leg[], tr
     .sort(byEnd(legs))
 }
 
-function firstOfMonth(date: string): string {
-  return `${date.slice(0, 7)}-01`
-}
-
-function previousMonthStart(date: string): string {
-  const [y, m] = date.split('-').map(Number) as [number, number]
-  return m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`
-}
-
 /**
  * Welke tochten een uitbetaling op `date` waarschijnlijk afrekent: na elke tocht de oudste open tocht; maandelijks de
  * open tochten die vóór de maand van de uitbetaling eindigden (de tochten van de vorige maand, en wat daarvóór nog openstond).
@@ -56,7 +48,7 @@ function previousMonthStart(date: string): string {
 export function payoutSuggestion(trips: readonly Trip[], legs: readonly Leg[], settings: Settings, org: Organisation, date: string, transactions: readonly Transaction[]): Trip[] {
   const open = openSalaryTrips(trips, legs, transactions, org, date)
   if (payoutRule(settings, org).kind === 'per-trip') return open.slice(0, 1)
-  const before = open.filter((x) => tripEnd(x, legs) < firstOfMonth(date))
+  const before = open.filter((x) => tripEnd(x, legs) < monthStart(date))
   return before.length > 0 ? before : open
 }
 
@@ -173,12 +165,12 @@ export function payoutQuestions(trips: readonly Trip[], legs: readonly Leg[], se
     const rule = payoutRule(settings, org)
     if (rule.kind !== 'maandelijks') continue
     const day = Number(today.slice(8, 10))
-    const cutoff = day >= rule.day ? firstOfMonth(today) : previousMonthStart(today)
+    const cutoff = day >= rule.day ? monthStart(today) : `${shiftMonth(monthOf(today), -1)}-01`
     const due = openSalaryTrips(trips, legs, transactions, org, today).filter((x) => {
       const ask = expectedSalary(x, transactions)?.askAfter
       return tripEnd(x, legs) < cutoff && (!ask || ask <= today)
     })
-    if (due.length > 0) out.push({ org, month: previousMonthStart(cutoff).slice(0, 7), trips: due })
+    if (due.length > 0) out.push({ org, month: `${shiftMonth(monthOf(cutoff), -1)}-01`.slice(0, 7), trips: due })
   }
   return out
 }

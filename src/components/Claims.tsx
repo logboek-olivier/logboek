@@ -9,7 +9,7 @@ import { claimsToShow, receiptFileName, tripClaims, type ClaimInput } from '../m
 import { nameWithCounter } from '../model/counters'
 import { active, tripForDate } from '../model/derive'
 import { isImage, prepareFile } from '../model/documents'
-import { currentSettings } from '../model/settings'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { CURRENCIES, type Claim, type Currency, type Trip } from '../model/types'
 import { activeWeek } from '../model/weeks'
 import { shareOrDownload } from '../share'
@@ -54,7 +54,7 @@ function useClaimFields(store: Store, claim: Claim | null, preset?: string) {
   const [date, setDate] = useState(claim?.date ?? todayIso())
   const [note, setNote] = useState(claim?.note ?? '')
   const [amount, setAmount] = useState(claim?.amount !== undefined ? amountInput(claim.amount) : '')
-  const [currency, setCurrency] = useState<Currency>(claim?.currency ?? settings.lastCurrency)
+  const [currency, setCurrency] = useState<Currency>(claim?.currency ?? defaultCurrency(settings, 'declaratie'))
   const [chosenTrip, setChosenTrip] = useState<string | null>(claim ? (claim.tripId ?? '') : (preset ?? null))
   // Zoals bij inkomsten: de trip van de datum, anders de lopende trip, anders de dichtstbijzijnde (de laatste die vóór de
   // datum begon, anders de eerstvolgende). Een declaratie zonder trip is alleen een eigen keuze.
@@ -98,6 +98,7 @@ function ClaimFieldsView({ store, f }: { store: Store; f: ReturnType<typeof useC
 
 /** Toevoegen → Declaratie: foto van het bonnetje (camera of galerij), notitie, optioneel bedrag, bij de trip van de datum. */
 export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de trip staat al vast. */ tripId?: string }) {
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const f = useClaimFields(store, null, tripId)
   const camera = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -139,7 +140,7 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
     setBusy(true)
     try {
       await declaratieToevoegen(store, f.input(), file)
-      if (f.amount.trim() !== '') await instellingenOpslaan(store, { lastCurrency: f.currency })
+      if (f.amount.trim() !== '') await instellingenOpslaan(store, { lastCurrency: f.currency, lastCurrencies: { ...settings.lastCurrencies, declaratie: f.currency } })
       try {
         navigator.vibrate?.(20)
       } catch {
@@ -382,7 +383,7 @@ function RepaySheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [date, setDate] = useState(todayIso())
   const [amount, setAmount] = useState(claim.amount !== undefined ? amountInput(claim.amount) : '')
-  const [currency, setCurrency] = useState<Currency>(claim.currency ?? settings.lastCurrency)
+  const [currency, setCurrency] = useState<Currency>(claim.currency ?? defaultCurrency(settings, 'declaratie'))
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
 
