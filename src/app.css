@@ -4991,3 +4991,94 @@ button.drill-post {
   overflow-wrap: anywhere;
   white-space: pre-line;
 }
+
+/* Scenario als stappenplan: genummerde stappen, elk met een korte samenvatting en "Aanpassen"; daaronder het rapport. */
+.scenario-steps {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+}
+
+.scenario-step {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--border);
+}
+
+.scenario-step:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.scenario-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.scenario-step-head h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.scenario-step-n {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.scenario-step-body {
+  margin-top: var(--s-2);
+  padding-left: calc(26px + var(--s-2));
+}
+
+.scenario-step-body p {
+  margin: 0;
+}
+
+.scenario-block-main.static {
+  cursor: default;
+}
+
+.scenario-report h3 {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-md);
+}
+
+.scenario-table summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* De doellijn: gestreept in de tekstkleur, nooit een reekskleur. */
+.line-chart .goal-line {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.line-chart .goal-label {
+  fill: var(--text-muted);
+}
+
+.scenario-kpis .stats-hero-item dd {
+  font-size: var(--fs-lg);
+  overflow-wrap: anywhere;
+}
+
+.scenario-kpis .stats-hero-item .kpi-detail {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular, 400);
+}

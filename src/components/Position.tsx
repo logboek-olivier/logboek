@@ -20,8 +20,6 @@ import { useCounters } from './useCounters'
 import { usePeriodChoice } from './money-period'
 import { beginsaldiInvoeren, standOpslaan } from '../domain/geld'
 import { changeDrills, forecastDrills, receivableDrill } from '../domain/doorklik'
-import { scenarioPlan } from '../model/scenario'
-import { useActiveScenario, type ForecastMode } from './Scenario'
 import { DrillSheet, type DrillRequest } from './DrillSheet'
 import { instellingenOpslaan } from '../domain/instellingen'
 import { parseStand } from '../basis/bedrag'
@@ -30,7 +28,7 @@ import { todayIso } from '../basis/datum'
 // Geld → Mijn positie en de vooruitblik (src/model/position.ts). Een stand per rekening is hier in een paar seconden
 // in te tikken (tik op de rekening); de import onder Meer → Rekeningen blijft optioneel.
 
-function usePositionInput(store: Store): PositionInput {
+export function usePositionInput(store: Store): PositionInput {
   const accounts = useCollection(store, 'accounts.json.enc')
   const balances = useCollection(store, 'balances.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
@@ -71,14 +69,14 @@ export function useMoneyPeriod(store: Store): { period: Period; hasData: boolean
 }
 
 /** Mijn positie (Werkelijk) of de vooruitblik (Verwacht), in de periode bovenaan Geld. */
-export function PositionAndForecast({ store, notify, part, period, preset = 'carriere', mode = 'gepland' }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik. */ part: 'werkelijk' | 'verwacht'; period: Period; preset?: PeriodPreset; mode?: ForecastMode }) {
+export function PositionAndForecast({ store, notify, part, period }: { store: Store; notify: Notify; /** Werkelijk: Mijn positie; Verwacht: de vooruitblik (Gepland). */ part: 'werkelijk' | 'verwacht'; period: Period }) {
   const input = usePositionInput(store)
   const settingsRecords = useCollection(store, 'settings.json.enc')
   const settings = useMemo(() => currentSettings(settingsRecords), [settingsRecords])
   const calendar = useCollection(store, 'calendar.json.enc')
   const stays = useCollection(store, 'periods.json.enc')
   const index = useMemo(() => buildIndex(calendar, input.trips, input.legs, [], stays), [calendar, input.trips, input.legs, stays])
-  return part === 'werkelijk' ? <PositionSection store={store} notify={notify} input={input} period={period} /> : <ForecastSection store={store} notify={notify} input={input} settings={settings} index={index} period={period} preset={preset} mode={mode} />
+  return part === 'werkelijk' ? <PositionSection store={store} notify={notify} input={input} period={period} /> : <ForecastSection store={store} notify={notify} input={input} settings={settings} index={index} period={period} />
 }
 
 function PositionSection({ store, notify, input, period }: { store: Store; notify: Notify; input: PositionInput; period: Period }) {
@@ -349,23 +347,18 @@ function QuickStandSheet({ store, account, notify, onClose }: { store: Store; ac
  * verwacht gestippeld). Bij Scenario loopt de vooruitblik door tot het einde van het scenario (behalve bij een zelf gekozen
  * einddatum).
  */
-function ForecastSection({ store, notify, input, settings, index, period, preset, mode }: { store: Store; notify: Notify; input: PositionInput; settings: Settings; index: CalendarIndex; period: Period; preset: PeriodPreset; mode: ForecastMode }) {
+function ForecastSection({ store, notify, input, settings, index, period }: { store: Store; notify: Notify; input: PositionInput; settings: Settings; index: CalendarIndex; period: Period }) {
   const fixed = useCollection(store, 'fixedcosts.json.enc')
-  const scenario = useActiveScenario(store)
   const [drill, setDrill] = useState<DrillRequest | null>(null)
   const today = todayIso()
   const pEnd = planningEnd(index)
-  const plan = useMemo(() => (mode === 'scenario' && scenario ? scenarioPlan(scenario, pEnd, today) : null), [mode, scenario, pEnd, today])
-  const lastDay = plan?.end ?? null
-  // Scenario: tot het einde van het scenario, behalve als de gebruiker zelf een einddatum koos.
-  const extended = !!lastDay && lastDay > period.to && preset !== 'eigen'
-  const range = useMemo(() => (extended && lastDay ? { from: period.from, to: lastDay } : period), [extended, lastDay, period])
+  const range = period
   // Kosten: vaste lasten en per dagsoort het eigen gemiddelde (of het standaardbedrag) van de variabele kosten. Alleen
   // opnieuw rekenen als de gegevens veranderen (de vooruitblik loopt over alle trips, dagen en transacties).
   const f = useMemo(() => {
     const averages = dayAverages(input.transactions, index, today, settings)
-    return forecast(input, settings, today, pEnd, 6, { fixed, averages, index }, range, plan)
-  }, [input, index, today, settings, fixed, range, plan, pEnd])
+    return forecast(input, settings, today, pEnd, 6, { fixed, averages, index }, range)
+  }, [input, index, today, settings, fixed, range, pEnd])
   // Niets te tonen: geen posten, geen gemeten maand en niets zonder koers (dan wel de melding dat een koers ontbreekt).
   if (f.items.length === 0 && f.months.every((m) => m.eur === null) && Object.keys(f.other).length === 0 && Object.keys(f.now.other).length === 0) return null
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
@@ -373,16 +366,13 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
   const first = f.months.findIndex((m) => m.eur !== null)
   const months = first > 0 ? f.months.slice(first) : f.months
   const periodText = t('drill.period', { from: formatDate(today), to: formatDate(range.to) })
-  const open = (line: 'start' | 'salary' | 'tips' | 'scenario' | 'costs' | 'oneOffs' | 'growth') => {
+  const open = (line: 'start' | 'salary' | 'tips' | 'costs') => {
     const drills = forecastDrills(f, positionAt(input, today), input.trips, input.rates)
     const requests: Record<typeof line, DrillRequest> = {
       start: { title: t('forecast.lineStart'), drill: drills.start, hint: t('forecast.startHint', { date: formatDate(today) }), signed: true },
       salary: { title: t('forecast.lineSalary'), drill: drills.salary, period: periodText, hint: t('forecast.salaryHint'), signed: true },
       tips: { title: t('forecast.lineTips'), drill: drills.tips, period: periodText, hint: t('forecast.tipsHint'), signed: true },
-      scenario: { title: t('forecast.lineScenario'), drill: drills.scenario, period: periodText, hint: t('forecast.scenarioIncomeHint'), signed: true },
       costs: { title: t('forecast.lineCosts'), drill: drills.costs, period: periodText, hint: t('forecast.costsHint'), signed: true },
-      oneOffs: { title: t('forecast.lineOneOffs'), drill: drills.oneOffs, period: periodText, hint: t('forecast.oneOffsHint'), signed: true },
-      growth: { title: t('forecast.lineGrowth'), drill: drills.growth, period: periodText, hint: t('forecast.growthHint'), signed: true },
     }
     setDrill(requests[line])
   }
@@ -403,9 +393,7 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
               ['start', t('forecast.lineStart'), lines.start, false],
               ['salary', t('forecast.lineSalary'), lines.salary, true],
               ['tips', t('forecast.lineTips'), lines.tips, true],
-              ...(mode === 'scenario' ? ([['scenario', t('forecast.lineScenario'), lines.scenario, true]] as const) : []),
               ['costs', t('forecast.lineCosts'), lines.costs, true],
-              ...(mode === 'scenario' ? ([['oneOffs', t('forecast.lineOneOffs'), lines.oneOffs, true], ['growth', t('forecast.lineGrowth'), lines.growth, true]] as const) : []),
             ] as const
           ).map(([key, label, eur, isPart]) => (
             <li key={key}>
@@ -422,11 +410,7 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
           </li>
         </ul>
       )}
-      {lines && plan && plan.assumptions.investPct > 0 && <p className="muted small">{t('forecast.invested', { amount: formatMoney(lines.invested, 'EUR'), pct: String(plan.assumptions.investPct), end: formatMoney(lines.investmentsEnd, 'EUR') })}</p>}
       {!hasAccounts && <p className="muted small">{t('position.onlyReceivable')}</p>}
-      {extended && lastDay && <p className="muted small">{t('forecast.toScenarioEnd', { date: formatDate(lastDay) })}</p>}
-      {!extended && lastDay && range.to < lastDay && <p className="muted small">{t('forecast.scenarioCut', { date: formatDate(lastDay) })}</p>}
-      {lastDay && lastDay < range.to && <p className="muted small">{t('forecast.scenarioEnds', { date: formatDate(lastDay) })}</p>}
       {f.costsUnknown && <p className="muted small">{t('forecast.costsUnknown')}</p>}
       <LineChart
         points={months.map((m) => ({ key: m.date ?? m.month, label: m.date ? formatDateShort(m.date) : formatMonthShort(m.month), value: m.eur, future: m.future }))}

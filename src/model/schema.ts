@@ -11,7 +11,10 @@
 // 4: de laatst gebruikte valuta per soort invoer in de instellingen (`lastCurrencies`), en het begindag- en koersgedrag
 // van Mijn positie gelijk aan Geld. Bestanden van versie 3 blijven ongewijzigd leesbaar (niets om te zetten); een oudere
 // build leest ze als "van een nieuwere versie".
-export const SCHEMA_VERSION = 4
+// 5: het scenario als stappenplan (`version: 2`, start vanaf vandaag met een eigen startwaarde, blokken met salaris en
+// fooi apart, een doel). Bestanden van versie 4 blijven ongewijzigd leesbaar (een ouder scenario wordt pas na een tik
+// omgezet); een oudere build leest een bestand van versie 5 als "van een nieuwere versie".
+export const SCHEMA_VERSION = 5
 
 // Schrijfversie van deze build: elk databestand dat deze build schrijft, krijgt hem mee als `minWriterVersion` (in de
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
@@ -39,7 +42,9 @@ export const SCHEMA_VERSION = 4
 // een bezitting bij het opslaan een andere soort geven en de aannames weggooien.
 // 10: de laatst gebruikte valuta per soort invoer (`lastCurrencies` in het record `laatst:<apparaat>`). Een oudere build
 // zou dat veld bij het opslaan van "laatst gebruikt" weggooien en alles weer in één valuta zetten.
-export const WRITER_VERSION = 10
+// 11: het scenario als stappenplan. Een oudere build leest de blokken van een omgezet scenario als weken ná de planning,
+// telt de planning dan dubbel en zou salaris en fooi per blok, de startwaarde en het doel bij het opslaan weggooien.
+export const WRITER_VERSION = 11
 
 let writer = WRITER_VERSION
 

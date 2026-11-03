@@ -12,13 +12,18 @@ export interface LinePoint {
 
 const WIDTH = 320
 
-export function LineChart({ points, label, format, height = 150, labelEvery = 1 }: { points: LinePoint[]; label: string; format: (n: number) => string; height?: number; labelEvery?: number }) {
+/**
+ * `goal`: een doellijn (horizontaal, gestreept, in de tekstkleur, met de tekst erbij), bijvoorbeeld het doelbedrag van
+ * een scenario. De schaal loopt dan ook tot het doel.
+ */
+export function LineChart({ points, label, format, height = 150, labelEvery = 1, goal }: { points: LinePoint[]; label: string; format: (n: number) => string; height?: number; labelEvery?: number; goal?: { value: number; label: string } }) {
   const TOP = 16
   const BOTTOM = 18
   const values = points.map((p) => p.value).filter((v): v is number => v !== null)
   if (values.length === 0) return null
-  const max = Math.max(0, ...values)
-  const min = Math.min(0, ...values)
+  const scaleValues = goal ? [...values, goal.value] : values
+  const max = Math.max(0, ...scaleValues)
+  const min = Math.min(0, ...scaleValues)
   const span = max - min || 1
   const plot = height - TOP - BOTTOM
   const step = points.length > 1 ? WIDTH / (points.length - 1) : 0
@@ -45,6 +50,14 @@ export function LineChart({ points, label, format, height = 150, labelEvery = 1 
         <text x={0} y={height - BOTTOM - 4}>
           {format(min)}
         </text>
+      )}
+      {goal && (
+        <>
+          <line className="goal-line" x1={0} x2={WIDTH} y1={y(goal.value)} y2={y(goal.value)} />
+          <text className="goal-label" x={0} y={y(goal.value) + (y(goal.value) > height - BOTTOM - 14 ? -4 : 12)}>
+            {goal.label}
+          </text>
+        </>
       )}
       <path className="line-past" d={path(0, Math.max(0, lastPast))} />
       {lastPast < points.length - 1 && <path className="line-future" d={path(Math.max(0, lastPast), points.length - 1)} />}

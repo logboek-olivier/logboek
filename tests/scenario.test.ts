@@ -61,17 +61,20 @@ function sumCloses(p: Profile, f: Forecast): void {
   expect([drills.start.eur, drills.salary.eur, drills.tips.eur, drills.scenario.eur, drills.costs.eur, drills.oneOffs.eur, drills.growth.eur]).toEqual([lines.start, lines.salary, lines.tips, lines.scenario, lines.costs, lines.oneOffs, lines.growth])
 }
 
-describe('schemaversie 4', () => {
-  it('leest bestanden van versie 2 en 3 (standen, instellingen) ongewijzigd in en schrijft versie 4 met schrijfversie 10', () => {
+describe('schemaversie 5', () => {
+  it('leest bestanden van versie 2, 3 en 4 (standen, instellingen, scenario\'s) ongewijzigd in en schrijft versie 5 met schrijfversie 11', () => {
     const p = profileA()
     const v2 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, minWriterVersion: 6, records }))
     expect(decodeRecords('balances.json.enc', v2(p.input.balances))).toEqual(p.input.balances)
     expect(decodeRecords('settings.json.enc', v2([p.settings]))).toEqual([p.settings])
-    expect(SCHEMA_VERSION).toBe(4)
-    expect(WRITER_VERSION).toBe(10)
+    expect(SCHEMA_VERSION).toBe(5)
+    expect(WRITER_VERSION).toBe(11)
     const v3 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 3, minWriterVersion: 9, records }))
     expect(decodeRecords('settings.json.enc', v3([p.settings]))).toEqual([p.settings])
-    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 4, minWriterVersion: 10 })
+    const v4 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 4, minWriterVersion: 10, records }))
+    // Een ouder scenario (zonder version) blijft zoals het was; het wordt pas na een tik omgezet.
+    expect(decodeRecords('scenarios.json.enc', v4([EXAMPLE]))).toEqual([EXAMPLE])
+    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 5, minWriterVersion: 11 })
   })
 })
 
