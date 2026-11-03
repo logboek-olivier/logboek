@@ -1,8 +1,8 @@
 // Opdrachten voor de training: cursussen, studenten en planningen. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
 import { deleteCurriculum, saveCurriculum } from '../model/curricula'
-import { deletePlan, savePlan } from '../model/plans'
-import { addStudent, autoArchive, deleteStudents, saveStudents, setArchived, updateStudent, type StudentInput } from '../model/students'
+import { deletePlan, savePlan, setPlanTrip } from '../model/plans'
+import { addStudent, autoArchive, deleteStudents, saveStudents, setArchived, setStudentCurriculum, updateStudent, type StudentInput } from '../model/students'
 import type { Student } from '../model/types'
 import { addParticipant } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
@@ -18,10 +18,12 @@ export async function addStudentToTrip(tx: Tx, input: StudentInput, tripId: stri
 
 export const cursusOpslaan = opdracht('cursusOpslaan', saveCurriculum)
 export const cursusVerwijderen = opdracht('cursusVerwijderen', deleteCurriculum)
+export const planningKoppelen = opdracht('planningKoppelen', setPlanTrip)
 export const planningOpslaan = opdracht('planningOpslaan', savePlan)
 export const planningVerwijderen = opdracht('planningVerwijderen', deletePlan)
 export const studentArchiveren = opdracht('studentArchiveren', setArchived)
 export const studentBewerken = opdracht('studentBewerken', updateStudent)
+export const studentCursusZetten = opdracht('studentCursusZetten', setStudentCurriculum)
 export const studentInTripToevoegen = opdrachtMet('studentInTripToevoegen', addStudentToTrip)
 export const studentToevoegen = opdrachtMet('studentToevoegen', addStudent)
 export const studentenArchiveren = opdracht('studentenArchiveren', autoArchive)

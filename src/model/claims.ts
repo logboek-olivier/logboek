@@ -116,6 +116,12 @@ export async function updateClaim(store: Tx, claim: Claim, input: ClaimInput): P
   if (doc && next.date !== latest.date) await store.put('documents/index.json.enc', { ...doc, title: receiptTitle(next.date), issuedAt: next.date, updatedAt: now })
 }
 
+/** De trip van een declaratie wijzigen (Nakijken: declaratie zonder trip); de uitgave volgt de declaratie. */
+export function setClaimTrip(store: Tx, claim: Claim, tripId: string | null): Promise<void> {
+  const latest = store.list('claims.json.enc').find((c) => c.id === claim.id) ?? claim
+  return updateClaim(store, latest, { date: latest.date, tripId, note: latest.note ?? '', amount: latest.amount ?? null, currency: latest.currency ?? 'EUR' })
+}
+
 /** "Ingediend": na het delen met de app van de organisatie. Al ingediend of terugbetaald: niets. */
 export async function markSubmitted(store: Tx, claim: Claim, date: string): Promise<void> {
   const before = store.list('claims.json.enc').find((c) => c.id === claim.id) ?? claim
@@ -188,9 +194,10 @@ export function tripClaims(claims: readonly Claim[], tripId: string): Claim[] {
 }
 
 /** Declaraties die aandacht vragen of geen trip hebben: niet terugbetaald, of zonder trip (anders alleen via de trip). */
-export function claimsToShow(claims: readonly Claim[]): Claim[] {
+export function claimsToShow(claims: readonly Claim[], liveTripIds?: ReadonlySet<string>): Claim[] {
   return active(claims)
-    .filter((c) => c.status !== 'terugbetaald' || !c.tripId)
+    // Een terugbetaalde declaratie staat bij haar trip; is die trip weg, dan hier (anders is ze nergens zichtbaar).
+    .filter((c) => c.status !== 'terugbetaald' || !c.tripId || (liveTripIds !== undefined && !liveTripIds.has(c.tripId)))
     .sort((a, b) => b.date.localeCompare(a.date))
 }
 

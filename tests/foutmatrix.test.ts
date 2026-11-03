@@ -309,7 +309,7 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
     await s.init()
     await s.unlockLocal({ passphrase: PASSPHRASE })
     await new Promise((r) => setTimeout(r, 200))
-    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', metaRestorable: true })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', metaRestorable: true, pending: 0 })
     expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
     await expect(s.restoreRemoteMeta({ passphrase: 'verkeerde nep wachtzin' })).rejects.toMatchObject({ name: 'WrongSecretError' })
     expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
@@ -329,7 +329,7 @@ describe('Foutmatrix: meta.json.enc en het netwerk', () => {
     await s.init()
     await s.unlockLocal({ passphrase: PASSPHRASE })
     await new Promise((r) => setTimeout(r, 200))
-    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', pending: 0 })
     expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
   }, 60_000)
 
@@ -761,7 +761,7 @@ describe('Foutmatrix: randgevallen uit de review', () => {
     await new Promise((r) => setTimeout(r, 200))
     expect(s.getState()).toMatchObject({ phase: 'mismatch', metaRestorable: true })
     await expect(s.restoreRemoteMeta({ passphrase: PASSPHRASE })).rejects.toMatchObject({ name: 'KeyMismatchError' })
-    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', pending: 0 })
     expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
   }, 60_000)
 
@@ -773,7 +773,7 @@ describe('Foutmatrix: randgevallen uit de review', () => {
     await s.init()
     await s.unlockLocal({ passphrase: PASSPHRASE })
     await new Promise((r) => setTimeout(r, 200))
-    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', pending: 0 })
   }, 60_000)
 
   it('een oude meta zonder check-veld wordt nooit overschreven', async () => {
@@ -786,7 +786,7 @@ describe('Foutmatrix: randgevallen uit de review', () => {
     await s.init()
     await s.unlockLocal({ passphrase: PASSPHRASE })
     await new Promise((r) => setTimeout(r, 200))
-    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', pending: 0 })
     expect(github.requests.some((r) => r.method === 'PUT')).toBe(false)
   }, 60_000)
 

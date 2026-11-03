@@ -129,7 +129,7 @@ export function App() {
       )
       break
     case 'mismatch':
-      screen = <KeyMismatch where={state.where} metaRestorable={state.metaRestorable === true} />
+      screen = <KeyMismatch where={state.where} metaRestorable={state.metaRestorable === true} pending={state.pending ?? 0} />
       break
     case 'repair':
       screen = <Repair report={state.report} needsSecret={state.needsSecret} />

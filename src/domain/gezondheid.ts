@@ -8,7 +8,25 @@ import type { Tx } from './tx'
 
 /** Welke overtredingen een fix van één tik hebben. */
 export function canFix(violation: Violation): boolean {
-  return violation.rule === 'lopende-trip-weg' || violation.rule === 'trip-datums'
+  return violation.rule === 'lopende-trip-weg' || violation.rule === 'trip-datums' || violation.rule === 'scenario-weg'
+}
+
+/** Waar een regel zonder eigen fix wél wordt opgelost: Nakijken, of Geld → Te controleren. */
+export function fixedAt(violation: Violation): 'nakijken' | 'geld' | null {
+  switch (violation.rule) {
+    case 'dag-zonder-trip':
+    case 'geld-zonder-periode':
+    case 'student-zonder-trip':
+    case 'planning-zonder-trip':
+    case 'declaratie-zonder-trip':
+    case 'student-zonder-cursus':
+      return 'nakijken'
+    case 'salaris-zonder-bedrag':
+    case 'meerdere-salarissen':
+      return 'geld'
+    default:
+      return null
+  }
 }
 
 export async function fixViolation(tx: Tx, violation: Violation): Promise<void> {
@@ -16,6 +34,9 @@ export async function fixViolation(tx: Tx, violation: Violation): Promise<void> 
     case 'lopende-trip-weg':
       // De lopende trip wijst naar een trip die weg is: geen lopende trip (Vandaag kiest dan de trip van vandaag).
       return saveSettings(tx, { activeWeekId: undefined })
+    case 'scenario-weg':
+      // Het actieve scenario bestaat niet meer: geen actief scenario (Verwacht toont dan Gepland, of het enige scenario).
+      return saveSettings(tx, { activeScenarioId: undefined })
     case 'trip-datums': {
       // Begin na eind: omdraaien (de dagen zelf blijven staan).
       const trip = tx.list('trips.json.enc').find((x) => x.id === violation.id)

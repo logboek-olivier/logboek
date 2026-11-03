@@ -8,7 +8,8 @@ import { kindForType, typeForKind } from './trip-kind'
 import { STAY_FROM_DAY } from './migrate-periods'
 import { defaultWeekName, weekView } from './weeks'
 import type { Lang } from '../i18n'
-import type { CalendarDay, Leg, Organisation, Place, Settings, StayKind, StayPeriod, Transaction, Trip, WeekType } from './types'
+import { effectiveCurricula } from './curricula'
+import type { CalendarDay, Claim, Curriculum, Leg, Organisation, Place, Settings, StayKind, StayPeriod, Student, Transaction, Trip, WeekPlan, WeekType } from './types'
 import { addDays } from '../basis/datum'
 
 // Nakijken (Meer → Nakijken): twijfelgevallen en tegenstrijdigheden in het periodemodel, elk met één knop die het
@@ -32,6 +33,12 @@ export type ReviewItem =
    * een nieuwe trip voor deze dagen. Nooit vanzelf, en nooit voorgesteld naar een andere trip.
    */
   | { key: string; kind: 'dagen-zonder-trip'; tripId: string; tripName: string | null; legs: Leg[] }
+  /** Een planning waarvan de trip weg is: de trip terugzetten, koppelen aan de trip van haar startdatum, of de koppeling weghalen. */
+  | { key: string; kind: 'planning-zonder-trip'; plan: WeekPlan; tripName: string | null; target: Trip | null }
+  /** Een declaratie waarvan de trip weg is (ook terugbetaald, anders is ze nergens zichtbaar). */
+  | { key: string; kind: 'declaratie-zonder-trip'; claim: Claim; tripName: string | null; target: Trip | null }
+  /** Een student met een cursus die niet meer bestaat: de cursussen van zijn trip eerst, dan de andere. */
+  | { key: string; kind: 'student-zonder-cursus'; student: Student; tripName: string | null; choices: Curriculum[] }
 
 export interface ReviewInput {
   trips: readonly Trip[]
@@ -43,6 +50,11 @@ export interface ReviewInput {
   transactions: readonly Transaction[]
   places: readonly Place[]
   settings: Settings
+  plans?: readonly WeekPlan[]
+  claims?: readonly Claim[]
+  students?: readonly Student[]
+  /** Opgeslagen cursussen (eigen en bewerkte); de meegeleverde komen uit de code. */
+  curricula?: readonly Curriculum[]
 }
 
 const ORG_FROM_SOURCE: Partial<Record<Transaction['source'], Organisation>> = { 'sailing-virgins': 'sailing-virgins', 'yacht-week': 'yacht-week' }
@@ -97,6 +109,27 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     items.push({ key: `dagen-zonder-trip:${tripId}`, kind: 'dagen-zonder-trip', tripId, tripName, legs: sorted })
   }
 
+  // Planningen en declaraties waarvan de trip weg is ("Geld en dagen behouden zonder periode"); nooit stil verhuisd.
+  const removedName = (tripId: string) => input.removedTrips?.find((x) => x.id === tripId)?.name ?? null
+  const tripOn = (date: string) => trips.find((t) => t.startDate && t.endDate && t.startDate <= date && date <= t.endDate) ?? null
+  for (const plan of active(input.plans ?? [])) {
+    if (plan.tripId && !byId.has(plan.tripId)) items.push({ key: `planning:${plan.id}`, kind: 'planning-zonder-trip', plan, tripName: removedName(plan.tripId), target: tripOn(plan.startDate) })
+  }
+  for (const claim of active(input.claims ?? [])) {
+    if (claim.tripId && !byId.has(claim.tripId)) items.push({ key: `declaratie:${claim.id}`, kind: 'declaratie-zonder-trip', claim, tripName: removedName(claim.tripId), target: tripOn(claim.date) })
+  }
+
+  // Studenten met een cursus die weg is (bijvoorbeeld verwijderd onder Meer → Cursussen).
+  const courses = effectiveCurricula(input.curricula ?? [])
+  const courseIds = new Set(courses.map((c) => c.id))
+  for (const student of active(input.students ?? [])) {
+    if (student.archivedAt || !student.curriculumId || courseIds.has(student.curriculumId)) continue
+    const trip = student.weekId ? byId.get(student.weekId) : undefined
+    const inTrip = new Set((trip?.participants ?? []).map((p) => p.curriculumId).filter((id): id is string => !!id && courseIds.has(id)))
+    const choices = [...courses.filter((c) => inTrip.has(c.id)), ...courses.filter((c) => !inTrip.has(c.id))]
+    items.push({ key: `cursus:${student.id}`, kind: 'student-zonder-cursus', student, tripName: trip?.name ?? null, choices })
+  }
+
   // Investeringen zonder soort (van vóór het periodemodel).
   for (const tx of active(input.transactions)) if (tx.kind === 'investering' && tx.category !== 'opleiding' && tx.category !== 'uitrusting') items.push({ key: `investering:${tx.id}`, kind: 'investering-soort', tx })
 
@@ -124,6 +157,10 @@ export function reviewInput(store: Reader): ReviewInput {
     transactions: store.list('transactions.json.enc'),
     places: store.list('places.json.enc'),
     settings: currentSettings(store.list('settings.json.enc')),
+    plans: store.list('plans.json.enc'),
+    claims: store.list('claims.json.enc'),
+    students: store.list('students.json.enc'),
+    curricula: store.get('curricula.json.enc'),
   }
 }
 

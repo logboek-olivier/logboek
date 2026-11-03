@@ -133,7 +133,7 @@ test die één op de twee keer faalt is in CI groen. Voorstel: project `mobiel` 
 project voor de schermafbeeldingen) en `retries: 0` met een `--repeat-each` nachtelijke run, of minstens de retries
 rapporteren (`reporter: [['list'], ['json']]` en een stap die retried tests print). Omvang S.
 
-**W-5 · Gezondheid belooft "een fix van één tik waar dat kan", en kan dat voor 2 van de 9 regels.** Categorie werking.
+**W-5 · Gezondheid belooft "een fix van één tik waar dat kan", en kan dat voor 2 van de 9 regels.** **Opgelost in #136** (`fixedAt` in `src/domain/gezondheid.ts`: elke regel zonder eigen fix heeft een knop "Naar Nakijken" of "Naar Geld"; het actieve scenario dat weg is, krijgt een eigen fix). Categorie werking.
 Bewijs: `src/domain/gezondheid.ts:10` (`canFix`: alleen `lopende-trip-weg` en `trip-datums`); CLAUDE.md, Invarianten.
 Gevolg: `dag-zonder-trip`, `geld-zonder-periode` en `student-zonder-trip` staan in Gezondheid zonder knop, terwijl Nakijken
 dezelfde drie wél met één tik oplost. Voorstel: Gezondheid naar Nakijken laten verwijzen voor die drie, en
@@ -203,7 +203,7 @@ tweestapsverificatie met passkey. Omvang S (instellingen) en opgenomen in V-2/V-
 Agentbevinding, zelf bevestigd: `src/model/position.ts:291` (`state: 'geen-koers'` zodra `other` niet leeg is), terwijl
 CLAUDE.md "zonder koers apart per valuta" belooft en Mijn positie zelf dat wel doet. Omvang S.
 
-**G-5 · Verwijzingen die niemand controleert.** Categorie werking, later. Agentbevinding, steekproefsgewijs bevestigd:
+**G-5 · Verwijzingen die niemand controleert.** **Opgelost in #136** (een vaste last verwijderen geeft de keuze geboekte maanden behouden als gewone uitgave of mee naar de prullenbak; nieuwe nakijk-invarianten planning-zonder-trip, declaratie-zonder-trip, student-zonder-cursus en scenario-weg, elk met een Nakijken-punt of een fix; een terugbetaalde declaratie van een verwijderde trip blijft zichtbaar onder Geld → Declaraties; `season.org` volgt al "Onbekende organisatie" via `organisationOfMoney`). Categorie werking, later. Agentbevinding, steekproefsgewijs bevestigd:
 `deleteFixedCost` (`src/model/costs.ts:71`) laat de geboekte maanden staan als uitgaven met `fixedCostId` naar een
 tombstone (ze tellen nog als "vast" in kosten per maand); een cursus verwijderen laat `curriculumId` bij studenten en
 deelnemers staan; `WeekPlan.tripId` en `Claim.tripId` blijven na "Geld en dagen behouden" wijzen zonder Nakijken-punt
@@ -278,7 +278,7 @@ overnemen. Omvang S.
 alleen een statuscode in `offline-maps.ts`). Voorstel: een test die `new Error(` met interpolatie buiten een allowlist
 verbiedt. Omvang S.
 
-**S-5 · Koppelen wist de lokale gegevens zonder te kijken of er nog een outbox wacht.** Categorie werking, later.
+**S-5 · Koppelen wist de lokale gegevens zonder te kijken of er nog een outbox wacht.** **Opgelost in #136** (het scherm "Sleutel past niet" onthoudt het aantal wachtende wijzigingen; "Wissen en opnieuw koppelen" toont dat eerst, biedt eerst ontgrendelen en syncen aan, en wist pas na een tweede tik). Categorie werking, later.
 Agentbevinding, zelf bevestigd: `src/session.ts:425-427` (`clearAll(db)` direct na `unlock`). Alleen bereikbaar na
 "wissen en opnieuw koppelen"; geen lek, wel mogelijk verlies van niet-gesyncte wijzigingen. Voorstel: "N wijzigingen
 wachten nog" tonen vóór het wissen. Omvang S.

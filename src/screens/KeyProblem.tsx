@@ -11,11 +11,13 @@ import { ErrorLine, Screen } from './Setup'
 // Sleutel past niet bij het logboek (fase 'mismatch'), of gegevens die niet met de sleutel uit meta.json.enc te lezen
 // zijn (fase 'repair'). Nooit stil verder: niets geschreven, niets gewist zonder tik en wachtzin.
 
-export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' | 'remote'; metaRestorable?: boolean }) {
+export function KeyMismatch({ where, metaRestorable = false, pending = 0 }: { where: 'local' | 'remote'; metaRestorable?: boolean; pending?: number }) {
   const session = useSession()
   const [copies, setCopies] = useState<CollectionPath[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Wissen pas na een tweede tik: eerst staat er wat er nog niet op GitHub staat (S-5).
+  const [confirming, setConfirming] = useState(false)
   // Alleen bij een ander logboek op GitHub: de lijst van wat er bij opnieuw koppelen verloren gaat.
   useEffect(() => {
     if (where !== 'remote') return
@@ -70,9 +72,26 @@ export function KeyMismatch({ where, metaRestorable = false }: { where: 'local' 
           ) : (
             <p className="muted small">{t('key.relinkNothing')}</p>
           )}
-          <button className="btn danger" disabled={busy} onClick={() => void relink()}>
-            {t('key.relink')}
-          </button>
+          {!confirming ? (
+            <button className="btn danger" disabled={busy} onClick={() => setConfirming(true)}>
+              {t('key.relink')}
+            </button>
+          ) : (
+            <div className="stack delete-choice" role="group" aria-label={t('key.relink')}>
+              <p>{pending > 0 ? t('key.relinkPending', { n: pending }) : t('key.relinkNoPending')}</p>
+              {pending > 0 && (
+                <button className="btn primary" disabled={busy} onClick={() => void session.backToUnlock()}>
+                  {t('key.relinkSyncFirst')}
+                </button>
+              )}
+              <button className="btn danger" disabled={busy} onClick={() => void relink()}>
+                {pending > 0 ? t('key.relinkAnyway', { n: pending }) : t('key.relinkConfirm')}
+              </button>
+              <button className="btn link" disabled={busy} onClick={() => setConfirming(false)}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          )}
           <ErrorLine error={error} />
         </div>
       )}

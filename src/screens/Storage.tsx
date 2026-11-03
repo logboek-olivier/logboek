@@ -21,7 +21,8 @@ import { checkHasProblem, type FileCheck, type FileState } from '../storage/stor
 import { deviceId } from '../storage/device'
 import { describeStatus, type RepairResult, type Store } from '../storage/store'
 import { violations, type Rule, type Violation } from '../domain/invariants'
-import { canFix, gezondheidHerstellen } from '../domain/gezondheid'
+import { canFix, fixedAt, gezondheidHerstellen } from '../domain/gezondheid'
+import { openMoney, openReview } from '../navigation'
 import { ErrorLine } from './Setup'
 import { backupTerugzetten } from '../domain/importeren'
 import { todayIso } from '../basis/datum'
@@ -529,11 +530,22 @@ function HealthSection({ store, notify }: { store: Store; notify: Notify }) {
             <li key={rule} className="row-item">
               <span className="row-main">
                 <span>{t(`health.rule.${rule}`, { n: list.length })}</span>
-                <span className="muted small">{t(list[0]!.severity === 'fout' ? 'health.error' : canFix(list[0]!) ? 'health.fixable' : 'health.review')}</span>
+                <span className="muted small">{t(list[0]!.severity === 'fout' ? 'health.error' : canFix(list[0]!) ? 'health.fixable' : fixedAt(list[0]!) === 'geld' ? 'health.inMoney' : fixedAt(list[0]!) === 'nakijken' ? 'health.review' : 'health.manual')}</span>
               </span>
               {canFix(list[0]!) && (
                 <button type="button" className="btn small" disabled={busy} onClick={() => void fix(list)}>
                   {t('health.fix')}
+                </button>
+              )}
+              {/* Geen eigen fix: één knop naar de plek waar het wél wordt opgelost (Nakijken, of Te controleren in Geld). */}
+              {!canFix(list[0]!) && fixedAt(list[0]!) === 'nakijken' && (
+                <button type="button" className="btn small" onClick={() => openReview()}>
+                  {t('health.toReview')}
+                </button>
+              )}
+              {!canFix(list[0]!) && fixedAt(list[0]!) === 'geld' && (
+                <button type="button" className="btn small" onClick={() => openMoney()}>
+                  {t('health.toMoney')}
                 </button>
               )}
             </li>

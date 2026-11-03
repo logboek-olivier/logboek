@@ -1,4 +1,6 @@
 import { isDate } from '../basis/datum'
+import { effectiveCurricula } from '../model/curricula'
+import { liveScenarios } from '../model/scenario'
 import { currentSettings } from '../model/settings'
 import type { CollectionPath } from '../model/types'
 import { salaryStatus } from './geldmodel'
@@ -20,6 +22,10 @@ export type Rule =
   | 'meerdere-salarissen'
   | 'lopende-trip-weg'
   | 'student-zonder-trip'
+  | 'planning-zonder-trip'
+  | 'declaratie-zonder-trip'
+  | 'student-zonder-cursus'
+  | 'scenario-weg'
 
 export interface Violation {
   /** Vast per overtreding: zo is te zien of een opdracht er een nieuwe maakt. */
@@ -76,9 +82,18 @@ export function violations(reader: Reader): Violation[] {
   // Precies één salaris per tocht: meer dan één voegt de app niet zelf samen (Olivier kiest, Te controleren).
   for (const [tripId, n] of salaries) if (n > 1 && live.has(tripId)) out.push(v('meerdere-salarissen', 'trips.json.enc', tripId))
   for (const stay of stays) if (!isDate(stay.startDate) || !isDate(stay.endDate) || stay.startDate > stay.endDate) out.push(v('datum', 'periods.json.enc', stay.id))
-  for (const student of reader.list('students.json.enc')) if (student.weekId && !live.has(student.weekId) && !student.archivedAt) out.push(v('student-zonder-trip', 'students.json.enc', student.id))
+  const students = reader.list('students.json.enc')
+  for (const student of students) if (student.weekId && !live.has(student.weekId) && !student.archivedAt) out.push(v('student-zonder-trip', 'students.json.enc', student.id))
+  // Een planning of declaratie die nog naar een verwijderde trip wijst ("Geld en dagen behouden"): nakijken, nooit stil.
+  for (const plan of reader.list('plans.json.enc')) if (plan.tripId && !live.has(plan.tripId)) out.push(v('planning-zonder-trip', 'plans.json.enc', plan.id))
+  for (const claim of reader.list('claims.json.enc')) if (claim.tripId && !live.has(claim.tripId)) out.push(v('declaratie-zonder-trip', 'claims.json.enc', claim.id))
+  // Een student (of deelnemer) met een cursus die weg is: de checklist heeft dan geen onderwerpen meer.
+  const courses = new Set(effectiveCurricula(reader.get('curricula.json.enc')).map((c) => c.id))
+  for (const student of students) if (!student.archivedAt && student.curriculumId && !courses.has(student.curriculumId)) out.push(v('student-zonder-cursus', 'students.json.enc', student.id))
   const settings = currentSettings(reader.list('settings.json.enc'))
   if (settings.activeWeekId && !live.has(settings.activeWeekId)) out.push(v('lopende-trip-weg', 'settings.json.enc', 'settings'))
+  // Het actieve scenario bestaat niet meer: de app valt zelf terug (activeScenario), maar het veld blijft fout staan.
+  if (settings.activeScenarioId && !liveScenarios(reader.list('scenarios.json.enc')).some((s) => s.id === settings.activeScenarioId)) out.push(v('scenario-weg', 'settings.json.enc', 'settings'))
   return out
 }
 

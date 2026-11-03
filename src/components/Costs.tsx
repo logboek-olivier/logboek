@@ -3,7 +3,7 @@ import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatMoney, formatMonth } from '../format'
 import { t } from '../i18n'
 import { buildIndex } from '../model/calendar'
-import { cleanDefaults, dayAverages, fixedAmount, fixedInMonth } from '../model/costs'
+import { bookingsOf, cleanDefaults, dayAverages, fixedAmount, fixedInMonth } from '../model/costs'
 import { missingBookings } from '../model/fixed-bookings'
 import { active } from '../model/derive'
 import { getRates, subscribeRates } from '../model/rates'
@@ -144,6 +144,7 @@ function FixedCostView({ store, cost, notify, onClose }: { store: Store; cost: F
 function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: FixedCost | null; notify: Notify; onClose: () => void }) {
   const month = todayIso().slice(0, 7)
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
+  const transactions = useCollection(store, 'transactions.json.enc')
   const [name, setName] = useState(cost?.name ?? '')
   const [amount, setAmount] = useState(cost ? amountInput(fixedAmount(cost, month)) : '')
   const [currency, setCurrency] = useState<Currency>(cost?.currency ?? defaultCurrency(settings, 'vast'))
@@ -178,9 +179,14 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
     notify(t('costs.stoppedToast', { month: formatMonth(from) }), undo)
   }
 
-  async function remove() {
+  // Verwijderen met geboekte maanden: dezelfde keuze als bij een periode (behouden als gewone uitgave, of alles naar de
+  // prullenbak); zonder boekingen direct, met ongedaan maken.
+  const bookings = bookingsOf(transactions, cost?.id ?? '')
+  const [choosing, setChoosing] = useState(false)
+
+  async function remove(mode: 'behouden' | 'alles') {
     if (!cost) return
-    const undo = await vasteLastVerwijderen(store, cost)
+    const undo = await vasteLastVerwijderen(store, cost, mode)
     onClose()
     notify(t('toast.deleted'), undo)
   }
@@ -222,13 +228,27 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
               {t('costs.stop')}
             </button>
           )}
-          {cost && (
-            <button className="btn danger" type="button" onClick={() => void remove()}>
+          {cost && !choosing && (
+            <button className="btn danger" type="button" onClick={() => (bookings.length > 0 ? setChoosing(true) : void remove('behouden'))}>
               <Icon icon={Trash2} />
               {t('common.delete')}
             </button>
           )}
         </div>
+        {cost && choosing && (
+          <div className="stack delete-choice" role="group" aria-label={t('common.delete')}>
+            <p>{t('costs.deleteAttached', { n: bookings.length })}</p>
+            <button className="btn" type="button" onClick={() => void remove('behouden')}>
+              {t('costs.keepBookings')}
+            </button>
+            <button className="btn danger" type="button" onClick={() => void remove('alles')}>
+              {t('costs.trashAll')}
+            </button>
+            <button className="btn link" type="button" onClick={() => setChoosing(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        )}
       </form>
     </Sheet>
   )
