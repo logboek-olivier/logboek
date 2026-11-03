@@ -1,3 +1,4 @@
+import { orgFromName } from '../basis/organisatie'
 import { WORK_TYPES, type Leg, type Trip, type WaterKind, type WeekType } from './types'
 
 // Soort van een trip (werk, training of plezier) en het subtype bij werk. Opgeslagen bij trips die na het periodemodel
@@ -27,7 +28,7 @@ export function kindForType(type: WeekType): WaterKind {
 
 const TRAINING_NAME = /\b(RYA|ASA|CWO|ISSA|STCW|VHF|SRC|exam|examen|course|cursus|opleiding|training|prep|theory|theorie)\b/i
 const PLEASURE_NAME = /\b(vrienden|friends|vakantie|holiday|familie|family)\b/i
-const WORK_NAME = /yacht\s*week|sailing\s*virgins|\b(SV|YW)\b|skipper|delivery|overvaart|charter/i
+const WORK_NAME = /skipper|delivery|overvaart|charter/i
 
 function subFromName(name: string): WeekType {
   if (/yacht\s*week|charter|skipper/i.test(name)) return 'skipper-charter'
@@ -42,8 +43,12 @@ export function tripKind(trip: Trip, legs: readonly Leg[]): KindGuess {
   if (type && type !== 'overig') return { kind: kindForType(type), type, sure: true }
   const roles = new Set(legs.filter((l) => l.tripId === trip.id && l.deletedAt === null).map((l) => l.role))
   const name = trip.name ?? ''
-  if (trip.organisation === 'sailing-virgins' || trip.organisation === 'yacht-week') {
-    const sub = roles.has('instructeur') ? 'training-geven' : subFromName(name) === 'overig' && trip.organisation === 'yacht-week' ? 'skipper-charter' : subFromName(name)
+  // Een trip bij een organisatie (ook een eigen organisatie, of een die op dit apparaat niet meer in de lijst staat:
+  // "Onbekende organisatie") of met de naam van een organisatie uit de instellingen in zijn naam, is werk, voor elke
+  // gebruiker; niet alleen bij Sailing Virgins en Yacht Week (review W-3). `eigen` en `overig` zeggen niets.
+  const org = (trip.organisation && trip.organisation !== 'eigen' && trip.organisation !== 'overig' ? trip.organisation : null) ?? orgFromName(name)?.org ?? null
+  if (org) {
+    const sub = roles.has('instructeur') ? 'training-geven' : subFromName(name) === 'overig' && org === 'yacht-week' ? 'skipper-charter' : subFromName(name)
     return { kind: 'werk', type: sub, sure: true }
   }
   if (roles.size > 0 && [...roles].every((r) => r === 'instructeur')) return { kind: 'werk', type: 'training-geven', sure: true }

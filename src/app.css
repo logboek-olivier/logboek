@@ -2835,11 +2835,12 @@ body.presenting .bottom-bar {
 .agenda-stat.day-thuis { background: var(--day-thuis); }
 
 .agenda-stat dt {
-  overflow: hidden;
   color: var(--text-muted);
   font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
+  /* Nooit afkappen: "Op het water" gaat op 360 px over twee regels (review D-8). */
+  overflow-wrap: anywhere;
+  min-height: 2.4em;
 }
 
 .agenda-summary.six {

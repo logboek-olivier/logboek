@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { addStudent } from '../src/model/students'
+import { studentInTripToevoegen } from '../src/domain/training'
 import type { Leg, Student, Trip, WeekPlan } from '../src/model/types'
 import { planWeek, startWeek, studentWeek, syncParticipants, type WeekInput } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
@@ -8,7 +8,7 @@ import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx, put } from './helpers/schrijf'
-import { deelnemerToevoegen, periodeBewerken } from '../src/domain/trips'
+import { periodeBewerken } from '../src/domain/trips'
 
 // Studenten en planningen horen bij een week. Oudere data (zonder weekId/tripId) wordt gekoppeld aan de week waarin
 // de datum valt, zonder te schrijven; anders "zonder week". Alle gegevens zijn verzonnen.
@@ -115,8 +115,8 @@ describe('deelnemers en studenten', () => {
   it('een student toegevoegd in Deze week komt bij de deelnemers', async () => {
     const store = await device()
     const trip = await inTx(store, startWeek, { ...input, participants: [] }, 'nl')
-    const student = await inTx(store, addStudent, { firstName: 'Nepcees', curriculumId: 'seed-asa-101', level: 'beginner', startedAt: '2026-10-26' }, trip.id)
-    await deelnemerToevoegen(store, trip, student)
+    // Zoals in Deze trip: student toevoegen zet hem ook bij de deelnemers (studentInTripToevoegen).
+    const { result: student } = await studentInTripToevoegen(store, { firstName: 'Nepcees', curriculumId: 'seed-asa-101', level: 'beginner', startedAt: '2026-10-26' }, trip.id)
     const saved = store.list('trips.json.enc')[0]!
     expect(saved.participants).toEqual([{ id: student.id, firstName: 'Nepcees', level: 'beginner', curriculumId: 'seed-asa-101' }])
     expect(student.weekId).toBe(trip.id)

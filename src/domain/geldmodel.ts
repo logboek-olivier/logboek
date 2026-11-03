@@ -1,4 +1,3 @@
-import { round2 } from '../basis/bedrag'
 import { active } from '../model/derive'
 import { endedFor } from '../model/trip-dates'
 import { newId, type SalaryStatus, type Season, type Transaction, type Trip } from '../model/types'
@@ -76,11 +75,4 @@ export function linkOf(tx: Pick<Transaction, 'tripId' | 'season'>): MoneyLink {
   const s = tx.season
   if (s && typeof s.org === 'string' && Number.isInteger(s.year)) return { kind: 'seizoen', season: s }
   return { kind: 'geen' }
-}
-
-/** Som per valuta (voor de controle dat omzetten niets verliest, en voor bedragen zonder koers). */
-export function sumPerCurrency(transactions: readonly Pick<Transaction, 'amount' | 'currency'>[]): Record<string, number> {
-  const out: Record<string, number> = {}
-  for (const tx of transactions) out[tx.currency] = round2((out[tx.currency] ?? 0) + tx.amount)
-  return out
 }

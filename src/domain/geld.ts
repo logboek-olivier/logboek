@@ -10,12 +10,11 @@ import { recordPayout } from '../model/money-path'
 import { finalRateFields } from '../model/rates'
 import { askSalaryLater, receiveSalary, saveSalary, saveSalaryDefaults, setNoSalary } from '../model/salary'
 import { rememberCurrency, saveSettings } from '../model/settings'
-import { addOneOff, addScenarioBlock, changeOneOff, changeScenarioBlock, createScenario, deleteScenario, moveScenarioBlock, removeOneOff, removeScenarioBlock, renameScenario, setAssumptions, setScenarioDates, setScenarioEnd, setScenarioStart } from '../model/scenario'
+import { addOneOff, addScenarioBlock, changeOneOff, changeScenarioBlock, createScenario, deleteScenario, moveScenarioBlock, removeOneOff, removeScenarioBlock, renameScenario, setAssumptions, setScenarioDates } from '../model/scenario'
 import { newId, type Account, type Balance, type Currency, type Leg, type Organisation, type Settings, type Transaction, type Trip } from '../model/types'
 import { active } from '../model/derive'
 import { weekView } from '../model/weeks'
 import { round2 } from '../basis/bedrag'
-import { applyMoneyStep } from '../model/week-money'
 import { salaryOf, salaryStatus } from './geldmodel'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
@@ -162,7 +161,6 @@ export const geenSalaris = opdracht('geenSalaris', setNoSalary)
 export const geldBewerken = opdracht('geldBewerken', updateTransaction)
 export const geldToevoegen = opdrachtMet('geldToevoegen', addMoney)
 export const geldVerwijderen = opdracht('geldVerwijderen', deleteTransaction)
-export const geldstapOpslaan = opdrachtMet('geldstapOpslaan', applyMoneyStep)
 export const rekeningOpslaan = opdrachtMet('rekeningOpslaan', saveAccount)
 export const rekeningVerwijderen = opdracht('rekeningVerwijderen', deleteAccount)
 export const salarisLaterVragen = opdracht('salarisLaterVragen', askSalaryLater)
@@ -179,14 +177,12 @@ export const scenarioMaken = opdrachtMet('scenarioMaken', async (tx: Tx, name: s
 })
 export const scenarioActiveren = opdracht('scenarioActiveren', (tx: Tx, id: string) => saveSettings(tx, { activeScenarioId: id }))
 export const scenarioHernoemen = opdrachtMet('scenarioHernoemen', renameScenario)
-export const scenarioBeginAanpassen = opdrachtMet('scenarioBeginAanpassen', setScenarioStart)
 export const scenarioVerwijderen = opdracht('scenarioVerwijderen', deleteScenario)
 export const blokToevoegen = opdrachtMet('blokToevoegen', addScenarioBlock)
 export const blokWijzigen = opdrachtMet('blokWijzigen', changeScenarioBlock)
 export const blokVerwijderen = opdrachtMet('blokVerwijderen', removeScenarioBlock)
 export const blokVerplaatsen = opdrachtMet('blokVerplaatsen', moveScenarioBlock)
 export const aannamesOpslaan = opdrachtMet('aannamesOpslaan', setAssumptions)
-export const scenarioEindeAanpassen = opdrachtMet('scenarioEindeAanpassen', setScenarioEnd)
 export const scenarioDatumsAanpassen = opdrachtMet('scenarioDatumsAanpassen', setScenarioDates)
 export const eenmaligToevoegen = opdrachtMet('eenmaligToevoegen', addOneOff)
 export const eenmaligWijzigen = opdrachtMet('eenmaligWijzigen', changeOneOff)
@@ -198,7 +194,6 @@ export const standenImporteren = opdrachtMet('standenImporteren', writeBalances)
 export const uitbetalingInvoeren = opdracht('uitbetalingInvoeren', recordPayout)
 export const uitgaveBewerken = opdracht('uitgaveBewerken', editExpense)
 export const uitgaveToevoegen = opdrachtMet('uitgaveToevoegen', addExpense)
-export const uitgaveperiodeKiezen = opdrachtMet('uitgaveperiodeKiezen', resolveTarget)
 export const vasteLastToevoegen = opdrachtMet('vasteLastToevoegen', addFixedCost)
 export const vasteLastVerwijderen = opdracht('vasteLastVerwijderen', deleteFixedCost)
 export const vasteLastWijzigen = opdracht('vasteLastWijzigen', changeFixedCost)

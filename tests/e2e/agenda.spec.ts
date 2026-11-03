@@ -60,6 +60,10 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(day(10)).toContainText('30')
       await expect(page.locator('.cal-bar').first()).toBeVisible()
       await expect(page.locator('.agenda-summary')).toContainText('110')
+      // Geen afgekapte tekst in de vakjes onder de agenda ("Op het water" past op 360 px, desnoods op twee regels; review D-8).
+      for (const dt of await page.locator('.agenda-stat dt').all()) {
+        expect(await dt.evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight + 1)).toBe(true)
+      }
       await shots(page, 'maand-trip', lang)
 
       // Vegen: naar juli (de tocht van 20–21 juli) en terug.

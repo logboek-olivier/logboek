@@ -165,6 +165,8 @@ export const nl = {
   // Zeilen en import
   'sailing.empty': 'Nog geen dagen. Importeer de mijlenregistratie (Excel of CSV), of voeg een dag toe met +.',
   'sailing.trips': 'Trips',
+  'sailing.withoutDays': 'Zonder gelogde dagen',
+  'sailing.withoutDaysHint': 'Geplande of nog lege trips. Een gelogde dag zet ze hierboven bij hun maand.',
   'sailing.night': (p: { hours: string }) => `${p.hours} nacht`,
   'import.file': 'Mijlenbestand',
   'import.import': 'Importeren',

@@ -9,7 +9,7 @@ import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx, put } from './helpers/schrijf'
-import { dagsoortenZetten } from '../src/domain/agenda'
+import { dagsoortenKiezen } from '../src/domain/agenda'
 
 // Planning importeren (CSV), periode markeren, seizoensoverzicht en delen. Alle gegevens verzonnen.
 
@@ -67,7 +67,7 @@ describe('voorbeeld en importeren', () => {
   it('overlap met een trip is normaal; een regel die er al staat of eigen dagen verandert, alleen na aanzetten', async () => {
     const s = await store()
     await put(s, 'trips.json.enc', trip('bestaand', { startDate: '2027-03-12', endDate: '2027-03-14' }))
-    await dagsoortenZetten(s, ['2027-03-25'], 'reis')
+    await dagsoortenKiezen(s, ['2027-03-25'], 'reis')
     const rows = parsePlanning(fixture())
     const items = planImport(rows, buildIndex(s.get('calendar.json.enc'), s.get('trips.json.enc'), s.get('legs.json.enc')))
     // Rij 2 (werk) en 3 (rust) overlappen de bestaande trip: gewoon mee (uitgangspunt 3). Rij 6 (thuis) raakt de eigen

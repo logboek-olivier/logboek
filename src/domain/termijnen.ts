@@ -28,7 +28,6 @@ export async function closeWeekWithMoney(
 export const termijnAfronden = opdracht('termijnAfronden', setDone)
 export const termijnOpslaan = opdrachtMet('termijnOpslaan', saveReminder)
 export const termijnVerwijderen = opdracht('termijnVerwijderen', deleteReminder)
-export const weekAfsluiten = opdracht('weekAfsluiten', saveClosing)
 
 /**
  * De week afsluiten met de geldstap, in één keer. Ongedaan maken geldt alleen voor de geldstap (CLAUDE.md, WeekClosing):

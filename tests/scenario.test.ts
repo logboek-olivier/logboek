@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { forecastDrills, type Drill } from '../src/domain/doorklik'
-import { blokToevoegen, blokVerplaatsen, blokVerwijderen, scenarioActiveren, scenarioBeginAanpassen, scenarioMaken, scenarioVerwijderen } from '../src/domain/geld'
+import { blokToevoegen, blokVerplaatsen, blokVerwijderen, scenarioActiveren, scenarioDatumsAanpassen, scenarioMaken, scenarioVerwijderen } from '../src/domain/geld'
 import { buildIndex } from '../src/model/calendar'
 import { dayAverages } from '../src/model/costs'
 import { forecast, positionAt, type Forecast } from '../src/model/position'
@@ -323,7 +323,7 @@ describe('opdrachten en synchroniseren', () => {
     expect(laptop.list('scenarios.json.enc')[0]!.blocks).toHaveLength(1)
     await undo()
     expect(laptop.list('scenarios.json.enc')[0]!.blocks.map((b) => b.weeks)).toEqual([10, 20])
-    await scenarioBeginAanpassen(laptop, created.id, '2027-03-01')
+    await scenarioDatumsAanpassen(laptop, created.id, '2027-03-01', null)
     await laptop.sync()
     await phone.sync()
     const there = phone.list('scenarios.json.enc')

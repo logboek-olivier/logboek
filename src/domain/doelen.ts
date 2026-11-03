@@ -16,7 +16,6 @@ export async function saveGoalWithFirst(tx: Tx, goal: Parameters<typeof saveGoal
 
 export const carriereOpslaan = opdrachtMet('carriereOpslaan', saveCareer)
 export const carriereVerwijderen = opdracht('carriereVerwijderen', deleteCareerRecord)
-export const doelOpslaan = opdrachtMet('doelOpslaan', saveGoal)
 export const doelOpslaanMetMeting = opdrachtMet('doelOpslaanMetMeting', saveGoalWithFirst)
 export const doelVerwijderen = opdracht('doelVerwijderen', deleteGoal)
 export const mijlpaalAfvinken = opdracht('mijlpaalAfvinken', toggleMilestone)

@@ -11,7 +11,7 @@ import { FakeGithub } from './helpers/fake-github'
 import { put, putMany } from './helpers/schrijf'
 import { dagBewerken, dagVerwijderen } from '../src/domain/dagen'
 import { geldBewerken, geldVerwijderen } from '../src/domain/geld'
-import { periodeHernoemen, periodeVerwijderen } from '../src/domain/trips'
+import { periodeVerwijderen } from '../src/domain/trips'
 
 // Bewerken en verwijderen met ongedaan maken. Verzonnen data.
 
@@ -105,15 +105,6 @@ describe('verwijderen en ongedaan maken', () => {
 })
 
 describe('bewerken', () => {
-  it('hernoemt een tocht, en negeert een lege naam', async () => {
-    const s = await store()
-    await put(s, 'trips.json.enc', trip('a', 'Oud'))
-    await periodeHernoemen(s, s.list('trips.json.enc')[0]!, '  Nieuw  ')
-    expect(s.list('trips.json.enc')[0]!.name).toBe('Nieuw')
-    await periodeHernoemen(s, s.list('trips.json.enc')[0]!, '   ')
-    expect(s.list('trips.json.enc')[0]!.name).toBe('Nieuw')
-  })
-
   it('verplaatst een dag naar een andere of nieuwe tocht; een nieuwe datum is niet meer geschat', async () => {
     const s = await store()
     await putMany(s, 'trips.json.enc', [trip('a', 'A'), trip('b', 'B')])

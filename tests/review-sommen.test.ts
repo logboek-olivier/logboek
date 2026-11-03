@@ -199,11 +199,13 @@ describe('soort van een trip bij een eigen organisatie (bevinding W-3 in docs/re
     expect(tripKind({ ...base, organisation: 'sailing-virgins' }, []).sure).toBe(true)
   })
 
-  // FIXME (review W-3): dezelfde trip bij een eigen organisatie is "niet zeker" en komt in Nakijken terecht, terwijl
-  // een organisatie uit Instellingen → Organisaties voor een nieuwe gebruiker precies hetzelfde betekent als Sailing
-  // Virgins voor Olivier. src/model/trip-kind.ts:45 kent alleen de twee vaste id's.
-  it.skip('een trip van een eigen organisatie zonder type is net zo zeker werk', () => {
+  // Review W-3 (opgelost): een organisatie uit Instellingen → Organisaties betekent voor een nieuwe gebruiker hetzelfde
+  // als Sailing Virgins voor Olivier; ook de naam van zo'n organisatie in de tripnaam telt.
+  it('een trip van een eigen organisatie zonder type is net zo zeker werk, ook via de naam', () => {
     setOrganisations([{ id: 'org:nep', name: 'Nepzeil', short: 'NZ' }])
-    expect(tripKind({ ...base, organisation: 'org:nep' }, []).sure).toBe(true)
+    expect(tripKind({ ...base, organisation: 'org:nep' }, [])).toMatchObject({ kind: 'werk', sure: true })
+    expect(tripKind({ ...base, name: 'Nepzeil week 3' }, [])).toMatchObject({ kind: 'werk', sure: true })
+    expect(tripKind({ ...base, organisation: 'eigen' }, []).sure).toBe(false)
+    setOrganisations(LEGACY_ORGS)
   })
 })

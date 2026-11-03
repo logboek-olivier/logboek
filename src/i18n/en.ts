@@ -151,6 +151,8 @@ export const en: Messages = {
 
   'sailing.empty': 'No days yet. Import the mileage log (Excel or CSV), or add a day with +.',
   'sailing.trips': 'Trips',
+  'sailing.withoutDays': 'Without logged days',
+  'sailing.withoutDaysHint': 'Planned or still empty trips. A logged day moves them up to their month.',
   'sailing.night': (p) => `${p.hours} night`,
   'import.file': 'Mileage file',
   'import.import': 'Import',

@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { geldToevoegen } from '../src/domain/geld'
-import { booked, salariesOf, salaryOf, salaryStatus, sumPerCurrency } from '../src/domain/geldmodel'
+import { booked, salariesOf, salaryOf, salaryStatus } from '../src/domain/geldmodel'
 import { geldOmzetten, needsMoneyConversion, planMoneyConversion } from '../src/domain/geld-omzetten'
 import { tripResult } from '../src/domain/geldrapport'
 import { violations } from '../src/domain/invariants'
@@ -49,6 +49,13 @@ function snapshot(s: Store): string {
   const trips = active(s.get('trips.json.enc')).map(strip).sort((a, b) => a.id.localeCompare(b.id))
   const money = active(s.get('transactions.json.enc')).map(strip).sort((a, b) => a.id.localeCompare(b.id))
   return JSON.stringify([trips, money])
+}
+
+/** Som per valuta (alleen voor deze test: er gaat geen bedrag verloren). */
+function sumPerCurrency(transactions: readonly Pick<Transaction, 'amount' | 'currency'>[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const tx of transactions) out[tx.currency] = Math.round(((out[tx.currency] ?? 0) + tx.amount) * 100) / 100
+  return out
 }
 
 describe('Geld omzetten met de gouden dataset', () => {

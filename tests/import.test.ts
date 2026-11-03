@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { ImportError, parseCsv, parseDate, parseMileageCsv, parseNumber } from '../src/import/mileage-csv'
+import { ImportError, parseCsv, parseDate, parseNumber } from '../src/import/mileage-csv'
+import { parseMileageCsv } from './helpers/mijlen-csv'
 import { lastTrip, nmInYear, summarize, summarizeTrips, totalNm, tripForDate } from '../src/model/derive'
 import type { Leg } from '../src/model/types'
 
