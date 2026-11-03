@@ -1,7 +1,7 @@
 import { activeStudents } from './students'
 import { studentWeek, weekView } from './weeks'
 import { norm } from './guests'
-import type { Leg, Student, Trip } from './types'
+import type { Leg, Participant, Student, Trip } from './types'
 
 // Studentenarchief (Meer → Studentenarchief): álle studenten, per trip, de lopende trip bovenaan, daarna de nieuwste
 // trips; studenten zonder trip apart onderaan. Zoeken op voornaam, filteren op cursus en op resultaat.
@@ -25,6 +25,8 @@ export interface StudentGroup {
   current: boolean
   startDate: string
   students: Student[]
+  /** Deelnemers die nog geen student hebben (een tik maakt de student). */
+  pending: Participant[]
 }
 
 export function matchesResult(s: Student, result: ResultFilter): boolean {
@@ -42,14 +44,27 @@ export function matches(s: Student, filter: StudentFilter): boolean {
 }
 
 /** Niet-gearchiveerde studenten per trip, lopende trip eerst, daarna nieuwste eerst; zonder trip als laatste groep. */
-export function studentGroups(students: readonly Student[], trips: readonly Trip[], legs: readonly Leg[], currentTripId: string | null, filter: StudentFilter = NO_FILTER): StudentGroup[] {
-  const byTrip = new Map<string | null, Student[]>()
+export function studentGroups(
+  students: readonly Student[],
+  trips: readonly Trip[],
+  legs: readonly Leg[],
+  currentTripId: string | null,
+  filter: StudentFilter = NO_FILTER,
+  pending: readonly { trip: Trip; participant: Participant }[] = [],
+): StudentGroup[] {
+  const byTrip = new Map<string | null, { students: Student[]; pending: Participant[] }>()
+  const at = (id: string | null) => byTrip.get(id) ?? byTrip.set(id, { students: [], pending: [] }).get(id)!
   for (const s of activeStudents(students)) {
     if (!matches(s, filter)) continue
-    const id = studentWeek(s, trips, legs)
-    const list = byTrip.get(id) ?? []
-    list.push(s)
-    byTrip.set(id, list)
+    at(studentWeek(s, trips, legs)).students.push(s)
+  }
+  // Een deelnemer zonder student: zoeken op voornaam en filteren op cursus; nog geen examen.
+  const q = norm(filter.query)
+  for (const { trip, participant: p } of pending) {
+    if (q && !norm(p.firstName).includes(q)) continue
+    if (filter.curriculumId && p.curriculumId !== filter.curriculumId) continue
+    if (filter.result === 'geslaagd' || filter.result === 'gezakt') continue
+    at(trip.id).pending.push(p)
   }
   const groups: StudentGroup[] = []
   for (const [id, list] of byTrip) {
@@ -58,7 +73,8 @@ export function studentGroups(students: readonly Student[], trips: readonly Trip
       trip,
       current: !!id && id === currentTripId,
       startDate: trip ? weekView(trip, legs).startDate : '',
-      students: [...list].sort((a, b) => a.firstName.localeCompare(b.firstName)),
+      students: [...list.students].sort((a, b) => a.firstName.localeCompare(b.firstName)),
+      pending: [...list.pending].sort((a, b) => a.firstName.localeCompare(b.firstName)),
     })
   }
   return groups.sort((a, b) => {
