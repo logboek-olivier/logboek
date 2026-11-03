@@ -13,7 +13,7 @@ import { Icon } from '../components/Icon'
 import { useCollection } from '../components/useCollection'
 import { formatDateRangeShort, formatHours, formatMonth, formatMonthShort, formatNm } from '../format'
 import { SummaryGrid, useMileageImport } from '../components/MileageImport'
-import { nmPerMonth, summarize, summarizeTrips, type TripSummary } from '../model/derive'
+import { active, nmPerMonth, summarize, summarizeTrips, type TripSummary } from '../model/derive'
 import type { Place, Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { nameWithCounter, type TripCounter } from '../model/counters'
@@ -45,6 +45,11 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
 
   const summary = summarize(legs)
   const tripSummaries = summarizeTrips(trips, legs)
+  // Trips zonder gelogde dagen (gepland, of nog leeg): niet onvindbaar, maar onder een eigen kop (review D-3).
+  const logged = new Set(tripSummaries.map((s) => s.trip.id))
+  const withoutDays = active(trips)
+    .filter((trip) => !logged.has(trip.id))
+    .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''))
   const months = nmPerMonth(legs, todayIso())
 
   const mileage = useMileageImport(store, () => setChecking(true))
@@ -136,6 +141,24 @@ export function Sailing({ store, notify }: { store: Store; notify: Notify }) {
             ))}
           </div>
         </>
+      )}
+      {withoutDays.length > 0 && (
+        <div className="section">
+          <h2>{t('sailing.withoutDays')}</h2>
+          <p className="muted small">{t('sailing.withoutDaysHint')}</p>
+          <ul className="rows">
+            {withoutDays.map((trip) => (
+              <li key={trip.id} className="row-item">
+                <button type="button" className="row-button" onClick={() => setEditing({ kind: 'trip', trip })} aria-label={t('trip.open', { name: nameWithCounter(trip, counters.get(trip.id)) })}>
+                  <span className="row-main">
+                    <span className="row-title">{nameWithCounter(trip, counters.get(trip.id))}</span>
+                    <span className="muted small">{trip.startDate && trip.endDate ? formatDateRangeShort(trip.startDate, trip.endDate) : t('review.noDates')}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {editing?.kind === 'trip' && <TripOverviewSheet store={store} trip={editing.trip} notify={notify} onClose={() => setEditing(null)} />}
       {editing?.kind === 'new-week' && <WeekSheet store={store} trip={null} onClose={() => setEditing(null)} notify={notify} />}

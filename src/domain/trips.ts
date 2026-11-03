@@ -3,11 +3,10 @@
 import { confirmBoats, deleteBoat, mergeBoat, skipBoats } from '../model/boats'
 import { addChecklist, deleteChecklist, saveChecklist, toggleCheck } from '../model/checklists'
 import { answerDoubt, saveFirstNumbers } from '../model/counters'
-import { renameTrip } from '../model/edit'
 import { answerReturning, setGuestCount } from '../model/guests'
 import { acceptAllKinds, dismissReview, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, setInvestmentCategory, setTripKind, setTripOrganisation, tripForLegs } from '../model/review'
 import { changeParticipant, deleteTripWith, removeParticipant } from '../model/trip-ops'
-import { addParticipant, closeWeek, startWeek, updateWeek } from '../model/weeks'
+import { closeWeek, startWeek, updateWeek } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
 
 export const aantalGastenZetten = opdracht('aantalGastenZetten', setGuestCount)
@@ -19,7 +18,6 @@ export const checklistAfvinken = opdracht('checklistAfvinken', toggleCheck)
 export const checklistOpslaan = opdracht('checklistOpslaan', saveChecklist)
 export const checklistToevoegen = opdrachtMet('checklistToevoegen', addChecklist)
 export const checklistVerwijderen = opdracht('checklistVerwijderen', deleteChecklist)
-export const deelnemerToevoegen = opdracht('deelnemerToevoegen', addParticipant)
 export const deelnemerVerwijderen = opdracht('deelnemerVerwijderen', removeParticipant)
 export const deelnemerWijzigen = opdracht('deelnemerWijzigen', changeParticipant)
 export const geldKoppelen = opdracht('geldKoppelen', fixMoneyWithoutPeriod)
@@ -29,7 +27,6 @@ export const nakijkenKloptZo = opdracht('nakijkenKloptZo', dismissReview)
 export const organisatieBeantwoorden = opdracht('organisatieBeantwoorden', answerDoubt)
 export const periodeAfronden = opdracht('periodeAfronden', closeWeek)
 export const periodeBewerken = opdracht('periodeBewerken', updateWeek)
-export const periodeHernoemen = opdracht('periodeHernoemen', renameTrip)
 export const periodeMaken = opdrachtMet('periodeMaken', startWeek)
 export const periodeMakenOverDagen = opdracht('periodeMakenOverDagen', makeTripFor)
 export const periodeOrganisatieZetten = opdracht('periodeOrganisatieZetten', setTripOrganisation)

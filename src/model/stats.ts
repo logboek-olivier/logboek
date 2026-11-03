@@ -13,7 +13,7 @@ import { ROLES, type BoatKind, type CalendarDay, type Curriculum, type Leg, type
 import { dayCountOf, weekView } from './weeks'
 import { round2 } from '../basis/bedrag'
 import { addDays, isDate, mondayOf, monthOf, monthsInRange } from '../basis/datum'
-import { organisationOfTrip } from '../basis/organisatie'
+import { organisationOfTrip, tripsById } from '../basis/organisatie'
 
 // Statistieken (Meer → Statistieken): zeilen, werk, geld en instructeur over een periode, plus de voortgang naar RYA
 // Yachtmaster Offshore. Alles afgeleid, niets opgeslagen; zonder netwerk.
@@ -336,7 +336,8 @@ export const MAX_TIP_WEEKS = 26
 
 export function moneyStats(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], index: CalendarIndex, period: Period, today: string): MoneyStats {
   const txs = booked(transactions).filter((tx) => inPeriod(tx.date, period))
-  const tripById = new Map(active(trips).map((t) => [t.id, t]))
+  // Ook trips in de prullenbak: geld van een verwijderde trip blijft bij zijn organisatie (zoals Geld en het jaaroverzicht).
+  const tripById = tripsById(trips)
   const perTrip = new Map<string, number>()
   // Per organisatie zoals in Geld en het jaaroverzicht (één regel, `groupOf`): de organisatie van de tocht, van het
   // seizoen, anders de oude bron.
@@ -348,7 +349,7 @@ export function moneyStats(trips: readonly Trip[], legs: readonly Leg[], transac
     if (eur === null) continue
     earned += eur
     const trip = tx.tripId ? tripById.get(tx.tripId) : undefined
-    if (trip) perTrip.set(trip.id, (perTrip.get(trip.id) ?? 0) + eur)
+    if (trip && trip.deletedAt === null) perTrip.set(trip.id, (perTrip.get(trip.id) ?? 0) + eur)
     const group = groupOf(tx, tripById)
     perOrg.set(group, (perOrg.get(group) ?? 0) + eur)
   }

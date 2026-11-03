@@ -9,7 +9,7 @@ import { keepUnknownFields, type Currency, type Leg, type Organisation, type Sal
 import { weekView } from './weeks'
 import { endedFor } from './trip-dates'
 import { round2 } from '../basis/bedrag'
-import { sourceForPeriod } from '../basis/organisatie'
+import { organisationOfTrip, sourceForPeriod } from '../basis/organisatie'
 
 // Salaris per tocht (Olivier wordt per tocht betaald): precies één transactie van soort loon bij de tocht, met een status
 // (src/domain/geldmodel.ts). Het standaardbedrag per organisatie is een instelling: het vult het bedrag van een nieuwe
@@ -202,8 +202,8 @@ export interface Outlook {
   tipAverages: Partial<Record<Organisation, number>>
 }
 
-/** Gemiddelde fooi per tocht per organisatie, over afgelopen tochten met minstens één fooi. */
-export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], today: string): Partial<Record<Organisation, number>> {
+/** Gemiddelde fooi per tocht per organisatie (`organisationOfTrip`, ook uit de naam), over afgelopen tochten met minstens één fooi. */
+export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], today: string): Record<string, number> {
   const tipsByTrip = new Map<string, number>()
   for (const tx of booked(transactions)) {
     if (tx.kind !== 'fooi' || !tx.tripId) continue
@@ -211,18 +211,19 @@ export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transa
     if (eur === null) continue
     tipsByTrip.set(tx.tripId, (tipsByTrip.get(tx.tripId) ?? 0) + eur)
   }
-  const sums = new Map<Organisation, { total: number; n: number }>()
+  const sums = new Map<string, { total: number; n: number }>()
   for (const x of active(trips)) {
     const tip = tipsByTrip.get(x.id)
-    if (!x.organisation || tip === undefined) continue
+    const org = organisationOfTrip(x)
+    if (org === 'overig' || tip === undefined) continue
     const end = tripEnd(x, legs)
     if (!end || end >= today) continue
-    const s = sums.get(x.organisation) ?? { total: 0, n: 0 }
+    const s = sums.get(org) ?? { total: 0, n: 0 }
     s.total += tip
     s.n++
-    sums.set(x.organisation, s)
+    sums.set(org, s)
   }
-  const out: Partial<Record<Organisation, number>> = {}
+  const out: Record<string, number> = {}
   for (const [org, s] of sums) out[org] = round2(s.total / s.n)
   return out
 }
@@ -269,7 +270,7 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
     else row.receivedEur = round2(row.receivedEur + eur)
   }
   for (const e of upcoming) {
-    const avg = e.trip.organisation ? averages[e.trip.organisation] : undefined
+    const avg = averages[organisationOfTrip(e.trip)]
     const row = at(monthOf(e.end))
     if (avg === undefined || !row) continue
     row.tipEstimateEur = round2(row.tipEstimateEur + avg)

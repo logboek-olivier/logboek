@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { geschiedenisOpruimen, geschiedenisTerugzetten, terugzetten, tripTerugzetten } from '../src/domain/prullenbak'
 import { termijnAfronden } from '../src/domain/termijnen'
 import { reviewInput, reviewItems } from '../src/model/review'
-import { bootVerwijderen, deelnemerToevoegen, deelnemerVerwijderen, periodeVerwijderen } from '../src/domain/trips'
+import { bootVerwijderen, deelnemerVerwijderen, periodeVerwijderen } from '../src/domain/trips'
+import { studentInTripToevoegen } from '../src/domain/training'
 import { dagVerwijderen } from '../src/domain/dagen'
 import { studentenWissen } from '../src/domain/training'
 import { boatList } from '../src/model/boats'
@@ -96,12 +97,11 @@ describe('prullenbak', () => {
   it('een deelnemer terug, ook als er intussen een andere bij kwam', async () => {
     const s = await filled()
     await deelnemerVerwijderen(s, s.list('trips.json.enc')[0]!, 'p1')
-    const student: Student = { id: 'p2', firstName: 'Nepbob', curriculumId: 'seed-asa-101', level: 'beginner', progress: {}, archivedAt: null, updatedAt: T0, deletedAt: null }
-    await deelnemerToevoegen(s, s.list('trips.json.enc')[0]!, student)
+    const { result: student } = await studentInTripToevoegen(s, { firstName: 'Nepbob', curriculumId: 'seed-asa-101', level: 'beginner', startedAt: '2026-10-01' }, s.list('trips.json.enc')[0]!.id)
     const [item] = trashItems(s)
     expect(item).toMatchObject({ kind: 'deelnemer', title: 'Nepanna · Neptrip a' })
     await terugzetten(s, item!.key)
-    expect(s.list('trips.json.enc')[0]!.participants!.map((p) => p.id).sort()).toEqual(['p1', 'p2'])
+    expect(s.list('trips.json.enc')[0]!.participants!.map((p) => p.id).sort()).toEqual(['p1', student.id].sort())
   })
 
   it('een boot terug op de trips en dagen', async () => {

@@ -1,12 +1,12 @@
 # Kaart van de app
 
 Onafhankelijke review, 3 november 2026, op commit `158102b` (na PR #132). Geschreven voor iemand die de code nooit zag.
-Alles hieronder is in de code gecontroleerd; waar CLAUDE.md of `docs/ARCHITECTUUR.md` iets anders zegt, staat dat erbij
-als **afwijking** (de bevindingen zelf staan in `docs/review.md`). Regelnummers verwijzen naar de genoemde commit.
+Alles hieronder is in de code gecontroleerd; waar CLAUDE.md iets anders zegt, staat dat erbij als **afwijking** (de
+bevindingen zelf staan in `docs/review.md`). Regelnummers verwijzen naar de genoemde commit.
 
-Lees eerst `docs/ARCHITECTUUR.md` (31 oktober): die is grotendeels nog juist en gedetailleerder over de Store. Deze kaart
-vult hem aan met wat daar ontbreekt of verouderd is: de domeinlaag, geld, scenario's, de echte versienummers, de
-afhankelijkheidsgraaf en de testdekking.
+Dit is de enige architectuurbeschrijving naast CLAUDE.md: het oude `docs/ARCHITECTUUR.md` (31 oktober) verwijst hierheen;
+wat daar nog niet hier stond (sectie 10, wat in de browser staat) is overgenomen. De huidige dataversies staan in sectie 7
+en worden door `tests/review-versies.test.ts` tegen `src/model/schema.ts` gecontroleerd.
 
 ## 1. Architectuur
 
@@ -60,8 +60,8 @@ Wat waar draait:
 | GitHub Pages | Statische bestanden van de app (13 MB in `dist/`, waarvan 5 MB precache). | `vite.config.ts`, `npm run build` |
 | GitHub Actions | Bouwen, testen, deployen; ophalen van koersen, weer en kaartdata. De app zelf haalt nooit iets van ECB, Open-Meteo of OSM. | `.github/workflows/*.yml`, CSP in `index.html:5` |
 
-**Afwijking (docs):** `docs/ARCHITECTUUR.md` zegt "alle bestanden staan op `SCHEMA_VERSION = 1`" en "schrijfversie nu 3". De
-code staat op schemaversie 4 en schrijfversie 10 (`src/model/schema.ts`; de versies veranderen per PR, de test `tests/review-versies.test.ts` uit PR 4 bewaakt dit document).
+**Huidige dataversies: schemaversie 4, schrijfversie 10** (`src/model/schema.ts`; de versies veranderen per PR, de test
+`tests/review-versies.test.ts` bewaakt deze regel en de getallen in sectie 5 en 7).
 
 ## 2. Mappen en modules
 
@@ -93,7 +93,7 @@ Totaal 55.099 regels in `src/` (TypeScript, TSX en CSS). Per map, met de belangr
 Te groot of te verweven (bewijs: regels en imports hierboven, `npx vite build`-waarschuwingen):
 
 - `src/storage/store.ts` (1.677 regels) doet opslaan, sync, herstel, controle, bewijs én kluisbestanden in één klasse met
-  ruim 60 methoden. `docs/ARCHITECTUUR.md` noemt het terecht de kern; het is ook het bestand waar elke storingsregel uit
+  ruim 60 methoden. Het is de kern; het is ook het bestand waar elke storingsregel uit
   CLAUDE.md doorheen loopt.
 - `src/session.ts` (1.163 regels): eerste keer, koppelen, ontgrendelen op vier manieren, vergrendelen, wachtzin wijzigen,
   token vervangen, herstel en meta terugzetten in één klasse.
@@ -274,10 +274,10 @@ leest opnieuw, voegt samen en schrijft. Record-niveau: de laatste `updatedAt` wi
 binnen één sync-interval verliezen de oudste stil (bekende beperking, genoemd bij declaraties en standen in CLAUDE.md).
 Een klok die achterloopt wordt opgevangen: `Store.putMany` zet `updatedAt` net na de vorige versie (`justAfter`).
 
-Oude build: elk bestand draagt `minWriterVersion` (nu 9). Een oudere build die een bestand met een hogere schrijfversie
+Oude build: elk bestand draagt `minWriterVersion` (nu 10). Een oudere build die een bestand met een hogere schrijfversie
 leest, schrijft niets meer en toont "Werk de app bij" (`NewerWriterError`); wat hij lokaal opsloeg blijft in de outbox en
 gaat mee na het bijwerken. Een build van vóór de schrijfversie (vóór 31 oktober) kent het veld niet en wordt alleen door
-`schemaVersion` (nu 3) tegengehouden. Binnen één apparaat bewaakt `localStorage` `logboek-gestarte-build` dat een bevroren
+`schemaVersion` (nu 4) tegengehouden. Binnen één apparaat bewaakt `localStorage` `logboek-gestarte-build` dat een bevroren
 ouder venster na een update niets meer schrijft (`assertCurrentBuild` in `putFile`/`deleteFile`).
 
 ## 6. Domeinlaag
@@ -405,3 +405,16 @@ Build en test: `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa`, `typescript` 6
 `typescript-eslint`, `vitest` 5, `@playwright/test` 1.64, `fake-indexeddb`, `@types/*`. Allemaal in gebruik; geen overbodige
 dependency gevonden. Buiten de lockfile wordt niets opgehaald (geen CDN, geen fonts). Alles staat in de door CLAUDE.md
 toegestane lijst, behalve `typescript-eslint` en `@eslint/js` (eslint-onderdelen, impliciet toegestaan) en `@types/node`.
+
+## 10. Wat in de browser staat buiten de versleutelde opslag
+
+Overgenomen uit het oude `docs/ARCHITECTUUR.md` (31 oktober) en op 3 november tegen de code gecontroleerd.
+
+| Plek | Sleutel | Inhoud |
+|---|---|---|
+| IndexedDB `logboek` | `objects` | versleutelde databestanden (met sha), lokale meta (platte JSON), documentbestanden, apart gezette bestanden (`apart/<pad>/<tijd>`) |
+| | `local` | outbox, token (met vervaldatum en data-repo), vingerafdruk-verpakking (versleuteld onder MK) |
+| | `session` | niet-exporteerbare MK met `lastUsed` (hoogstens 5 minuten) |
+| `localStorage` | `logboek-taal`, `logboek-apparaat`, `logboek-gestarte-build`, `logboek-vergrendeld:<db>`, `logboek-opslag:<db>` (opslaglogboek: paden, aantallen, tijden, bewijs zonder inhoud), `logboek-herstel:<db>` (herstelverslag: paden), `logboek-herstelpogingen:<db>`, `logboek-vervangen:<db>` (sha's), `logboek-kluis-weg:<db>` (bestands-id's), `logboek-geld-periode` (periode in Geld: keuze en twee datums), `logboek-geld-weergave` (Werkelijk of Verwacht), `logboek-weerpunt` (zelf gekozen weerpunt) | geen inhoud, geen sleutels |
+| `sessionStorage` | `logboek-demo-actief`, `logboek-herladen-na-update` | vlaggen |
+| Cache Storage | precache, `koersen`, `weer`, `kaart-osm`, `logboek-sw-vensters` | openbare bestanden; nooit een API-antwoord |

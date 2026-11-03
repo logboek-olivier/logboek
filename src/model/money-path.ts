@@ -2,7 +2,7 @@ import { monthOf, monthStart, shiftMonth } from '../basis/datum'
 import type { Tx } from '../domain/tx'
 import { salaryOf, salaryStatus } from '../domain/geldmodel'
 import { active } from './derive'
-import { finalRateFields, rateFor, type RatesFile } from './rates'
+import { eurValue, finalRateFields, rateFor, type RatesFile } from './rates'
 import { saveSalary, tripEnd } from './salary'
 import { newId, type Currency, type Leg, type Organisation, type PayoutRule, type Settings, type Transaction, type Trip } from './types'
 import { round2 } from '../basis/bedrag'
@@ -52,25 +52,26 @@ export function payoutSuggestion(trips: readonly Trip[], legs: readonly Leg[], s
   return before.length > 0 ? before : open
 }
 
-/** Het verwachte salaris van een tocht in `currency` op `date`: direct bij dezelfde valuta, anders via de euro; null zonder koers. */
-function expectedIn(trip: Trip, legs: readonly Leg[], transactions: readonly Transaction[], currency: Currency, date: string, rates: RatesFile | null): number | null {
+/**
+ * Het verwachte salaris van een tocht in `currency` op `date`: direct bij dezelfde valuta, anders via de euro met dezelfde
+ * waarde als Mijn positie en de tripkaart (`eurValue`), en dan alleen nog euro → de valuta van de uitbetaling; null zonder koers.
+ */
+function expectedIn(trip: Trip, transactions: readonly Transaction[], currency: Currency, date: string, rates: RatesFile | null): number | null {
   const s = expectedSalary(trip, transactions)
   if (!s) return null
   if (s.currency === currency) return s.amount
-  const at = tripEnd(trip, legs) || date
-  const own = s.currency === 'EUR' ? { rate: 1 } : rateFor(rates, s.currency, at)
-  if (!own) return null
-  const eur = round2(s.amount / own.rate)
-  if (currency === 'EUR') return eur
+  const eur = eurValue(s, rates)?.eur ?? null
+  if (eur === null) return null
+  if (currency === 'EUR') return round2(eur)
   const hit = rateFor(rates, currency, date)
   return hit ? round2(eur * hit.rate) : null
 }
 
 /** Verwacht totaal van deze tochten in de valuta van de uitbetaling; null als een koers ontbreekt. */
-export function expectedPayout(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], currency: Currency, date: string, rates: RatesFile | null): number | null {
+export function expectedPayout(trips: readonly Trip[], transactions: readonly Transaction[], currency: Currency, date: string, rates: RatesFile | null): number | null {
   let total = 0
   for (const x of trips) {
-    const v = expectedIn(x, legs, transactions, currency, date, rates)
+    const v = expectedIn(x, transactions, currency, date, rates)
     if (v === null) return null
     total += v
   }
@@ -78,9 +79,9 @@ export function expectedPayout(trips: readonly Trip[], legs: readonly Leg[], tra
 }
 
 /** De uitbetaling verdeeld over de tochten, naar verhouding van het verwachte salaris (zonder koers gelijk verdeeld). */
-export function splitPayout(amount: number, trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], currency: Currency, date: string, rates: RatesFile | null): number[] {
+export function splitPayout(amount: number, trips: readonly Trip[], transactions: readonly Transaction[], currency: Currency, date: string, rates: RatesFile | null): number[] {
   if (trips.length === 0) return []
-  const weights = trips.map((x) => expectedIn(x, legs, transactions, currency, date, rates))
+  const weights = trips.map((x) => expectedIn(x, transactions, currency, date, rates))
   const usable = weights.every((w): w is number => w !== null && w > 0)
   const w = usable ? (weights as number[]) : trips.map(() => 1)
   const sum = w.reduce((n, x) => n + x, 0)
@@ -116,7 +117,6 @@ export interface Payout {
  * inkomen van de organisatie. Ongedaan maken zet alles terug.
  */
 export async function recordPayout(tx: Tx, payout: Payout, chosen: readonly Trip[], rates: RatesFile | null): Promise<void> {
-  const legs = tx.list('legs.json.enc')
   // De tochten zoals ze nu op het apparaat staan; een tocht die intussen al ontvangen is (een tweede tik, een ander
   // apparaat), gaat niet nog eens mee. Is er dan niets meer over, dan wordt er niets geboekt.
   const latest = tx.list('trips.json.enc')
@@ -144,7 +144,7 @@ export async function recordPayout(tx: Tx, payout: Payout, chosen: readonly Trip
     })
     return
   }
-  const parts = splitPayout(amount, trips, legs, all, payout.currency, payout.date, rates)
+  const parts = splitPayout(amount, trips, all, payout.currency, payout.date, rates)
   for (const [i, trip] of trips.entries()) await saveSalary(tx, trip.id, { amount: parts[i]!, currency: payout.currency, status: 'ontvangen', date: payout.date, payoutId, rates })
 }
 

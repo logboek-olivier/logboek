@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { parseMileageCsv } from '../src/import/mileage-csv'
+import { parseMileageCsv } from './helpers/mijlen-csv'
 import { boatList, parseShip, suggestKind, suggestLengthFt, uncheckedBoats } from '../src/model/boats'
 import { collectGaps } from '../src/model/gaps'
 import { currentSettings } from '../src/model/settings'

@@ -9,7 +9,7 @@ import { STAY_FROM_DAY } from './migrate-periods'
 import { defaultWeekName, weekView } from './weeks'
 import type { Lang } from '../i18n'
 import { effectiveCurricula } from './curricula'
-import type { CalendarDay, Claim, Curriculum, Leg, Organisation, Place, Settings, StayKind, StayPeriod, Student, Transaction, Trip, WeekPlan, WeekType } from './types'
+import type { CalendarDay, Claim, Curriculum, Leg, Organisation, Place, PlanGroup, Settings, StayKind, StayPeriod, Student, Transaction, Trip, WeekPlan, WeekType } from './types'
 import { addDays } from '../basis/datum'
 
 // Nakijken (Meer → Nakijken): twijfelgevallen en tegenstrijdigheden in het periodemodel, elk met één knop die het
@@ -39,6 +39,8 @@ export type ReviewItem =
   | { key: string; kind: 'declaratie-zonder-trip'; claim: Claim; tripName: string | null; target: Trip | null }
   /** Een student met een cursus die niet meer bestaat: de cursussen van zijn trip eerst, dan de andere. */
   | { key: string; kind: 'student-zonder-cursus'; student: Student; tripName: string | null; choices: Curriculum[] }
+  /** Een groep in een planning met een cursus die niet meer bestaat: de thema's hebben geen onderwerpen meer. */
+  | { key: string; kind: 'planning-zonder-cursus'; plan: WeekPlan; group: PlanGroup; choices: Curriculum[] }
 
 export interface ReviewInput {
   trips: readonly Trip[]
@@ -92,10 +94,11 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
 
   // Geld zonder periode (declaraties volgen hun declaratie).
   const ids = new Set(periods.map((p) => p.id))
+  const liveClaims = new Set(active(input.claims ?? []).map((c) => c.id))
   for (const tx of active(input.transactions)) {
     // Vaste lasten hangen aan de maand, geld van een eerder seizoen aan het seizoen (docs/PERIODEMODEL.md). Een verwacht
     // salaris zonder tocht of "geen salaris" is geen geld.
-    if (tx.claimId || tx.fixedCostId || tx.season || (tx.tripId && ids.has(tx.tripId)) || !isBooked(tx)) continue
+    if ((tx.claimId && liveClaims.has(tx.claimId)) || tx.fixedCostId || tx.season || (tx.tripId && ids.has(tx.tripId)) || !isBooked(tx)) continue
     items.push({ key: `geld:${tx.id}`, kind: 'geld-zonder-periode', tx, target: periodAt(periods, tx.date) })
   }
 
@@ -128,6 +131,16 @@ export function reviewItems(input: ReviewInput): ReviewItem[] {
     const inTrip = new Set((trip?.participants ?? []).map((p) => p.curriculumId).filter((id): id is string => !!id && courseIds.has(id)))
     const choices = [...courses.filter((c) => inTrip.has(c.id)), ...courses.filter((c) => !inTrip.has(c.id))]
     items.push({ key: `cursus:${student.id}`, kind: 'student-zonder-cursus', student, tripName: trip?.name ?? null, choices })
+  }
+
+  for (const plan of active(input.plans ?? [])) {
+    const trip = plan.tripId ? byId.get(plan.tripId) : undefined
+    const inTrip = new Set((trip?.participants ?? []).map((p) => p.curriculumId).filter((id): id is string => !!id && courseIds.has(id)))
+    for (const group of plan.groups) {
+      if (!group.curriculumId || courseIds.has(group.curriculumId)) continue
+      const choices = [...courses.filter((c) => inTrip.has(c.id)), ...courses.filter((c) => !inTrip.has(c.id))]
+      items.push({ key: `planning-cursus:${plan.id}:${group.id}`, kind: 'planning-zonder-cursus', plan, group, choices })
+    }
   }
 
   // Investeringen zonder soort (van vóór het periodemodel).

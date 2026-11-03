@@ -40,11 +40,8 @@ export async function saveDayDetails(tx: Tx, date: string, type: DayType, detail
 
 export const dagAutomatisch = opdracht('dagAutomatisch', automaticDay)
 export const dagOpslaan = opdracht('dagOpslaan', saveDayDetails)
-export const dagsoortAutomatisch = opdracht('dagsoortAutomatisch', clearDay)
 export const dagsoortKiezen = opdracht('dagsoortKiezen', chooseDayType)
-export const dagsoortZetten = opdrachtMet('dagsoortZetten', setDay)
 export const dagsoortenKiezen = opdracht('dagsoortenKiezen', chooseDaysType)
-export const dagsoortenZetten = opdracht('dagsoortenZetten', setDays)
 export const landperiodeBewerken = opdracht('landperiodeBewerken', updateStay)
 export const landperiodeVerwijderen = opdracht('landperiodeVerwijderen', deleteStay)
 export const landperiodeZetten = opdracht('landperiodeZetten', setStayDays)

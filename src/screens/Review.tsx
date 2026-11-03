@@ -17,7 +17,7 @@ import { defaultTripName } from '../model/trip-name'
 import { tripVoorDagen, geldKoppelen, investeringssoortZetten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 import { organisationChoices } from '../basis/organisatie'
 import { declaratieKoppelen } from '../domain/geld'
-import { planningKoppelen, studentCursusZetten } from '../domain/training'
+import { planningCursusZetten, planningKoppelen, studentCursusZetten } from '../domain/training'
 import { localized } from '../model/curricula'
 
 // Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): vragen over wat ontbreekt (soort, organisatie, periode), elk met één
@@ -113,6 +113,8 @@ function describe(item: ReviewItem): string {
       return t('review.claimWithoutTrip', { date: formatDate(item.claim.date), note: item.claim.note ? ` · ${item.claim.note}` : '', name: item.tripName ?? t('review.unknownTrip') })
     case 'student-zonder-cursus':
       return t('review.studentWithoutCourse', { name: item.student.firstName, trip: item.tripName ? ` (${item.tripName})` : '' })
+    case 'planning-zonder-cursus':
+      return t('review.planWithoutCourse', { title: item.plan.title, group: item.group.name })
   }
 }
 
@@ -164,5 +166,7 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
     }
     case 'student-zonder-cursus':
       return item.choices.map((course, i) => ({ label: `${course.courseCode} ${localized(course.name, lang)}`.trim(), primary: i === 0 && item.choices.length === 1, run: () => studentCursusZetten(store, item.student, course.id) }))
+    case 'planning-zonder-cursus':
+      return item.choices.map((course, i) => ({ label: `${course.courseCode} ${localized(course.name, lang)}`.trim(), primary: i === 0 && item.choices.length === 1, run: () => planningCursusZetten(store, item.plan, item.group.id, course.id) }))
   }
 }

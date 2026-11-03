@@ -1,3 +1,4 @@
+import { organisationOfTrip } from '../basis/organisatie'
 import { balanceOn } from './accounts'
 import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
@@ -491,11 +492,12 @@ export function forecast(
       if (s.kind !== 'loon' || s.tripId !== trip.id || salaryStatus(s) !== 'verwacht' || !(s.amount > 0)) continue
       if (!inRange(counts)) continue
       if (!range && monthOf(counts) > until) until = monthOf(counts)
-      const eur = eurValue({ ...s, date: end }, rates)?.eur ?? null
+      // Dezelfde waarde als de tripkaart en Mijn positie: de datum van het salaris zelf, niet het tripeinde van nu.
+      const eur = eurValue(s, rates)?.eur ?? null
       if (eur === null) other[s.currency] = round2((other[s.currency] ?? 0) + s.amount)
       else items.push({ date: counts, kind: 'salaris', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], tx: s, payout: payoutMoment(trip, legs, settings) ?? end, eur })
     }
-    const avg = trip.organisation ? averages[trip.organisation] : undefined
+    const avg = averages[organisationOfTrip(trip)]
     const tipDate = end > today ? end : tomorrow
     if (avg !== undefined && inRange(tipDate)) {
       const already = booked(transactions)

@@ -73,7 +73,7 @@ sessie in de sync. Omvang S. Opgenomen in werkpakket V-1.
 
 ### Belangrijk
 
-**D-3 · Het Logboek toont alleen trips met gelogde dagen; een geplande trip is er onvindbaar.** Categorie
+**D-3 · Het Logboek toont alleen trips met gelogde dagen; een geplande trip is er onvindbaar.** **Opgelost in #137** (eigen kop "Zonder gelogde dagen" onderaan het Logboek; CLAUDE.md zegt dat nu ook). Categorie
 duidelijkheid. Bewijs: `src/model/derive.ts:87` (`if (tripLegs.length === 0) continue`), eerste run van
 `review-kernstromen` test 2 en 6 (een trip zonder dagen ontbreekt in het Logboek; wel onder Meer → Periodes). CLAUDE.md
 zegt "trips per maand … als kaartjes" zonder die voorwaarde. Gevolg: "waar is mijn trip?" Voorstel: in het Logboek de
@@ -102,7 +102,7 @@ valutakeuze staat onder het bedrag en valt niet op. Voorstel: de laatst gebruikt
 van uitgave en seizoen) en bij "Eerder seizoen" standaard de valuta van het standaardsalaris van die organisatie; de
 valuta direct achter het bedragveld tonen. Omvang S.
 
-**W-3 · Een trip van een eigen organisatie is nooit "zeker" werk; die van Sailing Virgins wel.** Categorie werking.
+**W-3 · Een trip van een eigen organisatie is nooit "zeker" werk; die van Sailing Virgins wel.** **Opgelost in #137** (`tripKind` gebruikt `organisations()` en `orgFromName`; de overgeslagen test draait). Categorie werking.
 Bewijs: `src/model/trip-kind.ts:45` toetst letterlijk op `'sailing-virgins' || 'yacht-week'`; `WORK_NAME` op regel 32
 kent alleen die namen; `tests/review-sommen.test.ts` (overgeslagen test, één keer gedraaid: `sure:false`). Gevolg: elke
 trip zonder vastgelegd type van een nieuwe gebruiker komt in Nakijken, van Olivier niet. Voorstel: `organisations()`
@@ -140,7 +140,7 @@ dezelfde drie wél met één tik oplost. Voorstel: Gezondheid naar Nakijken late
 `salaris-zonder-bedrag`/`meerdere-salarissen` naar Te controleren. Omvang S.
 
 **C-2 · Documentatie en code lopen uiteen op punten die een nieuwe ontwikkelaar op het verkeerde been zetten.**
-Categorie codegezondheid. Bewijs: `docs/ARCHITECTUUR.md` zegt schemaversie 1 en schrijfversie 3, de code staat op 3 en 9
+**Opgelost in #137** (CLAUDE.md gecorrigeerd: vingerafdruk-verpakking alleen lokaal, alleen AES-GCM, PR #76, de Logboek-regel; `docs/ARCHITECTUUR.md` verwijst naar `docs/app-kaart.md`, dat sectie 10 overnam; `tests/review-versies.test.ts` bewaakt de versies). Categorie codegezondheid. Bewijs: `docs/ARCHITECTUUR.md` zegt schemaversie 1 en schrijfversie 3, de code staat op 3 en 9
 (`src/model/schema.ts:11,36`); CLAUDE.md zegt dat `meta.json.enc` de vingerafdruk-KEK bevat, de code bewaart die alleen
 lokaal (`src/crypto/keys.ts:38`, `src/storage/fingerprint.ts`); CLAUDE.md "AES-KW of AES-GCM" tegenover alleen AES-GCM;
 CLAUDE.md "PR 13" voor de beveiligingsreview tegenover GitHub #76; `docs/FUNDERING.md` tekent model onder domein, terwijl
@@ -197,6 +197,22 @@ niet herhaald, dus **vermoeden** voor wat de ruleset betreft; dat elke push op `
 (`deploy.yml`). Voorstel: een `github-pages`-environment met Olivier als verplichte reviewer, of de tag-deploy uit V-2;
 tweestapsverificatie met passkey. Omvang S (instellingen) en opgenomen in V-2/V-3.
 
+### Nacontrole (3 november, na #137)
+
+Een aparte review-agent die de code niet schreef, controleerde na de vier PR's drie dingen: dezelfde omrekening en organisatie op elk geldscherm, niets stil kwijt bij verwijderen, en de upgradetest voor de nieuwe velden. Wat hij vond, is **opgelost in #137**:
+
+- `expectedIn` in `src/model/money-path.ts` rekende het verwachte salaris van een uitbetaling zelf om (koers van het tripeinde, zonder `receivedEur`/`amountEur`); nu `eurValue`, dus hetzelfde bedrag als de tripkaart en Mijn positie.
+- `moneyStats` in `src/model/stats.ts` kende alleen levende trips: geld van een trip in de prullenbak viel in Statistieken terug op de oude bron; nu `tripsById` zoals Geld en het jaaroverzicht.
+- De fooischatting (`tipAverages`, de vooruitblik) groepeerde op `trip.organisation` in plaats van `organisationOfTrip`: een trip met de organisatie alleen in de naam telde niet mee.
+- De vooruitblik waardeerde een verwacht salaris met het tripeinde van nu als datum; nu de datum van het salaris, zoals `receivableValue`.
+- Geld van een verwijderde declaratie (`claimId` naar een tombstone) stond nergens; nu telt alleen een levende declaratie als uitzondering op "geld zonder periode".
+- Vaste last "behouden": de geboekte maanden hangen aan de periode van hun dag (anders Nakijken) en de keuzetekst zegt dat ze als losse kosten tellen; "alles" staat nu ook in Meer → Prullenbak (`vasteLastVerwijderen` in `DELETE_COMMANDS`).
+- Een student wissen haalt zijn id ook uit de groepen van een planning; een planningsgroep met een cursus die weg is, is een nakijk-invariant (`planning-zonder-cursus`) met een punt in Nakijken.
+- `saveSettings` bouwde het `laatst:`-record alleen uit de bekende velden op en gooide een veld van een nieuwere build weg; nu `keepUnknownFields`, met een test. De upgradetest controleert nu ook dat `laatst:<apparaat>.lastCurrencies` na het bijwerken compleet is.
+- Tombstones van `deleteFixedCost`, `deleteClaim`, `deleteStudents` en `deleteAccount` dragen de tijd van de transactie (`store.now`), dezelfde als de geschiedenisregel.
+
+Niet gewijzigd: `Claim.documentId` naar een verwijderd document (zichtbaar als "bonnetje weg"), en `putSessionKey`/`saveOutbox` als testgereedschap.
+
 ### Later
 
 **G-4 · Eén rekening zonder koers laat de hele verandering en vooruitblik verdwijnen.** **Opgelost in #135** (een valuta zonder koers staat apart (`unpriced`); het eurodeel van de verandering en de vooruitblik blijft staan). Categorie werking, later.
@@ -228,7 +244,7 @@ storingsregel loopt door één bestand, en lui laden werkt niet voor `More`, `Hi
 (drie bestanden achter dezelfde klasse), `Screen`/`ErrorLine` uit `Setup.tsx` naar `components/`, `HistoryButton` naar
 `components/`. Omvang L.
 
-**C-3 · Dode of alleen door tests gebruikte exports.** Bewijs: nergens in `src/` gebruikt: `dagsoortZetten`, `daysRange`,
+**C-3 · Dode of alleen door tests gebruikte exports.** **Opgelost in #137** (de zeven ongebruikte exports zijn weg, met `renameTrip`, `daysRange` en de navigatie naar Opslag; de tests gebruiken het echte pad: `dagAutomatisch`, `dagsoortenKiezen`, `studentInTripToevoegen`, `weekAfsluitenMetGeld`, `scenarioDatumsAanpassen`; `sumPerCurrency` en `parseMileageCsv` staan nu bij de tests; `reviewInput` is het pad van het scherm. Bewust gebleven als testgereedschap om storingen na te bootsen: `putSessionKey` en `saveOutbox`). Bewijs: nergens in `src/` gebruikt: `dagsoortZetten`, `daysRange`,
 `doelOpslaan`, `openStorage`, `scenarioEindeAanpassen`, `studentToevoegen`, `uitgaveperiodeKiezen`; alleen in tests:
 `dagsoortAutomatisch`, `dagsoortenZetten`, `deelnemerToevoegen`, `periodeHernoemen`, `weekAfsluiten`, `geldstapOpslaan`,
 `scenarioBeginAanpassen`, `sumPerCurrency`, `putSessionKey`, `saveOutbox`, `parseMileageCsv`, `reviewInput` (script in
@@ -246,7 +262,7 @@ deze sessie, zie `docs/app-kaart.md` 2). Voorstel: verwijderen of in de test ver
 nieuwe functie ("een eigen organisatie is `overig`"). Voorstel: pas bij een volgende schrijfversie `source` vervangen door
 de organisatie-id en het veld alleen nog lezen. Omvang M.
 
-**D-8 · Het vakje "Op het water" onder de agenda is op 360 px afgekapt tot "Op het w…".** Categorie duidelijkheid, later.
+**D-8 · Het vakje "Op het water" onder de agenda is op 360 px afgekapt tot "Op het w…".** **Opgelost in #137** (de tekst mag over twee regels; `tests/e2e/agenda.spec.ts` controleert elk vakje op afgekapte tekst). Categorie duidelijkheid, later.
 Bewijs: `docs/screens/40-agenda-overlap.png` en `07c-agenda-leeg.png` (onderaan: "Op het w… 11 · Vrij 0 · Reis 0 · Thuis 0 ·
 nm 0"); gezien door de rol "nieuwe schipper" en zelf bevestigd. De overloopcontrole in de tests meet alleen horizontaal
 scrollen, geen afgekapte tekst. Voorstel: "Water" als korte vorm, of twee regels. Omvang S.

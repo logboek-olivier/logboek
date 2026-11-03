@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyMoneyStep, isEmptyStep } from '../src/model/week-money'
-import { geldstapOpslaan } from '../src/domain/geld'
+import { weekAfsluitenMetGeld } from '../src/domain/termijnen'
 import type { Account, Transaction, Trip } from '../src/model/types'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
@@ -43,7 +43,8 @@ describe('geldstap van de weekafsluiting', () => {
     await put(s, 'accounts.json.enc', account)
     await putMany(s, 'trips.json.enc', [trip('a'), trip('b')])
     await putMany(s, 'transactions.json.enc', [tip, salary('a'), salary('b')])
-    const { undo, result: { skipped } } = await geldstapOpslaan(s, { balances: [{ account, amount: 1500 }], received: [trip('a'), trip('b')] }, TODAY, null)
+    // Zoals de weekafsluiting op Vandaag: de geldstap gaat mee met het afsluiten; ongedaan maken geldt voor de geldstap.
+    const { undo, result: { skipped } } = await weekAfsluitenMetGeld(s, TODAY, { rating: null, lesson: '' }, { balances: [{ account, amount: 1500 }], received: [trip('a'), trip('b')] }, TODAY, null)
     expect(skipped).toEqual([])
     expect(s.list('balances.json.enc')).toEqual([expect.objectContaining({ accountId: 'asn', date: TODAY, amount: 1500 })])
     // Per tocht één salaris (geen tweede loon), op ontvangen, samen precies de uitbetaling.

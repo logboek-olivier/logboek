@@ -6,6 +6,7 @@ import { toEur, type RatesFile } from './rates'
 import { COST_DAY_TYPES, newId, type CostDayType, type Currency, type DayType, type FixedCost, type Settings, type Transaction } from './types'
 import { round2 } from '../basis/bedrag'
 import { addDays, daysInMonth, mondayOf, shiftMonth } from '../basis/datum'
+import { allPeriods, periodAt } from './periods'
 
 // Kosten, met zo weinig werk mogelijk. Vaste lasten: een lijst met per last het bedrag per maand, waarbij een wijziging
 // geldt vanaf een maand (oude maanden blijven kloppen). Variabele kosten: losse uitgaven (Toevoegen → Uitgave, ook
@@ -73,16 +74,19 @@ export function bookingsOf(transactions: readonly Transaction[], costId: string)
  * als "vast" tellen), `alles` zet ook de boekingen in de prullenbak. Niets verdwijnt stil; ongedaan maken zet alles terug.
  */
 export async function deleteFixedCost(store: Tx, cost: FixedCost, mode: 'behouden' | 'alles' = 'behouden'): Promise<void> {
-  const now = new Date().toISOString()
+  const now = store.now
   const bookings = bookingsOf(store.list('transactions.json.enc'), cost.id)
   if (bookings.length > 0) {
+    // Een gewone uitgave hoort bij een periode: die van haar dag (de laatste van de maand); zonder periode staat ze in Nakijken.
+    const periods = allPeriods(store.list('trips.json.enc'), store.list('legs.json.enc'), store.list('periods.json.enc'))
     await store.putMany(
       'transactions.json.enc',
       bookings.map((tx) => {
         if (mode === 'alles') return { ...tx, updatedAt: now, deletedAt: now }
         const { fixedCostId: _vast, ...rest } = tx
         void _vast
-        return { ...rest, updatedAt: now }
+        const period = periodAt(periods, tx.date)
+        return { ...rest, ...(period ? { tripId: period.id } : {}), updatedAt: now }
       }),
     )
   }

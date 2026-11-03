@@ -4,7 +4,7 @@
 import type { AddTab } from './model/types'
 import type { AddInit } from './screens/QuickAdd'
 
-export type NavTarget = { kind: 'student'; studentId: string } | { kind: 'opslag' } | { kind: 'nakijken' } | { kind: 'geld' } | { kind: 'toevoegen'; init?: AddInit; tab?: AddTab }
+export type NavTarget = { kind: 'student'; studentId: string } | { kind: 'nakijken' } | { kind: 'geld' } | { kind: 'toevoegen'; init?: AddInit; tab?: AddTab }
 
 let listener: ((target: NavTarget) => void) | null = null
 
@@ -18,11 +18,6 @@ export function onNavigate(l: (target: NavTarget) => void): () => void {
 /** De checklist van een student openen (Meer → Studentenarchief, met de student open). */
 export function openStudent(studentId: string): void {
   listener?.({ kind: 'student', studentId })
-}
-
-/** Meer → Opslag openen (Logboek herstellen), bijvoorbeeld vanuit Nakijken. */
-export function openStorage(): void {
-  listener?.({ kind: 'opslag' })
 }
 
 /** Meer → Nakijken openen (vanuit Gezondheid: daar staat de fix van één tik). */

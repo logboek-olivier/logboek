@@ -84,12 +84,6 @@ export async function deleteLeg(tx: Tx, leg: Leg): Promise<void> {
   await removeAll(tx, 'legs.json.enc', [leg])
 }
 
-export async function renameTrip(tx: Tx, trip: Trip, name: string): Promise<void> {
-  const trimmed = name.trim()
-  if (!trimmed || trimmed === trip.name) return
-  await tx.put('trips.json.enc', { ...trip, name: trimmed, updatedAt: tx.now })
-}
-
 export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'currency' | 'source'> & {
   note?: string
   receivedEur?: number

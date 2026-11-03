@@ -118,11 +118,6 @@ export function parseMileageFile(bytes: Uint8Array, now: string = new Date().toI
   return { ...parseMileageRows(sheet, now), kind: source.kind }
 }
 
-/** Voor tests en oudere aanroepen: CSV als tekst. */
-export function parseMileageCsv(text: string, now: string = new Date().toISOString()): ImportResult {
-  return parseMileageFile(new TextEncoder().encode(text), now)
-}
-
 function noHeaderMessage(kind: FileKind): string {
   return t(kind === 'xlsx' ? 'import.noHeaderXlsx' : 'import.noHeaderCsv')
 }

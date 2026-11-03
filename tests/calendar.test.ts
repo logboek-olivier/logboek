@@ -7,7 +7,7 @@ import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx } from './helpers/schrijf'
-import { dagsoortAutomatisch } from '../src/domain/agenda'
+import { dagAutomatisch } from '../src/domain/agenda'
 import { shiftMonth } from '../src/basis/datum'
 
 // Agenda: dagsoort per dag met de voorrang eigen instelling > binnen een trip > gelogde etappe > rust tussen twee
@@ -144,7 +144,7 @@ describe('dag zelf instellen', () => {
     await inTx(store, setDay, '2026-11-20', 'reis', { travel: { from: ' Nepstad ', to: 'Nepeiland', flight: 'NP 123' }, note: '  ' })
     await inTx(store, setDay, '2026-11-20', 'reis', { travel: { from: 'Nepstad', to: 'Nepeiland' } })
     expect(store.list('calendar.json.enc')).toEqual([expect.objectContaining({ id: 'dag:2026-11-20', type: 'reis', travel: { from: 'Nepstad', to: 'Nepeiland' } })])
-    await dagsoortAutomatisch(store, '2026-11-20')
+    await dagAutomatisch(store, '2026-11-20')
     expect(store.list('calendar.json.enc')).toEqual([])
     // De reden hoort alleen bij onbeschikbaar, wordt ingekort en lege tekst valt weg.
     await inTx(store, setDay, '2026-11-21', 'onbeschikbaar', { reason: `  ${'x'.repeat(300)} ` })

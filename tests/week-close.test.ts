@@ -7,7 +7,7 @@ import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
-import { weekAfsluiten, weekafsluitingVerwijderen } from '../src/domain/termijnen'
+import { weekAfsluitenMetGeld, weekafsluitingVerwijderen } from '../src/domain/termijnen'
 import { mondayOf, sundayOf } from '../src/basis/datum'
 
 // Weekafsluiting: samenvatting van maandag tot en met zondag uit dagen, agenda en studenten; opgeslagen alleen cijfer en
@@ -114,9 +114,10 @@ describe('samenvatting', () => {
 describe('opslaan', () => {
   it('één record per week: opnieuw opslaan werkt hem bij, een leeg cijfer valt weg; verwijderen met ongedaan maken', async () => {
     const store = await newStore()
-    await weekAfsluiten(store, '2026-10-29', { rating: 8, lesson: 'Nepzin' })
+    // Zoals de kaart op Vandaag: afsluiten zonder geldstap.
+    await weekAfsluitenMetGeld(store, '2026-10-29', { rating: 8, lesson: 'Nepzin' }, null, '2026-11-01', null)
     expect(store.list('weekreviews.json.enc')).toEqual([expect.objectContaining({ id: 'week:2026-W44', week: '2026-W44', start: '2026-10-26', rating: 8, lesson: 'Nepzin', deletedAt: null })])
-    await weekAfsluiten(store, '2026-11-01', { rating: null, lesson: 'Andere nepzin' })
+    await weekAfsluitenMetGeld(store, '2026-11-01', { rating: null, lesson: 'Andere nepzin' }, null, '2026-11-01', null)
     const [record] = store.list('weekreviews.json.enc')
     expect(record).toMatchObject({ id: 'week:2026-W44', lesson: 'Andere nepzin' })
     expect(record).not.toHaveProperty('rating')

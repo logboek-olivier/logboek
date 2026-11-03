@@ -180,7 +180,7 @@ export async function deleteClaim(store: Tx, claim: Claim): Promise<void> {
   if (!original) return
   const doc = original.documentId ? store.list('documents/index.json.enc').find((d) => d.id === original.documentId) : undefined
   const cost = costOf(store, original.id)
-  const now = new Date().toISOString()
+  const now = store.now
   await store.put('claims.json.enc', scrubbedClaim(original, now))
   if (doc) await store.put('documents/index.json.enc', scrubbedDocument(doc, now))
   if (cost) await store.put('transactions.json.enc', { ...cost, updatedAt: now, deletedAt: now })
