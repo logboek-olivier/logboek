@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { formatDate, formatMoney, formatMonth } from '../format'
-import { t } from '../i18n'
+import { getLang, t } from '../i18n'
 import { kindLabel } from '../i18n/labels'
 import type { Drill, DrillGroup, DrillPost, DrillSection } from '../domain/doorklik'
 import type { Claim, Transaction, Trip } from '../model/types'
@@ -44,6 +44,9 @@ function groupTitle(g: DrillGroup, labels: DrillRequest['labels']): string {
   if (g.kind === 'vaste-lasten') return t('drill.fixedCosts')
   if (g.kind === 'variabel') return t('drill.variableCosts')
   if (g.kind === 'scenario-kosten') return t('drill.scenarioCosts')
+  if (g.kind === 'groei-beleggen') return t('drill.growthInvestments')
+  if (g.kind === 'groei-bezit') return t('drill.growthAssets')
+  if (g.kind === 'rente-schuld') return t('drill.debtInterest')
   const kind = g.kind === 'onbekend' ? t('drill.investmentNoKind') : g.kind ? (g.section === 'kosten' ? t(`costCategory.${g.kind as 'overig'}`) : kindLabel(g.kind as Transaction['kind'])) : ''
   switch (g.section) {
     case 'scenario':
@@ -66,11 +69,15 @@ function groupTitle(g: DrillGroup, labels: DrillRequest['labels']): string {
       return t('drill.accounts')
     case 'zeilresultaat':
       return t('drill.sailingResult')
+    case 'groei':
+    case 'eenmalig':
+      return t(`drill.section.${g.section}`)
   }
 }
 
 function postTitle(p: DrillPost): string {
   if (p.estimate && p.trip) return t('drill.tipEstimate', { trip: p.trip.name })
+  if (p.oneOffName !== undefined) return p.oneOffName || t('drill.section.eenmalig')
   if (p.month && !p.tx) return formatMonth(p.month)
   if (p.tx) {
     if (p.tx.note?.trim()) return p.tx.note.trim()
@@ -139,7 +146,8 @@ export function DrillSheet({ store, notify, request, onClose }: { store: Store; 
                       {postTitle(p)}
                       <span className="muted small">
                         {' · '}
-                        {p.account ? accountDetail(p) : p.month && !p.tx ? t('drill.until', { date: formatDate(p.date) }) : formatDate(p.date)}
+                        {p.account ? accountDetail(p) : p.growth ? t('drill.growthDetail', { opening: formatMoney(p.growth.opening, 'EUR'), pct: (Math.round(p.growth.rate * 10000) / 100).toLocaleString(getLang() === 'nl' ? 'nl-NL' : 'en-GB') }) : p.month && !p.tx ? t('drill.until', { date: formatDate(p.date) }) : formatDate(p.date)}
+                        {p.growth && p.growth.contribution > 0 ? ` · ${t('drill.growthContribution', { amount: formatMoney(p.growth.contribution, 'EUR') })}` : ''}
                         {p.trip && !p.estimate ? ` · ${p.trip.name}` : ''}
                         {p.payout ? ` · ${t('drill.payout', { date: formatDate(p.payout) })}` : ''}
                       </span>

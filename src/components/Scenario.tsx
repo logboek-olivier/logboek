@@ -2,11 +2,11 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatMoney } from '../format'
 import { getLang, t } from '../i18n'
-import { activeScenario, blockRanges, liveScenarios, MAX_BLOCKS, MAX_WEEKS, scenarioStart, type BlockInput } from '../model/scenario'
+import { activeScenario, assumptionsOf, blockRanges, liveScenarios, MAX_BLOCKS, MAX_ONE_OFFS, MAX_PCT, MAX_WEEKS, MIN_PCT, scenarioHorizon, scenarioStart, validOneOffs, type BlockInput, type OneOffInput } from '../model/scenario'
 import { currentSettings } from '../model/settings'
-import { CURRENCIES, type Currency, type Scenario, type ScenarioBlock } from '../model/types'
+import { CURRENCIES, type Currency, type Scenario, type ScenarioBlock, type ScenarioOneOff } from '../model/types'
 import type { Store } from '../storage/store'
-import { blokToevoegen, blokVerplaatsen, blokVerwijderen, blokWijzigen, scenarioActiveren, scenarioBeginAanpassen, scenarioHernoemen, scenarioMaken, scenarioVerwijderen } from '../domain/geld'
+import { aannamesOpslaan, blokToevoegen, blokVerplaatsen, blokVerwijderen, blokWijzigen, eenmaligToevoegen, eenmaligVerwijderen, eenmaligWijzigen, scenarioActiveren, scenarioDatumsAanpassen, scenarioHernoemen, scenarioMaken, scenarioVerwijderen } from '../domain/geld'
 import { amountInput, parseAmount } from '../basis/bedrag'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -86,6 +86,8 @@ export function ScenarioSection({ store, notify, planningEnd, today }: { store: 
   const [naming, setNaming] = useState<'nieuw' | 'hernoemen' | null>(null)
   const [editing, setEditing] = useState<ScenarioBlock | 'nieuw' | null>(null)
   const [starting, setStarting] = useState(false)
+  const [assuming, setAssuming] = useState(false)
+  const [oneOff, setOneOff] = useState<ScenarioOneOff | 'nieuw' | null>(null)
   if (!current) {
     return (
       <div className="section card card-body stack-sm scenario">
@@ -102,6 +104,8 @@ export function ScenarioSection({ store, notify, planningEnd, today }: { store: 
   }
   const start = scenarioStart(current, planningEnd, today)
   const ranges = blockRanges(current, start)
+  const oneOffs = validOneOffs(current)
+  const horizon = scenarioHorizon(current, ranges, today)
   async function remove() {
     const undo = await scenarioVerwijderen(store, current!.id)
     notify(t('scenario.deleted'), undo)
@@ -160,6 +164,40 @@ export function ScenarioSection({ store, notify, planningEnd, today }: { store: 
       ) : (
         <p className="muted small">{t('scenario.max', { n: MAX_BLOCKS })}</p>
       )}
+      {/* Aannames: groei, rente en het belegde deel van het inkomen. Leeg is 0: de app verzint geen groei. */}
+      <h3 className="small-heading">{t('scenario.assumptions')}</h3>
+      <p className="row small">
+        <span className="grow">{assumptionsText(current)}</span>
+        <button type="button" className="btn link small" onClick={() => setAssuming(true)}>
+          {t('scenario.changeStart')}
+        </button>
+      </p>
+      {/* Eenmalige uitgaven: een auto, een dure vakantie. */}
+      <h3 className="small-heading">{t('scenario.oneOffs')}</h3>
+      {oneOffs.length === 0 ? (
+        <p className="muted small">{t('scenario.noOneOffs')}</p>
+      ) : (
+        <ul className="plain-list scenario-blocks">
+          {oneOffs.map((o) => (
+            <li key={o.id}>
+              <button type="button" className="row scenario-block-main one-off" aria-label={`${o.name}: ${formatMoney(o.amount, o.currency)} · ${t('scenario.editOneOff')}`} onClick={() => setOneOff(o)}>
+                <span className="grow">
+                  {o.name}
+                  <span className="muted small"> · {formatDate(o.date)}</span>
+                </span>
+                <span className="num">{formatMoney(o.amount, o.currency)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {oneOffs.length < MAX_ONE_OFFS && (
+        <button type="button" className="btn" onClick={() => setOneOff('nieuw')}>
+          <Icon icon={Plus} />
+          {t('scenario.addOneOff')}
+        </button>
+      )}
+      <p className="muted small">{horizon ? t('scenario.horizonLine', { date: formatDate(horizon) }) : ''}</p>
       <div className="row scenario-actions">
         <button type="button" className="btn link small" onClick={() => setNaming('nieuw')}>
           {t('scenario.new')}
@@ -171,6 +209,8 @@ export function ScenarioSection({ store, notify, planningEnd, today }: { store: 
       {naming && <NameSheet store={store} notify={notify} mode={naming} scenario={naming === 'hernoemen' ? current : null} suggested={t('scenario.defaultName', { n: scenarios.length + 1 })} onClose={() => setNaming(null)} />}
       {editing && <BlockSheet store={store} notify={notify} scenario={current} block={editing === 'nieuw' ? null : editing} onClose={() => setEditing(null)} />}
       {starting && <StartSheet store={store} notify={notify} scenario={current} start={start} onClose={() => setStarting(false)} />}
+      {assuming && <AssumptionsSheet store={store} notify={notify} scenario={current} onClose={() => setAssuming(false)} />}
+      {oneOff && <OneOffSheet store={store} notify={notify} scenario={current} oneOff={oneOff === 'nieuw' ? null : oneOff} onClose={() => setOneOff(null)} />}
     </div>
   )
 }
@@ -287,11 +327,137 @@ function BlockSheet({ store, notify, scenario, block, onClose }: { store: Store;
   )
 }
 
+/** "Beleggingen 6% · bezittingen 2% · rente 2,5% · 20% van het inkomen belegd", of dat er niets is aangenomen. */
+function assumptionsText(scenario: Scenario): string {
+  const a = assumptionsOf(scenario)
+  if (a.investmentGrowthPct === 0 && a.assetGrowthPct === 0 && a.debtInterestPct === 0 && a.investPct === 0) return t('scenario.assumptionsNone')
+  const pct = (n: number) => n.toLocaleString(getLang() === 'nl' ? 'nl-NL' : 'en-GB', { maximumFractionDigits: 2 })
+  return t('scenario.assumptionsLine', { investments: pct(a.investmentGrowthPct), assets: pct(a.assetGrowthPct), debts: pct(a.debtInterestPct), invest: pct(a.investPct) })
+}
+
+/** Een percentage lezen zoals een bedrag (komma of punt); leeg is 0. */
+function parsePct(text: string, min: number, max: number): number | null {
+  if (text.trim() === '') return 0
+  const n = parseAmount(text.replace('%', ''), getLang())
+  if (n === null) {
+    const plain = Number(text.replace(',', '.'))
+    return Number.isFinite(plain) && plain >= min && plain <= max ? plain : null
+  }
+  return n >= min && n <= max ? n : null
+}
+
+/** Aannames: groei beleggingen, groei bezittingen, rente op schulden en het belegde deel van het inkomen. */
+function AssumptionsSheet({ store, notify, scenario, onClose }: { store: Store; notify: Notify; scenario: Scenario; onClose: () => void }) {
+  const a = assumptionsOf(scenario)
+  const show = (n: number) => (n === 0 ? '' : n.toLocaleString(getLang() === 'nl' ? 'nl-NL' : 'en-GB', { maximumFractionDigits: 2, useGrouping: false }))
+  const [investments, setInvestments] = useState(show(a.investmentGrowthPct))
+  const [assets, setAssets] = useState(show(a.assetGrowthPct))
+  const [debts, setDebts] = useState(show(a.debtInterestPct))
+  const [invest, setInvest] = useState(show(a.investPct))
+  const parsed = { investmentGrowthPct: parsePct(investments, MIN_PCT, MAX_PCT), assetGrowthPct: parsePct(assets, MIN_PCT, MAX_PCT), debtInterestPct: parsePct(debts, MIN_PCT, MAX_PCT), investPct: parsePct(invest, 0, 100) }
+  const valid = Object.values(parsed).every((v) => v !== null)
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!valid) return
+    const { undo } = await aannamesOpslaan(store, scenario.id, { investmentGrowthPct: parsed.investmentGrowthPct!, assetGrowthPct: parsed.assetGrowthPct!, debtInterestPct: parsed.debtInterestPct!, investPct: parsed.investPct! })
+    onClose()
+    notify(t('scenario.saved'), undo)
+  }
+  const field = (label: string, value: string, set: (v: string) => void) => (
+    <label>
+      {label}
+      <input className="amount" type="text" inputMode="decimal" autoComplete="off" value={value} onChange={(e) => set(e.target.value)} />
+    </label>
+  )
+  return (
+    <Sheet title={t('scenario.assumptions')} onClose={onClose}>
+      <form className="stack" onSubmit={(e) => void submit(e)}>
+        {field(t('scenario.investmentGrowth'), investments, setInvestments)}
+        {field(t('scenario.assetGrowth'), assets, setAssets)}
+        {field(t('scenario.debtInterest'), debts, setDebts)}
+        {field(t('scenario.investPct'), invest, setInvest)}
+        <p className="muted small">{valid ? t('scenario.assumptionsHint') : t('scenario.pctInvalid')}</p>
+        <button className="btn primary" type="submit" disabled={!valid}>
+          {t('common.save')}
+        </button>
+      </form>
+    </Sheet>
+  )
+}
+
+/** Een eenmalige uitgave: wat, wanneer en het bedrag (met de valuta). */
+function OneOffSheet({ store, notify, scenario, oneOff, onClose }: { store: Store; notify: Notify; scenario: Scenario; oneOff: ScenarioOneOff | null; onClose: () => void }) {
+  const lastCurrency = currentSettings(useCollection(store, 'settings.json.enc')).lastCurrency
+  const [name, setName] = useState(oneOff?.name ?? '')
+  const [date, setDate] = useState(oneOff?.date ?? '')
+  const [amount, setAmount] = useState(oneOff ? amountInput(oneOff.amount) : '')
+  const [currency, setCurrency] = useState<Currency>(oneOff?.currency ?? lastCurrency ?? 'EUR')
+  const value = parseAmount(amount, getLang())
+  const valid = name.trim() !== '' && /^\d{4}-\d{2}-\d{2}$/.test(date) && value !== null && value > 0
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!valid) return
+    const input: OneOffInput = { name, date, amount: value!, currency }
+    const { undo } = oneOff ? await eenmaligWijzigen(store, scenario.id, oneOff.id, input) : await eenmaligToevoegen(store, scenario.id, input)
+    onClose()
+    notify(t('scenario.oneOffSaved'), undo)
+  }
+  async function remove() {
+    if (!oneOff) return
+    const { undo } = await eenmaligVerwijderen(store, scenario.id, oneOff.id)
+    onClose()
+    notify(t('scenario.oneOffDeleted'), undo)
+  }
+  return (
+    <Sheet title={t(oneOff ? 'scenario.editOneOff' : 'scenario.addOneOff')} onClose={onClose}>
+      <form className="stack" onSubmit={(e) => void submit(e)}>
+        <label>
+          {t('scenario.oneOffName')}
+          <input type="text" maxLength={60} autoComplete="off" autoCapitalize="sentences" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!oneOff} />
+        </label>
+        <label>
+          {t('scenario.oneOffDate')}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <div className="amount-currency">
+          <label className="grow">
+            {t('scenario.oneOffAmount')}
+            <input className="amount" type="text" inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </label>
+          <label>
+            {t('scenario.currency')}
+            <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="sheet-actions">
+          <button className="btn primary" type="submit" disabled={!valid}>
+            {t('common.save')}
+          </button>
+          {oneOff && (
+            <button type="button" className="btn danger" onClick={() => void remove()}>
+              <Icon icon={Trash2} />
+              {t('common.delete')}
+            </button>
+          )}
+        </div>
+      </form>
+    </Sheet>
+  )
+}
+
+/** Begindatum en horizon: wanneer het eerste blok begint, en tot wanneer de vooruitblik kijkt. */
 function StartSheet({ store, notify, scenario, start, onClose }: { store: Store; notify: Notify; scenario: Scenario; start: string; onClose: () => void }) {
   const [date, setDate] = useState(start)
-  const ok = /^\d{4}-\d{2}-\d{2}$/.test(date)
+  const [end, setEnd] = useState(scenario.endDate ?? '')
+  const ok = /^\d{4}-\d{2}-\d{2}$/.test(date) && (end === '' || (/^\d{4}-\d{2}-\d{2}$/.test(end) && end > date))
   async function save(value: string | null) {
-    const { undo } = await scenarioBeginAanpassen(store, scenario.id, value)
+    const { undo } = await scenarioDatumsAanpassen(store, scenario.id, value, end || null)
     onClose()
     notify(t('scenario.saved'), undo)
   }
@@ -308,6 +474,11 @@ function StartSheet({ store, notify, scenario, start, onClose }: { store: Store;
           {t('scenario.startLabel')}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
+        <label>
+          {t('scenario.horizon')}
+          <input type="date" value={end} min={date} onChange={(e) => setEnd(e.target.value)} />
+        </label>
+        <p className="muted small">{t('scenario.horizonHint')}</p>
         <button className="btn primary" type="submit" disabled={!ok}>
           {t('common.save')}
         </button>

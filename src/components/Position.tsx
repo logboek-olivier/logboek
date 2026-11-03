@@ -20,7 +20,7 @@ import { useCounters } from './useCounters'
 import { usePeriodChoice } from './money-period'
 import { beginsaldiInvoeren, standOpslaan } from '../domain/geld'
 import { changeDrills, forecastDrills, receivableDrill } from '../domain/doorklik'
-import { blockRanges, scenarioEnd, scenarioStart } from '../model/scenario'
+import { scenarioPlan } from '../model/scenario'
 import { useActiveScenario, type ForecastMode } from './Scenario'
 import { DrillSheet, type DrillRequest } from './DrillSheet'
 import { instellingenOpslaan } from '../domain/instellingen'
@@ -352,8 +352,8 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
   const [drill, setDrill] = useState<DrillRequest | null>(null)
   const today = todayIso()
   const pEnd = planningEnd(index)
-  const ranges = useMemo(() => (mode === 'scenario' && scenario ? blockRanges(scenario, scenarioStart(scenario, pEnd, today)) : null), [mode, scenario, pEnd, today])
-  const lastDay = ranges ? scenarioEnd(ranges) : null
+  const plan = useMemo(() => (mode === 'scenario' && scenario ? scenarioPlan(scenario, pEnd, today) : null), [mode, scenario, pEnd, today])
+  const lastDay = plan?.end ?? null
   // Scenario: tot het einde van het scenario, behalve als de gebruiker zelf een einddatum koos.
   const extended = !!lastDay && lastDay > period.to && preset !== 'eigen'
   const range = useMemo(() => (extended && lastDay ? { from: period.from, to: lastDay } : period), [extended, lastDay, period])
@@ -361,8 +361,8 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
   // opnieuw rekenen als de gegevens veranderen (de vooruitblik loopt over alle trips, dagen en transacties).
   const f = useMemo(() => {
     const averages = dayAverages(input.transactions, index, today, settings)
-    return forecast(input, settings, today, pEnd, 6, { fixed, averages, index }, range, ranges)
-  }, [input, index, today, settings, fixed, range, ranges, pEnd])
+    return forecast(input, settings, today, pEnd, 6, { fixed, averages, index }, range, plan)
+  }, [input, index, today, settings, fixed, range, plan, pEnd])
   // Niets te tonen: geen posten, geen gemeten maand en niets zonder koers (dan wel de melding dat een koers ontbreekt).
   if (f.items.length === 0 && f.months.every((m) => m.eur === null) && Object.keys(f.other).length === 0 && Object.keys(f.now.other).length === 0) return null
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
@@ -370,7 +370,7 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
   const first = f.months.findIndex((m) => m.eur !== null)
   const months = first > 0 ? f.months.slice(first) : f.months
   const periodText = t('drill.period', { from: formatDate(today), to: formatDate(range.to) })
-  const open = (line: 'start' | 'salary' | 'tips' | 'scenario' | 'costs') => {
+  const open = (line: 'start' | 'salary' | 'tips' | 'scenario' | 'costs' | 'oneOffs' | 'growth') => {
     const drills = forecastDrills(f, positionAt(input, today), input.trips, input.rates)
     const requests: Record<typeof line, DrillRequest> = {
       start: { title: t('forecast.lineStart'), drill: drills.start, hint: t('forecast.startHint', { date: formatDate(today) }), signed: true },
@@ -378,6 +378,8 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
       tips: { title: t('forecast.lineTips'), drill: drills.tips, period: periodText, hint: t('forecast.tipsHint'), signed: true },
       scenario: { title: t('forecast.lineScenario'), drill: drills.scenario, period: periodText, hint: t('forecast.scenarioIncomeHint'), signed: true },
       costs: { title: t('forecast.lineCosts'), drill: drills.costs, period: periodText, hint: t('forecast.costsHint'), signed: true },
+      oneOffs: { title: t('forecast.lineOneOffs'), drill: drills.oneOffs, period: periodText, hint: t('forecast.oneOffsHint'), signed: true },
+      growth: { title: t('forecast.lineGrowth'), drill: drills.growth, period: periodText, hint: t('forecast.growthHint'), signed: true },
     }
     setDrill(requests[line])
   }
@@ -400,6 +402,7 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
               ['tips', t('forecast.lineTips'), lines.tips, true],
               ...(mode === 'scenario' ? ([['scenario', t('forecast.lineScenario'), lines.scenario, true]] as const) : []),
               ['costs', t('forecast.lineCosts'), lines.costs, true],
+              ...(mode === 'scenario' ? ([['oneOffs', t('forecast.lineOneOffs'), lines.oneOffs, true], ['growth', t('forecast.lineGrowth'), lines.growth, true]] as const) : []),
             ] as const
           ).map(([key, label, eur, isPart]) => (
             <li key={key}>
@@ -417,9 +420,11 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
         </ul>
       )}
       {lines && <p className="muted small">{t('forecast.sumHint')}</p>}
+      {lines && plan && plan.assumptions.investPct > 0 && <p className="muted small">{t('forecast.invested', { amount: formatMoney(lines.invested, 'EUR'), pct: String(plan.assumptions.investPct), end: formatMoney(lines.investmentsEnd, 'EUR') })}</p>}
       {!hasAccounts && <p className="muted small">{t('position.onlyReceivable')}</p>}
       {extended && lastDay && <p className="muted small">{t('forecast.toScenarioEnd', { date: formatDate(lastDay) })}</p>}
       {!extended && lastDay && range.to < lastDay && <p className="muted small">{t('forecast.scenarioCut', { date: formatDate(lastDay) })}</p>}
+      {lastDay && lastDay < range.to && <p className="muted small">{t('forecast.scenarioEnds', { date: formatDate(lastDay) })}</p>}
       {f.costsUnknown && <p className="muted small">{t('forecast.costsUnknown')}</p>}
       <LineChart
         points={months.map((m) => ({ key: m.date ?? m.month, label: m.date ? formatDateShort(m.date) : formatMonthShort(m.month), value: m.eur, future: m.future }))}

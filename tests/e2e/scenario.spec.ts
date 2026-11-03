@@ -8,6 +8,12 @@ import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, ope
 
 test.use({ viewport: { width: 360, height: 800 } })
 
+function iso(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 async function addBlock(page: Page, weeks: string, income: string) {
   await page.getByRole('button', { name: 'Blok toevoegen' }).click()
   const sheet = page.getByRole('dialog', { name: 'Blok toevoegen' })
@@ -18,7 +24,8 @@ async function addBlock(page: Page, weeks: string, income: string) {
   await expect(page.locator('.toast')).toContainText('Blok opgeslagen')
 }
 
-test('scenario met twee blokken: som sluit, blok omhoog, doorklikken, wisselen tussen Gepland en Scenario', async ({ page }) => {
+test('scenario met twee blokken, eenmalige uitgave en groei: som sluit, blok omhoog, doorklikken, Gepland en Scenario', async ({ page }) => {
+  test.setTimeout(120_000)
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
   await createNewLogbook(page)
@@ -69,12 +76,53 @@ test('scenario met twee blokken: som sluit, blok omhoog, doorklikken, wisselen t
   await page.goBack()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
+  // Een eenmalige uitgave (drie velden) en een horizon: de som krijgt de regel Eenmalige uitgaven.
+  await section.getByRole('button', { name: 'Eenmalige uitgave toevoegen' }).click()
+  const oneOff = page.getByRole('dialog', { name: 'Eenmalige uitgave toevoegen' })
+  await oneOff.getByLabel('Wat').fill('Nepauto')
+  await oneOff.getByLabel('Wanneer').fill(iso(120))
+  await oneOff.getByLabel('Bedrag').fill('15000')
+  await oneOff.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(section).toContainText('Nepauto')
+  await expect(sum.getByRole('button', { name: /Eenmalige uitgaven/ })).toContainText('−€ 15.000,00')
+  await expect(sum.locator('.forecast-total')).toContainText('€ 35.000,00')
+
+  // Aannames: zonder beleggingen is de groei 0; met een beleggen-rekening van € 10.000 en 12% per jaar groeit die.
+  await expect(section).toContainText('Geen groei, geen rente, niets belegd uit het inkomen.')
+  await section.getByRole('button', { name: 'Aanpassen' }).last().click()
+  const assume = page.getByRole('dialog', { name: 'Aannames' })
+  await assume.getByLabel('Groei beleggingen (% per jaar)').fill('12')
+  await assume.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(section).toContainText('Beleggingen 12%')
+  await expect(sum.getByRole('button', { name: /Waardegroei/ })).toContainText('€ 0,00')
+  await openMore(page, 'Rekeningen')
+  await page.getByRole('button', { name: 'Rekening toevoegen' }).click()
+  await page.getByRole('dialog').getByRole('radio', { name: 'BUX' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Opslaan' }).click()
+  await page.locator('.row-button', { hasText: 'BUX' }).click()
+  await page.getByRole('dialog').getByLabel('Stand', { exact: true }).fill('10000')
+  await page.getByRole('dialog').getByRole('button', { name: 'Stand opslaan' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Sluiten', exact: true }).click()
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+  await openMore(page, 'Geld')
+  // 12% per jaar over € 10.000, vanaf morgen tot het einde van het scenario (ruim zeven maanden): tussen € 600 en € 900.
+  const growth = page.locator('.forecast-sum').getByRole('button', { name: /Waardegroei/ })
+  await expect(growth).toContainText(/\+€ [678]\d\d,\d\d/)
+  await growth.click()
+  const growthDrill = page.getByRole('dialog', { name: /Waardegroei/ })
+  await expect(growthDrill).toContainText('Groei beleggingen')
+  await expect(growthDrill.locator('.drill-group h3')).toHaveCount(1)
+  await page.goBack()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
   // Gepland: geen scenario-inkomen en geen scenarioblok; terug naar Scenario: alles staat er weer.
   await modes.getByRole('radio', { name: 'Gepland' }).click()
   await expect(page.locator('.scenario')).toHaveCount(0)
   await expect(page.locator('.forecast')).not.toContainText('Scenario-inkomen')
   await modes.getByRole('radio', { name: 'Scenario' }).click()
-  await expect(sum.getByRole('button', { name: /Scenario-inkomen/ })).toContainText('+€ 50.000,00')
+  await expect(page.locator('.forecast-sum').getByRole('button', { name: /Scenario-inkomen/ })).toContainText('+€ 50.000,00')
   // De keuze blijft na herladen (per apparaat).
   await page.reload()
   await openMore(page, 'Geld')
