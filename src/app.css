@@ -4984,3 +4984,10 @@ button.drill-post {
   color: var(--text-muted);
   font-size: var(--fs-sm);
 }
+
+/* Notities bij een student houden hun regels (ingesproken met Enter). */
+.student-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}

@@ -375,23 +375,31 @@ export function planWeek(plan: WeekPlan, trips: readonly Trip[], legs: readonly 
   return tripForDate(trips, legs, plan.startDate)?.id ?? null
 }
 
+/** Een trip waarin Olivier les geeft: elke deelnemer is daar een student, ook zonder gekozen cursus. */
+export function isTeachingTrip(trip: Pick<Trip, 'type'>): boolean {
+  return trip.type === 'training-geven'
+}
+
 /**
- * Deelnemers met een cursus krijgen een student (zelfde id) voor hun checklist; een bestaande student krijgt de
- * nieuwe voornaam, cursus en niveau. Een deelnemer die van de week verdwijnt, houdt zijn student (en voortgang).
+ * Deelnemers met een cursus, en elke deelnemer van een trip waarin Olivier les geeft, krijgen een student (zelfde id)
+ * voor hun checklist en notities; een bestaande student krijgt de nieuwe voornaam, cursus en niveau (zonder cursus bij
+ * de deelnemer blijft die van de student). Een deelnemer die van de week verdwijnt, houdt zijn student (en voortgang).
+ * Een gewiste student (tombstone) komt nooit vanzelf terug.
  */
 export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
   const students = store.get('students.json.enc')
   const liveTrips = new Set(store.list('trips.json.enc').map((x) => x.id))
   const now = new Date().toISOString()
   const changed: Student[] = []
+  const teaching = isTeachingTrip(trip)
   for (const p of trip.participants ?? []) {
-    if (!p.curriculumId) continue
+    if (!p.curriculumId && !teaching) continue
     const existing = students.find((s) => s.id === p.id)
     if (!existing) {
       changed.push({
         id: p.id,
         firstName: p.firstName,
-        curriculumId: p.curriculumId,
+        curriculumId: p.curriculumId ?? '',
         level: p.level ?? 'beginner',
         progress: {},
         archivedAt: null,
@@ -404,11 +412,47 @@ export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
       // Een deelnemer mag in meerdere trips staan (uitgangspunt 4): de student blijft bij zijn trip. Alleen zonder trip
       // (of met een verwijderde trip) hoort hij voortaan bij deze.
       const linked = !!existing.weekId && liveTrips.has(existing.weekId)
-      const next = { ...existing, firstName: p.firstName, curriculumId: p.curriculumId, level: p.level ?? existing.level, weekId: linked ? existing.weekId : trip.id }
+      const next = { ...existing, firstName: p.firstName, curriculumId: p.curriculumId || existing.curriculumId, level: p.level ?? existing.level, weekId: linked ? existing.weekId : trip.id }
       if (JSON.stringify(next) !== JSON.stringify(existing)) changed.push({ ...next, updatedAt: now })
     }
   }
   if (changed.length > 0) await store.putMany('students.json.enc', changed)
+}
+
+/**
+ * Deelnemers die een student horen te zijn (in een trip waarin Olivier les geeft, of met een cursus) maar nog geen
+ * student hebben, bijvoorbeeld van vóór deze versie of uit een trip die nog niet opnieuw is opgeslagen. Het
+ * studentenarchief toont ze bij hun trip; een tik maakt de student. Een gewiste student (tombstone) telt als bestaand.
+ */
+export function participantsWithoutStudent(trips: readonly Trip[], students: readonly Student[]): { trip: Trip; participant: Participant }[] {
+  const known = new Set(students.map((s) => s.id))
+  const out: { trip: Trip; participant: Participant }[] = []
+  for (const trip of active(trips)) {
+    for (const p of trip.participants ?? []) {
+      if (known.has(p.id) || (!p.curriculumId && !isTeachingTrip(trip))) continue
+      known.add(p.id)
+      out.push({ trip, participant: p })
+    }
+  }
+  return out
+}
+
+/** De student van een deelnemer maken (zelfde id), bij een tik in het studentenarchief. Bestaat hij al, dan niets. */
+export async function studentFromParticipant(store: Tx, trip: Trip, participant: Participant): Promise<void> {
+  if (store.get('students.json.enc').some((s) => s.id === participant.id)) return
+  const now = store.now
+  await store.put('students.json.enc', {
+    id: participant.id,
+    firstName: participant.firstName,
+    curriculumId: participant.curriculumId ?? '',
+    level: participant.level ?? 'beginner',
+    progress: {},
+    archivedAt: null,
+    weekId: trip.id,
+    ...(trip.startDate ? { startedAt: trip.startDate } : {}),
+    updatedAt: now,
+    deletedAt: null,
+  })
 }
 
 /** Een student die in Deze week wordt toegevoegd, komt ook bij de deelnemers van de week. */

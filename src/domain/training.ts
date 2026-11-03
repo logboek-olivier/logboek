@@ -4,7 +4,7 @@ import { deleteCurriculum, saveCurriculum } from '../model/curricula'
 import { deletePlan, savePlan, setGroupCurriculum, setPlanTrip } from '../model/plans'
 import { addStudent, autoArchive, deleteStudents, saveStudents, setArchived, setStudentCurriculum, updateStudent, type StudentInput } from '../model/students'
 import type { Student } from '../model/types'
-import { addParticipant } from '../model/weeks'
+import { addParticipant, studentFromParticipant } from '../model/weeks'
 import { opdracht, opdrachtMet } from './opdracht'
 import type { Tx } from './tx'
 
@@ -26,6 +26,7 @@ export const studentArchiveren = opdracht('studentArchiveren', setArchived)
 export const studentBewerken = opdracht('studentBewerken', updateStudent)
 export const studentCursusZetten = opdracht('studentCursusZetten', setStudentCurriculum)
 export const studentInTripToevoegen = opdrachtMet('studentInTripToevoegen', addStudentToTrip)
+export const studentVanDeelnemer = opdracht('studentVanDeelnemer', studentFromParticipant)
 export const studentenArchiveren = opdracht('studentenArchiveren', autoArchive)
 export const studentenOpslaan = opdracht('studentenOpslaan', saveStudents)
 export const studentenWissen = opdracht('studentenWissen', deleteStudents)

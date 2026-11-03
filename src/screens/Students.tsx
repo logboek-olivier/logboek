@@ -4,6 +4,7 @@ import type { Notify } from '../components/EditSheets'
 import { Empty } from '../components/Empty'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
+import { NoteField } from '../components/NoteField'
 import { useCollection } from '../components/useCollection'
 import { useSyncStatus } from '../components/SyncStatusLine'
 import { formatDate, formatDateShort, formatNumber } from '../format'
@@ -206,7 +207,7 @@ export function StudentRow({ student: s, course, onOpen }: { student: Student; c
         <span className="row-main">
           <span>{s.firstName}</span>
           <span className="muted small">
-            {course ? courseLabel(course, lang) : t('students.unknownCourse')} · {t(`level.${s.level}`)}
+            {courseText(course, s, lang)} · {t(`level.${s.level}`)}
           </span>
           {p && <ProgressBar progress={p} label={t('students.progressOf', { name: s.firstName })} />}
         </span>
@@ -221,6 +222,25 @@ export function StudentRow({ student: s, course, onOpen }: { student: Student; c
       </button>
     </li>
   )
+}
+
+/** De cursus van een student: de naam, "Nog geen cursus", of "Cursus verwijderd" als de cursus weg is. */
+export function courseText(course: Curriculum | undefined, student: Pick<Student, 'curriculumId'>, lang: Parameters<typeof courseLabel>[1]): string {
+  if (course) return courseLabel(course, lang)
+  return student.curriculumId ? t('students.unknownCourse') : t('students.noCourse')
+}
+
+/** De invoer van een bestaande student, om één veld (de notitie) te wijzigen zonder de rest te verliezen. */
+export function inputOf(student: Student, patch: Partial<StudentInput> = {}): StudentInput {
+  return {
+    firstName: student.firstName,
+    curriculumId: student.curriculumId,
+    level: student.level,
+    startedAt: student.startedAt ?? todayIso(),
+    ...(student.note ? { note: student.note } : {}),
+    ...(student.exam ? { exam: student.exam } : {}),
+    ...patch,
+  }
 }
 
 export function ProgressBar({ progress, label }: { progress: { total: number; practised: number; mastered: number }; label: string }) {
@@ -259,6 +279,7 @@ export function StudentDetail({
 }) {
   const lang = useLang()
   const [editing, setEditing] = useState(false)
+  const [noting, setNoting] = useState(false)
   const critical = course ? criticalOpen(student, course) : []
   const total = progressFor(student, course ? allTopics(course) : [])
   // Altijd de nieuwste versie uit de Store: twee snelle tikken mogen elkaar niet overschrijven.
@@ -309,9 +330,26 @@ export function StudentDetail({
         </button>
       </header>
       <p className="muted">
-        {course ? courseLabel(course, lang) : t('students.unknownCourse')} · {t(`level.${student.level}`)}
+        {courseText(course, student, lang)} · {t(`level.${student.level}`)}
         {student.exam ? ` · ${t(student.exam.passed ? 'students.examPassed' : 'students.examFailed', { date: formatDate(student.exam.date) })}` : ''}
       </p>
+      {!course && (
+        <button className="btn" onClick={() => setEditing(true)}>
+          <Icon icon={ListChecks} />
+          {t('students.chooseCourse')}
+        </button>
+      )}
+      {/* Notities per persoon: later terug te lezen (alleen voornaam en training, regel 14). */}
+      <div className="section student-notes">
+        <div className="section-head">
+          <h2>{t('students.notes')}</h2>
+          <button className="btn link small" onClick={() => setNoting(true)}>
+            <Icon icon={student.note ? Pencil : Plus} />
+            {t(student.note ? 'students.noteEdit' : 'students.noteAdd')}
+          </button>
+        </div>
+        {student.note && <p className="student-note">{student.note}</p>}
+      </div>
       {course && (
         <div className="stat">
           <span className="stat-label">{t('students.overall')}</span>
@@ -347,7 +385,10 @@ export function StudentDetail({
           </div>
         )
       })}
-      {student.note && <p className="muted">{student.note}</p>}
+      {noting && <StudentNoteSheet student={student} onClose={() => setNoting(false)} onSave={(note) => void studentBewerken(store, student, inputOf(student, { note })).then((undo) => {
+        setNoting(false)
+        notify(t('students.noteSaved'), undo)
+      })} />}
       {editing && (
         <StudentSheet
           student={student}
@@ -439,10 +480,33 @@ export function ArchiveView({
   )
 }
 
-function StudentSheet({
+/** Eén notitie bij een student, meteen te schrijven of in te spreken. */
+function StudentNoteSheet({ student, onSave, onClose }: { student: Student; onSave: (note: string) => void; onClose: () => void }) {
+  const [note, setNote] = useState(student.note ?? '')
+  return (
+    <Sheet title={t('students.notesOf', { name: student.firstName })} onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault()
+          onSave(note)
+        }}
+      >
+        <NoteField label={t('students.notes')} value={note} onChange={setNote} />
+        <button className="btn primary" type="submit">
+          {t('common.save')}
+        </button>
+      </form>
+    </Sheet>
+  )
+}
+
+export function StudentSheet({
   student,
   curricula,
   defaultStartedAt,
+  trips,
+  defaultTripId,
   onSave,
   onArchive,
   onDelete,
@@ -451,7 +515,10 @@ function StudentSheet({
   student: Student | null
   curricula: Curriculum[]
   defaultStartedAt?: string
-  onSave: (input: StudentInput) => void
+  /** Met trips (in het studentenarchief): een trip kiezen waar de student bij hoort; null = geen trip. */
+  trips?: readonly Trip[]
+  defaultTripId?: string | null
+  onSave: (input: StudentInput, tripId: string | null) => void
   onArchive?: () => void
   onDelete?: () => void
   onClose: () => void
@@ -461,18 +528,21 @@ function StudentSheet({
   const options = withTopics.length > 0 ? withTopics : curricula
   const [firstName, setFirstName] = useState(student?.firstName ?? '')
   const [curriculumId, setCurriculumId] = useState(student?.curriculumId ?? options[0]?.id ?? '')
+  const [tripId, setTripId] = useState<string>(defaultTripId ?? '')
   const [level, setLevel] = useState<StudentLevel>(student?.level ?? 'beginner')
   const [startedAt, setStartedAt] = useState(student?.startedAt ?? defaultStartedAt ?? todayIso())
   const [note, setNote] = useState(student?.note ?? '')
   const [examDate, setExamDate] = useState(student?.exam?.date ?? '')
   const [passed, setPassed] = useState(student?.exam?.passed ?? true)
   const [examNote, setExamNote] = useState(student?.exam?.note ?? '')
-  const ok = firstName.trim() !== '' && curriculumId !== '' && !!startedAt
+  // Een cursus mag later: een student zonder cursus heeft al een naam, een trip en notities.
+  const ok = firstName.trim() !== '' && !!startedAt
+  const chosenTrip = trips?.find((x) => x.id === tripId)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!ok) return
-    onSave({ firstName, curriculumId, level, startedAt, note, exam: examDate ? { date: examDate, passed, note: examNote } : undefined })
+    onSave({ firstName, curriculumId, level, startedAt, note, exam: examDate ? { date: examDate, passed, note: examNote } : undefined }, tripId || null)
   }
 
   return (
@@ -491,8 +561,30 @@ function StudentSheet({
                 {courseLabel(c, lang)}
               </option>
             ))}
+            <option value="">{t('students.noCourse')}</option>
           </select>
         </label>
+        {trips && (
+          <label>
+            {t('students.trip')}
+            <select
+              value={tripId}
+              onChange={(e) => {
+                setTripId(e.target.value)
+                const trip = trips.find((x) => x.id === e.target.value)
+                if (trip?.startDate && !student) setStartedAt(trip.startDate)
+              }}
+            >
+              <option value="">{t('students.noTrip')}</option>
+              {trips.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                  {x.startDate ? ` · ${formatDateShort(x.startDate)}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="segments small" role="radiogroup" aria-label={t('students.level')}>
           {STUDENT_LEVELS.map((l) => (
             <button key={l} type="button" role="radio" aria-checked={level === l} className={`segment${level === l ? ' active' : ''}`} onClick={() => setLevel(l)}>
@@ -524,10 +616,8 @@ function StudentSheet({
             )}
           </>
         )}
-        <label>
-          {t('students.note')}
-          <input type="text" autoComplete="off" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
-        </label>
+        <NoteField label={t('students.notes')} value={note} onChange={setNote} />
+        {chosenTrip === undefined && trips && tripId !== '' && <p className="error small">{t('students.noTrip')}</p>}
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={!ok}>
             {t('common.save')}
