@@ -7,7 +7,7 @@ import { cleanDefaults, dayAverages, fixedAmount, fixedInMonth } from '../model/
 import { missingBookings } from '../model/fixed-bookings'
 import { active } from '../model/derive'
 import { getRates, subscribeRates } from '../model/rates'
-import { currentSettings } from '../model/settings'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { COST_DAY_TYPES, CURRENCIES, type CostDayType, type Currency, type FixedCost } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -146,7 +146,7 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [name, setName] = useState(cost?.name ?? '')
   const [amount, setAmount] = useState(cost ? amountInput(fixedAmount(cost, month)) : '')
-  const [currency, setCurrency] = useState<Currency>(cost?.currency ?? settings.lastCurrency)
+  const [currency, setCurrency] = useState<Currency>(cost?.currency ?? defaultCurrency(settings, 'vast'))
   const [from, setFrom] = useState(month)
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)

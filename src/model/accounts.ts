@@ -1,7 +1,7 @@
 import type { Tx } from '../domain/tx'
 
 export { parseStand }
-import { rateFor, type RatesFile } from './rates'
+import { toEur, type RatesFile } from './rates'
 import { newId, type Account, type AccountKind, type AccountProvider, type Balance, type Currency } from './types'
 import { parseStand, round2 } from '../basis/bedrag'
 import { monthEnd, shiftMonth, todayIso } from '../basis/datum'
@@ -63,17 +63,6 @@ export function balanceOn(balances: readonly Balance[], accountId: string, date:
   return best
 }
 
-export interface EurAmount {
-  eur: number
-  provisional: boolean
-}
-
-/** Een stand in euro: de koers van die dag (of de laatste werkdag ervoor); zonder koers null, nooit verzonnen. */
-export function toEur(amount: number, currency: Currency, date: string, rates: RatesFile | null): EurAmount | null {
-  if (currency === 'EUR') return { eur: amount, provisional: false }
-  const hit = rateFor(rates, currency, date)
-  return hit ? { eur: round2(amount / hit.rate), provisional: hit.provisional } : null
-}
 
 export interface NetWorth {
   eur: number

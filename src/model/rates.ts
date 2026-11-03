@@ -86,6 +86,23 @@ export function rateFor(file: RatesFile | null, currency: string, date: string):
   return null
 }
 
+export interface EurAmount {
+  eur: number
+  /** De koers komt van na het einde van het koersbestand (de laatst bekende): voorlopig. */
+  provisional: boolean
+}
+
+/**
+ * De enige omrekening naar euro voor een los bedrag (een stand, een vaste last, een scenarioblok, een declaratie): de
+ * koers van `date` of de laatste werkdag ervoor; zonder koers null, nooit verzonnen. Een transactie gaat via `eurValue`,
+ * die eerst het werkelijk ontvangen eurobedrag en de opgeslagen koers gebruikt en daarna deze functie.
+ */
+export function toEur(amount: number, currency: string, date: string, file: RatesFile | null = current): EurAmount | null {
+  if (currency === 'EUR') return { eur: amount, provisional: false }
+  const hit = rateFor(file, currency, date)
+  return hit ? { eur: round2(amount / hit.rate), provisional: hit.provisional } : null
+}
+
 export interface EurValue {
   eur: number
   /** received: werkelijk ontvangen eurobedrag; stored: opgeslagen koers; rate: koers uit het bestand. */

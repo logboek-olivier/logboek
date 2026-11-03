@@ -93,7 +93,7 @@ per maand, per werkdag, fooi per gast, per organisatie, jaaroverzicht, transacti
 vooruitblik, verwacht salaris, Kosten (`docs/screens/55-geld-werkelijk.png`). Gevolg: de 2-minuten-per-dag-belofte van
 CLAUDE.md geldt voor Vandaag, niet voor de rest. Voorstel: hoofdstuk 2. Omvang M.
 
-**D-7 · De valuta van een nieuwe uitgave en van "Eerder seizoen" volgt stil de laatst gebruikte valuta.** Categorie
+**D-7 · De valuta van een nieuwe uitgave en van "Eerder seizoen" volgt stil de laatst gebruikte valuta.** **Opgelost in #135** (de laatst gebruikte valuta per soort invoer (`settings.lastCurrencies`, schemaversie 4, schrijfversie 10); bij Eerder seizoen de valuta van het standaardsalaris van de organisatie; de valuta staat naast het bedrag). Categorie
 duidelijkheid. Bewijs: `settings.lastCurrency` (CLAUDE.md: "valuta = laatst gebruikte waarde"); eerste run van
 `review-kernstromen` test 6: na één fooi in dollars werden een uitgave van 42,80 en een eerder seizoen van 3.000 en 400 als
 dollars geboekt (`docs/screens/55-geld-werkelijk.png` uit die run toonde "−€ 34,24 42,80" en "€ 2.400,00 3.000,00"). Gevolg:
@@ -151,7 +151,7 @@ CLAUDE.md "PR 13" voor de beveiligingsreview tegenover GitHub #76; `docs/FUNDERI
 `mailto:`, issue-link of feedbackknop in `src/` (grep); `docs/` alleen Nederlands; `index.html:2` en `vite.config.ts:46`
 zetten `lang="nl"` en een Nederlandse beschrijving in de manifest, ook voor een Engelse telefoon. Voorstel: werkpakket
 V-4. Omvang S.
-**G-1 · "Zeilresultaat in de periode" onder Mijn positie en "Zeilgeld: resultaat" in Geld tellen de begindag verschillend.**
+**G-1 · "Zeilresultaat in de periode" onder Mijn positie en "Zeilgeld: resultaat" in Geld tellen de begindag verschillend.** **Opgelost in #135** (het zeilresultaat in de verandering telt nu van de begindag tot en met het einde, hetzelfde getal als Zeilgeld: resultaat).
 Categorie werking, belangrijk. Gevonden door de agent "geld en data", zelf bevestigd: `src/model/position.ts:294`
 (`transactionList(…, { from: addDays(from, 1), to })`) tegenover de transactielijst in Geld vanaf `from` zelf. CLAUDE.md
 zegt "wat op de begindag zelf binnenkwam, zit al in de netto waarde van die dag", maar dat klopt alleen als er een stand
@@ -161,14 +161,14 @@ Voorstel: de begindag meetellen als de nieuwste stand vóór `from` ouder is dan
 <datum>" noemen en in de doorklik tonen. Omvang S.
 
 **G-2 · Geld van een verwijderde tocht met een eigen organisatie telt in per organisatie, het jaaroverzicht en de
-statistieken als "overig".** Categorie werking, belangrijk. Agentbevinding, zelf bevestigd: `perOrganisation` en
+statistieken als "overig".** **Opgelost in #135** (`organisationOfMoney` leest ook de tombstone van een trip; per organisatie, het jaaroverzicht en de statistieken gebruiken dezelfde regel). Categorie werking, belangrijk. Agentbevinding, zelf bevestigd: `perOrganisation` en
 `yearOverview` geven `groupOf` alleen levende trips (`src/domain/geldrapport.ts`, `active(trips)`), en de terugval
 `source` is voor een eigen organisatie altijd `overig` (`src/basis/organisatie.ts:113`). Na "Geld en dagen behouden"
 verliest het geld zijn organisatie in het belastingoverzicht; bij Sailing Virgins en Yacht Week niet (die staan in
 `source`). Voorstel: `groupOf` ook de tombstone van de trip laten lezen (`tripResult` en de prullenbak doen dat al).
 Omvang S.
 
-**G-3 · Te ontvangen salaris wordt in Mijn positie anders gewaardeerd dan op de tripkaart en in de vooruitblik.**
+**G-3 · Te ontvangen salaris wordt in Mijn positie anders gewaardeerd dan op de tripkaart en in de vooruitblik.** **Opgelost in #135** (te ontvangen salaris telt met `eurValue`, zoals de tripkaart en de vooruitblik; een declaratie met de koers van haar datum).
 Categorie werking, belangrijk. Agentbevinding, zelf bevestigd: `src/model/position.ts:213` waardeert het verwachte
 salaris met de koers van de kijkdag en negeert `receivedEur`/`amountEur`, elders geldt `eurValue` (koers van de
 transactiedatum, of het werkelijk ontvangen bedrag). Voorbeelden van de agent: 800 tegenover 999 met `receivedEur`;
@@ -199,7 +199,7 @@ tweestapsverificatie met passkey. Omvang S (instellingen) en opgenomen in V-2/V-
 
 ### Later
 
-**G-4 · Eén rekening zonder koers laat de hele verandering en vooruitblik verdwijnen.** Categorie werking, later.
+**G-4 · Eén rekening zonder koers laat de hele verandering en vooruitblik verdwijnen.** **Opgelost in #135** (een valuta zonder koers staat apart (`unpriced`); het eurodeel van de verandering en de vooruitblik blijft staan). Categorie werking, later.
 Agentbevinding, zelf bevestigd: `src/model/position.ts:291` (`state: 'geen-koers'` zodra `other` niet leeg is), terwijl
 CLAUDE.md "zonder koers apart per valuta" belooft en Mijn positie zelf dat wel doet. Omvang S.
 
@@ -212,7 +212,7 @@ deelnemers staan; `WeekPlan.tripId` en `Claim.tripId` blijven na "Geld en dagen 
 (planning-zonder-trip, declaratie-zonder-trip, student-zonder-cursus) en bij een vaste last verwijderen dezelfde keuze
 als bij een periode (boekingen behouden of mee verwijderen). Omvang M.
 
-**G-6 · Vier plekken bepalen de organisatie van geld, met een andere uitkomst bij "eigen" en delivery.** Categorie
+**G-6 · Vier plekken bepalen de organisatie van geld, met een andere uitkomst bij "eigen" en delivery.** **Opgelost in #135** (één `organisationOfTrip`/`organisationOfMoney` in `src/basis/organisatie.ts`, één `toEur` in `src/model/rates.ts`, de maandhulpjes in `src/basis/datum.ts`). Categorie
 codegezondheid, later. Agentbevinding (`groupOf` in `tax-year.ts`, `sourceForPeriod` in `organisatie.ts`, `tipsPerTrip` in
 `guests.ts`, `stats.ts:200`): gelijk bij een organisatie uit de instellingen, verschillend bij `eigen`/`delivery`
 (`eigen`, `delivery`, `null`, `eigen`). Plus `eurValue` tegenover `toEur` bij een opgeslagen koers (76,92 tegenover 81),
@@ -234,7 +234,7 @@ storingsregel loopt door één bestand, en lui laden werkt niet voor `More`, `Hi
 `scenarioBeginAanpassen`, `sumPerCurrency`, `putSessionKey`, `saveOutbox`, `parseMileageCsv`, `reviewInput` (script in
 deze sessie, zie `docs/app-kaart.md` 2). Voorstel: verwijderen of in de test vervangen door het echte pad. Omvang S.
 
-**C-4 · Dubbele logica in geld en datums.** Bewijs: euro-omrekening op drie plekken (`src/model/rates.ts:99 eurValue`,
+**C-4 · Dubbele logica in geld en datums.** **Opgelost in #135** (één `toEur` en `eurValue` in `rates.ts`; `monthsBetween`, `monthsInRange`, `monthStart`, `dayCount` en `monthsBefore` in `src/basis/datum.ts`). Bewijs: euro-omrekening op drie plekken (`src/model/rates.ts:99 eurValue`,
 `src/model/accounts.ts:72 toEur`, `src/model/costs.ts:25 eur`); `monthsBetween` twee keer met verschillende betekenis
 (`src/model/position.ts:413` geeft een getal, `src/model/stats.ts:78` een lijst); `monthLast` in `position.ts:419` naast
 `src/basis/datum.ts`; `firstOfMonth` in `money-path.ts:43`. De organisatie van geld staat op twee plekken

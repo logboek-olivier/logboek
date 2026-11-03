@@ -61,6 +61,36 @@ export function monthEnd(month: string): string {
   return `${month}-${String(daysInMonth(month)).padStart(2, '0')}`
 }
 
+/** Aantal maanden van maand `from` tot maand `to` (jjjj-mm), negatief als `to` eerder is. */
+export function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number) as [number, number]
+  const [ty, tm] = to.split('-').map(Number) as [number, number]
+  return (ty - fy) * 12 + (tm - fm)
+}
+
+/** Alle maanden (jjjj-mm) van de maand van `from` tot en met de maand van `to`. */
+export function monthsInRange(from: string, to: string): string[] {
+  const out: string[] = []
+  for (let m = monthOf(from); m <= monthOf(to); m = shiftMonth(m, 1)) out.push(m)
+  return out
+}
+
+/** De eerste dag van de maand van een datum (jjjj-mm-dd). */
+export function monthStart(date: string): string {
+  return `${monthOf(date)}-01`
+}
+
+/** Aantal dagen van `from` tot en met `to` (beide meegeteld). */
+export function dayCount(from: string, to: string): number {
+  return daysBetween(from, to) + 1
+}
+
+/** Een datum `months` maanden eerder (zelfde dag van de maand; voorbij het einde van de maand schuift hij door). */
+export function monthsBefore(iso: string, months: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1 - months, d ?? 1)).toISOString().slice(0, 10)
+}
+
 /** Is dit een datum als jjjj-mm-dd? */
 export function isDate(value: string | undefined | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)

@@ -47,9 +47,9 @@ function sumText(sum: Sum): string {
   return parts.join(' + ') + (sum.provisional ? ` (${t('money.provisional')})` : '')
 }
 
-function signed(n: number): string {
-  if (Math.round(n * 100) === 0) return formatMoney(0, 'EUR')
-  return `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n), 'EUR')}`
+function signed(n: number, currency = 'EUR'): string {
+  if (Math.round(n * 100) === 0) return formatMoney(0, currency)
+  return `${n >= 0 ? '+' : '−'}${formatMoney(Math.abs(n), currency)}`
 }
 
 /**
@@ -206,6 +206,11 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
                 </li>
               ))}
             </ul>
+            {Object.entries(change.unpriced).map(([c, v]) => (
+              <p key={c} className="muted small">
+                {t('money.noRateFor', { currency: c })}: {signed(v, c)}
+              </p>
+            ))}
             <p className="muted small">{t('position.sinceHint')}</p>
           </>
         )}
@@ -217,7 +222,6 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
             </button>
           </div>
         )}
-        {change.state === 'geen-koers' && <p className="muted small">{t('position.changeNoRate')}</p>}
         {change.state === 'toekomst' && today < change.from && <p className="muted small">{t('position.periodFuture', { date: formatDate(change.from) })}</p>}
       </div>
       {!hasAccounts && <p className="muted small">{t('position.onlyReceivable')}</p>}
@@ -440,6 +444,11 @@ function ForecastSection({ store, notify, input, settings, index, period, preset
           <span className="swatch line dashed" /> {t('forecast.expected')}
         </li>
       </ul>
+      {Object.entries(f.unpriced).map(([c, v]) => (
+        <p key={`stand-${c}`} className="muted small">
+          {t('position.unpricedStand', { currency: c })}: {formatMoney(v, c)}
+        </p>
+      ))}
       {Object.entries(f.other).map(([c, v]) => (
         <p key={c} className="muted small">
           {t('money.noRateFor', { currency: c })}: {formatMoney(v, c)}

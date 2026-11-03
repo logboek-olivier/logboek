@@ -247,6 +247,8 @@ export const INCOME_KIND_LIST = ['fooi', 'loon', 'bonus', 'terugbetaling', 'over
 export type IncomeKind = (typeof INCOME_KIND_LIST)[number]
 export type TransactionSource = 'yacht-week' | 'sailing-virgins' | 'delivery' | 'overig'
 export type Currency = 'EUR' | 'USD' | 'GBP' | 'HRK' | 'CHF' | 'SEK' | 'DKK' | 'NOK' | 'XCD'
+/** Soorten invoer met een eigen laatst gebruikte valuta (Settings.lastCurrencies). */
+export type CurrencyKind = 'fooi' | 'inkomen' | 'uitgave' | 'salaris' | 'seizoen' | 'declaratie' | 'vast' | 'scenario'
 
 export const CURRENCIES: readonly Currency[] = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'DKK', 'NOK', 'XCD', 'HRK']
 export interface Transaction extends SyncRecord {
@@ -307,6 +309,12 @@ export interface Settings extends SyncRecord {
   lastBoat: string
   lastRole: Role
   lastCurrency: Currency
+  /**
+   * De laatst gebruikte valuta per soort invoer (fooi, ander inkomen, uitgave, salaris, eerder seizoen, declaratie, vaste
+   * last, scenario), zodat één fooi in dollars een uitgave daarna niet stil in dollars zet. `lastCurrency` blijft voor
+   * oudere versies.
+   */
+  lastCurrencies?: Partial<Record<CurrencyKind, Currency>>
   lastSource: TransactionSource
   lastTripId?: string
   // Optionele velden (release 1): oudere data zonder deze velden blijft geldig; oudere apps laten ze staan.

@@ -6,7 +6,21 @@ import { setRates } from '../src/model/rates'
 import { tripKind } from '../src/model/trip-kind'
 import type { Currency, Transaction, TransactionKind, Trip } from '../src/model/types'
 import { LEGACY_ORGS, setOrganisations } from '../src/basis/organisatie'
-import { profileA, profileB, RATES, type Profile } from './helpers/profielen'
+import { geldToevoegen } from '../src/domain/geld'
+import { netWorthChange } from '../src/model/position'
+import { currentSettings, DEFAULT_SETTINGS, defaultCurrency } from '../src/model/settings'
+import { GithubClient } from '../src/storage/github'
+import { openLogboekDb } from '../src/storage/idb'
+import { Store } from '../src/storage/store'
+import { FakeGithub } from './helpers/fake-github'
+import { profileA, profileB, RATES, TODAY, type Profile } from './helpers/profielen'
+import 'fake-indexeddb/auto'
+
+let storeCounter = 0
+async function freshStore(): Promise<Store> {
+  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  return Store.open(await openLogboekDb(`logboek-review-sommen-${++storeCounter}`), key, new GithubClient('github_pat_REVIEW_0123456789abcdefghijklmnopqrstuvwxyz', new FakeGithub().fetch))
+}
 
 // Onafhankelijke review (docs/review.md, Werking): sluiten de sommen in Geld op elkaar, ook voor willekeurige
 // gegevens en voor een gebruiker die niet op Olivier lijkt? Alles verzonnen; 1 EUR = 1,25 USD (tests/helpers/profielen.ts).
@@ -135,6 +149,45 @@ describe('sommen in Geld sluiten op elkaar (onafhankelijke review)', () => {
       checkReports(trips, transactions, `seed ${seed}`)
       checkTripResults(trips, transactions, `seed ${seed}`)
     }
+  })
+})
+
+describe('Mijn positie en Geld tellen dezelfde periode (G-1, onafhankelijke review)', () => {
+  it('voor elke periode is het zeilresultaat in de verandering van de netto waarde gelijk aan Zeilgeld: resultaat', () => {
+    const p = profileA()
+    const r = rng(7)
+    for (let i = 0; i < 60; i++) {
+      const from = `2026-${String(1 + Math.floor(r() * 10)).padStart(2, '0')}-${String(1 + Math.floor(r() * 28)).padStart(2, '0')}`
+      const to = `2027-01-${String(1 + Math.floor(r() * 24)).padStart(2, '0')}`
+      const change = netWorthChange(p.input, { from, to }, TODAY)
+      if (change.state !== 'bekend') continue
+      const shown = totals(transactionList(p.input.transactions, { from, to: change.to }))
+      expect(cents(change.sailing), `${from} – ${to}`).toBe(cents(shown.balanceEur))
+      expect(cents(change.sailing) + cents(change.receivable) + cents(change.value) + cents(change.debts) + cents(change.other)).toBe(cents(change.change))
+    }
+  })
+})
+
+describe('valuta per soort invoer (D-7)', () => {
+  it('een fooi in dollars zet een uitgave daarna niet in dollars; elke soort onthoudt zijn eigen valuta', () => {
+    const settings = { ...DEFAULT_SETTINGS, lastCurrency: 'USD' as const, lastCurrencies: { fooi: 'USD' as const } }
+    expect(defaultCurrency(settings, 'fooi')).toBe('USD')
+    expect(defaultCurrency(settings, 'uitgave')).toBe('EUR')
+    expect(defaultCurrency(settings, 'seizoen')).toBe('EUR')
+    expect(defaultCurrency({ ...settings, lastCurrencies: { ...settings.lastCurrencies, uitgave: 'GBP' } }, 'uitgave')).toBe('GBP')
+  })
+
+  it('geldToevoegen onthoudt de valuta van de soort (fooi apart van uitgave)', async () => {
+    const s = await freshStore()
+    await geldToevoegen(s, { date: '2026-10-20', kind: 'fooi', amount: 250, currency: 'USD', source: 'overig' }, null)
+    let settings = currentSettings(s.list('settings.json.enc'))
+    expect(settings.lastCurrencies?.fooi).toBe('USD')
+    expect(defaultCurrency(settings, 'uitgave')).toBe('EUR')
+    await geldToevoegen(s, { date: '2026-10-19', kind: 'kosten', amount: 42.8, currency: 'EUR', source: 'overig', category: 'overig' }, null)
+    settings = currentSettings(s.list('settings.json.enc'))
+    expect(settings.lastCurrencies).toEqual({ fooi: 'USD', uitgave: 'EUR' })
+    // lastCurrency blijft voor oudere versies: de laatst gebruikte van alles.
+    expect(settings.lastCurrency).toBe('EUR')
   })
 })
 

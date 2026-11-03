@@ -24,7 +24,7 @@ import { salaryOf, salaryStatus, type MoneyLink } from '../domain/geldmodel'
 import { TripPickerField } from '../components/TripPicker'
 import { TripSalarySheet } from '../components/MoneyPath'
 import { parseNonNegative } from '../model/edit'
-import { currentSettings } from '../model/settings'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { activeWeek, roleForType } from '../model/weeks'
 import { placeLeg } from '../model/leg-trip'
 import { PlacementHint } from '../components/PlacementHint'
@@ -167,9 +167,19 @@ function dateIn(trips: readonly Trip[], tripId: string | undefined, today: strin
 export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de trip staat al vast. */ tripId?: string }) {
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
-  const [kind, setKind] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
-  // Fooi contant of op de bank (laatst gekozen); contant staat in Geld → Contant tot hij gestort is.
-  const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
+  const [kind, setKindState] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
+  // De valuta volgt de laatst gebruikte van deze soort (een fooi apart van ander inkomen), tot je er zelf een kiest.
+  const currencyFor = (k: IncomeKind) => defaultCurrency(settings, k === 'fooi' ? 'fooi' : 'inkomen')
+  const [currency, setCurrencyState] = useState<Currency>(() => currencyFor(settings.lastIncomeKind ?? 'fooi'))
+  const [currencyChosen, setCurrencyChosen] = useState(false)
+  const setCurrency = (c: Currency) => {
+    setCurrencyChosen(true)
+    setCurrencyState(c)
+  }
+  const setKind = (k: IncomeKind) => {
+    setKindState(k)
+    if (!currencyChosen) setCurrencyState(currencyFor(k))
+  }
   const [date, setDate] = useState(() => dateIn(store.list('trips.json.enc'), preset, todayIso()))
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -210,20 +220,32 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
 
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
-      <label>
-        {t('field.amount')}
-        <input
-          className="amount"
-          inputMode="decimal"
-          autoFocus
-          enterKeyHint="done"
-          autoComplete="off"
-          placeholder={t('quick.amountPlaceholder')}
-          value={total !== undefined ? (total === null ? '' : formatAmountInput(total)) : amount}
-          readOnly={total !== undefined}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </label>
+      <div className="amount-row">
+        <label className="grow">
+          {t('field.amount')}
+          <input
+            className="amount"
+            inputMode="decimal"
+            autoFocus
+            enterKeyHint="done"
+            autoComplete="off"
+            placeholder={t('quick.amountPlaceholder')}
+            value={total !== undefined ? (total === null ? '' : formatAmountInput(total)) : amount}
+            readOnly={total !== undefined}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+        <label className="currency">
+          {t('field.currency')}
+          <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div className="type-buttons" role="radiogroup" aria-label={t('field.kind')}>
         {INCOME_KIND_LIST.map((k) => (
           <button key={k} type="button" role="radio" aria-checked={kind === k} className={`chip${kind === k ? ' active' : ''}`} onClick={() => setKind(k)}>
@@ -255,16 +277,6 @@ export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; on
       )}
       <div className="two">
         <label>
-          {t('field.currency')}
-          <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
           {t('field.date')}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
@@ -289,7 +301,8 @@ export function CostForm({ store, onDone, tripId: preset }: { store: Store; onDo
   // Soort (reizen, eten en drinken, verblijf, opleiding, uitrusting, overig), laatst gekozen; leert de kosten per dagsoort.
   // Vanaf een training (zelf leren): standaard opleiding (cursusgeld).
   const [category, setCategory] = useState<CostCategory>(() => (preset && periods.find((p) => p.id === preset)?.kind === 'training' ? 'opleiding' : (settings.lastCostCategory ?? 'overig')))
-  const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
+  // Een uitgave begint in de laatst gebruikte valuta van een uitgave (niet van een fooi), anders euro.
+  const [currency, setCurrency] = useState<Currency>(defaultCurrency(settings, 'uitgave'))
   const [date, setDate] = useState(() => {
     const period = preset ? periods.find((p) => p.id === preset) : undefined
     const today = todayIso()

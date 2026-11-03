@@ -4,7 +4,8 @@ import { eerderSeizoenInvoeren, seasonDate, type SeasonAmount } from '../domain/
 import { formatDate } from '../format'
 import { t } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
-import { currentSettings } from '../model/settings'
+import { salaryDefault } from '../model/salary'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { CURRENCIES, type Currency, type Organisation } from '../model/types'
 import type { Store } from '../storage/store'
 import { parseAmount } from '../basis/bedrag'
@@ -29,11 +30,20 @@ export function EarlierSeasonSheet({ store, notify, onClose }: { store: Store; n
   const orgs = organisationChoices(trips)
   const [org, setOrg] = useState<Organisation>(orgs[0] ?? 'overig')
   const [year, setYear] = useState(String(Number(todayIso().slice(0, 4)) - 1))
-  const [rows, setRows] = useState<Record<(typeof PARTS)[number], Row>>({
-    salary: { amount: '', currency: settings.lastCurrency },
-    tips: { amount: '', currency: settings.lastCurrency },
-    costs: { amount: '', currency: settings.lastCurrency },
+  // Standaard de valuta van het standaardsalaris van die organisatie, anders de laatst gebruikte bij een eerder seizoen.
+  const currencyFor = (o: Organisation): Currency => salaryDefault(settings, o)?.currency ?? defaultCurrency(settings, 'seizoen')
+  const [rows, setRows] = useState<Record<(typeof PARTS)[number], Row>>(() => {
+    const c = currencyFor(orgs[0] ?? 'overig')
+    return { salary: { amount: '', currency: c }, tips: { amount: '', currency: c }, costs: { amount: '', currency: c } }
   })
+  const [currencyChosen, setCurrencyChosen] = useState(false)
+  const chooseOrg = (o: Organisation) => {
+    setOrg(o)
+    if (!currencyChosen) {
+      const c = currencyFor(o)
+      setRows((r) => ({ salary: { ...r.salary, currency: c }, tips: { ...r.tips, currency: c }, costs: { ...r.costs, currency: c } }))
+    }
+  }
   const [busy, setBusy] = useState(false)
   const y = Number(year)
   const yearOk = Number.isInteger(y) && y >= 2000 && y <= Number(todayIso().slice(0, 4))
@@ -64,7 +74,7 @@ export function EarlierSeasonSheet({ store, notify, onClose }: { store: Store; n
         <div className="two">
           <label>
             {t('week.organisation')}
-            <select value={org} onChange={(e) => setOrg(e.target.value)}>
+            <select value={org} onChange={(e) => chooseOrg(e.target.value)}>
               {orgs.map((o) => (
                 <option key={o} value={o}>
                   {organisationLabel(o)}
@@ -85,7 +95,14 @@ export function EarlierSeasonSheet({ store, notify, onClose }: { store: Store; n
             </label>
             <label>
               {t('field.currency')}
-              <select aria-label={`${t('field.currency')}: ${t(`earlier.${p}`)}`} value={rows[p].currency} onChange={(e) => setRows({ ...rows, [p]: { ...rows[p], currency: e.target.value as Currency } })}>
+              <select
+                aria-label={`${t('field.currency')}: ${t(`earlier.${p}`)}`}
+                value={rows[p].currency}
+                onChange={(e) => {
+                  setCurrencyChosen(true)
+                  setRows({ ...rows, [p]: { ...rows[p], currency: e.target.value as Currency } })
+                }}
+              >
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
                     {c}

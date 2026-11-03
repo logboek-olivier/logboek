@@ -7,7 +7,8 @@ import { eurOf, totals } from '../src/model/money'
 import { careerStart, netWorthChange, positionAt, resolvePeriod, type Position } from '../src/model/position'
 import { setRates } from '../src/model/rates'
 import { setOrganisations, LEGACY_ORGS } from '../src/basis/organisatie'
-import { profileA, profileB, RATES, TODAY, type Profile } from './helpers/profielen'
+import { profileA, profileB, RATES, T, TODAY, type Profile } from './helpers/profielen'
+import type { Transaction } from '../src/model/types'
 
 // Doorklikken in Geld en de verandering van de netto waarde (src/domain/doorklik.ts, src/model/position.ts), met twee
 // nepprofielen (tests/helpers/profielen.ts). Invarianten: elk doorklikscherm telt op tot het getikte bedrag, Inkomsten is
@@ -190,6 +191,65 @@ describe('profiel A (met de hand uitgerekend)', () => {
   it('een periode in de toekomst: geen verandering', () => {
     const { input } = profileA()
     expect(netWorthChange(input, { from: '2026-12-01', to: '2027-01-31' }, TODAY).state).toBe('toekomst')
+  })
+
+  it('geld op de begindag telt in het zeilresultaat van Mijn positie precies zoals in Zeilgeld: resultaat (G-1)', () => {
+    const p = profileA()
+    // Een fooi op de begindag zelf, terwijl de laatste bankstand van vóór die dag is (31 december).
+    const gift: Transaction = { id: 'begindag', date: '2026-01-01', kind: 'fooi', amount: 1000, currency: 'EUR', source: 'overig', tripId: 'a26-1', updatedAt: T, deletedAt: null }
+    const input = { ...p.input, transactions: [...p.input.transactions, gift] }
+    const period = { from: '2026-01-01', to: '2027-01-24' }
+    const change = netWorthChange(input, period, TODAY)
+    expect(change.state).toBe('bekend')
+    if (change.state !== 'bekend') return
+    const shown = totals(transactionList(input.transactions, { from: period.from, to: change.to }))
+    expect(change.sailing).toBe(shown.balanceEur)
+    expect(change.sailing).toBe(3826)
+    // De som blijft sluiten: wat op de begindag binnenkwam en nog niet in een stand zit, komt in overig terug.
+    expect(cents(change.sailing) + cents(change.receivable) + cents(change.value) + cents(change.debts) + cents(change.other)).toBe(cents(change.change))
+    expect(changeDrills(change, input.transactions, input.trips, RATES).sailing.eur).toBe(change.sailing)
+  })
+
+  it('geld van een verwijderde tocht met een eigen organisatie blijft bij die organisatie (G-2)', () => {
+    const p = profileA()
+    const trips = p.input.trips.map((t) => (t.id === 'a26-1' ? { ...t, deletedAt: T } : t))
+    setOrganisations(p.settings.organisations ?? [])
+    const period = { from: '2026-01-01', to: '2026-12-31' }
+    // Het salaris (1200) en de fooi (300) van a26-1 staan nog bij org:noord, ook al ligt de tocht in de prullenbak.
+    const noord = perOrganisation(p.input.transactions, trips, period).find((g) => g.group === 'org:noord')
+    expect(noord?.incomeEur).toBe(1500)
+    expect(yearOverview(p.input.transactions, trips, 2026, RATES).groups.find((g) => g.group === 'org:noord')?.eur).toBe(1500)
+    // Onder "overig" alleen wat daar al stond (de gift en de cursus zonder tocht), niet het geld van de verwijderde tocht.
+    expect(perOrganisation(p.input.transactions, trips, period).find((g) => g.group === 'overig')?.incomeEur).toBe(100)
+  })
+
+  it('te ontvangen salaris telt in Mijn positie met het werkelijk ontvangen bedrag of de koers van zijn datum, zoals de tripkaart (G-3)', () => {
+    const p = profileA()
+    // Het verwachte salaris van de voorbije tocht a26-3 (2000 USD) met een vastgelegd eurobedrag van 1700.
+    const transactions = p.input.transactions.map((tx) => (tx.id === 'salaris:a26-3' ? { ...tx, receivedEur: 1700 } : tx))
+    const input = { ...p.input, transactions }
+    const position = positionAt(input, TODAY)
+    // 1700 (salaris) + 60 (open declaratie), niet 1600 + 60.
+    expect(position.totals.receivable.eur).toBe(1760)
+    expect(receivableDrill(position, input.trips, RATES).eur).toBe(1760)
+    netCloses(position)
+  })
+
+  it('een rekening zonder koers laat de verandering niet verdwijnen: het eurodeel telt, die valuta staat apart (G-4)', () => {
+    const p = profileA()
+    const pounds = { id: 'a-gbp', name: 'Nepponden', provider: 'overig' as const, kind: 'betaal' as const, currency: 'GBP' as const, updatedAt: T, deletedAt: null }
+    const input = {
+      ...p.input,
+      accounts: [...p.input.accounts, pounds],
+      balances: [...p.input.balances, { id: 'stand:a-gbp:2025-12-31', accountId: 'a-gbp', date: '2025-12-31', amount: 100, source: 'handmatig' as const, updatedAt: T, deletedAt: null }, { id: 'stand:a-gbp:2026-11-01', accountId: 'a-gbp', date: '2026-11-01', amount: 250, source: 'handmatig' as const, updatedAt: T, deletedAt: null }],
+    }
+    const change = netWorthChange(input, { from: '2026-01-01', to: '2027-01-24' }, TODAY)
+    expect(change.state).toBe('bekend')
+    if (change.state !== 'bekend') return
+    // Dezelfde euro-getallen als zonder de ponden; de ponden apart.
+    expect(change.change).toBe(14100)
+    expect(change.unpriced).toEqual({ GBP: 150 })
+    expect(cents(change.sailing) + cents(change.receivable) + cents(change.value) + cents(change.debts) + cents(change.other)).toBe(cents(change.change))
   })
 })
 

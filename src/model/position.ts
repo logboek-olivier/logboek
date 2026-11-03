@@ -1,4 +1,4 @@
-import { balanceOn, toEur, type EurAmount } from './accounts'
+import { balanceOn } from './accounts'
 import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
 import { monthlyRate, ownCostsOn, scenarioParts, type ScenarioPart, type ScenarioPlan } from './scenario'
@@ -6,13 +6,13 @@ import { active } from './derive'
 import { eurOf, totals } from './money'
 import { booked } from '../domain/geldmodel'
 import { payoutRule } from './money-path'
-import { eurValue, type RatesFile } from './rates'
+import { eurValue, toEur, type EurAmount, type RatesFile } from './rates'
 import { tipAverages, tripEnd } from './salary'
 import { salaryStatus } from '../domain/geldmodel'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, ScenarioOneOff, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
 import { round2 } from '../basis/bedrag'
-import { addDays, monthOf, shiftMonth } from '../basis/datum'
+import { addDays, dayCount, daysInMonth, monthEnd, monthOf, monthsBetween, shiftMonth } from '../basis/datum'
 import { transactionList } from '../domain/geldrapport'
 
 // Geld → Mijn positie: wat de gebruiker nu heeft, en waar de planning naartoe gaat. De rekeningen (op de bank, een
@@ -100,7 +100,11 @@ export interface Sum {
 const emptySum = (): Sum => ({ eur: 0, provisional: false, other: {} })
 
 function add(sum: Sum, amount: number, currency: Currency, date: string, rates: RatesFile | null): void {
-  const eur = toEur(amount, currency, date, rates)
+  addValue(sum, toEur(amount, currency, date, rates), amount, currency)
+}
+
+/** Een bedrag optellen dat al (of niet) in euro is omgerekend; zonder koers apart per valuta. */
+function addValue(sum: Sum, eur: EurAmount | null, amount: number, currency: Currency): void {
   if (eur) {
     sum.eur = round2(sum.eur + eur.eur)
     sum.provisional ||= eur.provisional
@@ -210,7 +214,9 @@ export function positionAt(input: PositionInput, date: string): Position {
     const end = trip ? tripEnd(trip, legs) : ''
     if (!trip || !end || endedFor(trip, end) >= date) continue
     out.receivable.push({ trip, tx, amount: tx.amount, currency: tx.currency })
-    add(out.totals.receivable, tx.amount, tx.currency, date, rates)
+    // Dezelfde waardering als op de tripkaart en in de vooruitblik (src/model/rates.ts, eurValue): het werkelijk ontvangen
+    // bedrag, anders de opgeslagen koers, anders de koers van de datum van het salaris; nooit de koers van de kijkdag.
+    addValue(out.totals.receivable, receivableValue(tx, rates), tx.amount, tx.currency)
   }
   out.receivable.sort((a, b) => tripEnd(a.trip, legs).localeCompare(tripEnd(b.trip, legs)))
   // Declaraties: met een bedrag, op die dag al gedaan en nog niet terugbetaald.
@@ -221,10 +227,17 @@ export function positionAt(input: PositionInput, date: string): Position {
     // De terugbetaling staat er al (ook als de declaratie zelf nog niet op terugbetaald staat): niet meer te ontvangen.
     if (booked(transactions).some((tx) => tx.kind === 'terugbetaling' && tx.claimId === c.id && tx.date <= date)) continue
     out.claims.push(c)
-    add(out.totals.receivable, c.amount, c.currency, date, rates)
+    // Zoals de uitgave van de declaratie: de koers van de dag van de declaratie.
+    add(out.totals.receivable, c.amount, c.currency, c.date, rates)
   }
   for (const key of ['bank', 'cash', 'receivable', 'investments', 'assets', 'debts'] as const) addSum(out.totals.net, out.totals[key])
   return out
+}
+
+/** De eurowaarde van een te ontvangen salaris: dezelfde als overal (`eurValue`), zodat Mijn positie, de tripkaart en de vooruitblik hetzelfde getal tonen. */
+export function receivableValue(tx: Transaction, rates: RatesFile | null): EurAmount | null {
+  const v = eurValue(tx, rates)
+  return v ? { eur: v.eur, provisional: v.provisional } : null
 }
 
 /** Verschil van twee bedragen; null als een van beide iets zonder koers bevat (dan is het niet te zeggen). */
@@ -245,17 +258,20 @@ export interface AccountChange {
 /**
  * De verandering van de netto waarde in een periode: de netto waarde op het einde (de laatste dag van de periode, hoogstens
  * vandaag) min die op de begindag, met een uitsplitsing die precies optelt:
- * - zeilresultaat: het echte geld in Geld (inkomsten en terugbetalingen min uitgaven) ná de begindag tot en met het einde
- *   (wat op de begindag zelf binnenkwam, zit al in de netto waarde van die dag);
+ * - zeilresultaat: het echte geld in Geld (inkomsten en terugbetalingen min uitgaven) van de begindag tot en met het
+ *   einde: precies "Zeilgeld: resultaat" voor dezelfde periode in Geld (wat op de begindag binnenkwam en al in een stand
+ *   van die dag zit, komt in "overig" weer terug);
  * - te ontvangen: de verandering in wat nog te ontvangen is (salaris van voorbije tochten, declaraties);
  * - waardeverandering: beleggingen en bezittingen (koers, huizenprijs: geld dat niet in Geld staat);
  * - schulden: wat er van een lening of studieschuld af ging (of bij kwam);
  * - overig: de rest op de bank en contant (geld dat niet in Geld staat, koersverschillen).
  * Heeft een rekening die op de begindag open was geen stand op of vóór die dag, dan is de verandering onbekend: nooit
  * een latere stand of een verzonnen bedrag. Zonder rekeningen staat er geen verandering (er is niets om te vergelijken).
+ * Een rekening of bedrag zonder koers laat de verandering niet verdwijnen: het eurodeel wordt gewoon uitgerekend en die
+ * valuta staat apart (`unpriced`), zoals Mijn positie zelf doet.
  */
 export type NetWorthChange =
-  | { state: 'toekomst' | 'geen-rekeningen' | 'geen-koers'; from: string; to: string }
+  | { state: 'toekomst' | 'geen-rekeningen'; from: string; to: string }
   | { state: 'onbekend'; from: string; to: string; missing: Account[] }
   | {
       state: 'bekend'
@@ -273,6 +289,8 @@ export type NetWorthChange =
       /** Verandering van de schulden (positief = minder schuld). */
       debts: number
       other: number
+      /** Per valuta zonder koers: de stand op het einde min die op de begindag (niet in de euro-getallen). */
+      unpriced: Partial<Record<Currency, number>>
       accounts: AccountChange[]
     }
 
@@ -288,10 +306,15 @@ export function netWorthChange(input: PositionInput, period: Period, today: stri
   if (missing.length > 0) return { state: 'onbekend', from, to, missing }
   const start = positionAt(input, from)
   const end = positionAt(input, to)
-  if (Object.keys(start.totals.net.other).length > 0 || Object.keys(end.totals.net.other).length > 0) return { state: 'geen-koers', from, to }
+  // Zonder koers: het eurodeel gaat gewoon door, die valuta staat apart.
+  const unpriced: Partial<Record<Currency, number>> = {}
+  for (const c of new Set([...Object.keys(start.totals.net.other), ...Object.keys(end.totals.net.other)]) as Set<Currency>) {
+    unpriced[c] = round2((end.totals.net.other[c] ?? 0) - (start.totals.net.other[c] ?? 0))
+  }
   const change = cents(end.totals.net.eur) - cents(start.totals.net.eur)
   const receivable = cents(end.totals.receivable.eur) - cents(start.totals.receivable.eur)
-  const sailingTotals = totals(transactionList(input.transactions, { from: addDays(from, 1), to }))
+  // Het zeilresultaat van de begindag tot en met het einde: hetzelfde getal als "Zeilgeld: resultaat" in Geld.
+  const sailingTotals = totals(transactionList(input.transactions, { from, to }))
   const sailing = cents(sailingTotals.balanceEur)
   const sailingOther: Partial<Record<Currency, number>> = {}
   for (const [c, v] of Object.entries(sailingTotals.other)) sailingOther[c as Currency] = round2(v.income - v.costs)
@@ -322,6 +345,7 @@ export function netWorthChange(input: PositionInput, period: Period, today: stri
     value: value / 100,
     debts: debts / 100,
     other: (change - receivable - sailing - value - debts) / 100,
+    unpriced,
     accounts,
   }
 }
@@ -406,19 +430,10 @@ export interface Forecast {
   /** Verwacht salaris (of scenario-inkomen) zonder koers, per valuta (niet meegeteld). */
   other: Partial<Record<Currency, number>>
   months: ForecastMonth[]
-  /** De som regel voor regel; null als de netto waarde van vandaag niet in euro te zeggen is, of de periode al voorbij is. */
+  /** De som regel voor regel over het eurodeel; null als de periode al voorbij is. */
   lines: ForecastLines | null
-}
-
-function monthsBetween(from: string, to: string): number {
-  const [fy, fm] = from.split('-').map(Number) as [number, number]
-  const [ty, tm] = to.split('-').map(Number) as [number, number]
-  return Math.max(0, (ty - fy) * 12 + (tm - fm))
-}
-
-function monthLast(month: string): string {
-  const [y, m] = month.split('-').map(Number) as [number, number]
-  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
+  /** Standen van vandaag zonder koers, per valuta (niet in de euro-getallen; apart getoond). */
+  unpriced: Partial<Record<Currency, number>>
 }
 
 export interface CostInput {
@@ -491,7 +506,7 @@ export function forecast(
     }
   }
   // Het scenario: per blok en per maand het inkomen (en de eigen kosten van het blok), tot en met de einddatum.
-  const endDate = range ? range.to : monthLast(until)
+  const endDate = range ? range.to : monthEnd(until)
   // Het scenario stopt bij zijn horizon ("kijk vooruit tot"), ook als de periode bovenaan later eindigt.
   const scenarioUntil = scenario?.end && scenario.end < endDate ? scenario.end : endDate
   if (scenario) {
@@ -510,7 +525,7 @@ export function forecast(
   if (costs) {
     const own = scenario ? (date: string) => date <= scenarioUntil && ownCostsOn(scenario.ranges, date) : undefined
     for (const m of expectedCosts(costs.fixed, costs.averages, costs.index, today, until, rates, endDate, own)) {
-      const last = monthLast(m.month) > endDate ? endDate : monthLast(m.month)
+      const last = monthEnd(m.month) > endDate ? endDate : monthEnd(m.month)
       if (m.fixedEur > 0) items.push({ date: last, kind: 'vaste-lasten', trips: [], eur: -m.fixedEur })
       // Vaste lasten zonder koers: niet in de som in euro, wel apart erbij (nooit stil weggelaten).
       for (const [c, v] of Object.entries(m.fixedOther ?? {}) as [Currency, number][]) other[c] = round2((other[c] ?? 0) - v)
@@ -530,8 +545,8 @@ export function forecast(
   // tot en met de einddatum). Zonder aannames gebeurt er niets: 0 procent is 0 euro, nooit verzonnen.
   let invested = 0
   let investments = cents(position.totals.investments.eur)
-  // Alleen als de netto waarde van vandaag in euro te zeggen is: anders is er geen stand om over te rekenen.
-  if (scenario && Object.keys(now.other).length === 0) {
+  // Over het eurodeel van de stand van vandaag; een stand zonder koers groeit niet mee (die staat apart).
+  if (scenario) {
     const a = scenario.assumptions
     let assets = cents(position.totals.assets.eur)
     let debts = cents(position.totals.debts.eur)
@@ -539,10 +554,9 @@ export function forecast(
     const firstMonth = monthOf(today)
     for (let month = firstMonth; month <= until; month = shiftMonth(month, 1)) {
       const from = month === firstMonth ? tomorrow : `${month}-01`
-      const to = monthLast(month) > scenarioUntil ? scenarioUntil : monthLast(month)
+      const to = monthEnd(month) > scenarioUntil ? scenarioUntil : monthEnd(month)
       if (from > to) continue
-      const daysInMonth = Number(monthLast(month).slice(8, 10))
-      const frac = ((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1) / daysInMonth
+      const frac = dayCount(from, to) / daysInMonth(month)
       const income = items.filter((i) => (i.kind === 'salaris' || i.kind === 'fooi' || i.kind === 'scenario') && i.date >= from && i.date <= to).reduce((n, i) => n + cents(i.eur), 0)
       const contribution = a.investPct > 0 ? Math.round((income * a.investPct) / 100) : 0
       invested += contribution
@@ -568,38 +582,35 @@ export function forecast(
   const growth = sum(['groei'])
   const addsCents = salary + tips + scenarioIncome + costTotal + oneOffs + growth
   const addsEur = addsCents / 100
-  const nowKnown = Object.keys(now.other).length === 0
   const months: ForecastMonth[] = []
   const current = monthOf(today)
   // Gemeten maanden: de laatste `history`, of vanaf de maand van `from` (hoogstens vijf jaar terug).
-  if (range) history = Math.min(60, monthsBetween(monthOf(range.from), current) + 1)
+  if (range) history = Math.min(60, Math.max(0, monthsBetween(monthOf(range.from), current)) + 1)
   for (let i = history - 1; i >= 1; i--) {
     const month = shiftMonth(current, -i)
-    const p = positionAt(input, range && range.to < monthLast(month) ? range.to : monthLast(month))
+    const p = positionAt(input, range && range.to < monthEnd(month) ? range.to : monthEnd(month))
     const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0
-    months.push({ month, eur: known && Object.keys(p.totals.net.other).length === 0 ? p.totals.net.eur : null, future: false })
+    months.push({ month, eur: known ? p.totals.net.eur : null, future: false })
   }
-  months.push({ month: current, eur: nowKnown ? now.eur : null, future: false })
+  months.push({ month: current, eur: now.eur, future: false })
   // Een periode die al voorbij is: niets verwachts, alleen gemeten tot en met `to`.
   if (range && range.to < today) {
     const past = months.filter((m) => m.month <= monthOf(range.to))
     const end = positionAt(input, range.to).totals.net
-    return { now, items: [], until: monthOf(range.to), endEur: Object.keys(end.other).length === 0 ? end.eur : null, addsEur: 0, tipEstimateEur: 0, costsEur: 0, costsUnknown: false, other, months: past, lines: null }
+    return { now, items: [], until: monthOf(range.to), endEur: end.eur, addsEur: 0, tipEstimateEur: 0, costsEur: 0, costsUnknown: false, other, months: past, lines: null, unpriced: end.other }
   }
   // Eindigt de vooruitblik nog deze maand, dan een eindpunt op de einddatum (zo is het laatste punt altijd het einde).
   if (monthOf(endDate) === current && endDate > today) {
     const added = items.reduce((n, i) => n + cents(i.eur), 0)
-    months.push({ month: current, date: endDate, eur: nowKnown ? (cents(now.eur) + added) / 100 : null, future: true })
+    months.push({ month: current, date: endDate, eur: (cents(now.eur) + added) / 100, future: true })
   }
   for (let month = shiftMonth(current, 1); month <= until; month = shiftMonth(month, 1)) {
-    const by = monthLast(month) > endDate ? endDate : monthLast(month)
+    const by = monthEnd(month) > endDate ? endDate : monthEnd(month)
     const added = items.filter((i) => i.date <= by).reduce((n, i) => n + cents(i.eur), 0)
-    months.push({ month, eur: nowKnown ? (cents(now.eur) + added) / 100 : null, future: true })
+    months.push({ month, eur: (cents(now.eur) + added) / 100, future: true })
   }
   // De lopende maand: wat er nog deze maand binnenkomt, telt pas in de verwachte lijn; het punt van nu is gemeten.
   const start = cents(now.eur)
-  const lines: ForecastLines | null = nowKnown
-    ? { start: start / 100, salary: salary / 100, tips: tips / 100, scenario: scenarioIncome / 100, costs: costTotal / 100, oneOffs: oneOffs / 100, growth: growth / 100, end: (start + addsCents) / 100, invested: invested / 100, investmentsEnd: investments / 100 }
-    : null
-  return { now, items, until, endEur: lines ? lines.end : null, addsEur, tipEstimateEur: tips / 100, costsEur: costTotal / 100, costsUnknown, other, months, lines }
+  const lines: ForecastLines = { start: start / 100, salary: salary / 100, tips: tips / 100, scenario: scenarioIncome / 100, costs: costTotal / 100, oneOffs: oneOffs / 100, growth: growth / 100, end: (start + addsCents) / 100, invested: invested / 100, investmentsEnd: investments / 100 }
+  return { now, items, until, endEur: lines.end, addsEur, tipEstimateEur: tips / 100, costsEur: costTotal / 100, costsUnknown, other, months, lines, unpriced: now.other }
 }

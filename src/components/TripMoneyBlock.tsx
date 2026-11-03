@@ -10,7 +10,7 @@ import { active } from '../model/derive'
 import { kindForCategory } from '../model/expenses'
 import { getRates, subscribeRates } from '../model/rates'
 import { tripEnd } from '../model/salary'
-import { currentSettings } from '../model/settings'
+import { currentSettings, defaultCurrency } from '../model/settings'
 import { COST_CATEGORIES, CURRENCIES, type CostCategory, type Currency, type Transaction, type Trip } from '../model/types'
 import { tripKind } from '../model/trip-kind'
 import type { Store } from '../storage/store'
@@ -41,8 +41,9 @@ function AddLine({ store, trip, notify, mode }: { store: Store; trip: Trip; noti
   const legs = useCollection(store, 'legs.json.enc')
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState<Currency>(settings.lastCurrency)
   const [kind, setKind] = useState<(typeof INCOME)[number]>('fooi')
+  // Per soort de laatst gebruikte valuta: een fooi apart van een uitgave.
+  const [currency, setCurrency] = useState<Currency>(defaultCurrency(settings, mode === 'kosten' ? 'uitgave' : 'fooi'))
   const [category, setCategory] = useState<CostCategory>(settings.lastCostCategory ?? 'eten')
   const [date, setDate] = useState(() => dateForTrip(trip, tripEnd(trip, legs), todayIso()))
   const [busy, setBusy] = useState(false)

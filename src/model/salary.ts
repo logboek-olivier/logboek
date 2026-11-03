@@ -1,3 +1,4 @@
+import { monthOf, shiftMonth } from '../basis/datum'
 import type { Tx } from '../domain/tx'
 import { booked, expectedSalaries, salaryIncomeId, salaryOf, salaryStatus } from '../domain/geldmodel'
 import { active } from './derive'
@@ -201,13 +202,6 @@ export interface Outlook {
   tipAverages: Partial<Record<Organisation, number>>
 }
 
-const month = (iso: string) => iso.slice(0, 7)
-
-function nextMonth(m: string): string {
-  const [y, mm] = m.split('-').map(Number) as [number, number]
-  return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, '0')}`
-}
-
 /** Gemiddelde fooi per tocht per organisatie, over afgelopen tochten met minstens één fooi. */
 export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], today: string): Partial<Record<Organisation, number>> {
   const tipsByTrip = new Map<string, number>()
@@ -251,15 +245,15 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
       return { tx, trip, end: (trip ? tripEnd(trip, legs) : '') || tx.date }
     })
   const upcoming = live.map((x) => ({ trip: x, end: tripEnd(x, legs) })).filter((e) => e.end && e.end >= today)
-  let first = month(today)
-  for (const e of expected) if (month(e.end) < first) first = month(e.end)
-  let last = month(today)
-  for (const e of [...expected, ...upcoming]) if (month(e.end) > last) last = month(e.end)
+  let first = monthOf(today)
+  for (const e of expected) if (monthOf(e.end) < first) first = monthOf(e.end)
+  let last = monthOf(today)
+  for (const e of [...expected, ...upcoming]) if (monthOf(e.end) > last) last = monthOf(e.end)
   const months: OutlookMonth[] = []
-  for (let m = first; m <= last; m = nextMonth(m)) months.push({ month: m, expectedEur: 0, receivedEur: 0, tipEstimateEur: 0, trips: [] })
+  for (let m = first; m <= last; m = shiftMonth(m, 1)) months.push({ month: m, expectedEur: 0, receivedEur: 0, tipEstimateEur: 0, trips: [] })
   const at = (m: string) => months.find((x) => x.month === m)
   for (const e of expected) {
-    const row = at(month(e.end))
+    const row = at(monthOf(e.end))
     if (!row) continue
     const eur = eurValue({ ...e.tx, date: e.end }, rates)?.eur ?? null
     if (eur === null) other[e.tx.currency] = round2((other[e.tx.currency] ?? 0) + e.tx.amount)
@@ -268,7 +262,7 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
   }
   for (const tx of booked(transactions)) {
     if (tx.kind !== 'loon') continue
-    const row = at(month(tx.date))
+    const row = at(monthOf(tx.date))
     if (!row) continue
     const eur = eurValue(tx, rates)?.eur ?? null
     if (eur === null) other[tx.currency] = round2((other[tx.currency] ?? 0) + tx.amount)
@@ -276,7 +270,7 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
   }
   for (const e of upcoming) {
     const avg = e.trip.organisation ? averages[e.trip.organisation] : undefined
-    const row = at(month(e.end))
+    const row = at(monthOf(e.end))
     if (avg === undefined || !row) continue
     row.tipEstimateEur = round2(row.tipEstimateEur + avg)
   }
