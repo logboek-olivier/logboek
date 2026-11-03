@@ -122,9 +122,9 @@ export function Home({ store }: { store: Store }) {
           openAdd(target.init, target.tab)
           return
         }
-        if (target.kind === 'opslag') {
-          if (screenNow.current !== 'opslag') remember(screenNow.current)
-          setScreenState('opslag')
+        if (target.kind === 'opslag' || target.kind === 'nakijken' || target.kind === 'geld') {
+          if (screenNow.current !== target.kind) remember(screenNow.current)
+          setScreenState(target.kind)
           window.scrollTo(0, 0)
           return
         }

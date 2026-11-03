@@ -291,7 +291,8 @@ describe('dezelfde sleutel, nieuwe meta (review)', () => {
     const other = await createVault(OLD_PASSPHRASE, wordlist)
     github.write(META_PATH, toBase64(utf8(serializeMeta(other.meta))))
     await unlockedStore(a).sync()
-    expect(a.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    // De trip staat nog niet op GitHub: het scherm zegt eerst "één wijziging wacht nog" (S-5).
+    expect(a.getState()).toEqual({ phase: 'mismatch', where: 'remote', pending: 1 })
     const db = await openLogboekDb(name)
     expect(await a.localCopies()).toContain('trips.json.enc')
     expect(await getObject(db, 'trips.json.enc')).toBeDefined()

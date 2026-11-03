@@ -4,7 +4,7 @@
 import type { AddTab } from './model/types'
 import type { AddInit } from './screens/QuickAdd'
 
-export type NavTarget = { kind: 'student'; studentId: string } | { kind: 'opslag' } | { kind: 'toevoegen'; init?: AddInit; tab?: AddTab }
+export type NavTarget = { kind: 'student'; studentId: string } | { kind: 'opslag' } | { kind: 'nakijken' } | { kind: 'geld' } | { kind: 'toevoegen'; init?: AddInit; tab?: AddTab }
 
 let listener: ((target: NavTarget) => void) | null = null
 
@@ -23,6 +23,16 @@ export function openStudent(studentId: string): void {
 /** Meer → Opslag openen (Logboek herstellen), bijvoorbeeld vanuit Nakijken. */
 export function openStorage(): void {
   listener?.({ kind: 'opslag' })
+}
+
+/** Meer → Nakijken openen (vanuit Gezondheid: daar staat de fix van één tik). */
+export function openReview(): void {
+  listener?.({ kind: 'nakijken' })
+}
+
+/** Meer → Geld openen (vanuit Gezondheid: Te controleren staat bovenaan Geld). */
+export function openMoney(): void {
+  listener?.({ kind: 'geld' })
 }
 
 /** Toevoegen openen als laag over het scherm waar Olivier is (bijvoorbeeld "Dag toevoegen" in een tripoverzicht). */

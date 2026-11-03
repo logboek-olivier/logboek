@@ -140,6 +140,20 @@ export async function updateStudent(store: Tx, student: Student, input: StudentI
   await store.put('students.json.enc', { ...rest, ...cleanInput(input), updatedAt: new Date().toISOString() })
 }
 
+/**
+ * De cursus van een student zetten (Nakijken: student zonder cursus, bijvoorbeeld na het verwijderen van een cursus).
+ * De deelnemer in zijn trip krijgt dezelfde cursus, zodat trip en student niet uiteenlopen.
+ */
+export async function setStudentCurriculum(store: Tx, student: Student, curriculumId: string): Promise<void> {
+  const latest = store.list('students.json.enc').find((s) => s.id === student.id) ?? student
+  const now = new Date().toISOString()
+  await store.put('students.json.enc', { ...latest, curriculumId, updatedAt: now })
+  const trip = latest.weekId ? store.list('trips.json.enc').find((t) => t.id === latest.weekId) : undefined
+  if (trip?.participants?.some((p) => p.id === latest.id)) {
+    await store.put('trips.json.enc', { ...trip, participants: trip.participants.map((p) => (p.id === latest.id ? { ...p, curriculumId } : p)), updatedAt: now })
+  }
+}
+
 export async function saveStudents(store: Tx, students: readonly Student[]): Promise<void> {
   if (students.length === 0) return
   const now = new Date().toISOString()

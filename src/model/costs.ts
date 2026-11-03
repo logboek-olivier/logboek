@@ -60,9 +60,32 @@ export async function changeFixedCost(store: Tx, cost: FixedCost, change: { name
   await store.put('fixedcosts.json.enc', next)
 }
 
-/** Een vaste last verwijderen (tombstone zonder naam of bedragen); ongedaan maken zet hem uit het geheugen terug. */
-export async function deleteFixedCost(store: Tx, cost: FixedCost): Promise<void> {
+/** De geboekte maanden van een vaste last (uitgaven met `fixedCostId`), nieuwste eerst. */
+export function bookingsOf(transactions: readonly Transaction[], costId: string): Transaction[] {
+  return active(transactions)
+    .filter((tx) => tx.fixedCostId === costId)
+    .sort((a, b) => b.date.localeCompare(a.date))
+}
+
+/**
+ * Een vaste last verwijderen (tombstone zonder naam of bedragen), met dezelfde keuze als bij een periode voor de maanden
+ * die al als uitgave geboekt zijn: `behouden` laat ze staan als gewone uitgaven (zonder `fixedCostId`, zodat ze niet meer
+ * als "vast" tellen), `alles` zet ook de boekingen in de prullenbak. Niets verdwijnt stil; ongedaan maken zet alles terug.
+ */
+export async function deleteFixedCost(store: Tx, cost: FixedCost, mode: 'behouden' | 'alles' = 'behouden'): Promise<void> {
   const now = new Date().toISOString()
+  const bookings = bookingsOf(store.list('transactions.json.enc'), cost.id)
+  if (bookings.length > 0) {
+    await store.putMany(
+      'transactions.json.enc',
+      bookings.map((tx) => {
+        if (mode === 'alles') return { ...tx, updatedAt: now, deletedAt: now }
+        const { fixedCostId: _vast, ...rest } = tx
+        void _vast
+        return { ...rest, updatedAt: now }
+      }),
+    )
+  }
   await store.put('fixedcosts.json.enc', { id: cost.id, name: '', currency: cost.currency, amounts: [], updatedAt: now, deletedAt: now })
 }
 

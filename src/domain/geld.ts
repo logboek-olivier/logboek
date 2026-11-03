@@ -1,7 +1,7 @@
 // Opdrachten voor geld: inkomsten en uitgaven, salaris en uitbetalingen, declaraties, vaste lasten, rekeningen en standen. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
 import { deleteAccount, deleteBalance, saveAccount, setBalance, signedAmount, writeBalances } from '../model/accounts'
-import { addClaim, deleteClaim, markRepaid, markSubmitted, updateClaim } from '../model/claims'
+import { addClaim, deleteClaim, markRepaid, markSubmitted, setClaimTrip, updateClaim } from '../model/claims'
 import { addFixedCost, changeFixedCost, deleteFixedCost } from '../model/costs'
 import { deleteTransaction, updateTransaction, type TransactionPatch } from '../model/edit'
 import { resolveTarget, sourceOnSave, type ExpenseTarget } from '../model/expenses'
@@ -154,6 +154,7 @@ export async function addEarlierSeason(tx: Tx, input: EarlierSeason): Promise<Tr
 export const eerderSeizoenInvoeren = opdrachtMet('eerderSeizoenInvoeren', addEarlierSeason)
 export const declaratieBewerken = opdracht('declaratieBewerken', updateClaim)
 export const declaratieIngediend = opdracht('declaratieIngediend', markSubmitted)
+export const declaratieKoppelen = opdracht('declaratieKoppelen', setClaimTrip)
 export const declaratieTerugbetaald = opdracht('declaratieTerugbetaald', markRepaid)
 export const declaratieToevoegen = opdrachtMet('declaratieToevoegen', addClaim)
 export const declaratieVerwijderen = opdracht('declaratieVerwijderen', deleteClaim)

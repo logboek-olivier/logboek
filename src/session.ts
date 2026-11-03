@@ -58,7 +58,7 @@ export type SessionState =
    * `metaRestorable`: meta.json.enc op GitHub ontbreekt of is kapot (geen ander logboek); met de wachtzin kan dit
    * apparaat zijn eigen meta terugzetten (restoreRemoteMeta).
    */
-  | { phase: 'mismatch'; where: 'local' | 'remote'; metaRestorable?: true }
+  | { phase: 'mismatch'; where: 'local' | 'remote'; metaRestorable?: true; /** Wijzigingen die nog niet op GitHub staan (gaan verloren bij wissen). */ pending?: number }
   /**
    * Logboek herstellen: gegevens die niet met de sleutel uit meta.json.enc te lezen zijn (src/repair.ts). `report`: wat
    * er verloren gaat (null = nog onbekend, eerst de wachtzin). `needsSecret`: herstellen vraagt de wachtzin.
@@ -580,7 +580,9 @@ export class Session {
     this.pendingRepair = null
     recordError(error)
     const restorable = error.where === 'remote' && (error.remote === 'missing' || error.remote === 'unreadable')
-    this.setState(restorable ? { phase: 'mismatch', where: 'remote', metaRestorable: true } : { phase: 'mismatch', where: error.where })
+    // Wat er nog niet op GitHub staat, zodat "wissen en opnieuw koppelen" dat eerst kan zeggen.
+    const pending = store ? store.pendingCount() : 0
+    this.setState(restorable ? { phase: 'mismatch', where: 'remote', metaRestorable: true, pending } : { phase: 'mismatch', where: error.where, pending })
     store?.lock()
     return error
   }

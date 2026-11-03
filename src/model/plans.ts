@@ -376,6 +376,14 @@ export async function savePlan(store: Tx, plan: WeekPlan): Promise<void> {
   await store.put('plans.json.enc', { ...plan, updatedAt: new Date().toISOString(), deletedAt: null })
 }
 
+/** De trip van een planning wijzigen (Nakijken: planning zonder trip); zonder trip hoort ze bij de trip van haar startdatum. */
+export async function setPlanTrip(store: Tx, plan: WeekPlan, tripId: string | null): Promise<void> {
+  const latest = store.list('plans.json.enc').find((p) => p.id === plan.id) ?? plan
+  const { tripId: _t, ...rest } = latest
+  void _t
+  await savePlan(store, tripId ? { ...rest, tripId } : rest)
+}
+
 export async function deletePlan(store: Tx, plan: WeekPlan): Promise<void> {
   const now = new Date().toISOString()
   await store.put('plans.json.enc', { ...plan, updatedAt: now, deletedAt: now })

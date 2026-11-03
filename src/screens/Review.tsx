@@ -16,6 +16,9 @@ import { trashItemForTrip } from '../model/trash'
 import { defaultTripName } from '../model/trip-name'
 import { tripVoorDagen, geldKoppelen, investeringssoortZetten, landperiodeMaken, nakijkenKloptZo, periodeMakenOverDagen, periodeOrganisatieZetten, periodeSoortZetten, soortenOvernemen } from '../domain/trips'
 import { organisationChoices } from '../basis/organisatie'
+import { declaratieKoppelen } from '../domain/geld'
+import { planningKoppelen, studentCursusZetten } from '../domain/training'
+import { localized } from '../model/curricula'
 
 // Nakijken (Meer → Nakijken, docs/PERIODEMODEL.md): vragen over wat ontbreekt (soort, organisatie, periode), elk met één
 // knop (met ongedaan maken) en "Klopt zo". Nooit een voorstel om iets uit de import te verbeteren, trips samen te voegen
@@ -104,6 +107,12 @@ function describe(item: ReviewItem): string {
       return t('review.moneyWithoutPeriod', { kind: kindLabel(item.tx.kind), date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
     case 'investering-soort':
       return t('review.investmentKind', { date: formatDate(item.tx.date), note: item.tx.note ? ` · ${item.tx.note}` : '' })
+    case 'planning-zonder-trip':
+      return t('review.planWithoutTrip', { title: item.plan.title, date: formatDate(item.plan.startDate), name: item.tripName ?? t('review.unknownTrip') })
+    case 'declaratie-zonder-trip':
+      return t('review.claimWithoutTrip', { date: formatDate(item.claim.date), note: item.claim.note ? ` · ${item.claim.note}` : '', name: item.tripName ?? t('review.unknownTrip') })
+    case 'student-zonder-cursus':
+      return t('review.studentWithoutCourse', { name: item.student.firstName, trip: item.tripName ? ` (${item.tripName})` : '' })
   }
 }
 
@@ -137,5 +146,23 @@ function fixes(store: Store, item: ReviewItem, lang: Lang): Fix[] {
       return [{ label: item.target ? t('review.linkTo', { name: item.target.name }) : t('review.makeHome'), primary: true, run: () => geldKoppelen(store, item.tx, item.target) }]
     case 'investering-soort':
       return (['opleiding', 'uitrusting'] as const).map((c) => ({ label: t(`costCategory.${c}`), run: () => investeringssoortZetten(store, item.tx, c) }))
+    case 'planning-zonder-trip': {
+      const restorable = !!item.tripName && !!trashItemForTrip(store, item.plan.tripId!)
+      return [
+        ...(restorable ? [{ label: t('review.restoreTrip', { name: item.tripName! }), primary: true, run: () => tripTerugzetten(store, item.plan.tripId!) }] : []),
+        ...(item.target ? [{ label: t('review.linkTo', { name: item.target.name }), primary: !restorable, run: () => planningKoppelen(store, item.plan, item.target!.id) }] : []),
+        { label: t('review.unlink'), run: () => planningKoppelen(store, item.plan, null) },
+      ]
+    }
+    case 'declaratie-zonder-trip': {
+      const restorable = !!item.tripName && !!trashItemForTrip(store, item.claim.tripId!)
+      return [
+        ...(restorable ? [{ label: t('review.restoreTrip', { name: item.tripName! }), primary: true, run: () => tripTerugzetten(store, item.claim.tripId!) }] : []),
+        ...(item.target ? [{ label: t('review.linkTo', { name: item.target.name }), primary: !restorable, run: () => declaratieKoppelen(store, item.claim, item.target!.id) }] : []),
+        { label: t('review.noTrip'), run: () => declaratieKoppelen(store, item.claim, null) },
+      ]
+    }
+    case 'student-zonder-cursus':
+      return item.choices.map((course, i) => ({ label: `${course.courseCode} ${localized(course.name, lang)}`.trim(), primary: i === 0 && item.choices.length === 1, run: () => studentCursusZetten(store, item.student, course.id) }))
   }
 }

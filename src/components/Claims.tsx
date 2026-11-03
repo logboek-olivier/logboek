@@ -214,7 +214,7 @@ export function TripClaims({ store, trip, notify, heading = 'h2' }: { store: Sto
 
 /** Geld → Declaraties: wat nog openstaat of ingediend is, en declaraties zonder trip (die staan niet bij een trip). */
 export function ClaimsSection({ store, notify }: { store: Store; notify: Notify }) {
-  const claims = claimsToShow(useCollection(store, 'claims.json.enc'))
+  const claims = claimsToShow(useCollection(store, 'claims.json.enc'), new Set(useCollection(store, 'trips.json.enc').map((trip) => trip.id)))
   const trips = useCollection(store, 'trips.json.enc')
   const counters = useCounters(store)
   const [open, setOpen] = useState<Claim | null>(null)

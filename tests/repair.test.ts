@@ -286,7 +286,7 @@ describe('Logboek herstellen: veiligheid', () => {
     sessions.push(s)
     await s.init()
     await s.unlockLocal({ passphrase: PASSPHRASE })
-    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote' })
+    expect(s.getState()).toEqual({ phase: 'mismatch', where: 'remote', pending: 0 })
     expect(puts()).toEqual([])
     expect(await getObject(db, 'transactions.json.enc')).toBeDefined()
   }, 60_000)
