@@ -125,7 +125,9 @@ later werkpakket (nieuwe MK, alle bestanden herschrijven, oude versies blijven i
 L (wissel).
 
 **W-1 · De e2e-tests draaien op 412 px (Pixel 7), CLAUDE.md belooft 360 px; CI maskeert flaky tests.** Categorie
-werking. Bewijs: `playwright.config.ts` (`devices['Pixel 7']`, `retries: process.env.CI ? 1 : 0`); 10 van 87 specs zetten
+werking. **Opgelost in #134** (hoofdproject op 360 × 740 met touch, Pixel 7 alleen voor schermafbeeldingen en
+kaartgebaren; `scripts/playwright-retries.mjs` print retries en faalt bij meer dan twee; alle tests slaagden op 360 px
+zonder wijziging aan de app). Bewijs: `playwright.config.ts` (`devices['Pixel 7']`, `retries: process.env.CI ? 1 : 0`); 10 van 87 specs zetten
 zelf 360 px. Gevolg: een overloop op 360 px valt alleen op in de schermafbeeldingen, die niemand verplicht bekijkt; een
 test die één op de twee keer faalt is in CI groen. Voorstel: project `mobiel` op 360 × 740 zetten (Pixel 7 als tweede
 project voor de schermafbeeldingen) en `retries: 0` met een `--repeat-each` nachtelijke run, of minstens de retries

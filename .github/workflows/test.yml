@@ -37,6 +37,10 @@ jobs:
         run: npm run upgrade:vorige
       - name: Playwright
         run: npm run test:e2e
+      # Een test die pas bij de tweede poging slaagt (retries: 1), staat hier met naam; bij meer dan twee faalt de job.
+      - name: Tests met een tweede poging
+        if: always()
+        run: node scripts/playwright-retries.mjs
       # Schermafbeeldingen van elk scherm (360 en 412 px, licht en donker) om vóór het mergen te bekijken.
       - name: Schermafbeeldingen uploaden
         if: always()
