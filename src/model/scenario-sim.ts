@@ -44,6 +44,8 @@ export interface SimWeek {
   growth: number
   /** De netto waarde aan het einde van de week. */
   value: number
+  /** Salaris plus fooi opgeteld vanaf de start, tot en met deze week. */
+  earned: number
   /** Het blok van deze week (nummer vanaf 1), null na het laatste blok. */
   block: number | null
 }
@@ -52,13 +54,18 @@ export type GoalResult =
   | { kind: 'stand'; date: string; value: number }
   | {
       kind: 'doel'
+      /** Netto waarde, of verdiend: salaris plus fooi opgeteld vanaf de start. */
+      measure: 'netto' | 'verdiend'
       amount: number
       /** De eerste dag waarop het doel gehaald is (het laatste blok loopt door na zijn weken); null = niet binnen 40 jaar. */
       reachedOn: string | null
       by?: string
-      /** De netto waarde op de doeldatum met dit plan. */
+      /** De netto waarde (of het verdiende bedrag) op de doeldatum met dit plan. */
       valueOnBy?: number
-      /** Winst per week (inkomen min kosten) die nodig is om het doel op de doeldatum te halen, en die het plan nu geeft. */
+      /**
+       * Per week nodig om het doel op de doeldatum te halen, en wat het plan nu per week geeft: bij netto waarde de winst
+       * (inkomen min kosten), bij verdiend het inkomen (salaris plus fooi).
+       */
       neededPerWeek?: number
       plannedPerWeek?: number
     }
@@ -116,8 +123,15 @@ function run(input: SimInput, until: string, extend: boolean): { weeks: SimWeek[
   const unpriced: Partial<Record<Currency, number>> = {}
   const weeks: SimWeek[] = []
   let invested = 0
+  let earned = 0
   let blockIndex = 0
   let weekInBlock = 0
+  // Per blok cumulatief afgerond: de weken van een blok zijn samen precies wat het blok geeft (7 trips in 3 weken).
+  let blockSalary = 0
+  let blockTips = 0
+  let roundedSalary = 0
+  let roundedTips = 0
+  let lastBlock: ScenarioBlock | undefined
   const eur = (amount: number, currency: Currency, date: string) => {
     if (amount === 0) return 0
     const hit = toEur(amount, currency, date, rates)
@@ -137,8 +151,16 @@ function run(input: SimInput, until: string, extend: boolean): { weeks: SimWeek[
     const block = blocks[blockIndex] ?? (extend ? blocks.at(-1) : undefined)
     const share = (daysBetween(from, to) + 1) / 7
     const income = block ? blockIncome(block) : { salary: 0, tips: 0 }
-    const salary = block ? eur(income.salary * share, block.currency, from) : 0
-    const tips = block ? eur(income.tips * share, block.currency, from) : 0
+    if (block !== lastBlock) {
+      lastBlock = block
+      blockSalary = blockTips = roundedSalary = roundedTips = 0
+    }
+    blockSalary += block ? eur(income.salary * share, block.currency, from) : 0
+    blockTips += block ? eur(income.tips * share, block.currency, from) : 0
+    const salary = round2(blockSalary) - roundedSalary
+    const tips = round2(blockTips) - roundedTips
+    roundedSalary = round2(blockSalary)
+    roundedTips = round2(blockTips)
     const costs = block?.costsPerWeek !== undefined ? eur(block.costsPerWeek * share, block.currency, from) : input.defaultCostsPerWeek * share
     const once = oneOffs.filter((o) => o.date >= from && o.date <= to && o.date > today).reduce((n, o) => n + eur(o.amount, o.currency, o.date), 0)
     const toInvest = ((salary + tips) * a.investPct) / 100
@@ -148,6 +170,7 @@ function run(input: SimInput, until: string, extend: boolean): { weeks: SimWeek[
     debts += debts * weekly(a.debtInterestPct) * share
     cash += salary + tips - costs - once - toInvest
     invested += toInvest
+    earned += salary + tips
     weekInBlock++
     weeks.push({
       from,
@@ -158,6 +181,7 @@ function run(input: SimInput, until: string, extend: boolean): { weeks: SimWeek[
       oneOffs: round2(once),
       growth: round2(growth),
       value: round2(cash + investments + assets + debts),
+      earned: round2(earned),
       block: blocks[blockIndex] ? blockIndex + 1 : null,
     })
   }
@@ -173,7 +197,7 @@ export function simulate(input: SimInput): SimResult {
   const ownStart = typeof scenario.startValue === 'number' && Number.isFinite(scenario.startValue)
   const startValue = round2(ownStart ? scenario.startValue! : input.position.net)
   const endValue = weeks.at(-1)?.value ?? startValue
-  const goal = scenario.goal?.kind === 'doel' ? goalFor(input, scenario.goal.amount, scenario.goal.by, startValue) : { kind: 'stand' as const, date: end, value: endValue }
+  const goal = scenario.goal?.kind === 'doel' ? goalFor(input, scenario.goal.amount, scenario.goal.by, startValue, scenario.goal.measure === 'verdiend' ? 'verdiend' : 'netto') : { kind: 'stand' as const, date: end, value: endValue }
   return {
     start,
     end,
@@ -191,20 +215,24 @@ export function simulate(input: SimInput): SimResult {
  * Een doelbedrag: wanneer het gehaald is (het laatste blok loopt door, hoogstens 40 jaar), en met een doeldatum de
  * winst per week die nodig is: wat het plan tot die datum per week geeft, plus het tekort gedeeld door de weken.
  */
-function goalFor(input: SimInput, amount: number, by: string | undefined, startValue: number): GoalResult {
+function goalFor(input: SimInput, amount: number, by: string | undefined, startValue: number, measure: 'netto' | 'verdiend'): GoalResult {
   const start = simStart(input.scenario, input.today)
   const max = `${Number(input.today.slice(0, 4)) + MAX_HORIZON_YEARS}${input.today.slice(4)}`
-  const result: Extract<GoalResult, { kind: 'doel' }> = { kind: 'doel', amount, reachedOn: startValue >= amount ? start : null }
+  // Verdiend begint bij nul (het inkomen vanaf de start), netto waarde bij de startwaarde.
+  const atStart = measure === 'verdiend' ? 0 : startValue
+  const of = (w: SimWeek) => (measure === 'verdiend' ? w.earned : w.value)
+  const result: Extract<GoalResult, { kind: 'doel' }> = { kind: 'doel', measure, amount, reachedOn: atStart >= amount ? start : null }
   if (result.reachedOn === null) {
     const long = run(input, max, true).weeks
-    result.reachedOn = long.find((w) => w.value >= amount)?.to ?? null
+    result.reachedOn = long.find((w) => of(w) >= amount)?.to ?? null
   }
   if (by && ISO.test(by) && by > start) {
     result.by = by
     const toBy = run(input, by, true).weeks
     const weeks = Math.max(1, (daysBetween(start, by) + 1) / 7)
-    const valueOnBy = toBy.at(-1)?.value ?? startValue
-    const planned = toBy.reduce((n, w) => n + w.salary + w.tips - w.costs, 0) / weeks
+    const last = toBy.at(-1)
+    const valueOnBy = last ? of(last) : atStart
+    const planned = toBy.reduce((n, w) => n + w.salary + w.tips - (measure === 'verdiend' ? 0 : w.costs), 0) / weeks
     result.valueOnBy = round2(valueOnBy)
     result.plannedPerWeek = round2(planned)
     result.neededPerWeek = round2(planned + (amount - valueOnBy) / weeks)
@@ -213,8 +241,8 @@ function goalFor(input: SimInput, amount: number, by: string | undefined, startV
 }
 
 /** Per maand (jjjj-mm) het inkomen en de kosten, en de netto waarde aan het einde van de maand (voor de grafieken). */
-export function simMonths(result: SimResult): { month: string; income: number; costs: number; value: number }[] {
-  const out: { month: string; income: number; costs: number; value: number }[] = []
+export function simMonths(result: SimResult): { month: string; income: number; costs: number; value: number; earned: number }[] {
+  const out: { month: string; income: number; costs: number; value: number; earned: number }[] = []
   for (const w of result.weeks) {
     const month = w.to.slice(0, 7)
     const last = out.at(-1)
@@ -222,7 +250,8 @@ export function simMonths(result: SimResult): { month: string; income: number; c
       last.income = round2(last.income + w.salary + w.tips)
       last.costs = round2(last.costs + w.costs + w.oneOffs)
       last.value = w.value
-    } else out.push({ month, income: round2(w.salary + w.tips), costs: round2(w.costs + w.oneOffs), value: w.value })
+      last.earned = w.earned
+    } else out.push({ month, income: round2(w.salary + w.tips), costs: round2(w.costs + w.oneOffs), value: w.value, earned: w.earned })
   }
   return out
 }
@@ -234,23 +263,44 @@ export function simMonths(result: SimResult): { month: string; income: number; c
  * de fooi die echt binnenkwamen, de losse uitgaven (zonder declaraties en zonder geboekte vaste lasten) en de vaste
  * lasten van deze maand, in euro. `weeks`: het aantal weken terug tot en met gisteren.
  */
-export function fromHistory(transactions: readonly Transaction[], fixed: readonly FixedCost[], today: string = todayIso(), weeks = HISTORY_WEEKS, rates: RatesFile | null = null): { salary: number; tips: number; costs: number } {
+export interface HistoryAverage {
+  /** Per week. */
+  salary: number
+  tips: number
+  costs: number
+  /** Trips met salaris of fooi in die weken, per week; en salaris en fooi per trip. */
+  tripsPerWeek: number
+  salaryPerTrip: number
+  tipsPerTrip: number
+}
+
+export function fromHistory(transactions: readonly Transaction[], fixed: readonly FixedCost[], today: string = todayIso(), weeks = HISTORY_WEEKS, rates: RatesFile | null = null): HistoryAverage {
   const from = addDays(today, -7 * weeks)
   const to = addDays(today, -1)
   let salary = 0
   let tips = 0
   let costs = 0
+  const trips = new Set<string>()
   for (const tx of booked(transactions)) {
     if (tx.date < from || tx.date > to) continue
     const value = eurOf(tx)
     if (value === null) continue
+    if ((tx.kind === 'loon' || tx.kind === 'fooi') && tx.tripId) trips.add(tx.tripId)
     if (tx.kind === 'loon') salary += value
     else if (tx.kind === 'fooi') tips += value
     else if ((tx.kind === 'kosten' || tx.kind === 'investering') && !tx.claimId && !tx.fixedCostId) costs += value
   }
   const month = today.slice(0, 7)
   const fixedPerMonth = active(fixed).reduce((n, c) => n + (toEur(fixedAmount(c, month), c.currency, today, rates)?.eur ?? 0), 0)
-  return { salary: round2(salary / weeks), tips: round2(tips / weeks), costs: round2(costs / weeks + (fixedPerMonth * 12) / 52) }
+  const n = trips.size
+  return {
+    salary: round2(salary / weeks),
+    tips: round2(tips / weeks),
+    costs: round2(costs / weeks + (fixedPerMonth * 12) / 52),
+    tripsPerWeek: n / weeks,
+    salaryPerTrip: n > 0 ? round2(salary / n) : 0,
+    tipsPerTrip: n > 0 ? round2(tips / n) : 0,
+  }
 }
 
 /**
@@ -265,7 +315,11 @@ export function fromPlanning(input: PositionInput, settings: Settings, today: st
   const weeks = Math.max(1, Math.ceil((daysBetween(today, planningEnd) + 1) / 7))
   const salary = round2(f.lines.salary / weeks)
   const tips = round2(f.lines.tips / weeks)
-  return { weeks, incomePerWeek: round2(salary + tips), salaryPerWeek: salary, tipsPerWeek: tips, currency: 'EUR', costsPerWeek: round2(-f.lines.costs / weeks) }
+  // De trips van de planning met een verwacht salaris of een verwachte fooi: als trips in het blok, met het bedrag per trip.
+  const trips = new Set(f.items.filter((i) => i.kind === 'salaris' || i.kind === 'fooi').flatMap((i) => i.trips?.map((x) => x.id) ?? []))
+  const n = trips.size
+  const perTrip = n > 0 ? { trips: n, salaryPerTrip: round2(f.lines.salary / n), tipsPerTrip: round2(f.lines.tips / n) } : {}
+  return { weeks, incomePerWeek: round2(salary + tips), salaryPerWeek: salary, tipsPerWeek: tips, currency: 'EUR', costsPerWeek: round2(-f.lines.costs / weeks), ...perTrip }
 }
 
 /** De positie van vandaag als startpunt (de netto waarde en wat daarvan groeit), het eurodeel. */

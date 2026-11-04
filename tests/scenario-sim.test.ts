@@ -85,6 +85,29 @@ describe('stappenplan: week voor week', () => {
     expect(simulate(input(scenario({ endDate: '2026-11-15' }))).goal).toEqual({ kind: 'stand', date: '2026-11-15', value: 900 })
   })
 
+  it('trips in een blok: 10 trips in 10 weken, evenredig verdeeld; het blok geeft samen precies trips × per trip', () => {
+    const tripsBlock = { id: 'tb', weeks: 10, trips: 10, salaryPerTrip: 1000, tipsPerTrip: 300, incomePerWeek: 1300, salaryPerWeek: 1000, tipsPerWeek: 300, currency: 'EUR' as const, costsPerWeek: 0 }
+    const r = simulate(input(scenario({ blocks: [tripsBlock], endDate: '2027-01-10' }), { defaultCostsPerWeek: 0 }))
+    expect(r.weeks).toHaveLength(10)
+    expect(r.totals).toMatchObject({ salary: 10000, tips: 3000 })
+    // 7 trips in 3 weken: elke week een derde, samen precies 7 × 100.
+    const odd = simulate(input(scenario({ blocks: [{ ...tripsBlock, weeks: 3, trips: 7, salaryPerTrip: 100, tipsPerTrip: 0 }], endDate: '2026-11-22' }), { defaultCostsPerWeek: 0 }))
+    expect(odd.totals.salary).toBeCloseTo(700, 2)
+  })
+
+  it('doel op verdiend: salaris plus fooi opgeteld vanaf de start, los van de kosten', () => {
+    // 500 inkomen per week (salaris 400, fooi 100), kosten 450: de netto waarde stijgt nauwelijks, het verdiende wel.
+    const s = scenario({ blocks: [block(4, 400, 100, 450)], endDate: '2026-11-29', goal: { kind: 'doel', amount: 1500, by: '2026-11-29', measure: 'verdiend' } })
+    const r = simulate(input(s))
+    if (r.goal.kind !== 'doel') throw new Error('verwacht')
+    expect(r.goal.measure).toBe('verdiend')
+    // Na drie weken 1500 verdiend.
+    expect(r.goal.reachedOn).toBe('2026-11-22')
+    expect(r.goal.valueOnBy).toBe(2000)
+    expect(r.goal.plannedPerWeek).toBe(500)
+    expect(simMonths(r).at(-1)!.earned).toBe(2000)
+  })
+
   it('een ouder scenario: de planning als eerste blok (niet opgeslagen), daarna de oude blokken met hun inkomen als salaris', () => {
     const old = scenario({ version: undefined, blocks: [{ id: 'oud', weeks: 2, incomePerWeek: 300, currency: 'EUR', costsPerWeek: 0 }], endDate: '2026-11-29' })
     const r = simulate(input(old, { planningBlock: block(2, 1000, 200, 100) }))
@@ -101,15 +124,15 @@ describe('voorstel uit eerdere weken', () => {
   it('per week het salaris en de fooi die binnenkwamen, de losse uitgaven en de vaste lasten; zonder declaraties of geboekte vaste lasten', () => {
     const tx = (id: string, date: string, kind: Transaction['kind'], amount: number, extra: Partial<Transaction> = {}): Transaction => ({ id, date, kind, amount, currency: 'EUR', source: 'overig', updatedAt: T, deletedAt: null, ...extra })
     const list = [
-      tx('l', '2026-10-20', 'loon', 1200),
+      tx('l', '2026-10-20', 'loon', 1200, { tripId: 'trip-a' }),
       tx('v', '2026-10-21', 'loon', 999, { status: 'verwacht' }),
-      tx('f', '2026-10-22', 'fooi', 600),
+      tx('f', '2026-10-22', 'fooi', 600, { tripId: 'trip-b' }),
       tx('k', '2026-10-23', 'kosten', 240),
       tx('d', '2026-10-24', 'kosten', 100, { claimId: 'c' }),
       tx('vast', '2026-10-31', 'kosten', 520, { fixedCostId: 'h' }),
       tx('oud', '2026-07-01', 'fooi', 5000),
     ]
     const fixed: FixedCost[] = [{ id: 'h', name: 'Nephuur', currency: 'EUR', amounts: [{ from: '2026-01', amount: 520 }], updatedAt: T, deletedAt: null }]
-    expect(fromHistory(list, fixed, TODAY, 12)).toEqual({ salary: 100, tips: 50, costs: 20 + 120 })
+    expect(fromHistory(list, fixed, TODAY, 12)).toEqual({ salary: 100, tips: 50, costs: 20 + 120, tripsPerWeek: 2 / 12, salaryPerTrip: 600, tipsPerTrip: 300 })
   })
 })

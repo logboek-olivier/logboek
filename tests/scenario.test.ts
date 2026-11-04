@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { forecastDrills, type Drill } from '../src/domain/doorklik'
-import { blokToevoegen, blokVerplaatsen, blokVerwijderen, scenarioActiveren, scenarioDatumsAanpassen, scenarioMaken, scenarioVerwijderen } from '../src/domain/geld'
+import { aannameWijzigen, blokToevoegen, blokVeldWijzigen, blokVerplaatsen, blokVerwijderen, scenarioActiveren, scenarioDatumsAanpassen, scenarioDoelWijzigen, scenarioMaken, scenarioStartZetten, scenarioVerwijderen } from '../src/domain/geld'
 import { buildIndex } from '../src/model/calendar'
 import { dayAverages } from '../src/model/costs'
 import { forecast, positionAt, type Forecast } from '../src/model/position'
@@ -61,14 +61,14 @@ function sumCloses(p: Profile, f: Forecast): void {
   expect([drills.start.eur, drills.salary.eur, drills.tips.eur, drills.scenario.eur, drills.costs.eur, drills.oneOffs.eur, drills.growth.eur]).toEqual([lines.start, lines.salary, lines.tips, lines.scenario, lines.costs, lines.oneOffs, lines.growth])
 }
 
-describe('schemaversie 6', () => {
-  it('leest bestanden van versie 2 tot en met 5 (standen, instellingen, scenario\'s, trips) ongewijzigd in en schrijft versie 6 met schrijfversie 12', () => {
+describe('schemaversie 7', () => {
+  it('leest bestanden van versie 2 tot en met 6 (standen, instellingen, scenario\'s, trips) ongewijzigd in en schrijft versie 7 met schrijfversie 13', () => {
     const p = profileA()
     const v2 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, minWriterVersion: 6, records }))
     expect(decodeRecords('balances.json.enc', v2(p.input.balances))).toEqual(p.input.balances)
     expect(decodeRecords('settings.json.enc', v2([p.settings]))).toEqual([p.settings])
-    expect(SCHEMA_VERSION).toBe(6)
-    expect(WRITER_VERSION).toBe(12)
+    expect(SCHEMA_VERSION).toBe(7)
+    expect(WRITER_VERSION).toBe(13)
     const v3 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 3, minWriterVersion: 9, records }))
     expect(decodeRecords('settings.json.enc', v3([p.settings]))).toEqual([p.settings])
     const v4 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 4, minWriterVersion: 10, records }))
@@ -78,7 +78,9 @@ describe('schemaversie 6', () => {
     const v5 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 5, minWriterVersion: 11, records }))
     const oldTrip = { id: 'oud', name: 'Nepoud', type: 'training-geven', participants: [{ id: 'p', firstName: 'Nepper' }], updatedAt: '2026-11-01T00:00:00.000Z', deletedAt: null }
     expect(decodeRecords('trips.json.enc', v5([oldTrip]))).toEqual([oldTrip])
-    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 6, minWriterVersion: 12 })
+    const v6 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 6, minWriterVersion: 12, records }))
+    expect(decodeRecords('scenarios.json.enc', v6([EXAMPLE]))).toEqual([EXAMPLE])
+    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 7, minWriterVersion: 13 })
   })
 })
 
@@ -347,5 +349,34 @@ describe('opdrachten en synchroniseren', () => {
     await phone.sync()
     await laptop.sync()
     expect(laptop.list('scenarios.json.enc').map((s) => s.name).sort()).toEqual(['Nepplan', 'Nepplan B'])
+  })
+
+  it('om in te typen: elke wijziging raakt alleen haar eigen veld, ook vlak na elkaar (geen verouderde waarde)', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    const store = await device(new FakeGithub(), key)
+    const { result: created } = await scenarioMaken(store, 'Typplan')
+    const { result: withBlock } = await blokToevoegen(store, created.id, { weeks: 10, incomePerWeek: 0, trips: 10, salaryPerTrip: 500, tipsPerTrip: 100, currency: 'EUR' })
+    const blockId = withBlock.blocks[0]!.id
+    // Twee veldwijzigingen direct na elkaar, zoals een scherm dat nog de oude waarde kent.
+    await Promise.all([scenarioStartZetten(store, created.id, { startValue: 4200 }), scenarioStartZetten(store, created.id, { endDate: '2027-12-01' })])
+    await Promise.all([blokVeldWijzigen(store, created.id, blockId, { trips: 8 }), blokVeldWijzigen(store, created.id, blockId, { salaryPerTrip: 650 })])
+    await Promise.all([aannameWijzigen(store, created.id, { investPct: 20 }), aannameWijzigen(store, created.id, { assetGrowthPct: 3 })])
+    await scenarioDoelWijzigen(store, created.id, { kind: 'verdiend', amount: 30000 })
+    const { undo } = await scenarioDoelWijzigen(store, created.id, { by: '2027-09-01' })
+    let now = store.list('scenarios.json.enc').find((x) => x.id === created.id)!
+    expect([now.startValue, now.endDate]).toEqual([4200, '2027-12-01'])
+    expect(now.blocks[0]).toMatchObject({ weeks: 10, trips: 8, salaryPerTrip: 650, tipsPerTrip: 100 })
+    expect(now.assumptions).toMatchObject({ investPct: 20, assetGrowthPct: 3 })
+    expect(now.goal).toEqual({ kind: 'doel', amount: 30000, by: '2027-09-01', measure: 'verdiend' })
+    // Kosten leegmaken = weer het gemiddelde; ongedaan maken zet alleen de datum van het doel terug.
+    await blokVeldWijzigen(store, created.id, blockId, { costsPerWeek: 250 })
+    await blokVeldWijzigen(store, created.id, blockId, { costsPerWeek: null })
+    await undo()
+    now = store.list('scenarios.json.enc').find((x) => x.id === created.id)!
+    expect(now.blocks[0]!.costsPerWeek).toBeUndefined()
+    expect(now.goal).toEqual({ kind: 'doel', amount: 30000, measure: 'verdiend' })
+    // Zonder bedrag is het doel weer "waar sta ik".
+    await scenarioDoelWijzigen(store, created.id, { amount: null })
+    expect(store.list('scenarios.json.enc').find((x) => x.id === created.id)!.goal).toEqual({ kind: 'stand' })
   })
 })

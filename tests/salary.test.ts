@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { applySalaryDefault, salaryOutlook, salaryQuestions, saveSalaryDefaults, tipAverages } from '../src/model/salary'
+import { applySalaryDefault, expectedTip, salaryOutlook, salaryQuestions, saveSalaryDefaults, tipAverages } from '../src/model/salary'
+import { DEFAULT_SETTINGS } from '../src/model/settings'
 import { setRates, type RatesFile } from '../src/model/rates'
 import type { Transaction, Trip } from '../src/model/types'
 import { salaryOf } from '../src/domain/geldmodel'
@@ -199,6 +200,33 @@ describe('vooruitblik', () => {
     expect(o.months[2]!.tipEstimateEur).toBe(200)
     expect(o.months[3]!.tipEstimateEur).toBe(0)
     expect(o.tipEstimateEur).toBe(400)
+  })
+
+  it('gemiddelde fooi: een trip zonder fooi telt als 0, vanaf de eerste trip met een gelogde fooi; eigen verwachting gaat voor', () => {
+    setRates(rates)
+    const trips = [
+      trip('oud', '2026-05-01', '2026-05-07'),
+      trip('a', '2026-09-01', '2026-09-07'),
+      trip('b', '2026-09-10', '2026-09-17'),
+      trip('c', '2026-10-01', '2026-10-07'),
+      trip('komend', '2026-12-01', '2026-12-07'),
+      trip('eigen', '2026-12-10', '2026-12-17', { expectedTip: { amount: 500, currency: 'USD' } }),
+      trip('yw', '2026-12-20', '2026-12-27', { organisation: 'yacht-week' }),
+    ]
+    // Fooi bij a (600) en c (300), niets bij b; 'oud' is van vóór de eerste fooi en telt niet.
+    const transactions = [tx('fa', '2026-09-07', 'fooi', 600, 'a'), tx('fc', '2026-10-07', 'fooi', 300, 'c')]
+    const averages = tipAverages(trips, [], transactions, TODAY)
+    expect(averages).toEqual({ 'sailing-virgins': 300 })
+    const byId = (id: string) => trips.find((x) => x.id === id)!
+    expect(expectedTip(byId('komend'), averages, null, '2026-12-07', rates)).toEqual({ eur: 300, source: 'gemiddelde' })
+    // Eigen verwachting voor deze trip: 500 USD / 1,25 = 400 EUR.
+    expect(expectedTip(byId('eigen'), averages, null, '2026-12-17', rates)).toEqual({ eur: 400, source: 'trip' })
+    // Standaard per organisatie gaat voor het gemiddelde; Yacht Week zonder standaard en zonder gemiddelde: niets.
+    const settings = { ...DEFAULT_SETTINGS, tipDefaults: { 'sailing-virgins': { amount: 450, currency: 'EUR' as const } } }
+    expect(expectedTip(byId('komend'), averages, settings, '2026-12-07', rates)).toEqual({ eur: 450, source: 'standaard' })
+    expect(expectedTip(byId('yw'), averages, settings, '2026-12-27', rates)).toBeUndefined()
+    // De vooruitblik telt de verwachting per trip: 450 (standaard) + 400 (eigen) in december.
+    expect(salaryOutlook(trips, [], transactions, TODAY, rates, settings).tipEstimateEur).toBe(850)
   })
 
   it('zonder koersbestand: een salaris in een andere valuta apart, nooit omgerekend', () => {

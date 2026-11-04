@@ -10,6 +10,7 @@ import { PeriodPicker } from '../components/money-period'
 import { DrillSheet, type DrillRequest } from '../components/DrillSheet'
 import { ForecastModeSwitch, useForecastMode } from '../components/Scenario'
 import { ScenarioPlanner } from '../components/ScenarioPlanner'
+import { ExpectedTips } from '../components/ExpectedTips'
 import { costsDrill, incomeDrill, investmentDrill, organisationDrill, reimbursedDrill, resultDrill } from '../domain/doorklik'
 import { CostsSection } from '../components/Costs'
 import { ActualCostsSection } from '../components/ActualCosts'
@@ -159,6 +160,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
       {view === 'verwacht' && mode === 'gepland' && (
         <>
           <PositionAndForecast store={store} notify={notify} part="verwacht" period={period} />
+          <ExpectedTips store={store} notify={notify} />
           <SalaryOutlook store={store} />
           <CostsSection store={store} notify={notify} />
         </>

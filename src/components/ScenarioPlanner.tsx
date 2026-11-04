@@ -1,33 +1,31 @@
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { formatDate, formatDateShort, formatMoney, formatMoneyShort, formatMonth, formatMonthShort } from '../format'
-import { getLang, t } from '../i18n'
+import { t } from '../i18n'
 import { buildIndex, planningEnd } from '../model/calendar'
 import { dayAverages } from '../model/costs'
 import { getRates, subscribeRates } from '../model/rates'
-import { blockIncome, liveScenarios, MAX_BLOCKS, MAX_ONE_OFFS, MAX_WEEKS, validOneOffs, type BlockInput } from '../model/scenario'
+import { assumptionsOf, blockIncome, liveScenarios, MAX_BLOCKS, MAX_ONE_OFFS, MAX_PCT, MAX_TRIPS, MAX_WEEKS, MIN_PCT, validOneOffs, type BlockInput, type BlockPatch } from '../model/scenario'
 import { fromHistory, fromPlanning, simEnd, simMonths, simStart, simulate, startPosition, type SimResult } from '../model/scenario-sim'
 import { currentSettings, defaultCurrency } from '../model/settings'
 import { CURRENCIES, type Currency, type Scenario, type ScenarioBlock, type ScenarioOneOff } from '../model/types'
 import type { Store } from '../storage/store'
-import { blokToevoegen, blokVerplaatsen, blokVerwijderen, blokWijzigen, scenarioDoelZetten, scenarioOmzetten, scenarioStartZetten, scenarioVerwijderen } from '../domain/geld'
-import { amountInput, parseAmount, parseStand } from '../basis/bedrag'
+import { aannameWijzigen, blokToevoegen, blokVeldWijzigen, blokVerplaatsen, blokVerwijderen, scenarioDoelWijzigen, scenarioOmzetten, scenarioStartZetten, scenarioVerwijderen } from '../domain/geld'
+import { amountInput } from '../basis/bedrag'
 import { addDays, shiftMonth } from '../basis/datum'
 import { BarChart } from './BarChart'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { LineChart } from './LineChart'
 import { usePositionInput } from './Position'
-import { AssumptionsSheet, assumptionsText, NameSheet, OneOffSheet, ScenarioChooser, useActiveScenario } from './Scenario'
-import { Sheet } from './Sheet'
+import { assumptionsText, NameSheet, OneOffSheet, ScenarioChooser, useActiveScenario } from './Scenario'
+import { DateCell, NumberCell } from './ScenarioCells'
 import { useCollection } from './useCollection'
 
 // Geld → Verwacht → Scenario als stappenplan (src/model/scenario-sim.ts): stap 1 de start, stap 2 inkomen en kosten in
 // blokken, stap 3 beleggen en eenmalige uitgaven, stap 4 het doel; daaronder het rapport (kerncijfers, de som, de
 // netto waarde per maand met de doellijn, inkomen en kosten per maand). Alles is zelf aan te passen; de planning en de
 // eerdere weken zijn alleen een voorstel om een blok mee te vullen.
-
-const ISO = /^\d{4}-\d{2}-\d{2}$/
 
 /** Alles wat het stappenplan nodig heeft, één keer uitgerekend. */
 function usePlannerData(store: Store, scenario: Scenario | null, today: string) {
@@ -61,8 +59,6 @@ export function ScenarioPlanner({ store, notify, today }: { store: Store; notify
   const current = useActiveScenario(store)
   const data = usePlannerData(store, current, today)
   const [naming, setNaming] = useState<'nieuw' | 'hernoemen' | null>(null)
-  const [step, setStep] = useState<'start' | 'doel' | 'aannames' | null>(null)
-  const [editing, setEditing] = useState<ScenarioBlock | 'nieuw' | null>(null)
   const [oneOff, setOneOff] = useState<ScenarioOneOff | 'nieuw' | null>(null)
   const suggested = t('scenario.defaultName', { n: scenarios.length + 1 })
   if (!current || !data.result) {
@@ -88,15 +84,14 @@ export function ScenarioPlanner({ store, notify, today }: { store: Store; notify
     const undo = await scenarioVerwijderen(store, scenario.id)
     notify(t('scenario.deleted'), undo)
   }
-  async function move(block: ScenarioBlock, by: -1 | 1) {
-    const { undo } = await blokVerplaatsen(store, scenario.id, block.id, by)
-    notify(t('scenario.blockMoved'), undo)
+  async function addBlock(form: BlockForm) {
+    const { undo } = await blokToevoegen(store, scenario.id, formInput(form, defaultCurrency(data.settings, 'scenario')))
+    notify(t('scenario.blockSaved'), undo)
   }
   async function convert() {
     const { undo } = await scenarioOmzetten(store, scenario.id, data.planning)
     notify(t('scenarioPlan.converted'), undo)
   }
-  const goal = scenario.goal
   return (
     <div className="section stack scenario scenario-planner">
       <div className="card card-body stack-sm">
@@ -116,68 +111,59 @@ export function ScenarioPlanner({ store, notify, today }: { store: Store; notify
           </div>
         )}
         <ol className="plain-list scenario-steps">
-          <Step n={1} title={t('scenarioPlan.step1')} action={data.legacy ? undefined : () => setStep('start')}>
-            <p>{t('scenarioPlan.startLine', { date: formatDate(result.start), end: formatDate(result.end) })}</p>
-            <p className="muted">{result.ownStart ? formatMoney(result.startValue, 'EUR') : t('scenarioPlan.startValueToday', { amount: formatMoney(result.startValue, 'EUR') })}</p>
+          <Step n={1} title={t('scenarioPlan.step1')}>
+            {data.legacy ? (
+              <p>{t('scenarioPlan.startLine', { date: formatDate(result.start), end: formatDate(result.end) })}</p>
+            ) : (
+              <StartFields store={store} notify={notify} scenario={scenario} today={today} todayValue={data.position.net} />
+            )}
           </Step>
           <Step n={2} title={t('scenarioPlan.step2')}>
             {blockRows.length === 0 && <p className="muted">{t('scenario.noBlocks')}</p>}
             {blockRows.length > 0 && (
               <ol className="plain-list scenario-blocks">
-                {blockRows.map((r, i) => {
-                  const own = r.block ? scenario.blocks.findIndex((b) => b.id === r.block!.id) : -1
-                  const line = t('scenarioPlan.blockTitle', { n: r.number, weeks: r.weeks })
-                  const detail = blockDetail(r.salary, r.tips, r.costs, r.currency, data.history.costs)
-                  return (
-                    <li key={r.key} className="row scenario-block">
-                      {r.block && !data.legacy ? (
-                        <button type="button" className="grow scenario-block-main" aria-label={`${line} · ${t('scenario.edit')}`} onClick={() => setEditing(r.block!)}>
-                          <span>{line}</span>
-                          <span className="muted small">{detail}</span>
-                          <span className="muted small">
-                            {formatDate(r.from)} – {formatDate(r.to)}
-                          </span>
-                        </button>
-                      ) : (
-                        <div className="grow scenario-block-main static">
-                          <span>
-                            {line}
-                            {!r.block && <span className="muted small"> · {t('scenarioPlan.fromPlanning')}</span>}
-                          </span>
-                          <span className="muted small">{detail}</span>
-                          <span className="muted small">
-                            {formatDate(r.from)} – {formatDate(r.to)}
-                          </span>
-                        </div>
-                      )}
-                      {r.block && !data.legacy && scenario.blocks.length > 1 && (
-                        <div className="scenario-move">
-                          <button type="button" className="btn icon" aria-label={`${t('scenario.up')}: ${t('scenario.blockN', { n: r.number })}`} disabled={own <= 0} onClick={() => void move(r.block!, -1)}>
-                            <Icon icon={ArrowUp} />
-                          </button>
-                          <button type="button" className="btn icon" aria-label={`${t('scenario.down')}: ${t('scenario.blockN', { n: r.number })}`} disabled={own === scenario.blocks.length - 1 || i === blockRows.length - 1} onClick={() => void move(r.block!, 1)}>
-                            <Icon icon={ArrowDown} />
-                          </button>
-                        </div>
-                      )}
+                {blockRows.map((r) =>
+                  r.block && !data.legacy ? (
+                    <BlockEditor key={r.key} store={store} notify={notify} scenario={scenario} row={r} averageCosts={data.history.costs} />
+                  ) : (
+                    <li key={r.key} className="scenario-block static">
+                      <span>
+                        {t('scenarioPlan.blockTitle', { n: r.number, weeks: r.weeks })}
+                        {!r.block && <span className="muted small"> · {t('scenarioPlan.fromPlanning')}</span>}
+                      </span>
+                      <span className="muted small">{blockDetail(r.salary, r.tips, r.costs, r.currency, data.history.costs)}</span>
                     </li>
-                  )
-                })}
+                  ),
+                )}
               </ol>
             )}
             {lastBlockEnd && lastBlockEnd < result.end && <p className="muted small">{t('scenarioPlan.afterBlocks', { date: formatDate(lastBlockEnd), costs: formatMoney(data.history.costs, 'EUR') })}</p>}
             {!data.legacy &&
               (scenario.blocks.length < MAX_BLOCKS ? (
-                <button type="button" className="btn" onClick={() => setEditing('nieuw')}>
-                  <Icon icon={Plus} />
-                  {t('scenario.addBlock')}
-                </button>
+                <div className="type-buttons">
+                  <button type="button" className="btn small" onClick={() => void addBlock({ weeks: 4, trips: 4, salaryPerTrip: 0, tipsPerTrip: 0 })}>
+                    <Icon icon={Plus} />
+                    {t('scenario.addBlock')}
+                  </button>
+                  {data.planning && (
+                    <button type="button" className="btn small" onClick={() => void addBlock(planningForm(data.planning!))}>
+                      {t('scenarioPlan.fromPlanning')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => void addBlock({ weeks: 12, trips: Math.round(data.history.tripsPerWeek * 12), salaryPerTrip: data.history.salaryPerTrip, tipsPerTrip: data.history.tipsPerTrip, costsPerWeek: data.history.costs })}
+                  >
+                    {t('scenarioPlan.fromHistory')}
+                  </button>
+                </div>
               ) : (
                 <p className="muted small">{t('scenario.max', { n: MAX_BLOCKS })}</p>
               ))}
           </Step>
-          <Step n={3} title={t('scenarioPlan.step3')} action={data.legacy ? undefined : () => setStep('aannames')}>
-            <p>{assumptionsText(scenario)}</p>
+          <Step n={3} title={t('scenarioPlan.step3')}>
+            {data.legacy ? <p>{assumptionsText(scenario)}</p> : <AssumptionFields store={store} notify={notify} scenario={scenario} />}
             {oneOffs.length > 0 && (
               <ul className="plain-list scenario-blocks">
                 {oneOffs.map((o) => (
@@ -194,20 +180,18 @@ export function ScenarioPlanner({ store, notify, today }: { store: Store; notify
               </ul>
             )}
             {!data.legacy && oneOffs.length < MAX_ONE_OFFS && (
-              <button type="button" className="btn" onClick={() => setOneOff('nieuw')}>
+              <button type="button" className="btn small" onClick={() => setOneOff('nieuw')}>
                 <Icon icon={Plus} />
                 {t('scenario.addOneOff')}
               </button>
             )}
           </Step>
-          <Step n={4} title={t('scenarioPlan.step4')} action={data.legacy ? undefined : () => setStep('doel')}>
-            <p>
-              {goal?.kind === 'doel'
-                ? goal.by
-                  ? t('scenarioPlan.goalAmountBy', { amount: formatMoney(goal.amount, 'EUR'), date: formatDate(goal.by) })
-                  : t('scenarioPlan.goalAmount', { amount: formatMoney(goal.amount, 'EUR') })
-                : t('scenarioPlan.goalStand', { date: formatDate(result.end) })}
-            </p>
+          <Step n={4} title={t('scenarioPlan.step4')}>
+            {data.legacy ? (
+              <p>{t('scenarioPlan.goalStand', { date: formatDate(result.end) })}</p>
+            ) : (
+              <GoalFields store={store} notify={notify} scenario={scenario} start={result.start} end={result.end} />
+            )}
           </Step>
         </ol>
       </div>
@@ -221,16 +205,12 @@ export function ScenarioPlanner({ store, notify, today }: { store: Store; notify
         </button>
       </div>
       {naming && <NameSheet store={store} notify={notify} mode={naming} scenario={naming === 'hernoemen' ? scenario : null} suggested={suggested} onClose={() => setNaming(null)} />}
-      {step === 'start' && <StartStepSheet store={store} notify={notify} scenario={scenario} today={today} todayValue={data.position.net} onClose={() => setStep(null)} />}
-      {step === 'aannames' && <AssumptionsSheet store={store} notify={notify} scenario={scenario} onClose={() => setStep(null)} />}
-      {step === 'doel' && <GoalSheet store={store} notify={notify} scenario={scenario} start={result.start} onClose={() => setStep(null)} />}
-      {editing && <PlanBlockSheet store={store} notify={notify} scenario={scenario} block={editing === 'nieuw' ? null : editing} planning={data.planning} history={data.history} onClose={() => setEditing(null)} />}
       {oneOff && <OneOffSheet store={store} notify={notify} scenario={scenario} oneOff={oneOff === 'nieuw' ? null : oneOff} onClose={() => setOneOff(null)} />}
     </div>
   )
 }
 
-function Step({ n, title, action, children }: { n: number; title: string; action?: () => void; children: ReactNode }) {
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <li className="scenario-step">
       <div className="scenario-step-head">
@@ -241,11 +221,6 @@ function Step({ n, title, action, children }: { n: number; title: string; action
           <span className="sr-only">{t('scenarioPlan.step', { n })}: </span>
           {title}
         </h3>
-        {action && (
-          <button type="button" className="btn link small" aria-label={`${t('scenario.changeStart')}: ${title}`} onClick={action}>
-            {t('scenario.changeStart')}
-          </button>
-        )}
       </div>
       <div className="scenario-step-body stack-sm">{children}</div>
     </li>
@@ -308,6 +283,10 @@ function Report({ result }: { result: SimResult }) {
   const unpriced = Object.entries(result.unpriced)
   const startPoint = { key: 'start', label: formatMonthShort(result.start.slice(0, 7)), value: result.startValue, future: false }
   const points = [startPoint, ...months.map((m) => ({ key: m.month, label: formatMonthShort(m.month), value: m.value, future: true }))]
+  // De doellijn op de grafiek van wat het doel meet: de netto waarde, of het verdiende bedrag (opgeteld vanaf de start).
+  const netGoal = goal.kind === 'doel' && goal.measure === 'netto' ? goal.amount : null
+  const earnedGoal = goal.kind === 'doel' && goal.measure === 'verdiend' ? goal.amount : null
+  const earnedPoints = [{ ...startPoint, value: 0 }, ...months.map((m) => ({ key: m.month, label: formatMonthShort(m.month), value: m.earned, future: true }))]
   const every = (n: number) => (n > 8 ? Math.ceil(n / 6) : 1)
   return (
     <div className="card card-body stack scenario-report">
@@ -318,7 +297,7 @@ function Report({ result }: { result: SimResult }) {
         <Kpi label={t('scenarioPlan.perWeek')} value={signed(perWeek)} />
         {goal.kind === 'doel' && (
           <Kpi
-            label={t('scenarioPlan.reachedLabel', { amount: formatMoney(goal.amount, 'EUR') })}
+            label={t(goal.measure === 'verdiend' ? 'scenarioPlan.earnedLabel' : 'scenarioPlan.reachedLabel', { amount: formatMoney(goal.amount, 'EUR') })}
             value={goal.reachedOn === null ? t('scenarioPlan.notReached') : goal.reachedOn === result.start ? t('scenarioPlan.alreadyReached') : formatDateShort(goal.reachedOn)}
           />
         )}
@@ -347,11 +326,23 @@ function Report({ result }: { result: SimResult }) {
       <h3>{t('scenarioPlan.chartValue')}</h3>
       <LineChart
         points={points}
-        label={`${t('scenarioPlan.chartValue')}: ${points.map((p) => `${p.label} ${formatMoney(p.value, 'EUR')}`).join(', ')}${goal.kind === 'doel' ? `; ${t('scenarioPlan.goalLine')} ${formatMoney(goal.amount, 'EUR')}` : ''}`}
+        label={`${t('scenarioPlan.chartValue')}: ${points.map((p) => `${p.label} ${formatMoney(p.value, 'EUR')}`).join(', ')}${netGoal ? `; ${t('scenarioPlan.goalLine')} ${formatMoney(netGoal, 'EUR')}` : ''}`}
         format={(n) => formatMoneyShort(n)}
         labelEvery={every(points.length)}
-        goal={goal.kind === 'doel' ? { value: goal.amount, label: `${t('scenarioPlan.goalLine')} ${formatMoneyShort(goal.amount)}` } : undefined}
+        goal={netGoal !== null ? { value: netGoal, label: `${t('scenarioPlan.goalLine')} ${formatMoneyShort(netGoal)}` } : undefined}
       />
+      {earnedGoal !== null && (
+        <>
+          <h3>{t('scenarioPlan.chartEarned')}</h3>
+          <LineChart
+            points={earnedPoints}
+            label={`${t('scenarioPlan.chartEarned')}: ${earnedPoints.map((p) => `${p.label} ${formatMoney(p.value, 'EUR')}`).join(', ')}; ${t('scenarioPlan.goalLine')} ${formatMoney(earnedGoal, 'EUR')}`}
+            format={(n) => formatMoneyShort(n)}
+            labelEvery={every(earnedPoints.length)}
+            goal={{ value: earnedGoal, label: `${t('scenarioPlan.goalLine')} ${formatMoneyShort(earnedGoal)}` }}
+          />
+        </>
+      )}
       <h3>{t('scenarioPlan.chartFlow')}</h3>
       <BarChart
         label={`${t('scenarioPlan.chartFlow')}: ${months.map((m) => `${formatMonth(m.month)} +${formatMoney(m.income, 'EUR')}, −${formatMoney(m.costs, 'EUR')}`).join('; ')}`}
@@ -408,198 +399,245 @@ function Kpi({ label, value, detail }: { label: string; value: string; detail?: 
 
 const LOOK_AHEAD = [12, 18, 24, 60] as const
 
+/** `months` maanden na `date` (de laatste dag van de maand als die dag niet bestaat). */
+function monthsAfter(date: string, months: number): string {
+  const target = `${shiftMonth(date.slice(0, 7), months)}-${date.slice(8)}`
+  return !Number.isNaN(Date.parse(target)) && new Date(`${target}T12:00:00Z`).toISOString().slice(0, 10) === target ? target : `${shiftMonth(date.slice(0, 7), months)}-28`
+}
+
 /** Stap 1: begindatum (vanaf vandaag), de netto waarde bij de start (leeg = die van vandaag) en tot wanneer. */
-function StartStepSheet({ store, notify, scenario, today, todayValue, onClose }: { store: Store; notify: Notify; scenario: Scenario; today: string; todayValue: number; onClose: () => void }) {
-  const [date, setDate] = useState(simStart(scenario, today))
-  const [value, setValue] = useState(scenario.startValue !== undefined ? amountInput(scenario.startValue) : '')
-  const [end, setEnd] = useState(simEnd(scenario, today))
-  const startValue = value.trim() === '' ? null : parseStand(value, getLang())
-  const valueOk = value.trim() === '' || startValue !== null
-  const ok = ISO.test(date) && date >= today && ISO.test(end) && end > date && valueOk
-  const ahead = (months: number) => {
-    const target = `${shiftMonth(date.slice(0, 7), months)}-${date.slice(8)}`
-    return ISO.test(target) && !Number.isNaN(Date.parse(target)) ? target : `${shiftMonth(date.slice(0, 7), months)}-28`
-  }
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!ok) return
-    const { undo } = await scenarioStartZetten(store, scenario.id, { startDate: date > today ? date : null, startValue, endDate: end })
-    onClose()
+function StartFields({ store, notify, scenario, today, todayValue }: { store: Store; notify: Notify; scenario: Scenario; today: string; todayValue: number }) {
+  const start = simStart(scenario, today)
+  const end = simEnd(scenario, today)
+  // Alleen het gewijzigde veld gaat mee: twee snelle wijzigingen na elkaar overschrijven elkaar zo nooit.
+  async function save(patch: { startDate?: string; startValue?: number | null; endDate?: string }) {
+    const { undo } = await scenarioStartZetten(store, scenario.id, {
+      ...(patch.startDate !== undefined ? { startDate: patch.startDate > today ? patch.startDate : null } : {}),
+      ...(patch.startValue !== undefined ? { startValue: patch.startValue } : {}),
+      ...(patch.endDate !== undefined ? { endDate: patch.endDate } : {}),
+    })
     notify(t('scenario.saved'), undo)
   }
   return (
-    <Sheet title={`${t('scenarioPlan.step', { n: 1 })}: ${t('scenarioPlan.step1')}`} onClose={onClose}>
-      <form className="stack" onSubmit={(e) => void submit(e)}>
-        <label>
-          {t('scenarioPlan.startDate')}
-          <input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <label>
-          {t('scenarioPlan.startValue')}
-          <input className="amount" type="text" inputMode="decimal" autoComplete="off" placeholder={formatMoney(todayValue, 'EUR')} value={value} onChange={(e) => setValue(e.target.value)} />
-        </label>
-        <p className="muted small">{t('scenarioPlan.startValueHint', { amount: formatMoney(todayValue, 'EUR') })}</p>
-        <label>
-          {t('scenarioPlan.endDate')}
-          <input type="date" value={end} min={addDays(date, 1)} onChange={(e) => setEnd(e.target.value)} />
-        </label>
-        <div className="type-buttons">
-          {LOOK_AHEAD.map((m) => (
-            <button key={m} type="button" aria-pressed={end === ahead(m)} className={`chip${end === ahead(m) ? ' active' : ''}`} onClick={() => setEnd(ahead(m))}>
-              {t('scenarioPlan.months', { n: m })}
-            </button>
-          ))}
-        </div>
-        <button className="btn primary" type="submit" disabled={!ok}>
-          {t('common.save')}
-        </button>
-      </form>
-    </Sheet>
+    <div className="scenario-fields">
+      <label>
+        {t('scenarioPlan.startDate')}
+        <DateCell label={t('scenarioPlan.startDate')} value={start} min={today} onCommit={(v) => void save({ startDate: v })} />
+      </label>
+      <label>
+        {t('scenarioPlan.startValue')}
+        <NumberCell label={t('scenarioPlan.startValue')} value={scenario.startValue ?? null} allowNegative placeholder={amountInput(todayValue)} onCommit={(v) => void save({ startValue: v })} />
+      </label>
+      <label className="wide">
+        {t('scenarioPlan.endDate')}
+        <DateCell label={t('scenarioPlan.endDate')} value={end} min={addDays(start, 1)} onCommit={(v) => void save({ endDate: v })} />
+      </label>
+      <div className="type-buttons wide">
+        {LOOK_AHEAD.map((m) => (
+          <button key={m} type="button" aria-pressed={end === monthsAfter(start, m)} className={`chip${end === monthsAfter(start, m) ? ' active' : ''}`} onClick={() => void save({ endDate: monthsAfter(start, m) })}>
+            {t('scenarioPlan.months', { n: m })}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
-/** Stap 2: een blok met weken, salaris, fooi en kosten per week; in te vullen uit de planning of de eerdere weken. */
-function PlanBlockSheet({ store, notify, scenario, block, planning, history, onClose }: { store: Store; notify: Notify; scenario: Scenario; block: ScenarioBlock | null; planning: (BlockInput & { weeks: number }) | null; history: { salary: number; tips: number; costs: number }; onClose: () => void }) {
-  const previous = scenario.blocks.at(-1)
-  const lastCurrency = defaultCurrency(currentSettings(useCollection(store, 'settings.json.enc')), 'scenario')
-  const income = block ? blockIncome(block) : null
-  const [weeks, setWeeks] = useState(block ? String(block.weeks) : '')
-  const [salary, setSalary] = useState(income ? amountInput(income.salary) : '')
-  const [tips, setTips] = useState(income ? amountInput(income.tips) : '')
-  const [currency, setCurrency] = useState<Currency>(block?.currency ?? previous?.currency ?? lastCurrency ?? 'EUR')
-  const [costs, setCosts] = useState(block?.costsPerWeek !== undefined ? amountInput(block.costsPerWeek) : '')
-  const w = Number(weeks)
-  const weeksOk = Number.isInteger(w) && w >= 1 && w <= MAX_WEEKS
-  // Nul mag (geen fooi, geen kosten); leeg is 0, bij de kosten het gemiddelde.
-  const nonNegative = (text: string) => {
-    const n = parseStand(text, getLang())
-    return n !== null && n >= 0 ? n : null
+/** Een blok om in te typen: weken, trips, salaris en fooi per trip, kosten per week. */
+interface BlockForm {
+  weeks: number
+  trips: number
+  salaryPerTrip: number
+  tipsPerTrip: number
+  costsPerWeek?: number
+  currency?: Currency
+}
+
+/** Een blok als formulier; een ouder blok (bedragen per week) als één trip per week. */
+function blockForm(b: ScenarioBlock): BlockForm & { currency: Currency } {
+  if (b.trips !== undefined) return { weeks: b.weeks, trips: b.trips, salaryPerTrip: b.salaryPerTrip ?? 0, tipsPerTrip: b.tipsPerTrip ?? 0, ...(b.costsPerWeek !== undefined ? { costsPerWeek: b.costsPerWeek } : {}), currency: b.currency }
+  const income = blockIncome(b)
+  return { weeks: b.weeks, trips: b.weeks, salaryPerTrip: income.salary, tipsPerTrip: income.tips, ...(b.costsPerWeek !== undefined ? { costsPerWeek: b.costsPerWeek } : {}), currency: b.currency }
+}
+
+function formInput(f: BlockForm, fallback: Currency): BlockInput {
+  return {
+    weeks: f.weeks,
+    incomePerWeek: 0,
+    trips: f.trips,
+    salaryPerTrip: f.salaryPerTrip,
+    tipsPerTrip: f.tipsPerTrip,
+    currency: f.currency ?? fallback,
+    ...(f.costsPerWeek !== undefined ? { costsPerWeek: f.costsPerWeek } : {}),
   }
-  const read = (text: string) => (text.trim() === '' ? 0 : nonNegative(text))
-  const salaryValue = read(salary)
-  const tipsValue = read(tips)
-  const costsValue = costs.trim() === '' ? undefined : nonNegative(costs)
-  const valid = weeksOk && salaryValue !== null && salaryValue >= 0 && tipsValue !== null && tipsValue >= 0 && costsValue !== null && (costsValue === undefined || costsValue >= 0)
-  function fill(from: { weeks?: number; salary: number; tips: number; costs: number }) {
-    if (from.weeks !== undefined) setWeeks(String(Math.min(MAX_WEEKS, from.weeks)))
-    setSalary(amountInput(from.salary))
-    setTips(amountInput(from.tips))
-    setCosts(amountInput(from.costs))
-    setCurrency('EUR')
-  }
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!valid) return
-    const input: BlockInput = { weeks: w, incomePerWeek: salaryValue! + tipsValue!, salaryPerWeek: salaryValue!, tipsPerWeek: tipsValue!, currency, ...(costsValue !== undefined && costsValue !== null ? { costsPerWeek: costsValue } : {}) }
-    const { undo } = block ? await blokWijzigen(store, scenario.id, block.id, input) : await blokToevoegen(store, scenario.id, input)
-    onClose()
+}
+
+/** De planning als blok: de trips van de planning met het verwachte salaris en de fooi per trip. */
+function planningForm(p: BlockInput & { weeks: number }): BlockForm {
+  if (p.trips !== undefined) return { weeks: p.weeks, trips: p.trips, salaryPerTrip: p.salaryPerTrip ?? 0, tipsPerTrip: p.tipsPerTrip ?? 0, ...(p.costsPerWeek !== undefined ? { costsPerWeek: p.costsPerWeek } : {}), currency: p.currency }
+  return { weeks: p.weeks, trips: p.weeks, salaryPerTrip: p.salaryPerWeek ?? p.incomePerWeek, tipsPerTrip: p.tipsPerWeek ?? 0, ...(p.costsPerWeek !== undefined ? { costsPerWeek: p.costsPerWeek } : {}), currency: p.currency }
+}
+
+function BlockEditor({ store, notify, scenario, row, averageCosts }: { store: Store; notify: Notify; scenario: Scenario; row: BlockRow; averageCosts: number }) {
+  const block = row.block!
+  const form = blockForm(block)
+  const own = scenario.blocks.findIndex((b) => b.id === block.id)
+  const name = t('scenario.blockN', { n: row.number })
+  // Alleen het gewijzigde veld gaat mee; de rest leest de opdracht uit het blok zoals het dan is.
+  async function save(patch: BlockPatch) {
+    const { undo } = await blokVeldWijzigen(store, scenario.id, block.id, patch)
     notify(t('scenario.blockSaved'), undo)
   }
+  async function move(by: -1 | 1) {
+    const { undo } = await blokVerplaatsen(store, scenario.id, block.id, by)
+    notify(t('scenario.blockMoved'), undo)
+  }
   async function remove() {
-    if (!block) return
     const { undo } = await blokVerwijderen(store, scenario.id, block.id)
-    onClose()
     notify(t('scenario.blockDeleted'), undo)
   }
-  const money = (label: string, value: string, set: (v: string) => void) => (
-    <label className="grow">
+  const perWeek = (form.trips * (form.salaryPerTrip + form.tipsPerTrip)) / form.weeks
+  return (
+    <li className="scenario-block-edit">
+      <div className="row scenario-block-head">
+        <strong className="grow">
+          {t('scenarioPlan.blockTitle', { n: row.number, weeks: row.weeks })}
+          <span className="muted small">
+            {' '}
+            · {formatDateShort(row.from)} – {formatDateShort(row.to)}
+          </span>
+        </strong>
+        <div className="scenario-move">
+          <button type="button" className="btn icon" aria-label={`${t('scenario.up')}: ${name}`} disabled={own <= 0} onClick={() => void move(-1)}>
+            <Icon icon={ArrowUp} />
+          </button>
+          <button type="button" className="btn icon" aria-label={`${t('scenario.down')}: ${name}`} disabled={own === scenario.blocks.length - 1} onClick={() => void move(1)}>
+            <Icon icon={ArrowDown} />
+          </button>
+          <button type="button" className="btn icon" aria-label={`${t('common.delete')}: ${name}`} onClick={() => void remove()}>
+            <Icon icon={Trash2} />
+          </button>
+        </div>
+      </div>
+      <div className="scenario-fields">
+        <label>
+          {t('scenario.weeks')}
+          <NumberCell label={`${t('scenario.weeks')}: ${name}`} value={form.weeks} integer min={1} max={MAX_WEEKS} onCommit={(v) => v !== null && void save({ weeks: v })} />
+        </label>
+        <label>
+          {t('scenarioPlan.trips')}
+          <NumberCell label={`${t('scenarioPlan.trips')}: ${name}`} value={form.trips} integer min={0} max={MAX_TRIPS} onCommit={(v) => void save({ trips: v ?? 0 })} />
+        </label>
+        <label>
+          {t('scenarioPlan.salaryPerTrip')}
+          <NumberCell label={`${t('scenarioPlan.salaryPerTrip')}: ${name}`} value={form.salaryPerTrip} onCommit={(v) => void save({ salaryPerTrip: v ?? 0 })} />
+        </label>
+        <label>
+          {t('scenarioPlan.tipsPerTrip')}
+          <NumberCell label={`${t('scenarioPlan.tipsPerTrip')}: ${name}`} value={form.tipsPerTrip} onCommit={(v) => void save({ tipsPerTrip: v ?? 0 })} />
+        </label>
+        <label>
+          {t('scenarioPlan.costsPerWeek')}
+          <NumberCell label={`${t('scenarioPlan.costsPerWeek')}: ${name}`} value={form.costsPerWeek ?? null} placeholder={amountInput(averageCosts)} onCommit={(v) => void save({ costsPerWeek: v })} />
+        </label>
+        <label>
+          {t('scenario.currency')}
+          <select className="cell" aria-label={`${t('scenario.currency')}: ${name}`} value={form.currency} onChange={(e) => void save({ currency: e.target.value as Currency })}>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="muted small">{t('scenarioPlan.blockPerWeek', { amount: formatMoney(perWeek, form.currency) })}</p>
+    </li>
+  )
+}
+
+/** Stap 3: de aannames om in te typen (procent per jaar; leeg is 0). */
+function AssumptionFields({ store, notify, scenario }: { store: Store; notify: Notify; scenario: Scenario }) {
+  const a = assumptionsOf(scenario)
+  async function save(patch: Partial<typeof a>) {
+    const { undo } = await aannameWijzigen(store, scenario.id, patch)
+    notify(t('scenario.saved'), undo)
+  }
+  const field = (key: keyof typeof a, label: string, min: number, max: number) => (
+    <label>
       {label}
-      <input className="amount" type="text" inputMode="decimal" autoComplete="off" value={value} onChange={(e) => set(e.target.value)} />
+      <NumberCell label={label} value={a[key] === 0 ? null : a[key]} allowNegative={min < 0} min={min} max={max} placeholder="0" onCommit={(v) => void save({ [key]: v ?? 0 })} />
     </label>
   )
   return (
-    <Sheet title={block ? t('scenario.edit') : t('scenario.addBlock')} onClose={onClose}>
-      <form className="stack" onSubmit={(e) => void submit(e)}>
-        <div className="stack-sm">
-          <span className="small">{t('scenarioPlan.fillFrom')}</span>
-          <div className="type-buttons">
-            {planning && (
-              <button type="button" className="chip" onClick={() => fill({ weeks: planning.weeks, salary: planning.salaryPerWeek ?? planning.incomePerWeek, tips: planning.tipsPerWeek ?? 0, costs: planning.costsPerWeek ?? 0 })}>
-                {t('scenarioPlan.fromPlanning')}
-              </button>
-            )}
-            <button type="button" className="chip" onClick={() => fill(history)}>
-              {t('scenarioPlan.fromHistory')}
-            </button>
-          </div>
-        </div>
-        <label>
-          {t('scenario.weeks')}
-          <input type="number" inputMode="numeric" min={1} max={MAX_WEEKS} value={weeks} onChange={(e) => setWeeks(e.target.value)} />
-        </label>
-        <div className="amount-currency">
-          {money(t('scenarioPlan.salaryPerWeek'), salary, setSalary)}
-          <label>
-            {t('scenario.currency')}
-            <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-              {CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {money(t('scenarioPlan.tipsPerWeek'), tips, setTips)}
-        {money(t('scenario.costsPerWeek'), costs, setCosts)}
-        <p className="muted small">{t('scenarioPlan.costsEmpty', { amount: formatMoney(history.costs, 'EUR') })}</p>
-        <div className="sheet-actions">
-          <button className="btn primary" type="submit" disabled={!valid}>
-            {t('common.save')}
-          </button>
-          {block && (
-            <button type="button" className="btn danger" onClick={() => void remove()}>
-              <Icon icon={Trash2} />
-              {t('common.delete')}
-            </button>
-          )}
-        </div>
-      </form>
-    </Sheet>
+    <div className="scenario-fields">
+      {field('investmentGrowthPct', t('scenario.investmentGrowth'), MIN_PCT, MAX_PCT)}
+      {field('assetGrowthPct', t('scenario.assetGrowth'), MIN_PCT, MAX_PCT)}
+      {field('debtInterestPct', t('scenario.debtInterest'), MIN_PCT, MAX_PCT)}
+      {field('investPct', t('scenario.investPct'), 0, 100)}
+    </div>
   )
 }
 
-/** Stap 4: waar sta ik op de einddatum, of een bedrag halen (eventueel vóór een datum). */
-function GoalSheet({ store, notify, scenario, start, onClose }: { store: Store; notify: Notify; scenario: Scenario; start: string; onClose: () => void }) {
+type GoalKind = 'stand' | 'netto' | 'verdiend'
+
+/** Stap 4: waar sta ik op de einddatum, een netto waarde halen, of een bedrag verdienen; eventueel vóór een datum. */
+function GoalFields({ store, notify, scenario, start, end }: { store: Store; notify: Notify; scenario: Scenario; start: string; end: string }) {
   const goal = scenario.goal
-  const [kind, setKind] = useState<'stand' | 'doel'>(goal?.kind ?? 'stand')
-  const [amount, setAmount] = useState(goal?.kind === 'doel' ? amountInput(goal.amount) : '')
-  const [by, setBy] = useState(goal?.kind === 'doel' ? (goal.by ?? '') : '')
-  const value = parseAmount(amount, getLang())
-  const ok = kind === 'stand' || (value !== null && (by === '' || (ISO.test(by) && by > start)))
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!ok) return
-    const { undo } = await scenarioDoelZetten(store, scenario.id, kind === 'doel' ? { kind: 'doel', amount: value!, ...(by ? { by } : {}) } : { kind: 'stand' })
-    onClose()
+  const kind: GoalKind = goal?.kind === 'doel' ? (goal.measure === 'verdiend' ? 'verdiend' : 'netto') : 'stand'
+  const amount = goal?.kind === 'doel' ? goal.amount : null
+  const by = goal?.kind === 'doel' ? (goal.by ?? '') : ''
+  // Alleen het gewijzigde veld gaat mee; zonder bedrag (ook net opgeslagen) is het doel "waar sta ik".
+  async function save(patch: { kind?: GoalKind; amount?: number | null; by?: string | null }) {
+    const { undo } = await scenarioDoelWijzigen(store, scenario.id, patch)
     notify(t('scenario.saved'), undo)
   }
+  const [pending, setPending] = useState<GoalKind | null>(null)
+  const shownKind = pending ?? kind
   return (
-    <Sheet title={`${t('scenarioPlan.step', { n: 4 })}: ${t('scenarioPlan.step4')}`} onClose={onClose}>
-      <form className="stack" onSubmit={(e) => void submit(e)}>
-        <div className="type-buttons" role="radiogroup" aria-label={t('scenarioPlan.step4')}>
-          {(['stand', 'doel'] as const).map((k) => (
-            <button key={k} type="button" role="radio" aria-checked={kind === k} className={`chip${kind === k ? ' active' : ''}`} onClick={() => setKind(k)}>
-              {t(k === 'stand' ? 'scenarioPlan.goalKindStand' : 'scenarioPlan.goalKindAmount')}
-            </button>
-          ))}
+    <div className="stack-sm">
+      <div className="type-buttons" role="radiogroup" aria-label={t('scenarioPlan.step4')}>
+        {(['stand', 'netto', 'verdiend'] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={shownKind === k}
+            className={`chip${shownKind === k ? ' active' : ''}`}
+            onClick={() => {
+              if (k === 'stand') {
+                setPending(null)
+                void save({ kind: 'stand' })
+              } else if (amount !== null) {
+                setPending(null)
+                void save({ kind: k })
+              } else setPending(k)
+            }}
+          >
+            {k === 'stand' ? t('scenarioPlan.goalStand', { date: formatDate(end) }) : t(`scenarioPlan.goalKind.${k}`)}
+          </button>
+        ))}
+      </div>
+      {shownKind !== 'stand' && (
+        <div className="scenario-fields">
+          <label>
+            {t(shownKind === 'verdiend' ? 'scenarioPlan.goalEarned' : 'scenarioPlan.goalValue')}
+            <NumberCell
+              label={t(shownKind === 'verdiend' ? 'scenarioPlan.goalEarned' : 'scenarioPlan.goalValue')}
+              value={amount}
+              allowNegative={shownKind === 'netto'}
+              onCommit={(v) => {
+                setPending(null)
+                void save({ kind: v === null ? 'stand' : shownKind, amount: v })
+              }}
+            />
+          </label>
+          <label>
+            {t('scenarioPlan.goalBy')}
+            <DateCell label={t('scenarioPlan.goalBy')} value={by} min={addDays(start, 1)} allowEmpty onCommit={(v) => void save({ kind: shownKind, by: v || null })} />
+          </label>
         </div>
-        {kind === 'doel' && (
-          <>
-            <label>
-              {t('scenarioPlan.goalValue')}
-              <input className="amount" type="text" inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </label>
-            <label>
-              {t('scenarioPlan.goalBy')}
-              <input type="date" value={by} min={addDays(start, 1)} onChange={(e) => setBy(e.target.value)} />
-            </label>
-          </>
-        )}
-        <button className="btn primary" type="submit" disabled={!ok}>
-          {t('common.save')}
-        </button>
-      </form>
-    </Sheet>
+      )}
+    </div>
   )
 }

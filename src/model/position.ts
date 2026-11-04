@@ -1,4 +1,3 @@
-import { organisationOfTrip } from '../basis/organisatie'
 import { balanceOn } from './accounts'
 import type { CalendarIndex } from './calendar'
 import { expectedCosts, type DayAverage } from './costs'
@@ -8,7 +7,7 @@ import { eurOf, totals } from './money'
 import { booked } from '../domain/geldmodel'
 import { payoutRule } from './money-path'
 import { eurValue, toEur, type EurAmount, type RatesFile } from './rates'
-import { tipAverages, tripEnd } from './salary'
+import { expectedTip, tipAverages, tripEnd } from './salary'
 import { salaryStatus } from '../domain/geldmodel'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, ScenarioOneOff, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
@@ -497,13 +496,14 @@ export function forecast(
       if (eur === null) other[s.currency] = round2((other[s.currency] ?? 0) + s.amount)
       else items.push({ date: counts, kind: 'salaris', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], tx: s, payout: payoutMoment(trip, legs, settings) ?? end, eur })
     }
-    const avg = averages[organisationOfTrip(trip)]
     const tipDate = end > today ? end : tomorrow
-    if (avg !== undefined && inRange(tipDate)) {
+    // De verwachte fooi: per trip ingevuld, anders de standaard van de organisatie, anders het eigen gemiddelde.
+    const tip = expectedTip(trip, averages, settings, end, rates)
+    if (tip !== undefined && inRange(tipDate)) {
       const already = booked(transactions)
         .filter((tx) => tx.kind === 'fooi' && tx.tripId === trip.id)
         .reduce((n, tx) => n + (eurOf(tx) ?? 0), 0)
-      const estimate = round2(Math.max(0, avg - already))
+      const estimate = round2(Math.max(0, tip.eur - already))
       if (estimate > 0) items.push({ date: tipDate, kind: 'fooi', ...(trip.organisation ? { org: trip.organisation } : {}), trips: [trip], eur: estimate })
     }
   }

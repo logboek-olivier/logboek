@@ -7,6 +7,7 @@ import { salaryOutlook } from '../model/salary'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
 import { useCollection } from './useCollection'
+import { currentSettings } from '../model/settings'
 import { todayIso } from '../basis/datum'
 
 // Geld → Vooruitblik: per maand het verwachte en het ontvangen salaris, en het totaal tot het einde van de planning.
@@ -18,14 +19,15 @@ export function SalaryOutlook({ store }: { store: Store }) {
   const legs = useCollection(store, 'legs.json.enc')
   const transactions = useCollection(store, 'transactions.json.enc')
   const rates = useSyncExternalStore(subscribeRates, getRates)
+  const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const [shown, setShown] = useState(false)
   const [tips, setTips] = useState(false)
   const any = transactions.some((tx) => tx.deletedAt === null && tx.kind === 'loon')
   if (!any) return null
-  const o = salaryOutlook(trips, legs, transactions, todayIso(), rates)
+  const o = salaryOutlook(trips, legs, transactions, todayIso(), rates, settings)
   const expectedTrips = o.months.reduce((n, m) => n + m.trips.length, 0)
   const until = formatMonth(o.until)
-  const hasTips = Object.keys(o.tipAverages).length > 0
+  const hasTips = Object.keys(o.tipAverages).length > 0 || o.tipEstimateEur > 0
   return (
     <div className="section card card-body outlook">
       <div className="section-head">
