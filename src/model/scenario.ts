@@ -204,27 +204,43 @@ export interface BlockInput {
   tipsPerWeek?: number
   currency: Currency
   costsPerWeek?: number
+  /** N trips in de weken van het blok, met salaris en fooi per trip (gaat voor de bedragen per week). */
+  trips?: number
+  salaryPerTrip?: number
+  tipsPerTrip?: number
 }
+
+/** Hoogstens zoveel trips in één blok. */
+export const MAX_TRIPS = 520
 
 const money = (n: number | undefined) => (n !== undefined && Number.isFinite(n) ? round2(Math.max(0, n)) : undefined)
 
 function cleanBlock(id: string, input: BlockInput): ScenarioBlock {
-  const salary = money(input.salaryPerWeek)
-  const tips = money(input.tipsPerWeek)
+  const weeks = Math.min(MAX_WEEKS, Math.max(1, Math.round(input.weeks)))
+  // Trips in het blok: salaris en fooi per week zijn het evenredige deel (voor oudere versies, die per week rekenen).
+  const trips = input.trips !== undefined && Number.isFinite(input.trips) ? Math.min(MAX_TRIPS, Math.max(0, Math.round(input.trips))) : undefined
+  const perTrip = trips !== undefined ? { salary: money(input.salaryPerTrip) ?? 0, tips: money(input.tipsPerTrip) ?? 0 } : null
+  const salary = perTrip ? round2((trips! * perTrip.salary) / weeks) : money(input.salaryPerWeek)
+  const tips = perTrip ? round2((trips! * perTrip.tips) / weeks) : money(input.tipsPerWeek)
   const split = salary !== undefined || tips !== undefined
   return {
     id,
-    weeks: Math.min(MAX_WEEKS, Math.max(1, Math.round(input.weeks))),
+    weeks,
     // Oudere versies lezen alleen incomePerWeek: dat is altijd de som, zodat hun vooruitblik hetzelfde inkomen ziet.
     incomePerWeek: split ? round2((salary ?? 0) + (tips ?? 0)) : round2(Math.max(0, input.incomePerWeek)),
     ...(split ? { salaryPerWeek: salary ?? 0, tipsPerWeek: tips ?? 0 } : {}),
     currency: input.currency,
     ...(input.costsPerWeek !== undefined && Number.isFinite(input.costsPerWeek) ? { costsPerWeek: round2(Math.max(0, input.costsPerWeek)) } : {}),
+    ...(perTrip ? { trips, salaryPerTrip: perTrip.salary, tipsPerTrip: perTrip.tips } : {}),
   }
 }
 
-/** Salaris en fooi per week van een blok (een ouder blok zonder de twee apart: alles salaris). */
+/**
+ * Salaris en fooi per week van een blok, exact: bij trips het evenredige deel (trips × per trip ÷ weken, zodat het blok
+ * samen precies trips × per trip geeft); een ouder blok zonder de twee apart: alles salaris.
+ */
 export function blockIncome(block: ScenarioBlock): { salary: number; tips: number } {
+  if (block.trips !== undefined && block.weeks > 0) return { salary: (block.trips * (block.salaryPerTrip ?? 0)) / block.weeks, tips: (block.trips * (block.tipsPerTrip ?? 0)) / block.weeks }
   if (block.salaryPerWeek !== undefined || block.tipsPerWeek !== undefined) return { salary: block.salaryPerWeek ?? 0, tips: block.tipsPerWeek ?? 0 }
   return { salary: block.incomePerWeek, tips: 0 }
 }
@@ -272,6 +288,41 @@ export async function changeScenarioBlock(tx: Tx, id: string, blockId: string, i
   return write(tx, { ...scenario, blocks: scenario.blocks.map((b) => (b.id === blockId ? cleanBlock(blockId, input) : b)) })
 }
 
+/** Een blok om in te typen: alleen de velden in `patch` veranderen, de rest komt uit het blok zoals het nu is. */
+export interface BlockPatch {
+  weeks?: number
+  trips?: number
+  salaryPerTrip?: number
+  tipsPerTrip?: number
+  /** null = weer de gemiddelde kosten. */
+  costsPerWeek?: number | null
+  currency?: Currency
+}
+
+/**
+ * Eén veld van een blok wijzigen (Geld → Verwacht → Scenario, om in te typen). Het blok wordt gelezen zoals het nu is,
+ * zodat twee snelle wijzigingen na elkaar elkaar nooit overschrijven. Een ouder blok (bedragen per week) wordt één trip
+ * per week met die bedragen per trip.
+ */
+export async function patchScenarioBlock(tx: Tx, id: string, blockId: string, patch: BlockPatch): Promise<Scenario> {
+  const scenario = current(tx, id)
+  const block = scenario.blocks.find((b) => b.id === blockId)
+  if (!block) throw new Error('Blok bestaat niet')
+  const income = blockIncome(block)
+  const base = block.trips !== undefined ? { trips: block.trips, salaryPerTrip: block.salaryPerTrip ?? 0, tipsPerTrip: block.tipsPerTrip ?? 0 } : { trips: block.weeks, salaryPerTrip: income.salary, tipsPerTrip: income.tips }
+  const costs = patch.costsPerWeek === undefined ? block.costsPerWeek : (patch.costsPerWeek ?? undefined)
+  const input: BlockInput = {
+    weeks: patch.weeks ?? block.weeks,
+    incomePerWeek: 0,
+    trips: patch.trips ?? base.trips,
+    salaryPerTrip: patch.salaryPerTrip ?? base.salaryPerTrip,
+    tipsPerTrip: patch.tipsPerTrip ?? base.tipsPerTrip,
+    currency: patch.currency ?? block.currency,
+    ...(costs !== undefined ? { costsPerWeek: costs } : {}),
+  }
+  return write(tx, { ...scenario, blocks: scenario.blocks.map((b) => (b.id === blockId ? cleanBlock(blockId, input) : b)) })
+}
+
 export async function removeScenarioBlock(tx: Tx, id: string, blockId: string): Promise<Scenario> {
   const scenario = current(tx, id)
   return write(tx, { ...scenario, blocks: scenario.blocks.filter((b) => b.id !== blockId) })
@@ -309,21 +360,49 @@ export async function setAssumptions(tx: Tx, id: string, input: ScenarioAssumpti
  * Stap 1 van het stappenplan: begindatum (leeg = vandaag), de netto waarde bij de start (leeg = die van vandaag) en de
  * einddatum (leeg = anderhalf jaar na de start). Eén keer ongedaan maken.
  */
-export async function setScenarioStartStep(tx: Tx, id: string, input: { startDate: string | null; startValue: number | null; endDate: string | null }): Promise<Scenario> {
+export async function setScenarioStartStep(tx: Tx, id: string, input: { startDate?: string | null; startValue?: number | null; endDate?: string | null }): Promise<Scenario> {
+  // Alleen wat in `input` staat verandert (null = leeg); de rest blijft zoals het nu is.
   const next: Scenario = { ...current(tx, id), version: 2 }
-  if (input.startDate && ISO.test(input.startDate)) next.startDate = input.startDate
-  else delete next.startDate
-  if (input.endDate && ISO.test(input.endDate)) next.endDate = input.endDate
-  else delete next.endDate
-  if (input.startValue !== null && Number.isFinite(input.startValue)) next.startValue = round2(input.startValue)
-  else delete next.startValue
+  if (input.startDate !== undefined) {
+    if (input.startDate && ISO.test(input.startDate)) next.startDate = input.startDate
+    else delete next.startDate
+  }
+  if (input.endDate !== undefined) {
+    if (input.endDate && ISO.test(input.endDate)) next.endDate = input.endDate
+    else delete next.endDate
+  }
+  if (input.startValue !== undefined) {
+    if (input.startValue !== null && Number.isFinite(input.startValue)) next.startValue = round2(input.startValue)
+    else delete next.startValue
+  }
   return write(tx, next)
+}
+
+/**
+ * Stap 4 om in te typen: alleen de velden in `patch` veranderen, de rest komt uit het doel zoals het nu is. Zonder
+ * bedrag is het doel "waar sta ik".
+ */
+export async function patchScenarioGoal(tx: Tx, id: string, patch: { kind?: 'stand' | 'netto' | 'verdiend'; amount?: number | null; by?: string | null }): Promise<Scenario> {
+  const goal = current(tx, id).goal
+  const now = goal?.kind === 'doel' ? { kind: goal.measure === 'verdiend' ? ('verdiend' as const) : ('netto' as const), amount: goal.amount as number | null, by: goal.by ?? null } : { kind: 'stand' as const, amount: null, by: null }
+  const kind = patch.kind ?? now.kind
+  const amount = patch.amount !== undefined ? patch.amount : now.amount
+  const by = patch.by !== undefined ? patch.by : now.by
+  if (kind === 'stand' || amount === null) return setScenarioGoal(tx, id, { kind: 'stand' })
+  return setScenarioGoal(tx, id, { kind: 'doel', amount, ...(by ? { by } : {}), measure: kind })
+}
+
+/** Stap 3 om in te typen: één aanname wijzigen, de rest blijft zoals het nu is. */
+export async function patchAssumptions(tx: Tx, id: string, patch: ScenarioAssumptions): Promise<Scenario> {
+  return setAssumptions(tx, id, { ...assumptionsOf(current(tx, id)), ...patch })
 }
 
 /** Stap 4: het doel (waar sta ik op de einddatum, of een bedrag met eventueel een datum). */
 export async function setScenarioGoal(tx: Tx, id: string, goal: ScenarioGoal): Promise<Scenario> {
   const clean: ScenarioGoal =
-    goal.kind === 'doel' && Number.isFinite(goal.amount) ? { kind: 'doel', amount: round2(goal.amount), ...(goal.by && ISO.test(goal.by) ? { by: goal.by } : {}) } : { kind: 'stand' }
+    goal.kind === 'doel' && Number.isFinite(goal.amount)
+      ? { kind: 'doel', amount: round2(goal.amount), ...(goal.by && ISO.test(goal.by) ? { by: goal.by } : {}), ...(goal.measure === 'verdiend' ? { measure: 'verdiend' as const } : {}) }
+      : { kind: 'stand' }
   return write(tx, { ...current(tx, id), goal: clean })
 }
 

@@ -412,11 +412,12 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    // Een blok toevoegen en in de velden typen (zoals in Excel): 4 weken, 4 trips van € 1.000.
     await page.getByRole('button', { name: L('scenario.addBlock') }).click()
-    await page.getByRole('dialog').getByLabel(L('scenario.weeks')).fill('4')
-    await page.getByRole('dialog').getByLabel(L('scenarioPlan.salaryPerWeek')).fill('1000')
-    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    const blockName = translate('nl', 'scenario.blockN', { n: 1 })
+    await expect(page.getByLabel(`${L('scenarioPlan.salaryPerTrip')}: ${blockName}`)).toBeVisible()
+    await page.getByLabel(`${L('scenarioPlan.salaryPerTrip')}: ${blockName}`).fill('1000')
+    await page.getByLabel(`${L('scenarioPlan.salaryPerTrip')}: ${blockName}`).press('Enter')
     await expect.poll(() => puts('scenarios.json.enc'), { timeout: 20_000 }).toBeGreaterThan(scenarioPuts)
     await page.getByRole('radio', { name: L('forecast.planned'), exact: true }).click()
     await expectSynced(page)
@@ -509,10 +510,13 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     // van een uitgave, de schatting bij de weekafsluiting en de standaardbedragen komen ongeschonden over.
     // Het scenario staat leesbaar op GitHub, met zijn blok (het stappenplan: salaris apart, de som als inkomen).
     const scenarios = await decryptRecords(key, 'scenarios.json.enc', Uint8Array.from(Buffer.from(github.files.get('scenarios.json.enc')!.content, 'base64')))
-    expect(scenarios).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nepscenario upgrade', version: 2, blocks: [expect.objectContaining({ weeks: 4, incomePerWeek: 1000, salaryPerWeek: 1000, tipsPerWeek: 0 })], deletedAt: null })]))
+    expect(scenarios).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nepscenario upgrade', version: 2, blocks: [expect.objectContaining({ weeks: 4, trips: 4, salaryPerTrip: 1000, incomePerWeek: 1000, salaryPerWeek: 1000, tipsPerWeek: 0 })], deletedAt: null })]))
     // Het voorbeeld-stappenplan komt ongeschonden over (alleen als de vorige release het al schreef).
     const stepped = scenarios.find((sc) => (sc as { id: string }).id === 'upg-scenario-2')
-    if (stepped) expect(stepped).toMatchObject({ version: 2, startValue: 4000, goal: { kind: 'doel', amount: 25000, by: '2028-01-31' }, blocks: [expect.objectContaining({ salaryPerWeek: 1000, tipsPerWeek: 300 })] })
+    if (stepped) expect(stepped).toMatchObject({ version: 2, startValue: 4000, goal: { kind: 'doel', amount: 25000, by: '2028-01-31' }, blocks: [expect.objectContaining({ salaryPerWeek: 1000, tipsPerWeek: 300 }), expect.objectContaining({ trips: 10, salaryPerTrip: 1200, tipsPerTrip: 300 })] })
+    // De verwachte fooi van de voorbeeldtrip (alleen als de vorige release het veld al kende of liet staan).
+    const sampleTrip = trips.find((t) => t.id === 'upg-trip-1') as { expectedTip?: unknown } | undefined
+    if (sampleTrip?.expectedTip) expect(sampleTrip.expectedTip).toEqual({ amount: 400, currency: 'USD' })
     const claims = await decryptRecords(key, 'claims.json.enc', Uint8Array.from(Buffer.from(github.files.get('claims.json.enc')!.content, 'base64')))
     expect(claims).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'Nepdeclaratie upgrade', amount: 12, status: 'open', deletedAt: null })]))
     const fixed = await decryptRecords(key, 'fixedcosts.json.enc', Uint8Array.from(Buffer.from(github.files.get('fixedcosts.json.enc')!.content, 'base64')))

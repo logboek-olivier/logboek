@@ -3,7 +3,7 @@ import type { Tx } from '../domain/tx'
 import { booked, expectedSalaries, salaryIncomeId, salaryOf, salaryStatus } from '../domain/geldmodel'
 import { active } from './derive'
 import { eurOf } from './money'
-import { eurValue, finalRateFields, getRates, type RatesFile } from './rates'
+import { eurValue, finalRateFields, getRates, toEur, type RatesFile } from './rates'
 import { currentSettings, saveSettings } from './settings'
 import { keepUnknownFields, type Currency, type Leg, type Organisation, type SalaryDefault, type SalaryStatus, type Settings, type Transaction, type Trip } from './types'
 import { weekView } from './weeks'
@@ -202,7 +202,11 @@ export interface Outlook {
   tipAverages: Partial<Record<Organisation, number>>
 }
 
-/** Gemiddelde fooi per tocht per organisatie (`organisationOfTrip`, ook uit de naam), over afgelopen tochten met minstens één fooi. */
+/**
+ * Gemiddelde fooi per trip per organisatie, uit voorbije trips. Een trip zonder fooi telt mee als 0 (een week waarin
+ * niets binnenkwam hoort bij het gemiddelde), maar alleen vanaf de eerste trip van die organisatie waarbij een fooi is
+ * gelogd: oudere trips (van vóór het bijhouden, bijvoorbeeld uit de Excel-import) tellen niet.
+ */
 export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], today: string): Record<string, number> {
   const tipsByTrip = new Map<string, number>()
   for (const tx of booked(transactions)) {
@@ -211,21 +215,62 @@ export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transa
     if (eur === null) continue
     tipsByTrip.set(tx.tripId, (tipsByTrip.get(tx.tripId) ?? 0) + eur)
   }
-  const sums = new Map<string, { total: number; n: number }>()
+  const ended = new Map<string, { end: string; tip: number | undefined }[]>()
   for (const x of active(trips)) {
-    const tip = tipsByTrip.get(x.id)
     const org = organisationOfTrip(x)
-    if (org === 'overig' || tip === undefined) continue
+    if (org === 'overig') continue
     const end = tripEnd(x, legs)
     if (!end || end >= today) continue
-    const s = sums.get(org) ?? { total: 0, n: 0 }
-    s.total += tip
-    s.n++
-    sums.set(org, s)
+    ended.set(org, [...(ended.get(org) ?? []), { end, tip: tipsByTrip.get(x.id) }])
   }
   const out: Record<string, number> = {}
-  for (const [org, s] of sums) out[org] = round2(s.total / s.n)
+  for (const [org, list] of ended) {
+    const tipped = list.filter((e) => e.tip !== undefined)
+    if (tipped.length === 0) continue
+    const first = tipped.reduce((a, e) => (e.end < a ? e.end : a), tipped[0]!.end)
+    const counted = list.filter((e) => e.end >= first)
+    out[org] = round2(counted.reduce((n, e) => n + (e.tip ?? 0), 0) / counted.length)
+  }
   return out
+}
+
+/**
+ * De verwachte fooi van een komende trip in euro: wat Olivier voor deze trip invulde, anders zijn standaardfooi voor
+ * de organisatie (Geld → Verwacht → Gepland), anders het eigen gemiddelde. Undefined zonder verwachting of zonder koers.
+ */
+export function expectedTip(trip: Trip, averages: Record<string, number>, settings: Settings | null, date: string, rates: RatesFile | null = getRates()): { eur: number; source: 'trip' | 'standaard' | 'gemiddelde' } | undefined {
+  const own = trip.expectedTip
+  if (own && Number.isFinite(own.amount) && own.amount >= 0) {
+    const hit = toEur(own.amount, own.currency, date, rates)
+    return hit ? { eur: round2(hit.eur), source: 'trip' } : undefined
+  }
+  const org = organisationOfTrip(trip)
+  const def = settings?.tipDefaults?.[org]
+  if (def && Number.isFinite(def.amount) && def.amount >= 0) {
+    const hit = toEur(def.amount, def.currency, date, rates)
+    return hit ? { eur: round2(hit.eur), source: 'standaard' } : undefined
+  }
+  const avg = averages[org]
+  return avg === undefined ? undefined : { eur: avg, source: 'gemiddelde' }
+}
+
+/** Geld → Verwacht → Gepland: de verwachte fooi van één trip zetten (null = weer de standaard of het gemiddelde). */
+export async function setExpectedTip(tx: Tx, tripId: string, value: SalaryDefault | null): Promise<void> {
+  const trip = tx.get('trips.json.enc').find((t) => t.id === tripId && t.deletedAt === null)
+  if (!trip) throw new Error('Trip bestaat niet')
+  const next: Trip = { ...trip, updatedAt: tx.now }
+  if (value && Number.isFinite(value.amount) && value.amount >= 0) next.expectedTip = { amount: round2(value.amount), currency: value.currency }
+  else delete next.expectedTip
+  await tx.put('trips.json.enc', next)
+}
+
+/** De standaardfooi per trip voor een organisatie (null = weer het eigen gemiddelde). */
+export async function setTipDefault(tx: Tx, org: Organisation, value: SalaryDefault | null): Promise<void> {
+  const settings = currentSettings(tx.get('settings.json.enc'))
+  const tipDefaults = { ...(settings.tipDefaults ?? {}) }
+  if (value && Number.isFinite(value.amount) && value.amount >= 0) tipDefaults[org] = { amount: round2(value.amount), currency: value.currency }
+  else delete tipDefaults[org]
+  await saveSettings(tx, { tipDefaults })
 }
 
 /**
@@ -233,7 +278,7 @@ export function tipAverages(trips: readonly Trip[], legs: readonly Leg[], transa
  * maand) tot en met de maand waarin de laatste tocht van de planning eindigt. Met een geschatte fooi per komende tocht,
  * apart gehouden van het salaris.
  */
-export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], today: string, rates: RatesFile | null = getRates()): Outlook {
+export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], transactions: readonly Transaction[], today: string, rates: RatesFile | null = getRates(), settings: Settings | null = null): Outlook {
   const live = active(trips)
   const byId = new Map(live.map((x) => [x.id, x]))
   const averages = tipAverages(live, legs, transactions, today)
@@ -270,10 +315,10 @@ export function salaryOutlook(trips: readonly Trip[], legs: readonly Leg[], tran
     else row.receivedEur = round2(row.receivedEur + eur)
   }
   for (const e of upcoming) {
-    const avg = averages[organisationOfTrip(e.trip)]
+    const tip = expectedTip(e.trip, averages, settings, e.end, rates)
     const row = at(monthOf(e.end))
-    if (avg === undefined || !row) continue
-    row.tipEstimateEur = round2(row.tipEstimateEur + avg)
+    if (!tip || !row) continue
+    row.tipEstimateEur = round2(row.tipEstimateEur + tip.eur)
   }
   return {
     months,

@@ -225,6 +225,11 @@ export interface Trip extends SyncRecord {
    * deelnemers telt hun aantal.
    */
   guestCount?: number
+  /**
+   * Schrijfversie 13: de fooi die Olivier van deze trip verwacht (Geld → Verwacht → Gepland, per charter in te stellen).
+   * Ontbreekt = de standaardfooi van de organisatie, anders het eigen gemiddelde.
+   */
+  expectedTip?: SalaryDefault
 }
 
 export interface Leg extends SyncRecord {
@@ -344,6 +349,8 @@ export interface Settings extends SyncRecord {
   orgAnswered?: string[]
   /** Standaardsalaris per organisatie; vult alleen trips zonder salaris die nog niet voorbij zijn. */
   salaryDefaults?: Partial<Record<Organisation, SalaryDefault>>
+  /** Schrijfversie 13: verwachte fooi per trip per organisatie (Gepland); gaat voor het eigen gemiddelde. */
+  tipDefaults?: Partial<Record<Organisation, SalaryDefault>>
   /** Dagelijkse herinnering in de eigen agenda (Instellingen → Herinnering): tijd (uu:mm) en alleen op werkdagen. */
   dailyReminder?: { time: string; workdaysOnly: boolean }
   /** Uitbetaling per organisatie (na elke trip of maandelijks rond dag N); ontbreekt = na elke trip. */
@@ -758,10 +765,20 @@ export interface ScenarioBlock {
   currency: Currency
   /** Leeg: de gemiddelde kosten (de laatste twaalf weken plus de vaste lasten). */
   costsPerWeek?: number
+  /**
+   * Schrijfversie 13: N trips in de weken van het blok, evenredig verdeeld, met salaris en fooi per trip. Dan zijn
+   * salaryPerWeek en tipsPerWeek (en incomePerWeek) het per-weekdeel daarvan, voor oudere versies.
+   */
+  trips?: number
+  salaryPerTrip?: number
+  tipsPerTrip?: number
 }
 
 /** Het doel van een scenario: waar sta ik op de einddatum, of wanneer haal ik een bedrag (en wat is daarvoor nodig). */
-export type ScenarioGoal = { kind: 'stand' } | { kind: 'doel'; amount: number; by?: string }
+export type ScenarioGoal =
+  | { kind: 'stand' }
+  /** `measure`: netto waarde (standaard) of verdiend (salaris plus fooi opgeteld vanaf de start; schrijfversie 13). */
+  | { kind: 'doel'; amount: number; by?: string; measure?: 'netto' | 'verdiend' }
 
 /** Aannames van een scenario, allemaal in procent per jaar (of van het inkomen); leeg = 0, nooit verzonnen. */
 export interface ScenarioAssumptions {
