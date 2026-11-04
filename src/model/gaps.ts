@@ -1,20 +1,22 @@
 import type { Tx } from '../domain/tx'
 import { parseShip } from './boats'
 import { active, compareLegs } from './derive'
-import { DEFAULT_WEEK_DAYS } from './weeks'
+import { DEFAULT_WEEK_DAYS, regionForBase } from './weeks'
 import type { Leg, Trip } from './types'
 import { addDays } from '../basis/datum'
 
 // Niets is verplicht: een trip of dag zonder bootgegevens of plaats wordt gewoon opgeslagen en krijgt de badge
 // "Onvolledig". Op zondag zet Vandaag de lege velden op een rij; Olivier vult ze één voor één aan (of slaat over).
 
-export type TripField = 'boat' | 'boatModel' | 'boatLengthFt' | 'base' | 'startDate'
+export type TripField = 'area' | 'boat' | 'boatModel' | 'boatLengthFt' | 'base' | 'startDate'
 export type LegField = 'fromPlace' | 'toPlace'
 
 /** Lege velden van een trip. Een trip zonder startdatum maar met dagen heeft afgeleide datums en mist niets. */
 export function tripGaps(trip: Trip, legs: readonly Leg[]): TripField[] {
   const gaps: TripField[] = []
   const own = legs.filter((l) => l.deletedAt === null && l.tripId === trip.id)
+  // De regio (Sint Maarten, BVI, Split …): een belangrijke telling in de statistieken.
+  if (!trip.area?.trim()) gaps.push('area')
   if (!trip.boat?.trim()) gaps.push('boat')
   if (!trip.boatModel?.trim()) gaps.push('boatModel')
   if (!trip.boatLengthFt || trip.boatLengthFt <= 0) gaps.push('boatLengthFt')
@@ -70,6 +72,8 @@ export function collectGaps(trips: readonly Trip[], legs: readonly Leg[]): Gap[]
       }
       const ship = parseShip(mostCommon(own.map((l) => l.boat)))
       if (field === 'boat') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|boat`, trip, field, suggestion: ship.name })
+      // Regio: de regio van een eerdere trip vanuit dezelfde basis (of de eerste vertrekplaats), nooit stil opgeslagen.
+      if (field === 'area') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|area`, trip, field, suggestion: regionForBase(sorted, trip.base?.trim() || own[0]?.fromPlace.trim() || '', trip.id) ?? '' })
       if (field === 'base') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|base`, trip, field, suggestion: own[0]?.fromPlace.trim() ?? '' })
       // Model en lengte zonder bootnaam: per trip; met een naam komen ze per boot.
       if (field === 'boatModel') tripItems.push({ kind: 'trip', key: `trip|${trip.id}|boatModel`, trip, field, suggestion: ship.model })

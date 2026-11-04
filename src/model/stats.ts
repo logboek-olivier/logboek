@@ -99,6 +99,16 @@ export interface OrgCount {
   last?: string
 }
 
+/** Per regio (Sint Maarten, BVI, Split …): trips die in de periode beginnen, dagen op het water en nm in de periode. */
+export interface RegionCount {
+  key: string
+  /** Leeg: trips zonder regio. */
+  label: string
+  trips: number
+  days: number
+  nm: number
+}
+
 export interface SailingStats {
   nm: number
   days: number
@@ -112,6 +122,7 @@ export interface SailingStats {
   byBoat: Row[]
   byKind: Row[]
   byArea: Row[]
+  perRegion: RegionCount[]
   longest: Leg | null
   topPlaces: Row[]
   perOrganisation: OrgCount[]
@@ -137,6 +148,14 @@ export function sailingStats(trips: readonly Trip[], legs: readonly Leg[], setti
   const boats = new Map<string, Row>()
   const kinds = new Map<string, Row>()
   const areas = new Map<string, Row>()
+  const regions = new Map<string, RegionCount>()
+  const region = (trip: Trip | undefined) => {
+    const label = trip?.area?.trim() ?? ''
+    const key = label.toLowerCase()
+    const hit = regions.get(key) ?? { key, label, trips: 0, days: 0, nm: 0 }
+    regions.set(key, hit)
+    return hit
+  }
   const places = new Map<string, Row & { names: Map<string, number> }>()
   const shipOf = new Map<string, { name: string; model: string; kind: BoatKind | undefined }>()
   let nm = 0
@@ -162,6 +181,9 @@ export function sailingStats(trips: readonly Trip[], legs: readonly Leg[], setti
     if (ship.name || ship.model) addTo(boats, boatKey(ship.name, ship.model), ship.name || ship.model, n)
     addTo(kinds, ship.kind ?? 'onbekend', ship.kind ?? 'onbekend', n)
     addTo(areas, trip?.area?.trim().toLowerCase() ?? '', trip?.area?.trim() ?? '', n)
+    const r = region(trip)
+    r.days++
+    r.nm += n
     // Meest bezochte plaatsen: aankomsten, zelfde plaats zonder hoofdletters, accenten en spaties.
     const key = placeKey(leg.toPlace)
     if (key) {
@@ -200,6 +222,7 @@ export function sailingStats(trips: readonly Trip[], legs: readonly Leg[], setti
       entry.last = c.label
     }
     orgs.set(org, entry)
+    region(trip).trips++
   }
 
   return {
@@ -214,6 +237,9 @@ export function sailingStats(trips: readonly Trip[], legs: readonly Leg[], setti
     byBoat: sorted(boats),
     byKind: sorted(kinds),
     byArea: sorted(areas),
+    perRegion: [...regions.values()]
+      .map((r) => ({ ...r, nm: round1(r.nm) }))
+      .sort((a, b) => (a.label === '' ? 1 : b.label === '' ? -1 : b.trips - a.trips || b.nm - a.nm || a.label.localeCompare(b.label))),
     longest,
     topPlaces: [...places.values()]
       .map(({ names, ...p }) => ({ ...p, label: [...names.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? p.label }))

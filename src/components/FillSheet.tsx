@@ -16,6 +16,7 @@ import { todayIso } from '../basis/datum'
 // overslaan gaat naar het volgende veld; sluiten mag altijd.
 
 const FIELD_LABEL = {
+  area: 'week.area',
   boat: 'boat.name',
   boatModel: 'boat.model',
   boatLengthFt: 'boat.length',

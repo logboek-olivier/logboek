@@ -117,6 +117,32 @@ export function Stats({ store }: { store: Store }) {
             <HeroStat label={t('stat.trips')} value={formatNumber(sailing.trips)} />
             <HeroStat label={t('stat.nightHours')} value={formatHours(sailing.nightHours)} />
           </dl>
+          {/* Per regio: een eigen telling (trips, dagen op het water, nm). */}
+          {sailing.perRegion.some((r) => r.label !== '') && (
+            <div className="section card card-body stack-sm">
+              <h2>{t('stats.perRegion')}</h2>
+              <table className="table stats-regions">
+                <thead>
+                  <tr>
+                    <th>{t('week.area')}</th>
+                    <th className="num">{t('stat.trips')}</th>
+                    <th className="num">{t('stats.regionDays')}</th>
+                    <th className="num">nm</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sailing.perRegion.map((r) => (
+                    <tr key={r.key}>
+                      <td>{r.label || t('stats.noArea')}</td>
+                      <td className="num">{formatNumber(r.trips)}</td>
+                      <td className="num">{formatNumber(r.days)}</td>
+                      <td className="num">{formatNumber(Math.round(r.nm))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div className="section card card-body stack">
             <h2>{t('stats.sailing')}</h2>
             {sailing.perMonth.length > 1 && (
@@ -150,7 +176,6 @@ export function Stats({ store }: { store: Store }) {
                 },
                 { key: 'boot', label: t('stats.splitBoat'), rows: sailing.byBoat, format: formatNm },
                 { key: 'boottype', label: t('stats.splitKind'), rows: sailing.byKind.map((r) => ({ ...r, label: kindLabel(r.key) })), format: formatNm },
-                { key: 'gebied', label: t('stats.splitArea'), rows: sailing.byArea.map((r) => ({ ...r, label: r.label || t('stats.noArea') })), format: formatNm },
                 { key: 'plaatsen', label: t('stats.splitPlaces'), rows: sailing.topPlaces, format: (n) => t('stats.arrivals', { n }) },
                 {
                   key: 'organisatie',

@@ -48,7 +48,7 @@ test('teller per organisatie: twijfel bevestigen, naamvoorstel, beginnummer, kop
   await page.getByLabel('Startdatum').fill(iso(10))
   await page.getByRole('button', { name: 'Meer velden' }).click()
   await page.getByLabel('Organisatie').selectOption('yacht-week')
-  await page.getByLabel('Gebied').fill('Nepgebied')
+  await page.getByLabel('Regio').fill('Nepgebied')
   await expect(page.getByLabel('Naam', { exact: true })).toHaveAttribute('placeholder', 'YW #1 · Nepgebied')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Trip opgeslagen')

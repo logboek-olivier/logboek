@@ -310,7 +310,7 @@ export function Home({ store }: { store: Store }) {
       <Suspense fallback={<ScreenLoading />}>
       <div className="screen" hidden={!!adding || conversion}>
       {screen === 'vandaag' && (
-        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => openAdd(init)} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
+        <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => openAdd(init)} onAddExpense={() => openAdd(undefined, 'uitgave')} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
       )}
       {screen === 'week' && (
         <ThisWeek

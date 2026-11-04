@@ -18,6 +18,7 @@ import {
   defaultWeekName,
   MAX_WEEK_DAYS,
   nextDayToLog,
+  regionForBase,
   suggestions,
   weekView,
   type ParticipantInput,
@@ -119,8 +120,15 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
     fill(!boatModel.trim(), profile.boatModel, setBoatModel)
     fill(!boatLength.trim(), profile.boatLengthFt ? formatNumber(profile.boatLengthFt) : undefined, setBoatLength)
     fill(!boatKind, profile.boatKind, (v) => setBoatKind(v as BoatKind))
-    fill(!base.trim(), profile.base, setBase)
+    if (fill(!base.trim(), profile.base, setBase)) fillRegion(profile.base ?? '')
     fill(!charter.trim(), profile.charter, setCharter)
+  }
+
+  /** Een bekende basis vult de regio in als die nog leeg is (Trogir → Split); te wijzigen vóór Opslaan. */
+  function fillRegion(value: string) {
+    if (area.trim()) return
+    const region = regionForBase(trips, value, trip?.id)
+    if (region) setArea(region)
   }
 
   /** Herhaal vorige trip of start vanuit een sjabloon: boot, gebied, organisatie, type en de geplande etappes. */
@@ -200,6 +208,16 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             </div>
           </div>
         )}
+        {/* De regio (Sint Maarten, BVI, Split, Phuket …) staat bovenaan: een belangrijke telling in de statistieken. */}
+        <label>
+          {t('week.area')}
+          <input type="text" autoComplete="off" list="week-areas" maxLength={120} value={area} onChange={(e) => setArea(e.target.value)} />
+          <datalist id="week-areas">
+            {areas.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+        </label>
         <label>
           {t('field.name')}
           <input type="text" autoComplete="off" maxLength={120} placeholder={trip ? defaultWeekName(startDate || todayIso(), lang, base) : namePlaceholder} value={name} onChange={(e) => setName(e.target.value)} />
@@ -259,7 +277,7 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
             </div>
             <label>
               {t('boat.base')}
-              <input type="text" autoComplete="off" list="week-bases" maxLength={120} placeholder={t('boat.basePlaceholder')} value={base} onChange={(e) => setBase(e.target.value)} />
+              <input type="text" autoComplete="off" list="week-bases" maxLength={120} placeholder={t('boat.basePlaceholder')} value={base} onChange={(e) => setBase(e.target.value)} onBlur={(e) => fillRegion(e.target.value)} />
               <datalist id="week-bases">
                 {bases.map((b) => (
                   <option key={b} value={b} />
@@ -274,26 +292,15 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
               </button>
             ))}
           </div>
-          <div className="two">
-            <label>
-              {t('boat.charter')}
-              <input type="text" autoComplete="off" list="week-charters" maxLength={120} value={charter} onChange={(e) => setCharter(e.target.value)} />
-              <datalist id="week-charters">
-                {charters.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </label>
-            <label>
-              {t('week.area')}
-              <input type="text" autoComplete="off" list="week-areas" value={area} onChange={(e) => setArea(e.target.value)} />
-              <datalist id="week-areas">
-                {areas.map((a) => (
-                  <option key={a} value={a} />
-                ))}
-              </datalist>
-            </label>
-          </div>
+          <label>
+            {t('boat.charter')}
+            <input type="text" autoComplete="off" list="week-charters" maxLength={120} value={charter} onChange={(e) => setCharter(e.target.value)} />
+            <datalist id="week-charters">
+              {charters.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </label>
           {missing.length > 0 && <IncompleteLine missing={missing} />}
         </fieldset>
         <label>

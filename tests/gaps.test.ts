@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { collectGaps, isSunday, legGaps, tripGaps } from '../src/model/gaps'
 import type { Leg, Trip } from '../src/model/types'
-import { startWeek, type WeekInput } from '../src/model/weeks'
+import { regionForBase, startWeek, type WeekInput } from '../src/model/weeks'
 import { GithubClient } from '../src/storage/github'
 import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
@@ -33,9 +33,9 @@ const trip = (id: string, extra: Partial<Trip> = {}): Trip => ({ id, name: `Nep 
 
 describe('niets verplicht: onvolledig en aanvullen', () => {
   it('een trip zonder bootgegevens en een dag zonder plaats zijn onvolledig, nooit ongeldig', () => {
-    expect(tripGaps(trip('a'), [])).toEqual(['boat', 'boatModel', 'boatLengthFt', 'base', 'startDate'])
-    expect(tripGaps(trip('a'), [leg('l', 'a', '2026-01-01', 'A', 'B')])).toEqual(['boat', 'boatModel', 'boatLengthFt', 'base'])
-    expect(tripGaps(trip('a', { boat: 'B', boatModel: 'M', boatLengthFt: 40, base: 'X', startDate: '2026-01-01' }), [])).toEqual([])
+    expect(tripGaps(trip('a'), [])).toEqual(['area', 'boat', 'boatModel', 'boatLengthFt', 'base', 'startDate'])
+    expect(tripGaps(trip('a'), [leg('l', 'a', '2026-01-01', 'A', 'B')])).toEqual(['area', 'boat', 'boatModel', 'boatLengthFt', 'base'])
+    expect(tripGaps(trip('a', { area: 'Nepregio', boat: 'B', boatModel: 'M', boatLengthFt: 40, base: 'X', startDate: '2026-01-01' }), [])).toEqual([])
     expect(legGaps(leg('l', 'a', '2026-01-01', ' ', ''))).toEqual(['fromPlace', 'toPlace'])
   })
 
@@ -65,6 +65,16 @@ describe('niets verplicht: onvolledig en aanvullen', () => {
     const after = store.get('trips.json.enc')
     expect(after.find((t) => t.id === 'x')?.boatLengthFt).toBe(40)
     expect(after.find((t) => t.id === 'y')?.boatLengthFt).toBe(33)
+  })
+
+  it('regio: voorstel uit een eerdere trip vanuit dezelfde basis (Nephaven → Nepregio), anders leeg', () => {
+    const trips = [trip('oud', { base: 'Nephaven', area: 'Nepregio', startDate: '2026-01-01' }), trip('nieuw', { base: 'nephaven', startDate: '2026-02-01' }), trip('los', { startDate: '2026-03-01' })]
+    const gaps = collectGaps(trips, [])
+    expect(gaps.find((g) => g.kind === 'trip' && g.trip.id === 'nieuw' && g.field === 'area')).toMatchObject({ suggestion: 'Nepregio' })
+    expect(gaps.find((g) => g.kind === 'trip' && g.trip.id === 'los' && g.field === 'area')).toMatchObject({ suggestion: '' })
+    expect(gaps.some((g) => g.kind === 'trip' && g.trip.id === 'oud' && g.field === 'area')).toBe(false)
+    expect(regionForBase(trips, ' NEPHAVEN ')).toBe('Nepregio')
+    expect(regionForBase(trips, 'Elders')).toBeNull()
   })
 
   it('zondag', () => {

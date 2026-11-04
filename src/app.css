@@ -5082,3 +5082,24 @@ button.drill-post {
   font-size: var(--fs-sm);
   font-weight: var(--fw-regular, 400);
 }
+
+/* Vandaag: de uitgaven van vandaag, de laatste drie; bedragen pas na een tik. */
+.today-expense-list .row-button {
+  min-height: 44px;
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.today-expense-total {
+  margin: 0;
+  padding-top: var(--s-1);
+}
+
+/* De regio van een trip in de kop: duidelijk, met een speld ervoor. */
+.trip-head-region {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--accent);
+  font-weight: var(--fw-medium);
+}
