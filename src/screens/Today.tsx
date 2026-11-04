@@ -13,6 +13,7 @@ import { Suspense, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { collectGaps, isSunday } from '../model/gaps'
 import { WeekClose } from '../components/WeekClose'
 import { WeatherCard } from '../components/WeatherCard'
+import { TodayExpenses } from '../components/TodayExpenses'
 import type { Notify } from '../components/EditSheets'
 import { CopyErrorDetails } from '../components/ErrorDetails'
 import { Icon } from '../components/Icon'
@@ -37,7 +38,8 @@ import { addDays, daysBetween, todayIso } from '../basis/datum'
 // Vandaag volgt de dagsoort uit de agenda (tik = dagblad): bij werk de planning van vandaag, "Zoals gepland" en "Dag van
 // vandaag loggen"; bij reis de reisgegevens; bij rust en thuis niets om te loggen. Verder nm dit jaar met voortgang
 // naar het jaardoel, op zondag "N dingen aanvullen", en de eerstvolgende termijnen (deadlines, vervaldatums, token, volgende trip).
-// Geen bedragen en geen geldkaarten: Vandaag staat ook open als studenten meekijken. Omlaag trekken synchroniseert.
+// Geen bedragen zonder tik: Vandaag staat ook open als studenten meekijken (de uitgaven van vandaag tonen hun bedragen pas
+// na "Toon bedragen"). Omlaag trekken synchroniseert.
 
 // De bladen die Vandaag opent, laden pas bij de tik (src/lazy.ts): Vandaag zelf opent zo snel mogelijk.
 const DayView = lazyComponent(() => import('../components/DaySheet').then((m) => m.DayView))
@@ -58,6 +60,7 @@ export function Today({
   notify,
   onSettings,
   onAdd,
+  onAddExpense,
   onReminders,
   onReview,
 }: {
@@ -65,6 +68,8 @@ export function Today({
   notify: Notify
   onSettings: () => void
   onAdd: (init?: AddInit) => void
+  /** Toevoegen → Uitgave (vanuit Uitgaven vandaag). */
+  onAddExpense?: () => void
   onReminders: () => void
   /** Meer → Nakijken (alleen het aantal staat op Vandaag). */
   onReview?: () => void
@@ -193,6 +198,8 @@ export function Today({
         </button>
       )}
       {running && <WeatherCard store={store} trip={running} />}
+      {/* Uitgaven van vandaag: het aantal en de laatste drie; het totaal en de bedragen pas na een tik. */}
+      <TodayExpenses store={store} today={today} notify={notify} onAdd={() => (onAddExpense ? onAddExpense() : onAdd())} />
       {forgotten.length > 0 && running && (
         <div className="notice">
           <p className="small">{t('trip.missingDays', { n: forgotten.length })}</p>

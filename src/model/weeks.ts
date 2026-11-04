@@ -205,6 +205,31 @@ export function suggestions(trips: readonly Trip[], legs: readonly Leg[]): { boa
   return { boats: top(boats), areas: top(areas), bases: top(bases), charters: top(charters) }
 }
 
+/**
+ * De regio van een eerdere trip vanuit dezelfde basis (Trogir → Split), het vaakst gebruikt, nieuwste bij gelijkspel;
+ * alleen als voorstel in het formulier (de app vult nooit stil een regio in bij een opgeslagen trip).
+ */
+export function regionForBase(trips: readonly Trip[], base: string, exceptId?: string): string | null {
+  const key = base.trim().toLowerCase()
+  if (!key) return null
+  const counts = new Map<string, { n: number; last: string }>()
+  for (const trip of active(trips)) {
+    if (trip.id === exceptId || !trip.area?.trim() || trip.base?.trim().toLowerCase() !== key) continue
+    const area = trip.area.trim()
+    const hit = counts.get(area) ?? { n: 0, last: '' }
+    counts.set(area, { n: hit.n + 1, last: trip.updatedAt > hit.last ? trip.updatedAt : hit.last })
+  }
+  let best: string | null = null
+  let bestHit = { n: 0, last: '' }
+  for (const [area, hit] of counts) {
+    if (hit.n > bestHit.n || (hit.n === bestHit.n && hit.last > bestHit.last)) {
+      best = area
+      bestHit = hit
+    }
+  }
+  return best
+}
+
 // ---------- Opslaan ----------
 
 export interface ParticipantInput {

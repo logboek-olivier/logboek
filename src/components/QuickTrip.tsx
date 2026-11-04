@@ -5,7 +5,7 @@ import { getLang, t } from '../i18n'
 import { newTripName } from '../model/counters'
 import { currentSettings } from '../model/settings'
 import { WEEK_TYPES, type Organisation, type WeekType } from '../model/types'
-import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, suggestTripName } from '../model/weeks'
+import { latestTripBefore, MAX_WEEK_DAYS, nextFreeDay, suggestions, suggestTripName } from '../model/weeks'
 import { periodeMaken } from '../domain/trips'
 import type { Store } from '../storage/store'
 import { Icon } from './Icon'
@@ -35,6 +35,7 @@ export function TripForm({ store, onDone }: { store: Store; onDone: (message: st
   const organisation = orgChoice ?? previous?.organisation ?? ''
   const [boat, setBoat] = useState('')
   const [areaChoice, setArea] = useState<string | null>(null)
+  const regions = suggestions(trips, legs).areas
   const area = areaChoice ?? previous?.area ?? ''
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   // Voorstel: "SV #4 · BVI" bij een getelde organisatie, anders uit de naam van de vorige trip.
@@ -103,6 +104,16 @@ export function TripForm({ store, onDone }: { store: Store; onDone: (message: st
         </label>
       </div>
       {valid && <p className="muted small">{`${formatDateRange(start, end)} · ${t('unit.days', { n: daysBetween(start, end) + 1 })}`}</p>}
+      {/* De regio (Sint Maarten, BVI, Split, Phuket …): een belangrijke telling, dus direct in beeld. */}
+      <label>
+        {t('week.area')}
+        <input type="text" autoComplete="off" maxLength={120} list="quick-trip-regions" value={area} onChange={(e) => setArea(e.target.value)} />
+        <datalist id="quick-trip-regions">
+          {regions.map((r) => (
+            <option key={r} value={r} />
+          ))}
+        </datalist>
+      </label>
       <label>
         {t('field.name')}
         <input type="text" autoComplete="off" maxLength={120} value={name} placeholder={suggestion} onChange={(e) => setName(e.target.value)} />
@@ -131,16 +142,10 @@ export function TripForm({ store, onDone }: { store: Store; onDone: (message: st
               ))}
             </select>
           </label>
-          <div className="two">
-            <label>
-              {t('boat.name')}
-              <input type="text" autoComplete="off" maxLength={120} value={boat} onChange={(e) => setBoat(e.target.value)} />
-            </label>
-            <label>
-              {t('week.area')}
-              <input type="text" autoComplete="off" maxLength={120} value={area} onChange={(e) => setArea(e.target.value)} />
-            </label>
-          </div>
+          <label>
+            {t('boat.name')}
+            <input type="text" autoComplete="off" maxLength={120} value={boat} onChange={(e) => setBoat(e.target.value)} />
+          </label>
           <label>
             {t('quick.tripPeople')}
             <textarea rows={3} autoComplete="off" autoCapitalize="words" value={people} onChange={(e) => setPeople(e.target.value)} />

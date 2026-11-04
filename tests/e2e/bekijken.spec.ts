@@ -20,7 +20,7 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
   const sheet = page.getByRole('dialog')
   await fillBoat(sheet)
   await sheet.getByLabel('Basis', { exact: true }).fill('Hvar')
-  await sheet.getByLabel('Gebied').fill('Nepgebied')
+  await sheet.getByLabel('Regio').fill('Nepgebied')
   await sheet.getByRole('combobox', { name: 'Organisatie' }).selectOption({ label: 'Sailing Virgins' })
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
 

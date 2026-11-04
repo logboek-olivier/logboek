@@ -85,6 +85,11 @@ describe('Zeilen', () => {
       ['Nepgebied', 95],
       ['Nepzee', 4],
     ])
+    // Per regio: trips die in de periode beginnen, dagen op het water en nm.
+    expect(s.perRegion.map((r) => [r.label, r.trips, r.days, r.nm])).toEqual([
+      ['Nepgebied', 1, 2, 95],
+      ['Nepzee', 1, 1, 4],
+    ])
     expect(s.longest?.id).toBe('2')
     expect(s.topPlaces[0]).toMatchObject({ value: 2 })
     expect(['Tiha bay', 'Tihabay']).toContain(s.topPlaces[0]!.label)

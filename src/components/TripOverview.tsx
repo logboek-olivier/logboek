@@ -45,8 +45,8 @@ export function kindLine(view: Pick<WeekView, 'kind' | 'type'>): string {
 }
 
 /**
- * De kop van een trip, rustig: de naam (met teller), de datums met de dagen, en de boot. Alle andere gegevens (soort,
- * organisatie, gebied, model, lengte, basis, charter) staan na een tik in "Tripgegevens". `compact`: zonder de titel
+ * De kop van een trip, rustig: de naam (met teller), de regio, de datums met de dagen, en de boot. Alle andere gegevens (soort,
+ * organisatie, model, lengte, basis, charter) staan na een tik in "Tripgegevens". `compact`: zonder de titel
  * (in het tripoverzicht staat die al bovenaan het blad).
  */
 export function TripHead({ view, counter, onEdit, legs, compact = false, menu }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean; menu?: ReactNode }) {
@@ -73,6 +73,12 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
       </div>
       <button type="button" className="trip-head-summary" onClick={() => setDetails(true)} aria-label={t('trip.detailsOpen', { name: trip.name })}>
         <span className="trip-head-lines">
+          {trip.area?.trim() && (
+            <span className="trip-head-region">
+              <Icon icon={MapPin} />
+              {trip.area.trim()}
+            </span>
+          )}
           <span className="trip-day-count">{[range, tripDaysText(view)].filter(Boolean).join(' · ')}</span>
           {boat && <span className="muted">{boat}</span>}
         </span>

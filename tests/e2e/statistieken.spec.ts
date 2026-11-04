@@ -23,7 +23,7 @@ test('statistieken: zeilen, werk en geld achter Toon bedragen; filters', async (
   await page.getByRole('tab', { name: 'Trip' }).click()
   await page.getByRole('button', { name: 'Meer velden' }).click()
   await page.getByLabel('Organisatie').selectOption('yacht-week')
-  await page.getByLabel('Gebied').fill('Nepgebied')
+  await page.getByLabel('Regio').fill('Nepgebied')
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.locator('.toast')).toHaveText('Trip opgeslagen')
   for (const [to, nm] of [
@@ -51,8 +51,10 @@ test('statistieken: zeilen, werk en geld achter Toon bedragen; filters', async (
   const main = page.locator('main')
   await expect(main).toContainText('Totaal77 nm')
   await expect(main).toContainText('Dagen op het water2')
-  await page.getByRole('radio', { name: 'Gebied', exact: true }).click()
-  await expect(page.getByRole('list', { name: 'Gebied', exact: true })).toContainText('Nepgebied')
+  // Per regio: een eigen tabel met trips, dagen en nm.
+  const regions = page.locator('.stats-regions')
+  await expect(regions).toContainText('Nepgebied')
+  await expect(regions.locator('tbody tr').first()).toContainText('Nepgebied12')
   await page.getByRole('radio', { name: 'Organisatie', exact: true }).first().click()
   await expect(page.getByRole('list', { name: 'Organisatie', exact: true }).first()).toContainText('Yacht Week · t/m YW #1')
   await expect(main).toContainText('Langste dagtocht')
