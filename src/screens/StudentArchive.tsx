@@ -13,15 +13,19 @@ import { currentSettings } from '../model/settings'
 import { NO_FILTER, RESULT_FILTERS, studentGroups, type ResultFilter, type StudentFilter } from '../model/student-groups'
 import { activeStudents, archivedStudents } from '../model/students'
 import { activeWeek, isTeachingTrip, participantsWithoutStudent, weekView } from '../model/weeks'
+import { guestLabel } from '../model/guests'
+import { PersonSheet, type PersonForm } from '../components/PersonSheet'
 import { active } from '../model/derive'
-import { studentInTripToevoegen, studentVanDeelnemer } from '../domain/training'
-import type { Participant, Trip } from '../model/types'
+import { persoonBewerken, persoonToevoegen, studentInTripToevoegen, studentVanDeelnemer } from '../domain/training'
+import { PERSON_ROLES, type Participant, type PersonRole, type Trip } from '../model/types'
+import { todayIso } from '../basis/datum'
 import type { Store } from '../storage/store'
-import { ArchiveView, StudentDetail, StudentRow, StudentSheet, useAutoArchive } from './Students'
+import { ArchiveView, StudentDetail, StudentRow, useAutoArchive } from './Students'
 import { useBack } from '../back'
 
-// Studentenarchief (onder Meer): álle studenten, per trip, de lopende trip bovenaan, daarna de nieuwste trips;
-// studenten zonder trip apart onderaan. Ook elke deelnemer van een trip waarin Olivier les geeft, met of zonder cursus
+// Personen (onder Meer, eerder Studentenarchief): álle studenten en de andere mensen van elke trip (gast, crew,
+// medezeiler, schipper, overig; alleen voornaam, land en kenmerk, regel 14), per trip, de lopende trip bovenaan, daarna
+// de nieuwste trips; studenten zonder trip apart onderaan. Een persoon toevoegen aan een trip, de rol wijzigen. Ook elke deelnemer van een trip waarin Olivier les geeft, met of zonder cursus
 // en ook als de trip al is afgerond: heeft die nog geen student, dan maakt een tik hem. Zelf een student toevoegen en
 // aan een trip koppelen; notities per persoon. Zoeken op voornaam, filteren op cursus en resultaat. Gearchiveerde
 // studenten (na 12 maanden zonder activiteit vanzelf) staan apart en zijn te wissen (regel 14).
@@ -39,7 +43,30 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
   const [view, setView] = useState<View>(openStudentId ? { kind: 'student', id: openStudentId } : { kind: 'list' })
   const [filter, setFilter] = useState<StudentFilter>(NO_FILTER)
   const [adding, setAdding] = useState(false)
+  const [person, setPerson] = useState<{ participant: Participant; role: PersonRole; trip: Trip } | null>(null)
   useAutoArchive(store, notify)
+
+  /** Persoon toevoegen: een student via het studentenblok van vroeger (cursus later te kiezen), anders als deelnemer. */
+  async function addPersonFromForm(form: PersonForm) {
+    if (form.role === 'student') {
+      const { result } = await studentInTripToevoegen(store, { firstName: form.firstName, curriculumId: '', level: 'beginner', startedAt: trips.find((x) => x.id === form.tripId)?.startDate ?? todayIso() }, form.tripId || null)
+      setAdding(false)
+      notify(t('people.added'))
+      setView({ kind: 'student', id: result.id })
+      return
+    }
+    await persoonToevoegen(store, form.tripId, { firstName: form.firstName, role: form.role, country: form.country, tag: form.tag })
+    setAdding(false)
+    notify(t('people.added'))
+  }
+
+  async function editPersonFromForm(form: PersonForm) {
+    if (!person) return
+    const undo = await persoonBewerken(store, person.trip.id, person.participant.id, { firstName: form.firstName, role: form.role, country: form.country, tag: form.tag })
+    setPerson(null)
+    notify(t('people.saved'), undo)
+    if (form.role === 'student') setView({ kind: 'student', id: person.participant.id })
+  }
 
   /** Een deelnemer zonder student: de student maken (zelfde id) en meteen openen. */
   async function openParticipant(trip: Trip, participant: Participant) {
@@ -62,8 +89,13 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
   const current = activeWeek(trips, settings)
   const pending = participantsWithoutStudent(trips, students)
   const groups = studentGroups(students, trips, legs, current?.id ?? null, filter, pending)
-  // Te kiezen bij "Student toevoegen": trips waarin Olivier les geeft eerst, dan de andere, nieuwste eerst.
-  const tripChoices = active(trips).sort((a, b) => Number(isTeachingTrip(b)) - Number(isTeachingTrip(a)) || (b.startDate ?? '').localeCompare(a.startDate ?? ''))
+  // Te kiezen bij "Persoon toevoegen": de lopende trip eerst, dan de nieuwste.
+  const tripChoices = active(trips).sort((a, b) => Number(b.id === current?.id) - Number(a.id === current?.id) || (weekView(b, legs).startDate ?? '').localeCompare(weekView(a, legs).startDate ?? ''))
+  const tripLabel = (trip: Trip) => {
+    const v = weekView(trip, legs)
+    return [nameWithCounter(trip, counters.get(trip.id)), v.startDate && v.endDate ? formatDateRangeShort(v.startDate, v.endDate) : ''].filter(Boolean).join(' · ')
+  }
+  const hasPeople = live.length > 0 || pending.length > 0 || active(trips).some((trip) => (trip.participants ?? []).length > 0)
   const usedCourses = curricula.filter((c) => live.some((s) => s.curriculumId === c.id))
   const filtered = filter.query.trim() !== '' || filter.curriculumId !== '' || filter.result !== 'alle'
 
@@ -73,18 +105,26 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
         <h1>{t('nav.studentArchive')}</h1>
         <button className="btn small" onClick={() => setAdding(true)}>
           <Icon icon={Plus} />
-          {t('students.add')}
+          {t('people.add')}
         </button>
       </header>
-      {live.length === 0 && pending.length === 0 ? (
+      {!hasPeople ? (
         <Empty icon={Users}>{t('students.noneAtAll')}</Empty>
       ) : (
         <>
           <div className="stack-sm student-filters">
+            <div className="type-buttons" role="radiogroup" aria-label={t('people.role')}>
+              {(['alle', ...PERSON_ROLES] as const).map((r) => (
+                <button key={r} type="button" role="radio" aria-checked={filter.role === r} className={`chip${filter.role === r ? ' active' : ''}`} onClick={() => setFilter({ ...filter, role: r })}>
+                  {r === 'alle' ? t('people.everyone') : t(`personRole.${r}`)}
+                </button>
+              ))}
+            </div>
             <label className="search-field">
               <Icon icon={Search} />
               <input type="search" autoComplete="off" placeholder={t('students.searchPlaceholder')} aria-label={t('students.search')} value={filter.query} onChange={(e) => setFilter({ ...filter, query: e.target.value })} />
             </label>
+            {(filter.role === 'alle' || filter.role === 'student') && (
             <div className="two">
               <label>
                 {t('students.course')}
@@ -108,6 +148,7 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
                 </select>
               </label>
             </div>
+            )}
           </div>
           {groups.length === 0 && filtered && <p className="muted">{t('students.noMatch')}</p>}
           {groups.map((g) => {
@@ -143,6 +184,21 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
                         </li>
                       )
                     })}
+                  {g.trip &&
+                    g.people.map(({ participant: p, role }) => (
+                      <li key={p.id} className="student person">
+                        <button className="settings-row" onClick={() => setPerson({ participant: p, role, trip: g.trip! })}>
+                          <span className="avatar" aria-hidden="true">
+                            {p.firstName.slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="row-main">
+                            <span>{guestLabel(p)}</span>
+                            <span className="muted small">{t(`personRole.${role}`)}</span>
+                          </span>
+                          <Icon icon={ChevronRight} className="chevron" />
+                        </button>
+                      </li>
+                    ))}
                 </ul>
               </div>
             )
@@ -150,21 +206,18 @@ export function StudentArchive({ store, notify, openStudentId }: { store: Store;
         </>
       )}
       {adding && (
-        <StudentSheet
-          student={null}
-          curricula={curricula}
+        <PersonSheet
+          person={null}
           trips={tripChoices}
-          defaultTripId={current && isTeachingTrip(current) ? current.id : null}
-          defaultStartedAt={current?.startDate}
+          tripLabel={tripLabel}
+          defaultTripId={current?.id ?? null}
+          defaultRole={current && isTeachingTrip(current) ? 'student' : 'medezeiler'}
           onClose={() => setAdding(false)}
-          onSave={(input, tripId) =>
-            void studentInTripToevoegen(store, input, tripId).then(({ result }) => {
-              setAdding(false)
-              notify(t('students.added'))
-              setView({ kind: 'student', id: result.id })
-            })
-          }
+          onSave={(form) => void addPersonFromForm(form)}
         />
+      )}
+      {person && (
+        <PersonSheet person={person} trips={tripChoices} tripLabel={tripLabel} defaultTripId={null} defaultRole={person.role} onClose={() => setPerson(null)} onSave={(form) => void editPersonFromForm(form)} />
       )}
       {archived.length > 0 && (
         <button className="btn link" onClick={() => setView({ kind: 'archive' })}>

@@ -22,7 +22,7 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     // over de ander heen.
     { id: 'upg-gouden-a', name: 'Nep zeilweekend', participants: [{ id: 'upg-gouden-pa', firstName: 'Nepgouda', curriculumId: 'upg-course-1', level: 'beginner' }], updatedAt: T, deletedAt: null },
     { id: 'upg-gouden-b', name: 'Nep zeilweekend', participants: [{ id: 'upg-gouden-pb', firstName: 'Nepgoudb' }], updatedAt: T, deletedAt: null },
-    { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL' }], updatedAt: T, deletedAt: null },
+    { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL', role: 'medezeiler' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [
     { id: 'upg-leg-dag', tripId: 'upg-trip-dag', date: '2026-10-12', fromPlace: 'Nepbaai', fromCountry: 'NL', toPlace: 'Nepdorp', toCountry: 'NL', role: 'schipper', boat: 'Nepboot', nmInland: 0, nmSea: 8, nmTidal: 0, nightHours: 0, dateEstimated: false, source: 'manual', updatedAt: T, deletedAt: null },

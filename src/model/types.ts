@@ -55,9 +55,18 @@ export type Organisation = string
  * Deelnemer van een trip (student of gast, regel 14): alleen voornaam, optioneel land en optioneel kort kenmerk
  * (initiaal of bijnaam, geen achternaam), met niveau en cursus voor studenten. Geen contactgegevens.
  */
+/**
+ * De rol van een persoon op een trip (Meer → Personen, november 2026): student (met checklist), gast, crew, medezeiler
+ * (samen gezeild, bijvoorbeeld op een offshore), schipper of overig. Ontbreekt = volgt uit de trip (`participantRole`).
+ */
+export type PersonRole = 'student' | 'gast' | 'crew' | 'medezeiler' | 'schipper' | 'overig'
+export const PERSON_ROLES: readonly PersonRole[] = ['student', 'gast', 'crew', 'medezeiler', 'schipper', 'overig']
+
 export interface Participant {
   id: string
   firstName: string
+  /** Schrijfversie 12: de rol op deze trip. Ontbreekt = volgt uit de trip. */
+  role?: PersonRole
   level?: StudentLevel
   curriculumId?: string
   /** Land zoals Olivier het schrijft ("VS", "Duitsland"). */

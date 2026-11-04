@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { studentInTripToevoegen, studentVanDeelnemer } from '../src/domain/training'
+import { persoonBewerken, persoonToevoegen, studentInTripToevoegen, studentVanDeelnemer } from '../src/domain/training'
 import { violations } from '../src/domain/invariants'
 import { NO_FILTER, studentGroups } from '../src/model/student-groups'
 import type { Leg, Student, Trip, WeekPlan } from '../src/model/types'
@@ -122,7 +122,7 @@ describe('deelnemers en studenten', () => {
     // Zoals in Deze trip: student toevoegen zet hem ook bij de deelnemers (studentInTripToevoegen).
     const { result: student } = await studentInTripToevoegen(store, { firstName: 'Nepcees', curriculumId: 'seed-asa-101', level: 'beginner', startedAt: '2026-10-26' }, trip.id)
     const saved = store.list('trips.json.enc')[0]!
-    expect(saved.participants).toEqual([{ id: student.id, firstName: 'Nepcees', level: 'beginner', curriculumId: 'seed-asa-101' }])
+    expect(saved.participants).toEqual([{ id: student.id, firstName: 'Nepcees', role: 'student', level: 'beginner', curriculumId: 'seed-asa-101' }])
     expect(student.weekId).toBe(trip.id)
   })
 })
@@ -173,5 +173,45 @@ describe('deelnemers van een lestrip zijn studenten, ook zonder cursus', () => {
     expect(result).toMatchObject({ firstName: 'Nepdirk', curriculumId: '', weekId: 'w1', note: 'Nepnotitie\nTweede regel' })
     expect(store.list('trips.json.enc')[0]!.participants!.map((p) => p.firstName)).toEqual(['Nepdirk'])
     expect(violations(store).map((v) => v.rule)).not.toContain('student-zonder-cursus')
+  })
+})
+
+describe('personen met een rol (Meer → Personen)', () => {
+  it('een rol gaat voor de soort trip: een medezeiler op een lestrip wordt geen student, een student op een offshore wel', async () => {
+    const store = await device()
+    const teaching: Trip = { ...week, participants: [{ id: 'm-1', firstName: 'Nepmede', role: 'medezeiler' }, { id: 's-1', firstName: 'Nepstu' }] }
+    const offshore: Trip = { id: 'o1', name: 'Nepoffshore', type: 'zelf-trainen', startDate: '2026-11-03', endDate: '2026-11-09', participants: [{ id: 's-2', firstName: 'Nepoff', role: 'student' }, { id: 'c-1', firstName: 'Nepcrew' }], updatedAt: NOW, deletedAt: null }
+    await put(store, 'trips.json.enc', teaching)
+    await put(store, 'trips.json.enc', offshore)
+    await inTx(store, syncParticipants, teaching)
+    await inTx(store, syncParticipants, offshore)
+    expect(store.list('students.json.enc').map((s) => s.id).sort()).toEqual(['s-1', 's-2'])
+    // De anderen staan bij hun trip, met hun rol (zonder rol: uit de trip, hier medezeiler).
+    const groups = studentGroups(store.list('students.json.enc'), store.list('trips.json.enc'), [], null, NO_FILTER, [])
+    const people = groups.flatMap((g) => g.people.map((p) => [g.trip?.id, p.participant.firstName, p.role]))
+    expect(people).toEqual(expect.arrayContaining([
+      ['w1', 'Nepmede', 'medezeiler'],
+      ['o1', 'Nepcrew', 'medezeiler'],
+    ]))
+    // Filter op rol: alleen crew; cursusfilter laat de anderen weg.
+    expect(studentGroups(store.list('students.json.enc'), store.list('trips.json.enc'), [], null, { ...NO_FILTER, role: 'gast' }, []).flatMap((g) => [...g.students, ...g.people])).toEqual([])
+    expect(studentGroups(store.list('students.json.enc'), store.list('trips.json.enc'), [], null, { ...NO_FILTER, curriculumId: 'seed-asa-101' }, []).flatMap((g) => g.people)).toEqual([])
+  })
+
+  it('persoon toevoegen aan een trip (alleen voornaam, land, kenmerk en rol) en de rol wijzigen; student krijgt zijn checklist', async () => {
+    const store = await device()
+    const offshore: Trip = { id: 'o2', name: 'Nepoffshore', type: 'zelf-trainen', startDate: '2026-11-03', endDate: '2026-11-09', updatedAt: NOW, deletedAt: null }
+    await put(store, 'trips.json.enc', offshore)
+    const { result: id, undo } = await persoonToevoegen(store, 'o2', { firstName: 'Nepcrew Achternaam', role: 'crew', country: 'NL', tag: '' })
+    expect(store.list('trips.json.enc')[0]!.participants).toEqual([{ id, firstName: 'Nepcrew', role: 'crew', country: 'NL' }])
+    expect(store.list('students.json.enc')).toEqual([])
+    const undoEdit = await persoonBewerken(store, 'o2', id, { firstName: 'Nepcrew', role: 'student', country: 'NL', tag: '' })
+    expect(store.list('students.json.enc')).toEqual([expect.objectContaining({ id, firstName: 'Nepcrew', curriculumId: '', weekId: 'o2' })])
+    expect(store.list('trips.json.enc')[0]!.participants![0]!.role).toBe('student')
+    // Ongedaan maken in omgekeerde volgorde: eerst de rol, dan het toevoegen.
+    await undoEdit()
+    expect(store.list('students.json.enc')).toEqual([])
+    await undo()
+    expect(store.list('trips.json.enc')[0]!.participants ?? []).toEqual([])
   })
 })

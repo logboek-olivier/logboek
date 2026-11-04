@@ -14,7 +14,10 @@
 // 5: het scenario als stappenplan (`version: 2`, start vanaf vandaag met een eigen startwaarde, blokken met salaris en
 // fooi apart, een doel). Bestanden van versie 4 blijven ongewijzigd leesbaar (een ouder scenario wordt pas na een tik
 // omgezet); een oudere build leest een bestand van versie 5 als "van een nieuwere versie".
-export const SCHEMA_VERSION = 5
+// 6: de rol van een persoon op een trip (`role` bij een deelnemer: student, gast, crew, medezeiler, schipper, overig).
+// Bestanden van versie 5 blijven ongewijzigd leesbaar (zonder rol volgt de rol uit de trip); een oudere build leest een
+// bestand van versie 6 als "van een nieuwere versie".
+export const SCHEMA_VERSION = 6
 
 // Schrijfversie van deze build: elk databestand dat deze build schrijft, krijgt hem mee als `minWriterVersion` (in de
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
@@ -44,7 +47,9 @@ export const SCHEMA_VERSION = 5
 // zou dat veld bij het opslaan van "laatst gebruikt" weggooien en alles weer in één valuta zetten.
 // 11: het scenario als stappenplan. Een oudere build leest de blokken van een omgezet scenario als weken ná de planning,
 // telt de planning dan dubbel en zou salaris en fooi per blok, de startwaarde en het doel bij het opslaan weggooien.
-export const WRITER_VERSION = 11
+// 12: de rol van een persoon op een trip. Een oudere build bouwt de deelnemers bij het opslaan van een trip opnieuw op
+// en zou de rol weggooien (en van een medezeiler op een lestrip weer een student maken).
+export const WRITER_VERSION = 12
 
 let writer = WRITER_VERSION
 

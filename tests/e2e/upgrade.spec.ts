@@ -473,7 +473,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     // Het salaris is ontvangen: dezelfde ene transactie (vast id), het bedrag blijft; de tocht heeft geen salaris-veld meer.
     expect(trips.find((t) => t.id === 'upg-trip-salaris')).not.toHaveProperty('salary')
     expect((transactions as unknown as { kind: string; tripId?: string; deletedAt: string | null }[]).filter((tx) => tx.kind === 'loon' && tx.tripId === 'upg-trip-salaris' && tx.deletedAt === null)).toEqual([expect.objectContaining({ id: 'salaris:upg-trip-salaris', amount: 1200, status: 'ontvangen' })])
-    expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL' }] })
+    expect(trips.find((t) => t.id === 'upg-trip-1')).toMatchObject({ participants: [{ id: 'upg-p-1', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', country: 'NL', role: 'medezeiler' }] })
     // De weekafsluiting staat leesbaar op GitHub (naast het voorbeeld als de vorige release het bestand al kende).
     const closings = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
     expect(closings).toEqual(expect.arrayContaining([expect.objectContaining({ rating: 7, deletedAt: null })]))
