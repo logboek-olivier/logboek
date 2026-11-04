@@ -89,6 +89,22 @@ describe('onleesbaar bestand op GitHub', () => {
     expect(c.store.list('plans.json.enc').map((p) => p.id)).toEqual(['p1'])
   })
 
+  it('de melding blijft staan tijdens de controle in Opslag (die leest de outbox opnieuw, zonder sync)', async () => {
+    const github = new FakeGithub()
+    github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
+    const a = await device(github)
+    await put(a.store, 'plans.json.enc', plan('p1'))
+    await a.store.sync()
+    await pollute(github, 'plans.json.enc')
+    await a.store.sync()
+    const unreadable = { kind: 'error', code: 'unreadable', count: 0, paths: ['plans.json.enc'] }
+    expect(a.store.getStatus()).toEqual(unreadable)
+    // Vroeger zette het opnieuw lezen van de outbox (niets wacht) de status stil op "Gesynct".
+    const result = await a.store.check(false, 0)
+    expect(result?.files.find((f) => f.path === 'plans.json.enc')?.state).toBe('onleesbaar')
+    expect(a.store.getStatus()).toEqual(unreadable)
+  })
+
   it('zonder lokale kopie: niets wissen en niets schrijven voor dat bestand', async () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))

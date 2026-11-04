@@ -1637,9 +1637,11 @@ export class Store {
   private idleStatus(): SyncStatus {
     if (this.demo) return { kind: 'demo' }
     const count = this.pendingCount()
+    // Een fout (een onleesbaar bestand, de token, "Werk de app bij") blijft staan tot een volgende ronde hem oplost,
+    // ook als er niets meer wacht: opslaan of de controle in Opslag mag hem nooit stil in "Gesynct" veranderen.
+    if (this.status.kind === 'error') return { ...this.status, count }
     if (count === 0) return { kind: 'synced' }
     if (this.status.kind === 'offline') return { kind: 'offline', count }
-    if (this.status.kind === 'error') return { ...this.status, count }
     return { kind: 'pending', count }
   }
 
