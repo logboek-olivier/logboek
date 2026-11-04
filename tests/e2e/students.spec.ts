@@ -82,8 +82,8 @@ test('Studenten in Deze week: deelnemers met cursus krijgen een checklist, afvin
   await expect(page.locator('.student')).toHaveCount(1)
 
   // Studentenarchief onder Meer: terugzetten en wissen.
-  await openMore(page, 'Studentenarchief')
-  await expect(page.getByRole('heading', { name: 'Studentenarchief' })).toBeVisible()
+  await openMore(page, 'Personen')
+  await expect(page.getByRole('heading', { name: 'Personen' })).toBeVisible()
   // Álle studenten per trip: de lopende trip bovenaan, met Nepanna (Nepbram is gearchiveerd).
   await expect(page.locator('.student-group.current')).toContainText('Lopend')
   await expect(page.locator('.student-group.current .student')).toHaveCount(1)
@@ -96,7 +96,7 @@ test('Studenten in Deze week: deelnemers met cursus krijgen een checklist, afvin
   await page.locator('.student').filter({ hasText: 'Nepbram' }).getByRole('button').click()
   await page.getByRole('button', { name: 'Student bewerken' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Archiveren' }).click()
-  await openMore(page, 'Studentenarchief')
+  await openMore(page, 'Personen')
   await page.getByRole('button', { name: 'Archief (1)' }).click()
   await page.getByRole('button', { name: 'Archief wissen' }).click()
   await expect(page.locator('.toast')).toContainText('Archief gewist')

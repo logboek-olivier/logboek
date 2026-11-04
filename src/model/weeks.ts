@@ -6,7 +6,7 @@ import { MAX_COUNTRY, MAX_TAG } from './guests'
 import { saveSettings } from './settings'
 import { applySalaryDefault } from './salary'
 import { kindForType, tripKind } from './trip-kind'
-import { firstNameOnly, newId, type WaterKind, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { firstNameOnly, newId, PERSON_ROLES, type PersonRole, type WaterKind, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 import { addDays, todayIso } from '../basis/datum'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
@@ -235,6 +235,7 @@ export function regionForBase(trips: readonly Trip[], base: string, exceptId?: s
 export interface ParticipantInput {
   id?: string
   firstName: string
+  role?: PersonRole
   level?: StudentLevel
   curriculumId?: string
   country?: string
@@ -272,7 +273,7 @@ export function cleanRoute(route: readonly PlannedLeg[]): PlannedLeg[] {
     .map((r) => ({ day: r.day, from: r.from.trim().slice(0, 80), to: r.to.trim().slice(0, 80), ...(r.nm !== undefined && Number.isFinite(r.nm) && r.nm >= 0 ? { nm: r.nm } : {}) }))
 }
 
-/** Alleen voornaam, niveau, cursus, land, kort kenmerk en de koppeling met een eerdere gast; lege regels vallen weg (regel 14). */
+/** Alleen voornaam, rol, niveau, cursus, land, kort kenmerk en de koppeling met een eerdere gast; lege regels vallen weg (regel 14). */
 export function cleanParticipants(rows: readonly ParticipantInput[]): Participant[] {
   return rows
     .map((r) => ({ ...r, firstName: firstNameOnly(r.firstName).slice(0, 40) }))
@@ -283,6 +284,7 @@ export function cleanParticipants(rows: readonly ParticipantInput[]): Participan
       return {
         id: r.id ?? newId(),
         firstName: r.firstName,
+        ...(r.role && PERSON_ROLES.includes(r.role) ? { role: r.role } : {}),
         ...(r.level ? { level: r.level } : {}),
         ...(r.curriculumId ? { curriculumId: r.curriculumId } : {}),
         ...(country ? { country } : {}),
@@ -406,6 +408,26 @@ export function isTeachingTrip(trip: Pick<Trip, 'type'>): boolean {
 }
 
 /**
+ * Hoort deze deelnemer een student te zijn? Met een rol: alleen als die rol student is. Zonder rol (van vóór de rollen):
+ * met een cursus, of in een trip waarin Olivier les geeft.
+ */
+export function wantsStudent(p: Participant, trip: Pick<Trip, 'type'>): boolean {
+  return p.role ? p.role === 'student' : !!p.curriculumId || isTeachingTrip(trip)
+}
+
+/**
+ * De rol van een persoon op een trip: de eigen rol, anders student (met een student of als hij er een hoort te zijn),
+ * gast bij skipper charter, crew bij een delivery, anders medezeiler.
+ */
+export function participantRole(p: Participant, trip: Pick<Trip, 'type'>, hasStudent: boolean): PersonRole {
+  if (p.role) return p.role
+  if (hasStudent || wantsStudent(p, trip)) return 'student'
+  if (trip.type === 'skipper-charter') return 'gast'
+  if (trip.type === 'delivery') return 'crew'
+  return 'medezeiler'
+}
+
+/**
  * Deelnemers met een cursus, en elke deelnemer van een trip waarin Olivier les geeft, krijgen een student (zelfde id)
  * voor hun checklist en notities; een bestaande student krijgt de nieuwe voornaam, cursus en niveau (zonder cursus bij
  * de deelnemer blijft die van de student). Een deelnemer die van de week verdwijnt, houdt zijn student (en voortgang).
@@ -416,9 +438,8 @@ export async function syncParticipants(store: Tx, trip: Trip): Promise<void> {
   const liveTrips = new Set(store.list('trips.json.enc').map((x) => x.id))
   const now = new Date().toISOString()
   const changed: Student[] = []
-  const teaching = isTeachingTrip(trip)
   for (const p of trip.participants ?? []) {
-    if (!p.curriculumId && !teaching) continue
+    if (!wantsStudent(p, trip)) continue
     const existing = students.find((s) => s.id === p.id)
     if (!existing) {
       changed.push({
@@ -454,7 +475,7 @@ export function participantsWithoutStudent(trips: readonly Trip[], students: rea
   const out: { trip: Trip; participant: Participant }[] = []
   for (const trip of active(trips)) {
     for (const p of trip.participants ?? []) {
-      if (known.has(p.id) || (!p.curriculumId && !isTeachingTrip(trip))) continue
+      if (known.has(p.id) || !wantsStudent(p, trip)) continue
       known.add(p.id)
       out.push({ trip, participant: p })
     }
@@ -484,8 +505,53 @@ export async function studentFromParticipant(store: Tx, trip: Trip, participant:
 export async function addParticipant(store: Tx, trip: Trip, student: Student): Promise<void> {
   const participants = trip.participants ?? []
   if (participants.some((p) => p.id === student.id)) return
-  const participant: Participant = { id: student.id, firstName: student.firstName, level: student.level, curriculumId: student.curriculumId }
+  const participant: Participant = { id: student.id, firstName: student.firstName, role: 'student', level: student.level, ...(student.curriculumId ? { curriculumId: student.curriculumId } : {}) }
   await store.put('trips.json.enc', { ...trip, participants: [...participants, participant], updatedAt: new Date().toISOString() })
+}
+
+export interface PersonInput {
+  firstName: string
+  role: PersonRole
+  country?: string
+  tag?: string
+}
+
+/**
+ * Meer → Personen: een persoon aan een trip toevoegen (alleen voornaam, rol, land en kenmerk; regel 14). Een student
+ * krijgt meteen zijn student (checklist en notities). Geeft het id van de nieuwe deelnemer.
+ */
+export async function addPerson(store: Tx, tripId: string, input: PersonInput): Promise<string> {
+  const trip = store.get('trips.json.enc').find((t) => t.id === tripId && t.deletedAt === null)
+  if (!trip) throw new Error('Trip bestaat niet')
+  const [participant] = cleanParticipants([{ firstName: input.firstName, role: input.role, country: input.country, tag: input.tag }])
+  if (!participant) throw new Error('Geen voornaam')
+  const next = { ...trip, participants: [...(trip.participants ?? []), participant], updatedAt: store.now }
+  await store.put('trips.json.enc', next)
+  if (wantsStudent(participant, next)) await studentFromParticipant(store, next, participant)
+  return participant.id
+}
+
+/**
+ * Meer → Personen: voornaam, rol, land of kenmerk van een persoon op een trip wijzigen. Wordt de rol student, dan krijgt
+ * hij zijn student; een student die een andere rol krijgt, houdt zijn student (en voortgang) tot Olivier die wist.
+ */
+export async function editPerson(store: Tx, tripId: string, participantId: string, input: PersonInput): Promise<void> {
+  const trip = store.get('trips.json.enc').find((t) => t.id === tripId && t.deletedAt === null)
+  const current = trip?.participants?.find((p) => p.id === participantId)
+  if (!trip || !current) throw new Error('Persoon bestaat niet')
+  const [cleaned] = cleanParticipants([{ ...current, firstName: input.firstName, role: input.role, country: input.country, tag: input.tag }])
+  if (!cleaned) throw new Error('Geen voornaam')
+  // Velden die deze versie niet kent (van een nieuwere build), blijven staan.
+  const participant: Participant = { ...current, ...cleaned }
+  if (!input.country?.trim()) delete participant.country
+  if (!input.tag?.trim()) delete participant.tag
+  // Een andere naam of een ander land maakt de koppeling met een eerdere gast los (zoals in Trip bewerken).
+  if (participant.guestId && participant.guestId !== participant.id && (participant.firstName !== current.firstName || (participant.country ?? '') !== (current.country ?? ''))) delete participant.guestId
+  const next = { ...trip, participants: (trip.participants ?? []).map((p) => (p.id === participantId ? participant : p)), updatedAt: store.now }
+  await store.put('trips.json.enc', next)
+  const student = store.get('students.json.enc').find((s) => s.id === participantId && s.deletedAt === null)
+  if (student && student.firstName !== participant.firstName) await store.put('students.json.enc', { ...student, firstName: participant.firstName, updatedAt: store.now })
+  if (wantsStudent(participant, next)) await studentFromParticipant(store, next, participant)
 }
 
 /** De laatste trip die vóór of op `date` begint (voor naam- en typevoorstel van een nieuwe trip); anders de laatste. */

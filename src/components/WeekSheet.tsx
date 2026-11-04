@@ -9,7 +9,7 @@ import { totals } from '../model/money'
 import { currentSettings } from '../model/settings'
 import { newTripName } from '../model/counters'
 import { previousTrip, routeDays, routeLine, routeTemplates, tripRoute } from '../model/routes'
-import { BOAT_KINDS, STUDENT_LEVELS, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
+import { BOAT_KINDS, PERSON_ROLES, STUDENT_LEVELS, WATER_KINDS, WORK_TYPES, type BoatKind, type Organisation, type PersonRole, type PlannedLeg, type StudentLevel, type Trip, type WeekType } from '../model/types'
 import {
   boatProfile,
   feetToMetres,
@@ -367,6 +367,14 @@ export function WeekSheet({ store, trip, notify, onClose, initial }: { store: St
               </select>
               {r.firstName.trim() !== '' && (
                 <>
+                  <select className="participant-role" aria-label={t('week.participantRole', { n: i + 1 })} value={r.role ?? ''} onChange={(e) => setRow(i, { role: (e.target.value || undefined) as PersonRole | undefined })}>
+                    <option value="">{t('people.role')}</option>
+                    {PERSON_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {t(`personRole.${role}`)}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     type="text"
                     className="participant-country"

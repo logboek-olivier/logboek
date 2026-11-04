@@ -41,7 +41,7 @@ test('studentenarchief: alle studenten per trip, lopende trip bovenaan, zoeken e
   ])
 
   // Alle studenten, per trip: de lopende trip bovenaan.
-  await openMore(page, 'Studentenarchief')
+  await openMore(page, 'Personen')
   const groups = page.locator('.student-group')
   await expect(groups).toHaveCount(2)
   await expect(groups.first()).toContainText('Nepweek nu')
@@ -79,7 +79,7 @@ test('studentenarchief: alle studenten per trip, lopende trip bovenaan, zoeken e
   await expect(page.getByRole('heading', { name: 'Nepcees' })).toBeVisible()
   await expect(page.getByRole('button', { name: /^Overstag gaan: Nieuw/ }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Terug naar Studenten' }).click()
-  await expect(page.getByRole('heading', { name: 'Studentenarchief' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Personen' })).toBeVisible()
 
   await expect(page.getByRole('status').first()).toHaveText('Gesynct', { timeout: 15_000 })
   const wire = github.requests.map((r) => `${r.url} ${r.body ?? ''}`).join('\n')
