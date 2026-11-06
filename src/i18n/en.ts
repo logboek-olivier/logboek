@@ -2461,4 +2461,11 @@ export const en: Messages = {
   'msg.open': 'Write message',
   'msg.orgDefaults': 'Messages',
   'msg.daysBefore': 'Introduction, days before the start',
+  // Money per day in the calendar
+  'dayMoney.kicker': 'Money of the day',
+  'dayMoney.none': 'No money on this day',
+  'dayMoney.net': 'Net this day',
+  'dayMoney.openDay': 'View day',
+  'dayMoney.monthNet': 'Net this month',
+  'dayMoney.aria': (p: { amount: string }) => `net ${p.amount}`,
 }

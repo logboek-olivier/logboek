@@ -2500,6 +2500,13 @@ export const nl = {
   'msg.open': 'Bericht maken',
   'msg.orgDefaults': 'Berichten',
   'msg.daysBefore': 'Introductie, dagen vóór de start',
+  // Geld per dag in de agenda
+  'dayMoney.kicker': 'Geld van de dag',
+  'dayMoney.none': 'Geen geld op deze dag',
+  'dayMoney.net': 'Netto deze dag',
+  'dayMoney.openDay': 'Dag bekijken',
+  'dayMoney.monthNet': 'Netto deze maand',
+  'dayMoney.aria': (p: { amount: string }) => `netto ${p.amount}`,
 }
 
 export type Messages = { [K in keyof typeof nl]: (typeof nl)[K] }

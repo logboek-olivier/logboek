@@ -5237,4 +5237,34 @@ button.drill-post {
   font-size: var(--fs-sm, 0.875rem);
   padding: 4px 10px;
   min-height: 36px;
+/* Geld per dag (agenda met "Toon bedragen"): netto in de dagtegel, kort (+120, −1,2k), groen of rood. */
+.cal-net {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 3px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cal-net.positive {
+  color: var(--positive);
+}
+
+.cal-net.negative {
+  color: var(--negative);
+}
+
+.agenda-net {
+  display: block;
+}
+
+.day-money-total {
+  border-top: 1px solid var(--border);
+  padding-top: var(--s-2);
 }
