@@ -20,7 +20,10 @@
 // 7: trips per scenarioblok (`trips`, salaris en fooi per trip), een doel op verdiend, de verwachte fooi per trip
 // (`expectedTip`) en per organisatie (`tipDefaults`). Bestanden van versie 6 blijven ongewijzigd leesbaar; een oudere
 // build leest een bestand van versie 7 als "van een nieuwere versie".
-export const SCHEMA_VERSION = 7
+// 8: de berichtengenerator: sjablonen (templates.json.enc, een nieuw databestand en recordtype), per trip de berichtvelden
+// (`messageFields`) en wat verstuurd is (`messages`), en per organisatie de standaard (`messageDefaults`). Bestanden van
+// versie 7 blijven ongewijzigd leesbaar; een oudere build leest een bestand van versie 8 als "van een nieuwere versie".
+export const SCHEMA_VERSION = 8
 
 // Schrijfversie van deze build: elk databestand dat deze build schrijft, krijgt hem mee als `minWriterVersion` (in de
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
@@ -55,7 +58,9 @@ export const SCHEMA_VERSION = 7
 // 13: trips per scenarioblok, een doel op verdiend en de verwachte fooi per trip en per organisatie. Een oudere build
 // zou een blok met trips als bedragen per week opslaan (de trips kwijt), het doel als netto waarde lezen en de verwachte
 // fooi bij het opslaan van een trip of de instellingen weggooien.
-export const WRITER_VERSION = 13
+// 14: de berichtengenerator. Een oudere build kent templates.json.enc niet en zou bij het opslaan van een trip de
+// berichtvelden en "verstuurd" weggooien, en bij het opslaan van de instellingen de standaard per organisatie.
+export const WRITER_VERSION = 14
 
 let writer = WRITER_VERSION
 

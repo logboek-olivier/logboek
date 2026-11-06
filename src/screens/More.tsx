@@ -1,4 +1,4 @@
-import { CalendarRange, ClipboardCheck, Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, NotebookPen, Sailboat, Settings as SettingsIcon, History as HistoryIcon, Target, Trash2, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Archive, BarChart3, BookOpen, Briefcase, CalendarClock, ChevronLeft, ChevronRight, HardDrive, Landmark, Map as MapIcon, MapPin, MessageSquareText, NotebookPen, Sailboat, Settings as SettingsIcon, History as HistoryIcon, Target, Trash2, Vault as VaultIcon, Wallet, type LucideIcon } from 'lucide-react'
 import { Icon } from '../components/Icon'
 import { useIsDemo } from '../components/DemoBar'
 import { t, type MessageKey } from '../i18n'
@@ -10,7 +10,7 @@ import type { Store } from '../storage/store'
 // Meer: de onderdelen die niet dagelijks nodig zijn, met het Logboek (archief; ook via de Agenda). Later komt de kluis
 // hier ook.
 
-export type MoreScreen = 'periodes' | 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen' | 'nakijken' | 'prullenbak' | 'geschiedenis'
+export type MoreScreen = 'periodes' | 'logboek' | 'statistieken' | 'doelen' | 'carriere' | 'rekeningen' | 'kluis' | 'geld' | 'termijnen' | 'boten' | 'plaatsen' | 'kaarten' | 'cursussen' | 'archief' | 'opslag' | 'instellingen' | 'nakijken' | 'prullenbak' | 'geschiedenis' | 'berichten'
 
 const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: LucideIcon }[] = [
   { id: 'periodes', label: 'periods.title', hint: 'more.periodsHint', icon: CalendarRange },
@@ -27,6 +27,7 @@ const ITEMS: { id: MoreScreen; label: MessageKey; hint: MessageKey; icon: Lucide
   { id: 'kaarten', label: 'maps.title', hint: 'more.mapsHint', icon: MapIcon },
   { id: 'cursussen', label: 'curriculum.courses', hint: 'more.coursesHint', icon: BookOpen },
   { id: 'archief', label: 'nav.studentArchive', hint: 'more.archiveHint', icon: Archive },
+  { id: 'berichten', label: 'nav.messages', hint: 'more.messagesHint', icon: MessageSquareText },
   { id: 'opslag', label: 'nav.storage', hint: 'more.storageHint', icon: HardDrive },
   { id: 'instellingen', label: 'nav.settings', hint: 'more.settingsHint', icon: SettingsIcon },
 ]

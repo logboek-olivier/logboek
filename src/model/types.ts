@@ -230,6 +230,45 @@ export interface Trip extends SyncRecord {
    * Ontbreekt = de standaardfooi van de organisatie, anders het eigen gemiddelde.
    */
   expectedTip?: SalaryDefault
+  /**
+   * Schrijfversie 14 (berichtengenerator): wat de app voor een bericht nog niet weet (verzamelplaats, verzameltijd,
+   * check-in, check-out, eindplaats, schipper), alleen voor deze trip. Ontbreekt = de standaard van de organisatie.
+   */
+  messageFields?: Partial<Record<MessageField, string>>
+  /**
+   * Schrijfversie 14: per soort bericht (introductie, afsluiting, eigen soort) of het verstuurd is of niet nodig, met de
+   * datum. De tekst van het bericht zelf wordt nooit bewaard (regel 14: voornamen alleen in de trip).
+   */
+  messages?: Record<string, MessageMark>
+}
+
+/** De velden van een bericht die de app niet uit de trip, boot of plaatsen kan halen. */
+export type MessageField = 'meetingPlace' | 'meetingTime' | 'checkIn' | 'checkOut' | 'endPlace' | 'skipper'
+export const MESSAGE_FIELDS: readonly MessageField[] = ['meetingPlace', 'meetingTime', 'checkIn', 'checkOut', 'endPlace', 'skipper']
+
+/** Verstuurd of niet nodig, op een datum (jjjj-mm-dd). */
+export interface MessageMark {
+  status: 'verstuurd' | 'niet-nodig'
+  date: string
+}
+
+/** Per organisatie: de standaard voor de berichtvelden (de laatst gebruikte waarde) en hoeveel dagen vooraf de introductie. */
+export type MessageDefaults = Partial<Record<MessageField, string>> & { introDaysBefore?: number }
+
+/**
+ * Sjabloon voor een bericht aan de gasten (templates.json.enc, Meer → Berichten). Gewone tekst met invulvelden
+ * (`{guests}`, `{boat}` …, zie src/model/messages.ts). Hoort bij een soort bericht, in één taal, en eventueel bij één
+ * organisatie en/of soort trip; zonder beide is het de algemene terugval.
+ */
+export interface MessageTemplate extends SyncRecord {
+  /** 'introductie', 'afsluiting' of een eigen soort (`eigen:<id>`). */
+  kind: string
+  /** De naam van een eigen soort ("Herinnering dag voor vertrek"). */
+  kindName?: string
+  lang: 'nl' | 'en'
+  organisation?: Organisation
+  tripType?: WeekType
+  text: string
 }
 
 export interface Leg extends SyncRecord {
@@ -351,6 +390,8 @@ export interface Settings extends SyncRecord {
   salaryDefaults?: Partial<Record<Organisation, SalaryDefault>>
   /** Schrijfversie 13: verwachte fooi per trip per organisatie (Gepland); gaat voor het eigen gemiddelde. */
   tipDefaults?: Partial<Record<Organisation, SalaryDefault>>
+  /** Schrijfversie 14: per organisatie de standaard voor berichten (verzamelplaats, tijden, dagen vooraf). */
+  messageDefaults?: Partial<Record<Organisation, MessageDefaults>>
   /** Dagelijkse herinnering in de eigen agenda (Instellingen → Herinnering): tijd (uu:mm) en alleen op werkdagen. */
   dailyReminder?: { time: string; workdaysOnly: boolean }
   /** Uitbetaling per organisatie (na elke trip of maandelijks rond dag N); ontbreekt = na elke trip. */
@@ -850,6 +891,7 @@ export interface Collections {
   'periods.json.enc': StayPeriod
   'history.json.enc': HistoryEntry
   'scenarios.json.enc': Scenario
+  'templates.json.enc': MessageTemplate
 }
 
 export type CollectionPath = keyof Collections
@@ -879,6 +921,7 @@ export const COLLECTION_PATHS: readonly CollectionPath[] = [
   'periods.json.enc',
   'history.json.enc',
   'scenarios.json.enc',
+  'templates.json.enc',
 ]
 
 export function newId(): string {

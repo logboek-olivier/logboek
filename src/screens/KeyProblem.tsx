@@ -203,6 +203,7 @@ const FILE_LABEL: Record<CollectionPath, MessageKey> = {
   'claims.json.enc': 'key.file.claims',
   'periods.json.enc': 'key.file.periods',
   'history.json.enc': 'key.file.history',
+  'templates.json.enc': 'key.file.templates',
 }
 
 /** Paden als leesbare opsomming ("Fooien en kosten, Instellingen en Studenten"). */

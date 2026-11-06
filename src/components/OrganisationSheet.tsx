@@ -3,7 +3,9 @@ import { useState, type FormEvent } from 'react'
 import { LEGACY_ORGS, orgFromName, organisations, type OrgDef } from '../basis/organisatie'
 import { instellingenOpslaan } from '../domain/instellingen'
 import { t } from '../i18n'
-import { newId } from '../model/types'
+import { cleanMessageDefaults, DEFAULT_INTRO_DAYS } from '../model/messages'
+import { currentSettings } from '../model/settings'
+import { MESSAGE_FIELDS, newId, type MessageDefaults } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
 import { Icon } from './Icon'
@@ -19,6 +21,8 @@ export function organisationsLine(): string {
 
 export function OrganisationsSheet({ store, notify, onClose }: { store: Store; notify: Notify; onClose: () => void }) {
   const [rows, setRows] = useState<OrgDef[]>(() => organisations().map((o) => ({ ...o })))
+  // Berichten per organisatie (Meer → Berichten): verzamelplaats, tijden, schipper en dagen vooraf voor de introductie.
+  const [defaults, setDefaults] = useState<Record<string, MessageDefaults>>(() => ({ ...(currentSettings(store.list('settings.json.enc')).messageDefaults ?? {}) }) as Record<string, MessageDefaults>)
   const [busy, setBusy] = useState(false)
   // In gebruik: trips met deze organisatie (ook alleen uit de naam, zoals "Yacht week 7"), en doelen per organisatie.
   const used = (id: string) =>
@@ -32,7 +36,14 @@ export function OrganisationsSheet({ store, notify, onClose }: { store: Store; n
     setBusy(true)
     try {
       const clean = rows.map((r) => ({ id: r.id, name: r.name.trim().slice(0, 60), ...(r.short?.trim() ? { short: r.short.trim().slice(0, 6) } : {}) }))
-      const undo = await instellingenOpslaan(store, { organisations: clean })
+      // De standaard voor berichten van elke organisatie in de lijst (een verwijderde organisatie houdt de hare, zoals salaris).
+      const messageDefaults: Record<string, MessageDefaults> = { ...defaults }
+      for (const r of clean) {
+        const d = cleanMessageDefaults(defaults[r.id] ?? {})
+        if (d) messageDefaults[r.id] = d
+        else delete messageDefaults[r.id]
+      }
+      const undo = await instellingenOpslaan(store, { organisations: clean, messageDefaults })
       onClose()
       notify(t('orgs.saved'), undo)
     } finally {
@@ -61,6 +72,41 @@ export function OrganisationsSheet({ store, notify, onClose }: { store: Store; n
                   <input type="text" autoComplete="off" maxLength={6} size={6} value={row.short ?? ''} onChange={(e) => set(i, { short: e.target.value })} />
                 </label>
               </div>
+              <details className="org-messages">
+                <summary>{t('msg.orgDefaults')}</summary>
+                <div className="stack-sm">
+                  {MESSAGE_FIELDS.map((f) => (
+                    <label key={f}>
+                      {t(`msgField.${f}`)}
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        maxLength={120}
+                        value={defaults[row.id]?.[f] ?? ''}
+                        onChange={(e) => setDefaults({ ...defaults, [row.id]: { ...(defaults[row.id] ?? {}), [f]: e.target.value } })}
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    {t('msg.daysBefore')}
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={60}
+                      placeholder={String(DEFAULT_INTRO_DAYS)}
+                      value={defaults[row.id]?.introDaysBefore ?? ''}
+                      onChange={(e) => {
+                        const n = e.target.value === '' ? undefined : Number(e.target.value)
+                        const next: MessageDefaults = { ...(defaults[row.id] ?? {}) }
+                        if (n === undefined || !Number.isInteger(n)) delete next.introDaysBefore
+                        else next.introDaysBefore = n
+                        setDefaults({ ...defaults, [row.id]: next })
+                      }}
+                    />
+                  </label>
+                </div>
+              </details>
               {count > 0 ? (
                 <p className="muted small">{t('orgs.inUse', { n: count })}</p>
               ) : (

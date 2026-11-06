@@ -46,6 +46,7 @@ const Stats = lazyComponent(() => import('./Stats').then((m) => m.Stats))
 const Review = lazyComponent(() => import('./Review').then((m) => m.Review))
 const Trash = lazyComponent(() => import('./Trash').then((m) => m.Trash))
 const HistoryScreen = lazyComponent(() => import('./History').then((m) => m.History))
+const Messages = lazyComponent(() => import('./Messages').then((m) => m.Messages))
 const Periods = lazyComponent(() => import('./Periods').then((m) => m.Periods))
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
@@ -77,6 +78,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   nakijken: 'Nakijken',
   prullenbak: 'Prullenbak',
   geschiedenis: 'Geschiedenis',
+  berichten: 'Berichten',
   periodes: 'Periodes',
 }
 
@@ -276,7 +278,7 @@ export function Home({ store }: { store: Store }) {
     ? 'toevoegen'
     : screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes' || screen === 'prullenbak' || screen === 'geschiedenis'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes' || screen === 'prullenbak' || screen === 'geschiedenis' || screen === 'berichten'
         ? 'meer'
         : screen
 
@@ -433,6 +435,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Review store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'berichten' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Messages store={store} notify={notify} />
         </>
       )}
       {screen === 'geschiedenis' && (

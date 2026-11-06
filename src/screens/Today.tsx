@@ -26,6 +26,7 @@ import { nmInYear } from '../model/derive'
 import { DueList, useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
 import { PayoutQuestions } from '../components/MoneyPath'
+import { MessageReminders } from '../components/MessageReminders'
 import { currentSettings, yearGoal } from '../model/settings'
 import { type Reminder, type Trip } from '../model/types'
 import { daysUntil, useSession } from '../session'
@@ -208,6 +209,7 @@ export function Today({
           </button>
         </div>
       )}
+      <MessageReminders store={store} notify={notify} />
       <SalaryQuestions store={store} notify={notify} />
       <PayoutQuestions store={store} notify={notify} />
       {gaps.length > 0 && (

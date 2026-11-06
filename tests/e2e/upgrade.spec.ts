@@ -431,6 +431,15 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     await page.getByRole('button', { name: L('common.save') }).click()
     await expect.poll(() => puts('claims.json.enc'), { timeout: 20_000 }).toBeGreaterThan(claimPuts)
     await expectSynced(page)
+    // Berichtsjablonen (templates.json.enc, nieuw in november 2026): het meegeleverde afsluitingssjabloon aanpassen.
+    await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
+    const templatePuts = puts('templates.json.enc')
+    await openMore(page, L('nav.messages'), L('nav.more'))
+    await page.locator('.message-templates .section', { hasText: L('msgKind.afsluiting') }).getByRole('button', { name: /Engels/ }).first().click()
+    await page.getByRole('dialog').getByRole('textbox', { name: L('msg.text'), exact: true }).fill('Thanks {voornamen gasten}, nepafsluiting upgrade.')
+    await page.getByRole('dialog').getByRole('button', { name: L('common.save') }).click()
+    await expect.poll(() => puts('templates.json.enc'), { timeout: 20_000 }).toBeGreaterThan(templatePuts)
+    await expectSynced(page)
     await phone.close()
     await cleanDeviceReadsAll(browser, server, github, data)
     // Het schone apparaat leest ook de agenda: de nieuwe thuisdag staat als periode in periods.json.enc (periodemodel),
