@@ -61,14 +61,14 @@ function sumCloses(p: Profile, f: Forecast): void {
   expect([drills.start.eur, drills.salary.eur, drills.tips.eur, drills.scenario.eur, drills.costs.eur, drills.oneOffs.eur, drills.growth.eur]).toEqual([lines.start, lines.salary, lines.tips, lines.scenario, lines.costs, lines.oneOffs, lines.growth])
 }
 
-describe('schemaversie 7', () => {
-  it('leest bestanden van versie 2 tot en met 6 (standen, instellingen, scenario\'s, trips) ongewijzigd in en schrijft versie 7 met schrijfversie 13', () => {
+describe('schemaversie 7 en later', () => {
+  it('leest bestanden van versie 2 tot en met 6 (standen, instellingen, scenario\'s, trips) ongewijzigd in en schrijft de huidige versie', () => {
     const p = profileA()
     const v2 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 2, minWriterVersion: 6, records }))
     expect(decodeRecords('balances.json.enc', v2(p.input.balances))).toEqual(p.input.balances)
     expect(decodeRecords('settings.json.enc', v2([p.settings]))).toEqual([p.settings])
-    expect(SCHEMA_VERSION).toBe(7)
-    expect(WRITER_VERSION).toBe(13)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(7)
+    expect(WRITER_VERSION).toBeGreaterThanOrEqual(13)
     const v3 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 3, minWriterVersion: 9, records }))
     expect(decodeRecords('settings.json.enc', v3([p.settings]))).toEqual([p.settings])
     const v4 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 4, minWriterVersion: 10, records }))
@@ -80,7 +80,7 @@ describe('schemaversie 7', () => {
     expect(decodeRecords('trips.json.enc', v5([oldTrip]))).toEqual([oldTrip])
     const v6 = (records: readonly unknown[]) => new TextEncoder().encode(JSON.stringify({ format: 'logboek-collection', schemaVersion: 6, minWriterVersion: 12, records }))
     expect(decodeRecords('scenarios.json.enc', v6([EXAMPLE]))).toEqual([EXAMPLE])
-    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: 7, minWriterVersion: 13 })
+    expect(JSON.parse(new TextDecoder().decode(encodeRecords([EXAMPLE])))).toMatchObject({ schemaVersion: SCHEMA_VERSION, minWriterVersion: WRITER_VERSION })
   })
 })
 

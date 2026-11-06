@@ -31,7 +31,7 @@ flowchart LR
   end
   subgraph GitHub["GitHub"]
     API["api.github.com<br/>Contents API, blobs, commits<br/>(enige netwerkbestemming van de app)"]
-    DATA[("Private repo logboek-data<br/>meta.json.enc + 24 *.json.enc + documents/*.bin<br/>alles AES-GCM")]
+    DATA[("Private repo logboek-data<br/>meta.json.enc + 25 *.json.enc + documents/*.bin<br/>alles AES-GCM")]
     CODE["Publieke repo logboek<br/>main is beschermd (ruleset)"]
     PAGES["GitHub Pages<br/>logboek-olivier.github.io/logboek/"]
     subgraph Actions["GitHub Actions"]
@@ -60,7 +60,7 @@ Wat waar draait:
 | GitHub Pages | Statische bestanden van de app (13 MB in `dist/`, waarvan 5 MB precache). | `vite.config.ts`, `npm run build` |
 | GitHub Actions | Bouwen, testen, deployen; ophalen van koersen, weer en kaartdata. De app zelf haalt nooit iets van ECB, Open-Meteo of OSM. | `.github/workflows/*.yml`, CSP in `index.html:5` |
 
-**Huidige dataversies: schemaversie 7, schrijfversie 13** (`src/model/schema.ts`; de versies veranderen per PR, de test
+**Huidige dataversies: schemaversie 8, schrijfversie 14** (`src/model/schema.ts`; de versies veranderen per PR, de test
 `tests/review-versies.test.ts` bewaakt deze regel en de getallen in sectie 5 en 7).
 
 ## 2. Mappen en modules
@@ -135,6 +135,7 @@ bewaart documenten los als `documents/<uuid>.bin`.
 | `fixedcosts.json.enc` | `FixedCost` | Vaste last: naam, valuta, bedrag per maand vanaf een maand | uuid |
 | `claims.json.enc` | `Claim` | Declaratie: datum, trip, notitie, bedrag, status, bonnetje (`documentId`), terugbetaling | uuid |
 | `scenarios.json.enc` | `Scenario` | Scenario voor de vooruitblik: blokken (weken × inkomen), aannames (groei, rente, belegd deel), eenmalige uitgaven, horizon | uuid |
+| `templates.json.enc` | `MessageTemplate` | Berichtsjablonen (Meer → Berichten): soort, taal, organisatie en soort trip, tekst met invulvelden; nooit een ingevuld bericht | uuid, meegeleverd `seed-*` |
 | `students.json.enc` | `Student` | Student (voornaam, cursus, niveau, voortgang, examen) gekoppeld aan een trip | zelfde id als de deelnemer |
 | `plans.json.enc` | `WeekPlan` | Lesplanning: groepen, dagen met blokken (dagdeel, thema's, onderwerpen) | uuid |
 | `curricula.json.enc` | `Curriculum` | Alleen eigen en bewerkte cursussen; de meegeleverde (ASA, RYA, CWO) staan in de code | `seed-asa-101` … |
@@ -274,10 +275,10 @@ leest opnieuw, voegt samen en schrijft. Record-niveau: de laatste `updatedAt` wi
 binnen één sync-interval verliezen de oudste stil (bekende beperking, genoemd bij declaraties en standen in CLAUDE.md).
 Een klok die achterloopt wordt opgevangen: `Store.putMany` zet `updatedAt` net na de vorige versie (`justAfter`).
 
-Oude build: elk bestand draagt `minWriterVersion` (nu 13). Een oudere build die een bestand met een hogere schrijfversie
+Oude build: elk bestand draagt `minWriterVersion` (nu 14). Een oudere build die een bestand met een hogere schrijfversie
 leest, schrijft niets meer en toont "Werk de app bij" (`NewerWriterError`); wat hij lokaal opsloeg blijft in de outbox en
 gaat mee na het bijwerken. Een build van vóór de schrijfversie (vóór 31 oktober) kent het veld niet en wordt alleen door
-`schemaVersion` (nu 7) tegengehouden. Binnen één apparaat bewaakt `localStorage` `logboek-gestarte-build` dat een bevroren
+`schemaVersion` (nu 8) tegengehouden. Binnen één apparaat bewaakt `localStorage` `logboek-gestarte-build` dat een bevroren
 ouder venster na een update niets meer schrijft (`assertCurrentBuild` in `putFile`/`deleteFile`).
 
 ## 6. Domeinlaag
@@ -342,7 +343,8 @@ en een melding met foutdetails. `geschiedenisOpruimen`, `vasteLastenBoeken` en d
 | `schemaVersion` 2 | 2 nov (PR #126) | Eén waarheid voor geld: salaris als transactie met status; `tipVia`/`depositedAt` vervallen | Versie 1 blijft leesbaar; "Geld omzetten" na een tik (`src/domain/geld-omzetten.ts`) |
 | `schemaVersion` 3 | 2 nov (PR #130) | `scenarios.json.enc` | Niets om te zetten |
 | `schemaVersion` 4 | 3 nov | Laatst gebruikte valuta per soort invoer (`lastCurrencies`); Mijn positie telt de begindag en waardeert te ontvangen zoals Geld | Niets om te zetten |
-| `minWriterVersion` 2 … 13 | 31 okt – 3 nov | Zie `src/model/schema.ts`: periodemodel (2), prullenbak (3), organisaties (4), tripdatums als velden (5), één waarheid voor geld (6), standen per dag (7), scenario's (8), bezittingen en aannames (9), valuta per soort invoer (10), scenario als stappenplan (11), rol van een persoon (12), trips per scenarioblok en verwachte fooi (13) | Een oudere build schrijft niets over een bestand met een hogere schrijfversie |
+| `schemaVersion` 8 | 6 nov | Berichtengenerator: `templates.json.enc`, per trip `messageFields` en `messages`, per organisatie `messageDefaults` | Niets om te zetten |
+| `minWriterVersion` 2 … 14 | 31 okt – 6 nov | Zie `src/model/schema.ts`: periodemodel (2), prullenbak (3), organisaties (4), tripdatums als velden (5), één waarheid voor geld (6), standen per dag (7), scenario's (8), bezittingen en aannames (9), valuta per soort invoer (10), scenario als stappenplan (11), rol van een persoon (12), trips per scenarioblok en verwachte fooi (13), berichtengenerator (14) | Een oudere build schrijft niets over een bestand met een hogere schrijfversie |
 
 Omzettingen van bestaande gegevens (allemaal gevonden in de code):
 

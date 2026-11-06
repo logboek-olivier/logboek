@@ -5178,3 +5178,63 @@ button.drill-post {
   padding: var(--s-2) 0;
   border-bottom: 1px solid var(--border);
 }
+
+/* Berichtengenerator: het ingevulde bericht met gemarkeerde gaten, de invulvelden als chips, de tekst om aan te passen. */
+.msg-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-2);
+  border-radius: var(--radius, 8px);
+  padding: var(--s-3, 12px);
+  margin: 0;
+}
+
+.msg-gap {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px dashed var(--warning);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.msg-text {
+  width: 100%;
+  min-height: 12rem;
+  white-space: pre-wrap;
+}
+
+.msg-tokens {
+  flex-wrap: wrap;
+}
+
+.msg-missing .notice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.msg-snippet {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.msg-row {
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.org-messages > summary {
+  cursor: pointer;
+  padding: var(--s-2) 0;
+}
+
+.msg-tokens .chip {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: 4px 10px;
+  min-height: 36px;
+}

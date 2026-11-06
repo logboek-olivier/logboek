@@ -340,7 +340,7 @@ test('6. geld: eigen organisatie, salaris, fooi in dollars, uitgave, eerder seiz
   const orgs = page.getByRole('dialog')
   await shot(page, '50-organisaties-leeg')
   await orgs.getByRole('button', { name: 'Organisatie toevoegen' }).click()
-  await orgs.getByLabel('Naam').last().fill('Nepzeil')
+  await orgs.getByLabel('Naam', { exact: true }).last().fill('Nepzeil')
   await orgs.getByLabel('Afkorting').last().fill('NZ')
   await orgs.getByRole('button', { name: 'Opslaan' }).click()
   await expect(orgs).toHaveCount(0)
