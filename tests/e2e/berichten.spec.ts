@@ -77,7 +77,7 @@ test('bericht: sjabloon aanpassen, introductie met ontbrekende verzamelplaats in
   await field.getByLabel(L('msgField.meetingPlace'), { exact: true }).fill('Nepmarina')
   await field.getByRole('button', { name: L('common.save') }).click()
   const message = sheet.getByRole('textbox', { name: L('msg.editBefore'), exact: true })
-  await expect(message).toHaveValue('Hi Nick and Anna, we meet at Nepmarina on Thursday, 11 March 2027. Boat: Nepster (catamaran).')
+  await expect(message).toHaveValue('Hi Nick and Anna, we meet at Nepmarina on Thursday 11 March. Boat: Nepster (catamaran).')
   // Voor dit ene bericht aanpassen (het sjabloon blijft zoals het is).
   await message.press('Control+End')
   await message.pressSequentially(' See you there.')
@@ -86,7 +86,7 @@ test('bericht: sjabloon aanpassen, introductie met ontbrekende verzamelplaats in
   // Delen via het deelmenu; daarna één tik "Verstuurd".
   await sheet.getByRole('button', { name: L('msg.share') }).click()
   expect(await page.evaluate(() => (window as unknown as { __shared: string[] }).__shared)).toEqual([
-    'Hi Nick and Anna, we meet at Nepmarina on Thursday, 11 March 2027. Boat: Nepster (catamaran). See you there.',
+    'Hi Nick and Anna, we meet at Nepmarina on Thursday 11 March. Boat: Nepster (catamaran). See you there.',
   ])
   await sheet.getByRole('button', { name: L('msg.sent'), exact: true }).click()
   await expect(sheet).toHaveCount(0)

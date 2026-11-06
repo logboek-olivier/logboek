@@ -68,11 +68,14 @@ describe('invullen', () => {
     const filled = fillTemplate({ text: ALL }, messageValues(TRIP, CTX, 'en'))
     expect(filled.missing).toEqual([])
     expect(filled.text).toBe(
-      'Nick and Anna|Nepster|catamaran|Nepcat 45|Nepmarina (https://maps.google.com/?q=43.50000,16.25000)|16:00|Saturday, 14 November 2026|Saturday, 21 November 2026|17:00|09:00|Nephaven|Olli|Yacht Week|7',
+      'Nick and Anna|Nepster|catamaran|Nepcat 45|Nepmarina|https://maps.google.com/?q=43.50000,16.25000|16:00|Saturday 14 November|Saturday|Saturday 21 November|17:00|09:00|Nephaven|Olli|Yacht Week|7',
     )
     // In het Nederlands: Nederlandse datums, "en" en "eenromp"/"catamaran" in die taal.
-    const nl = fillTemplate({ text: '{guests} · {startDate} · {boatType}' }, messageValues(TRIP, CTX, 'nl'))
-    expect(nl.text).toBe('Nick en Anna · zaterdag 14 november 2026 · catamaran')
+    const nl = fillTemplate({ text: '{guests} · {startDate} · {startWeekday} · {boatType}' }, messageValues(TRIP, CTX, 'nl'))
+    expect(nl.text).toBe('Nick en Anna · zaterdag 14 november · zaterdag · catamaran')
+    // Een eigen kaartlink (bijvoorbeeld gedeeld uit Google Maps) gaat voor de pin.
+    const own: Trip = { ...TRIP, messageFields: { ...TRIP.messageFields, meetingLink: 'https://nep.example/kaart' } }
+    expect(messageValues(own, CTX, 'en').meetingLink).toBe('https://nep.example/kaart')
   })
 
   it('voornamen alleen als voornaam: geen kenmerk, land of tweede woord, en nooit de schipper als gast', () => {
@@ -87,6 +90,21 @@ describe('invullen', () => {
     expect(filled.missing).toEqual(['meetingPlace', 'meetingTime', 'checkIn', 'checkOut'])
     expect(filled.parts.some((p) => 'missing' in p && p.missing === 'meetingPlace')).toBe(true)
     for (const part of filled.parts) if ('text' in part) expect(part.text).not.toMatch(/\{[a-zA-Z ]+\}/)
+  })
+
+  it('het sjabloon voor Sailing Virgins: alleen bij Sailing Virgins, met de kaartlink en de dag van start', () => {
+    const sv: Trip = { ...TRIP, organisation: 'sailing-virgins', type: 'training-geven', startDate: '2026-11-08', endDate: '2026-11-14', messageFields: { meetingPlace: 'Nepdeli in Nepstad', meetingTime: '9:30 am', meetingLink: 'https://nep.example/kaart' } }
+    const chosen = templatesFor(SEED_TEMPLATES, 'introductie', 'sailing-virgins', 'training-geven')
+    expect(chosen.map((x) => x.id)).toEqual(['seed-introductie-sv-en'])
+    expect(templatesFor(SEED_TEMPLATES, 'introductie', 'yacht-week', 'skipper-charter').map((x) => x.id)).toEqual(['seed-introductie-en'])
+    const text = fillTemplate(chosen[0]!, messageValues(sv, CTX, 'en')).text!
+    expect(text).toContain("Hi everyone! I'm Olli, your instructor for the week")
+    expect(text).toContain("We'll meet on Sunday 8 November at 9:30 am for breakfast at Nepdeli in Nepstad.\n📍 https://nep.example/kaart")
+    expect(text).toContain('Plan for Sunday\n')
+    expect(text).toContain('If 9:30 am is too early for anyone')
+    expect(text).toContain('Sailing Virgins covers all breakfasts')
+    expect(text).toContain('to board our catamaran')
+    expect(text.endsWith('See you Sunday! 🤙🏻')).toBe(true)
   })
 
   it('de meegeleverde voorbeelden zijn volledig in te vullen', () => {

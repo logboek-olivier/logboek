@@ -232,7 +232,7 @@ export interface Trip extends SyncRecord {
   expectedTip?: SalaryDefault
   /**
    * Schrijfversie 14 (berichtengenerator): wat de app voor een bericht nog niet weet (verzamelplaats, verzameltijd,
-   * check-in, check-out, eindplaats, schipper), alleen voor deze trip. Ontbreekt = de standaard van de organisatie.
+   * kaartlink, check-in, check-out, eindplaats, schipper), alleen voor deze trip. Ontbreekt = de standaard van de organisatie.
    */
   messageFields?: Partial<Record<MessageField, string>>
   /**
@@ -243,8 +243,8 @@ export interface Trip extends SyncRecord {
 }
 
 /** De velden van een bericht die de app niet uit de trip, boot of plaatsen kan halen. */
-export type MessageField = 'meetingPlace' | 'meetingTime' | 'checkIn' | 'checkOut' | 'endPlace' | 'skipper'
-export const MESSAGE_FIELDS: readonly MessageField[] = ['meetingPlace', 'meetingTime', 'checkIn', 'checkOut', 'endPlace', 'skipper']
+export type MessageField = 'meetingPlace' | 'meetingLink' | 'meetingTime' | 'checkIn' | 'checkOut' | 'endPlace' | 'skipper'
+export const MESSAGE_FIELDS: readonly MessageField[] = ['meetingPlace', 'meetingLink', 'meetingTime', 'checkIn', 'checkOut', 'endPlace', 'skipper']
 
 /** Verstuurd of niet nodig, op een datum (jjjj-mm-dd). */
 export interface MessageMark {

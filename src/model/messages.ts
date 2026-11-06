@@ -37,8 +37,10 @@ export const TOKENS = [
   'boatType',
   'boatModel',
   'meetingPlace',
+  'meetingLink',
   'meetingTime',
   'startDate',
+  'startWeekday',
   'endDate',
   'checkIn',
   'checkOut',
@@ -116,6 +118,48 @@ export const SEED_TEMPLATES: readonly MessageTemplate[] = [
       '',
       'See you soon,',
       '{skipper}',
+    ].join('\n'),
+    updatedAt: '2026-11-06T00:00:00.000Z',
+    deletedAt: null,
+  },
+  // Voor Sailing Virgins (een week les geven in de BVI), naar het bericht dat Olivier in november 2026 stuurde. Alleen bij
+  // trips van Sailing Virgins; de rest valt terug op het algemene sjabloon hierboven.
+  {
+    id: 'seed-introductie-sv-en',
+    kind: 'introductie',
+    lang: 'en',
+    organisation: 'sailing-virgins',
+    text: [
+      "Hi everyone! I'm {skipper}, your instructor for the week⛵",
+      '',
+      "We'll meet on {startDate} at {meetingTime} for breakfast at {meetingPlace}.",
+      '📍 {meetingLink}',
+      '',
+      'Plan for {startWeekday}',
+      '• Breakfast together to get to know each other and go through the week',
+      '• Provisioning at RiteWay',
+      "• Taxi to Hodge's Creek Marina to board our {boatType}",
+      '• Sail out in the early afternoon',
+      '',
+      'Arrival',
+      'Could you let me know when you expect to arrive in Tortola? If {meetingTime} is too early for anyone, we can start later.',
+      '',
+      'Food',
+      '{organisation} covers all breakfasts and lunches plus 2 dinners, which we cook together on board. We shop for the whole week on {startWeekday}, so please bring a few ideas for meals you like to make. On the other evenings we can eat ashore.',
+      '',
+      'Preparation',
+      'Please read through your ASA manuals before the trip. The better prepared you are, the more you get out of the week.',
+      '',
+      'Useful to bring',
+      '• US dollars in cash (cash=king on the islands)',
+      '• Sunscreen',
+      '• Hat and sunglasses with a strap',
+      '• Small dry bag for dinghy rides',
+      '• Reusable water bottle',
+      '',
+      'Any questions or travel delays? Just let me know',
+      '',
+      'Looking forward to sailing with you. See you {startWeekday}! 🤙🏻',
     ].join('\n'),
     updatedAt: '2026-11-06T00:00:00.000Z',
     deletedAt: null,
@@ -239,8 +283,15 @@ export function messageGuests(trip: Trip): Participant[] {
 
 const LOCALE: Record<Lang, string> = { nl: 'nl-NL', en: 'en-GB' }
 
+/** "Sunday 8 November" / "zondag 8 november": zoals in een bericht, zonder jaartal en zonder komma. */
 function longDate(iso: string, lang: Lang): string {
-  return new Intl.DateTimeFormat(LOCALE[lang], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T12:00:00Z`))
+  const parts = new Intl.DateTimeFormat(LOCALE[lang], { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).formatToParts(new Date(`${iso}T12:00:00Z`))
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${get('weekday')} ${get('day')} ${get('month')}`
+}
+
+function weekday(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(LOCALE[lang], { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T12:00:00Z`))
 }
 
 function nightsBetween(start: string, end: string): number {
@@ -267,9 +318,12 @@ export function messageValues(trip: Trip, ctx: MessageContext, lang: Lang): Reco
     boat,
     boatType,
     boatModel: trip.boatModel?.trim() || null,
-    meetingPlace: meeting ? (pin ? `${meeting} (${mapLink(pin)})` : meeting) : null,
+    meetingPlace: meeting,
+    // De kaartlink: zelf ingevuld (bijvoorbeeld een gedeelde link uit Google Maps), anders van de pin van de verzamelplaats.
+    meetingLink: field('meetingLink') ?? (pin ? mapLink(pin) : null),
     meetingTime: field('meetingTime'),
     startDate: trip.startDate ? longDate(trip.startDate, lang) : null,
+    startWeekday: trip.startDate ? weekday(trip.startDate, lang) : null,
     endDate: trip.endDate ? longDate(trip.endDate, lang) : null,
     checkIn: field('checkIn'),
     checkOut: field('checkOut'),
