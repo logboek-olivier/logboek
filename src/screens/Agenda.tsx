@@ -12,7 +12,7 @@ import { useCollection } from '../components/useCollection'
 import { WeekSheet } from '../components/WeekSheet'
 import { recordError } from '../errors'
 import { formatDate, formatMoney, formatMonth, formatNm, formatNumber } from '../format'
-import { t, useLang } from '../i18n'
+import { t, useLang, type Lang } from '../i18n'
 import { parsePlanning, planImport, PlanningError, type PlanItem } from '../import/planning'
 import { buildIndex, dayInfo, dayLabelKey, monthIncomeOutlook, monthSummary, monthWeeks, tripBars, type CalendarIndex } from '../model/calendar'
 import { getRates, subscribeRates } from '../model/rates'
@@ -21,7 +21,7 @@ import type { SalaryState } from '../domain/geldmodel'
 import { tripSalary } from '../components/MoneyPath'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { useCounters } from '../components/useCounters'
-import { type Reminder, type StayPeriod, type Trip } from '../model/types'
+import { type Reminder, type StayPeriod, type Transaction, type Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { AgendaShare } from './AgendaShare'
 import { useDueItems } from './Deadlines'
@@ -29,13 +29,35 @@ import type { AddInit } from './QuickAdd'
 import { Season } from './Season'
 import { ErrorLine } from './Setup'
 import { useBack } from '../back'
+import { DayMoneySheet, totalText } from '../components/DayMoney'
+import { compactEur, dayNets, monthNet } from '../model/day-money'
+import type { MoneyTotals } from '../model/money'
 import { monthOf, shiftMonth, sundayOf, todayIso } from '../basis/datum'
 
 // Agenda: het overzicht van het seizoen. Maandraster met een kleur per dagsoort (optie gestreept), een balk met de
 // tripnaam over de dagen van elke trip, nm klein in het vakje en een stip voor termijnen. Vegen of de pijlen voor de
 // vorige en volgende maand, "Naar vandaag", en onderaan de werk-, rust-, reis- en thuisdagen en nm van de maand.
-// Tik op een dag: het dagblad. Periode markeren (begindag, einddag, dagsoort; werk = nieuwe trip met die datums),
+// Tik op een dag: het dagblad. Met "Toon bedragen" (per apparaat onthouden, standaard uit) staat in elke dagtegel het
+// netto bedrag van die dag (src/model/day-money.ts) en opent een tik op een dag met geld de transacties van die dag. Periode markeren (begindag, einddag, dagsoort; werk = nieuwe trip met die datums),
 // planning importeren, seizoensoverzicht en delen. Het Logboek (archief) is hier ook te openen.
+
+const AMOUNTS_KEY = 'logboek-agenda-bedragen'
+
+function readShowAmounts(): boolean {
+  try {
+    return localStorage.getItem(AMOUNTS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Netto per dag voor de dagen in beeld (ook de dagen van de maand ervoor en erna aan de randen). */
+function netsFor(transactions: readonly Transaction[], weeks: readonly string[][]): Map<string, MoneyTotals> {
+  const months = new Set(weeks.flat().map((d) => d.slice(0, 7)))
+  const out = new Map<string, MoneyTotals>()
+  for (const m of months) for (const [date, total] of dayNets(transactions, m)) out.set(date, total)
+  return out
+}
 
 export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; notify: Notify; onAdd: (init: AddInit) => void; onLogbook: () => void }) {
   const lang = useLang()
@@ -57,7 +79,18 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const [importError, setImportError] = useState<string | null>(null)
   // Termijn bewerken of toevoegen vanuit het dagblad (reminder null = nieuwe termijn op die dag).
   const [reminder, setReminder] = useState<{ reminder: Reminder | null; date: string } | null>(null)
-  const [showAmounts, setShowAmounts] = useState(false)
+  // Per apparaat onthouden, standaard uit (de agenda staat soms open als gasten of studenten meekijken).
+  const [showAmounts, setShowAmountsState] = useState(readShowAmounts)
+  const setShowAmounts = (on: boolean) => {
+    setShowAmountsState(on)
+    try {
+      localStorage.setItem(AMOUNTS_KEY, on ? '1' : '0')
+    } catch {
+      // Geen opslag in de browser: alleen voor deze keer.
+    }
+  }
+  // Met bedragen aan: een tik op een dag met geld opent de transacties van die dag.
+  const [moneyDay, setMoneyDay] = useState<string | null>(null)
   const [editTrip, setEditTrip] = useState<Trip | null>(null)
   // Een trip of periode die vanaf een dag geopend is, onthoudt die dag: terug brengt de dagkaart terug.
   const [viewTrip, setViewTrip] = useState<{ trip: Trip; from?: string } | null>(null)
@@ -88,6 +121,9 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   const weeks = monthWeeks(month)
   const summary = monthSummary(index, month, today)
   const income = showAmounts ? monthIncomeOutlook(index, transactions, month, today) : null
+  // Geld per dag: netto (inkomsten min uitgaven) van het echte geld op zijn datum, voor de dagen in beeld; en de maand.
+  const nets = showAmounts ? netsFor(transactions, weeks) : null
+  const net = showAmounts ? monthNet(transactions, month) : null
   // Het laatste vakje: in een voorbije maand de nm; in de lopende maand de dagen die nog vrij zijn (zijn die er niet
   // meer, dan de nm); in een komende maand de vrije dagen. Altijd zes vakjes, zodat het raster niet verspringt.
   const showNm = month < monthOf(today) || (month === monthOf(today) && summary.beschikbaar === 0)
@@ -121,7 +157,8 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
 
   function onDay(date: string) {
     if (!marking) {
-      setOpen(date)
+      if (nets?.has(date)) setMoneyDay(date)
+      else setOpen(date)
       return
     }
     if (!marking.start) {
@@ -190,7 +227,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           ))}
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} salaryStates={salaryStates} onDay={onDay} />
+          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} salaryStates={salaryStates} nets={nets} lang={lang} onDay={onDay} />
         ))}
       </div>
       <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>
@@ -226,6 +263,11 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
           <Icon icon={showAmounts ? EyeOff : Eye} />
           {t(showAmounts ? 'week.hideAmounts' : 'week.showAmounts')}
         </button>
+        {net && (
+          <span className="agenda-net">
+            {t('dayMoney.monthNet')}: <strong className={net.balanceEur >= 0 ? 'positive' : 'negative'}>{totalText(net.balanceEur, net.other)}</strong>
+          </span>
+        )}
         {income && (
           <span>
             {t(income.expected ? 'calendar.expectedIncome' : 'calendar.income')}: <strong>{formatMoney(income.eur, 'EUR')}</strong>
@@ -255,6 +297,18 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
         <input ref={fileInput} type="file" hidden aria-label={t('planning.file')} onChange={(e) => void onPlanningFile(e.target.files?.[0])} />
       </div>
       <ErrorLine error={importError} />
+      {moneyDay && (
+        <DayMoneySheet
+          store={store}
+          notify={notify}
+          date={moneyDay}
+          onClose={() => setMoneyDay(null)}
+          onDay={() => {
+            setOpen(moneyDay)
+            setMoneyDay(null)
+          }}
+        />
+      )}
       {open && (
         <DayView
           store={store}
@@ -314,7 +368,7 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   )
 }
 
-function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, counters, salaryStates, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; closedSundays: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; salaryStates: ReadonlyMap<string, SalaryState | null>; onDay: (date: string) => void }) {
+function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, counters, salaryStates, nets, lang, onDay }: { index: CalendarIndex; week: string[]; month: string; today: string; dueDates: ReadonlySet<string>; closedSundays: ReadonlySet<string>; rangeStart: string | null; counters: ReadonlyMap<string, TripCounter>; salaryStates: ReadonlyMap<string, SalaryState | null>; nets: ReadonlyMap<string, MoneyTotals> | null; lang: Lang; onDay: (date: string) => void }) {
   const bars = tripBars(index, week)
   return (
     <div className="cal-week">
@@ -322,7 +376,9 @@ function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, 
         const info = dayInfo(index, date, today)
         const hasDue = dueDates.has(date)
         const closed = closedSundays.has(date)
-        const label = [formatDate(date), t(dayLabelKey(info)), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', hasDue ? t('calendar.reminder') : '', closed ? t('calendar.weekClosed') : ''].filter(Boolean).join(', ')
+        const day = nets?.get(date)
+        const short = day ? compactEur(day.balanceEur, lang) : ''
+        const label = [formatDate(date), t(dayLabelKey(info)), ...info.trips.map((v) => v.trip.name), info.nm > 0 ? formatNm(info.nm) : '', day ? t('dayMoney.aria', { amount: totalText(day.balanceEur, day.other) }) : '', hasDue ? t('calendar.reminder') : '', closed ? t('calendar.weekClosed') : ''].filter(Boolean).join(', ')
         const classes = ['cal-day', `col-${column + 1}`, `day-${info.type ?? 'leeg'}`, monthOf(date) !== month ? 'other-month' : '', date === today ? 'today' : '', info.source === 'eigen' ? 'own' : '', date === rangeStart ? 'range-start' : ''].filter(Boolean).join(' ')
         return (
           <button key={date} type="button" className={classes} aria-label={label} aria-current={date === today ? 'date' : undefined} aria-pressed={date === rangeStart ? true : undefined} onClick={() => onDay(date)}>
@@ -331,7 +387,12 @@ function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, 
             </span>
             {hasDue && <span className="cal-dot" aria-hidden="true" />}
             {closed && <span className="cal-closed" aria-hidden="true" />}
-            {info.nm > 0 && (
+            {short && (
+              <span className={`cal-net ${day!.balanceEur >= 0 ? 'positive' : 'negative'}`} aria-hidden="true">
+                {short}
+              </span>
+            )}
+            {info.nm > 0 && !short && (
               <span className="cal-nm" aria-hidden="true">
                 {formatNumber(info.nm)}
               </span>

@@ -92,8 +92,8 @@ export function LegView({ store, leg, notify, onClose }: { store: Store; leg: Le
 }
 
 /** Eén transactie: bedrag in euro en het origineel, soort, datum, trip, bron, van wie en notitie. */
-export function TransactionView({ store, tx, notify, onClose }: { store: Store; tx: Transaction; notify: Notify; onClose: () => void }) {
-  const [editing, setEditing] = useState(false)
+export function TransactionView({ store, tx, notify, onClose, editFirst = false }: { store: Store; tx: Transaction; notify: Notify; onClose: () => void; /** Meteen bewerken (de agenda: een tik op een transactie van een dag). */ editFirst?: boolean }) {
+  const [editing, setEditing] = useState(editFirst)
   const trips = useCollection(store, 'trips.json.enc')
   const counters = useCounters(store)
   const stays = useCollection(store, 'periods.json.enc')
