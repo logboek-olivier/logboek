@@ -19,7 +19,13 @@ async function tab(page: Page, key: MessageKey): Promise<void> {
   await page.getByRole('navigation').getByRole('button', { name: L(key), exact: true }).click()
 }
 
+/**
+ * Terug zoals de telefoon: pas nadat de app de open stap heeft aangemeld. Een blad is al zichtbaar vóór zijn effect
+ * draait (dat zet het item in de geschiedenis); twee frames wachten sluit uit dat de test terug drukt in die ene frame
+ * ertussen, wat geen mens kan maar onder belasting in CI wel gebeurde.
+ */
 async function back(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))))
   await page.goBack()
 }
 
