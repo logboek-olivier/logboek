@@ -38,8 +38,8 @@ test('Vaste checklists per trip, sjabloon bewerken; trip afsluiten in een minuut
   await expect(sheet).toContainText('2 van 11 afgevinkt bij deze trip')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: 'screenshots/trips/checklist.png', fullPage: true })
-  // Sjabloon bewerken: een punt erbij.
-  await sheet.getByRole('button', { name: 'Sjabloon bewerken' }).click()
+  // Checklist bewerken (potlood): een punt erbij.
+  await sheet.getByRole('button', { name: 'Bewerken', exact: true }).click()
   await sheet.getByLabel('Punt 12').fill('Nep: zwemvesten kinderen')
   await sheet.getByRole('button', { name: 'Opslaan' }).click()
   await expect(sheet.getByRole('checkbox')).toHaveCount(12)

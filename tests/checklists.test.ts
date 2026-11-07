@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { addChecklist, checkedItems, checklistsFor, effectiveChecklists } from '../src/model/checklists'
+import { addChecklist, checkedItems, checklistsFor, effectiveChecklists, hiddenSeedChecklists, moveItem } from '../src/model/checklists'
 import { sailtime } from '../src/model/sailtime'
 import { SEED_CHECKLISTS } from '../src/model/seed-checklists'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
@@ -10,7 +10,7 @@ import { openLogboekDb } from '../src/storage/idb'
 import { Store } from '../src/storage/store'
 import { FakeGithub } from './helpers/fake-github'
 import { inTx, put } from './helpers/schrijf'
-import { checklistAfvinken, checklistOpslaan, checklistVerwijderen, periodeAfronden } from '../src/domain/trips'
+import { checklistAfvinken, checklistOpslaan, checklistTerugzetten, checklistToevoegen, checklistVerwijderen, periodeAfronden } from '../src/domain/trips'
 
 // Trip afsluiten, vaste checklists en de export van de zeiltijd. Alle gegevens zijn verzonnen.
 
@@ -113,5 +113,54 @@ describe('zeiltijd exporteren', () => {
     const data = sailtime(trips, legs, { from: '2026-01-02', to: '2026-02-28', role: 'schipper' })
     expect(data.days.map((d) => d.id)).toEqual(['2'])
     expect(data.total).toEqual({ days: 1, nm: 15, tidal: 5, night: 0 })
+  })
+})
+
+describe('checklists bewerken: volgorde, soort trip, verwijderen en terugzetten', () => {
+  it('moveItem verplaatst één punt en laat de rest op volgorde', () => {
+    expect(moveItem(['a', 'b', 'c', 'd'], 3, 0)).toEqual(['d', 'a', 'b', 'c'])
+    expect(moveItem(['a', 'b', 'c', 'd'], 0, 2)).toEqual(['b', 'c', 'a', 'd'])
+    expect(moveItem(['a', 'b'], 1, 9)).toEqual(['a', 'b'])
+    expect(moveItem(['a', 'b'], 5, 0)).toEqual(['a', 'b'])
+  })
+
+  it('de volgorde van opslaan is de volgorde van de lijst; ids en vinkjes blijven', async () => {
+    const store = await device()
+    const t1 = trip('t1', { type: 'skipper-charter' })
+    await put(store, 'trips.json.enc', t1)
+    const paklijst = effectiveChecklists([]).find((c) => c.id === 'seed-paklijst-charter')!
+    const last = paklijst.items.at(-1)!
+    await checklistAfvinken(store, t1, paklijst.id, last.id)
+    const reordered = moveItem(paklijst.items.map((i) => ({ id: i.id, text: i.text.nl })), paklijst.items.length - 1, 0)
+    await checklistOpslaan(store, paklijst, { title: paklijst.title.nl, items: reordered }, 'nl')
+    const saved = effectiveChecklists(store.get('checklists.json.enc')).find((c) => c.id === paklijst.id)!
+    expect(saved.items.map((i) => i.id)).toEqual([last.id, ...paklijst.items.slice(0, -1).map((i) => i.id)])
+    expect(saved.items[0]).toEqual(last)
+    expect([...checkedItems(store.get('trips.json.enc')[0]!, saved)]).toEqual([last.id])
+  })
+
+  it('een eigen lijst voor elke trip, daarna alleen bij delivery; verwijderen en ongedaan maken', async () => {
+    const store = await device()
+    const { result: list } = await checklistToevoegen(store, 'Neplijst', null)
+    expect(list.tripTypes).toEqual([])
+    expect(checklistsFor(effectiveChecklists(store.get('checklists.json.enc')), 'zelf-trainen').map((c) => c.id)).toEqual([list.id])
+    await checklistOpslaan(store, list, { title: 'Neplijst', items: [{ text: 'Nep 1' }], tripTypes: ['delivery'] }, 'nl')
+    const own = () => effectiveChecklists(store.get('checklists.json.enc')).find((c) => c.id === list.id)
+    expect(own()?.tripTypes).toEqual(['delivery'])
+    expect(checklistsFor(effectiveChecklists(store.get('checklists.json.enc')), 'zelf-trainen').map((c) => c.id)).toEqual([])
+    const undo = await checklistVerwijderen(store, own()!)
+    expect(own()).toBeUndefined()
+    await undo()
+    expect(own()?.items.map((i) => i.text.nl)).toEqual(['Nep 1'])
+  })
+
+  it('een verborgen meegeleverde lijst is terug te zetten met zijn meegeleverde inhoud', async () => {
+    const store = await device()
+    const briefing = effectiveChecklists([])[0]!
+    await checklistVerwijderen(store, briefing)
+    expect(hiddenSeedChecklists(store.get('checklists.json.enc')).map((c) => c.id)).toEqual([briefing.id])
+    await checklistTerugzetten(store, briefing.id)
+    expect(hiddenSeedChecklists(store.get('checklists.json.enc'))).toEqual([])
+    expect(effectiveChecklists(store.get('checklists.json.enc')).find((c) => c.id === briefing.id)).toMatchObject({ items: briefing.items, deletedAt: null })
   })
 })

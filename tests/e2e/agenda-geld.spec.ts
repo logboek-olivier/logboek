@@ -44,9 +44,16 @@ test('agenda: netto per dag met bedragen aan, transacties van een dag, maandsom'
     await page.screenshot({ path: `screenshots/agenda-geld/maand-360-${scheme}-nl.png`, fullPage: true })
   }
   await page.emulateMedia({ colorScheme: 'light' })
-  // Geen afgekapte tekst in de tegel.
+  // Geen afgekapte tekst in de tegel; klein rechtsonder in de tegel (zoals de nm), nooit groot of achter de tripbalk.
   const net = tile.locator('.cal-net')
   expect(await net.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  const style = await net.evaluate((el) => ({ position: getComputedStyle(el).position, size: parseFloat(getComputedStyle(el).fontSize) }))
+  expect(style.position).toBe('absolute')
+  expect(style.size).toBeLessThanOrEqual(12)
+  const [netBox, tileBox] = [(await net.boundingBox())!, (await tile.boundingBox())!]
+  expect(tileBox.y + tileBox.height - (netBox.y + netBox.height)).toBeLessThan(8)
+  // Met bedragen aan staan er geen nm in de tegels (ook niet in de dagen van een andere maand).
+  await expect(page.locator('.cal-nm')).toHaveCount(0)
 
   // Tik op de dag: de transacties met het subtotaal; tik op een transactie = bewerken.
   await tile.click()

@@ -392,7 +392,7 @@ function Week({ index, week, month, today, dueDates, closedSundays, rangeStart, 
                 {short}
               </span>
             )}
-            {info.nm > 0 && !short && (
+            {info.nm > 0 && !nets && (
               <span className="cal-nm" aria-hidden="true">
                 {formatNumber(info.nm)}
               </span>

@@ -2546,8 +2546,60 @@ body.presenting .bottom-bar {
   color: var(--text-muted);
 }
 
-.participant-row.checklist-row {
-  grid-template-columns: minmax(0, 1fr) 40px;
+.checklist-row {
+  display: grid;
+  grid-template-columns: var(--tap) minmax(0, 1fr) var(--tap);
+  gap: var(--s-1);
+  align-items: center;
+  border-radius: var(--r-md);
+}
+
+.checklist-row > input {
+  grid-column: 2;
+}
+
+.checklist-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Slepen aan het handvat: de pagina scrolt dan niet mee met de vinger; het gesleepte punt licht op. */
+.drag-handle {
+  touch-action: none;
+  cursor: grab;
+  color: var(--text-muted);
+}
+
+.checklist-row.dragging {
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.checklist-row.dragging .drag-handle {
+  cursor: grabbing;
+  color: var(--accent);
+}
+
+.checklist-preview {
+  padding-left: 0;
+  counter-reset: punt;
+}
+
+.checklist-preview li {
+  display: flex;
+  gap: var(--s-3);
+  min-height: 48px;
+  align-items: center;
+  padding: var(--s-2) var(--s-4);
+  counter-increment: punt;
+}
+
+.checklist-preview li::before {
+  content: counter(punt);
+  min-width: 1.5em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Trip afsluiten: cijfer 1–10 */
@@ -5237,15 +5289,19 @@ button.drill-post {
   font-size: var(--fs-sm, 0.875rem);
   padding: 4px 10px;
   min-height: 36px;
-/* Geld per dag (agenda met "Toon bedragen"): netto in de dagtegel, kort (+120, −1,2k), groen of rood. */
+}
+
+/* Geld per dag (agenda met "Toon bedragen"): netto in de dagtegel, klein rechtsonder op de plek van de nm (die staan
+   dan niet in de tegel), kort (+120, −1,2k), groen of rood. Onder de tripbalk, dus nooit erachter. */
 .cal-net {
   position: absolute;
   left: 2px;
-  right: 2px;
+  right: 4px;
   bottom: 3px;
   overflow: hidden;
-  font-size: 10px;
-  font-weight: var(--fw-bold);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
   text-align: right;
