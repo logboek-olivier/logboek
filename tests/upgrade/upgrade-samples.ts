@@ -104,6 +104,9 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
   'claims.json.enc': [
     { id: 'upg-claim-1', date: '2026-10-20', tripId: 'upg-trip-1', note: 'Nepbonnetje', amount: 18.4, currency: 'EUR', status: 'ingediend', submittedAt: '2026-10-21', updatedAt: T, deletedAt: null },
     { id: 'upg-claim-2', date: '2026-10-19', tripId: 'upg-trip-1', amount: 9, currency: 'EUR', status: 'terugbetaald', submittedAt: '2026-10-19', repaid: { date: '2026-10-22', amount: 9, currency: 'EUR' }, updatedAt: T, deletedAt: null },
+    // Soorten declaratie (schemaversie 9): voorgeschoten voor een vriend en een schuld aan een vriend (alleen voornaam).
+    { id: 'upg-claim-3', date: '2026-10-20', kind: 'voorgeschoten', person: 'Nepgaspar', tripId: 'upg-trip-1', note: 'Nepbier', amount: 71, currency: 'USD', status: 'open', updatedAt: T, deletedAt: null },
+    { id: 'upg-claim-4', date: '2026-10-21', kind: 'schuld', person: 'Nepjoep', tripId: 'upg-trip-1', amount: 20, currency: 'EUR', status: 'open', updatedAt: T, deletedAt: null },
   ],
   // Doelen en skills (ronde 2): een zelfvullend doel, een meetdoel, een skill met mijlpalen en twee sessies.
   'goals.json.enc': [

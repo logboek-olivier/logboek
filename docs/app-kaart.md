@@ -60,7 +60,7 @@ Wat waar draait:
 | GitHub Pages | Statische bestanden van de app (13 MB in `dist/`, waarvan 5 MB precache). | `vite.config.ts`, `npm run build` |
 | GitHub Actions | Bouwen, testen, deployen; ophalen van koersen, weer en kaartdata. De app zelf haalt nooit iets van ECB, Open-Meteo of OSM. | `.github/workflows/*.yml`, CSP in `index.html:5` |
 
-**Huidige dataversies: schemaversie 8, schrijfversie 14** (`src/model/schema.ts`; de versies veranderen per PR, de test
+**Huidige dataversies: schemaversie 9, schrijfversie 15** (`src/model/schema.ts`; de versies veranderen per PR, de test
 `tests/review-versies.test.ts` bewaakt deze regel en de getallen in sectie 5 en 7).
 
 ## 2. Mappen en modules
@@ -275,10 +275,10 @@ leest opnieuw, voegt samen en schrijft. Record-niveau: de laatste `updatedAt` wi
 binnen één sync-interval verliezen de oudste stil (bekende beperking, genoemd bij declaraties en standen in CLAUDE.md).
 Een klok die achterloopt wordt opgevangen: `Store.putMany` zet `updatedAt` net na de vorige versie (`justAfter`).
 
-Oude build: elk bestand draagt `minWriterVersion` (nu 14). Een oudere build die een bestand met een hogere schrijfversie
+Oude build: elk bestand draagt `minWriterVersion` (nu 15). Een oudere build die een bestand met een hogere schrijfversie
 leest, schrijft niets meer en toont "Werk de app bij" (`NewerWriterError`); wat hij lokaal opsloeg blijft in de outbox en
 gaat mee na het bijwerken. Een build van vóór de schrijfversie (vóór 31 oktober) kent het veld niet en wordt alleen door
-`schemaVersion` (nu 8) tegengehouden. Binnen één apparaat bewaakt `localStorage` `logboek-gestarte-build` dat een bevroren
+`schemaVersion` (nu 9) tegengehouden. Binnen één apparaat bewaakt `localStorage` `logboek-gestarte-build` dat een bevroren
 ouder venster na een update niets meer schrijft (`assertCurrentBuild` in `putFile`/`deleteFile`).
 
 ## 6. Domeinlaag
@@ -344,7 +344,8 @@ en een melding met foutdetails. `geschiedenisOpruimen`, `vasteLastenBoeken` en d
 | `schemaVersion` 3 | 2 nov (PR #130) | `scenarios.json.enc` | Niets om te zetten |
 | `schemaVersion` 4 | 3 nov | Laatst gebruikte valuta per soort invoer (`lastCurrencies`); Mijn positie telt de begindag en waardeert te ontvangen zoals Geld | Niets om te zetten |
 | `schemaVersion` 8 | 6 nov | Berichtengenerator: `templates.json.enc`, per trip `messageFields` en `messages`, per organisatie `messageDefaults` | Niets om te zetten |
-| `minWriterVersion` 2 … 14 | 31 okt – 6 nov | Zie `src/model/schema.ts`: periodemodel (2), prullenbak (3), organisaties (4), tripdatums als velden (5), één waarheid voor geld (6), standen per dag (7), scenario's (8), bezittingen en aannames (9), valuta per soort invoer (10), scenario als stappenplan (11), rol van een persoon (12), trips per scenarioblok en verwachte fooi (13), berichtengenerator (14) | Een oudere build schrijft niets over een bestand met een hogere schrijfversie |
+| `schemaVersion` 9 | 7 nov | Soorten declaratie: `kind` (declaratie, voorgeschoten, schuld) en `person` op een declaratie | Niets om te zetten (zonder soort = declaratie) |
+| `minWriterVersion` 2 … 15 | 31 okt – 7 nov | Zie `src/model/schema.ts`: periodemodel (2), prullenbak (3), organisaties (4), tripdatums als velden (5), één waarheid voor geld (6), standen per dag (7), scenario's (8), bezittingen en aannames (9), valuta per soort invoer (10), scenario als stappenplan (11), rol van een persoon (12), trips per scenarioblok en verwachte fooi (13), berichtengenerator (14), soorten declaratie (15) | Een oudere build schrijft niets over een bestand met een hogere schrijfversie |
 
 Omzettingen van bestaande gegevens (allemaal gevonden in de code):
 

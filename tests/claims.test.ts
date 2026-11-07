@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { addClaim, claimCounts, claimsToShow, openClaims, receiptFileName, tripClaims } from '../src/model/claims'
+import { addClaim, claimCounts, claimOverview, claimPeople, claimsToShow, openClaims, openDebts, paymentIdOf, receiptFileName, setClaimTrip, tripClaims } from '../src/model/claims'
 import { dayAverages } from '../src/model/costs'
 import { buildIndex } from '../src/model/calendar'
 import { DEFAULT_SETTINGS } from '../src/model/settings'
@@ -129,5 +129,79 @@ describe('declaraties', () => {
     await inTx(s, addClaim, { date: '2026-10-03', tripId: null, note: '', amount: 500, currency: 'EUR' }, null)
     const a = dayAverages(s.list('transactions.json.enc'), buildIndex([], [], []), '2026-10-30', DEFAULT_SETTINGS)
     expect(a.thuis.source).toBe('onbekend')
+  })
+})
+
+describe('voorgeschoten en schulden bij vrienden', () => {
+  const position = (s: Store, date: string) =>
+    positionAt({ accounts: [], balances: [], trips: s.list('trips.json.enc'), legs: [], transactions: s.list('transactions.json.enc'), rates: null, claims: s.list('claims.json.enc') }, date)
+
+  it('voorgeschoten voor een vriend: uitgave nu, te ontvangen, terugbetaald op nul; alleen de voornaam', async () => {
+    const s = await store()
+    await put(s, 'trips.json.enc', trip)
+    const claim = await inTx(s, addClaim, { kind: 'voorgeschoten', person: 'Nepgaspar Achternaam', date: '2026-10-03', tripId: 'trip-1', note: 'Nepbier', amount: 71, currency: 'EUR' }, null)
+    expect(claim).toMatchObject({ kind: 'voorgeschoten', person: 'Nepgaspar', status: 'open' })
+    expect(s.list('transactions.json.enc')).toEqual([expect.objectContaining({ kind: 'kosten', amount: 71, claimId: claim.id })])
+    expect(position(s, '2026-10-05').totals.receivable.eur).toBe(71)
+    // Geen "ingediend" bij een vriend.
+    await declaratieIngediend(s, claim, '2026-10-04')
+    expect(s.list('claims.json.enc')[0]!.status).toBe('open')
+    await declaratieTerugbetaald(s, claim, { date: '2026-10-09', amount: 71, currency: 'EUR' })
+    expect(totals(s.list('transactions.json.enc')).balanceEur).toBe(0)
+    expect(position(s, '2026-10-10').totals.receivable.eur).toBe(0)
+    expect(claimPeople(s.list('claims.json.enc'))).toEqual(['Nepgaspar'])
+  })
+
+  it('schuld aan een vriend: geen uitgave tot betalen, te betalen in Mijn positie, betalen = een gewone uitgave op die dag', async () => {
+    const s = await store()
+    await put(s, 'trips.json.enc', trip)
+    const debt = await inTx(s, addClaim, { kind: 'schuld', person: 'Nepjoep', date: '2026-10-04', tripId: 'trip-1', note: 'Nepdiner', amount: 30, currency: 'EUR' }, null)
+    expect(s.list('transactions.json.enc')).toEqual([])
+    expect(openDebts(s.list('claims.json.enc')).map((c) => c.id)).toEqual([debt.id])
+    expect(openClaims(s.list('claims.json.enc'))).toEqual([])
+    expect(position(s, '2026-10-05')).toMatchObject({ owed: [expect.objectContaining({ id: debt.id })], totals: { receivable: { eur: -30 } } })
+    // De trip later wijzigen houdt het een schuld.
+    await inTx(s, setClaimTrip, debt, null)
+    expect(s.list('claims.json.enc')[0]).toMatchObject({ kind: 'schuld', person: 'Nepjoep' })
+    const undo = await declaratieTerugbetaald(s, debt, { date: '2026-10-12', amount: 30, currency: 'EUR' })
+    await declaratieTerugbetaald(s, debt, { date: '2026-10-12', amount: 30, currency: 'EUR' })
+    const txs = s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)
+    // Eén uitgave, zonder claimId: dat geld komt niet terug (telt dus gewoon als kosten en in het gemiddelde).
+    expect(txs).toEqual([expect.objectContaining({ id: paymentIdOf(debt.id), kind: 'kosten', date: '2026-10-12', amount: 30 })])
+    expect(txs[0]!.claimId).toBeUndefined()
+    expect(s.list('claims.json.enc')[0]).toMatchObject({ status: 'terugbetaald', repaid: { date: '2026-10-12', amount: 30, transactionId: paymentIdOf(debt.id) } })
+    expect(position(s, '2026-10-11').totals.receivable.eur).toBe(-30)
+    expect(position(s, '2026-10-12').totals.receivable.eur).toBe(0)
+    await undo()
+    expect(s.list('transactions.json.enc').filter((tx) => tx.deletedAt === null)).toEqual([])
+    expect(s.list('claims.json.enc')[0]!.status).toBe('open')
+  })
+
+  it('overzicht per persoon: te ontvangen (declaraties samen) en te betalen, per valuta; dezelfde voornaam is dezelfde persoon', async () => {
+    const s = await store()
+    await put(s, 'trips.json.enc', trip)
+    await inTx(s, addClaim, { date: '2026-10-01', tripId: 'trip-1', note: '', amount: 10, currency: 'EUR' }, null)
+    await inTx(s, addClaim, { kind: 'voorgeschoten', person: 'Nepgaspar', date: '2026-10-02', tripId: 'trip-1', note: '', amount: 71, currency: 'USD' }, null)
+    await inTx(s, addClaim, { kind: 'voorgeschoten', person: 'nepgaspar', date: '2026-10-03', tripId: 'trip-1', note: '', amount: 9, currency: 'USD' }, null)
+    await inTx(s, addClaim, { kind: 'schuld', person: 'Nepjoep', date: '2026-10-04', tripId: 'trip-1', note: '', amount: 20, currency: 'EUR' }, null)
+    expect(claimOverview(s.list('claims.json.enc'))).toEqual({
+      receivable: [
+        { person: null, sums: { EUR: 10 }, count: 1 },
+        // De laatste schrijfwijze (3 oktober) is de naam.
+        { person: 'nepgaspar', sums: { USD: 80 }, count: 2 },
+      ],
+      payable: [{ person: 'Nepjoep', sums: { EUR: 20 }, count: 1 }],
+    })
+  })
+
+  it('een declaratie van vóór deze versie (zonder soort) blijft een declaratie; bewerken laat haar zonder soort', async () => {
+    const s = await store()
+    await put(s, 'trips.json.enc', trip)
+    const claim = await inTx(s, addClaim, { date: '2026-10-03', tripId: 'trip-1', note: 'Nep', amount: 5, currency: 'EUR' }, null)
+    expect(claim.kind).toBeUndefined()
+    await declaratieBewerken(s, claim, { date: '2026-10-03', tripId: 'trip-1', note: 'Nep 2', amount: 5, currency: 'EUR' })
+    const after = s.list('claims.json.enc')[0]!
+    expect(after.kind).toBeUndefined()
+    expect(after.person).toBeUndefined()
   })
 })

@@ -90,7 +90,7 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
   // De verandering in de gekozen periode, tot en met vandaag (de toekomst staat in de vooruitblik).
   const change = useMemo(() => netWorthChange(input, period, today), [input, period, today])
   const hasAccounts = input.accounts.some((a) => a.deletedAt === null)
-  const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0
+  const empty = !hasAccounts && now.receivable.length === 0 && now.claims.length === 0 && now.owed.length === 0
   if (empty) return null
 
   const accountRows = (rows: AccountRow[]) =>
@@ -141,10 +141,10 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
           <ul className="plain-list">{accountRows(now.cashAccounts)}</ul>
         </PositionGroup>
         <PositionGroup
-          label={t('position.receivable')}
+          label={t(now.owed.length > 0 ? 'position.receivableAndOwed' : 'position.receivable')}
           sum={now.totals.receivable}
-          show={now.receivable.length > 0 || now.claims.length > 0}
-          onOpen={() => setDrill({ title: t('position.receivable'), drill: receivableDrill(now, input.trips, input.rates), hint: t('drill.receivableNowHint', { date: formatDate(today) }) })}
+          show={now.receivable.length > 0 || now.claims.length > 0 || now.owed.length > 0}
+          onOpen={() => setDrill({ title: t(now.owed.length > 0 ? 'position.receivableAndOwed' : 'position.receivable'), drill: receivableDrill(now, input.trips, input.rates), hint: t('drill.receivableNowHint', { date: formatDate(today) }) })}
         >
           <ul className="plain-list">
             {now.receivable.map((r) => (
@@ -155,8 +155,14 @@ function PositionSection({ store, notify, input, period }: { store: Store; notif
             ))}
             {now.claims.map((c) => (
               <li key={c.id} className="row muted small">
-                <span className="grow">{t('position.claimOf', { date: formatDate(c.date) })}</span>
+                <span className="grow">{c.person ? t('position.advanceTo', { person: c.person }) : t('position.claimOf', { date: formatDate(c.date) })}</span>
                 <span className="num">{formatMoney(c.amount!, c.currency!)}</span>
+              </li>
+            ))}
+            {now.owed.map((c) => (
+              <li key={c.id} className="row muted small">
+                <span className="grow">{c.person ? t('position.owedTo', { person: c.person }) : t('position.owedOf', { date: formatDate(c.date) })}</span>
+                <span className="num">{formatMoney(-c.amount!, c.currency!)}</span>
               </li>
             ))}
           </ul>

@@ -23,7 +23,10 @@
 // 8: de berichtengenerator: sjablonen (templates.json.enc, een nieuw databestand en recordtype), per trip de berichtvelden
 // (`messageFields`) en wat verstuurd is (`messages`), en per organisatie de standaard (`messageDefaults`). Bestanden van
 // versie 7 blijven ongewijzigd leesbaar; een oudere build leest een bestand van versie 8 als "van een nieuwere versie".
-export const SCHEMA_VERSION = 8
+// 9: soorten declaratie: voorgeschoten voor iemand en een schuld aan iemand (`kind`, `person` op een declaratie). Bestanden
+// van versie 8 blijven ongewijzigd leesbaar (zonder soort = declaratie); een oudere build leest een bestand van versie 9
+// als "van een nieuwere versie".
+export const SCHEMA_VERSION = 9
 
 // Schrijfversie van deze build: elk databestand dat deze build schrijft, krijgt hem mee als `minWriterVersion` (in de
 // versleutelde inhoud). Een build met een lagere schrijfversie leest zo'n bestand als "van een nieuwere versie": hij
@@ -60,7 +63,9 @@ export const SCHEMA_VERSION = 8
 // fooi bij het opslaan van een trip of de instellingen weggooien.
 // 14: de berichtengenerator. Een oudere build kent templates.json.enc niet en zou bij het opslaan van een trip de
 // berichtvelden en "verstuurd" weggooien, en bij het opslaan van de instellingen de standaard per organisatie.
-export const WRITER_VERSION = 14
+// 15: soorten declaratie. Een oudere build zou een schuld als declaratie lezen (te ontvangen in plaats van te betalen) en
+// bij het bewerken de soort en de persoon weggooien, en de uitgave van een schuld als declaratie boeken.
+export const WRITER_VERSION = 15
 
 let writer = WRITER_VERSION
 
