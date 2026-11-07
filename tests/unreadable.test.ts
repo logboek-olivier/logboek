@@ -105,6 +105,25 @@ describe('onleesbaar bestand op GitHub', () => {
     expect(a.store.getStatus()).toEqual(unreadable)
   })
 
+  it('de melding blijft staan na een sync die vanzelf start maar niets te doen heeft (een opslag zonder wijziging)', async () => {
+    const github = new FakeGithub()
+    github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))
+    const a = await device(github)
+    await put(a.store, 'plans.json.enc', plan('p1'))
+    await a.store.sync()
+    await pollute(github, 'plans.json.enc')
+    await a.store.sync()
+    const unreadable = { kind: 'error', code: 'unreadable', count: 0, paths: ['plans.json.enc'] }
+    expect(a.store.getStatus()).toEqual(unreadable)
+    // Vroeger: "Synchroniseren…" aan het begin, daarna niets te versturen en dus "Gesynct" (in CI na een opslag die
+    // niets veranderde); de melding en de herstelknop verdwenen terwijl het bestand op GitHub onleesbaar bleef.
+    await a.store.sync({ changedOnly: true })
+    expect(a.store.getStatus()).toEqual(unreadable)
+    // Een volgende volledige ronde controleert het bestand gewoon opnieuw.
+    await a.store.sync()
+    expect(a.store.getStatus()).toEqual(unreadable)
+  })
+
   it('zonder lokale kopie: niets wissen en niets schrijven voor dat bestand', async () => {
     const github = new FakeGithub()
     github.write(META_PATH, toBase64(utf8(serializeMeta(ours.meta))))

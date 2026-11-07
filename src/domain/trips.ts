@@ -1,7 +1,7 @@
 // Opdrachten voor trips: maken, bewerken, afronden, deelnemers en verwijderen, teller, checklists, boten en Nakijken. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
 import { confirmBoats, deleteBoat, mergeBoat, skipBoats } from '../model/boats'
-import { addChecklist, deleteChecklist, saveChecklist, toggleCheck } from '../model/checklists'
+import { addChecklist, deleteChecklist, restoreChecklist, saveChecklist, toggleCheck } from '../model/checklists'
 import { answerDoubt, saveFirstNumbers } from '../model/counters'
 import { answerReturning, setGuestCount } from '../model/guests'
 import { acceptAllKinds, dismissReview, fixMoneyWithoutPeriod, makeStayFor, makeTripFor, setInvestmentCategory, setTripKind, setTripOrganisation, tripForLegs } from '../model/review'
@@ -18,6 +18,7 @@ export const checklistAfvinken = opdracht('checklistAfvinken', toggleCheck)
 export const checklistOpslaan = opdracht('checklistOpslaan', saveChecklist)
 export const checklistToevoegen = opdrachtMet('checklistToevoegen', addChecklist)
 export const checklistVerwijderen = opdracht('checklistVerwijderen', deleteChecklist)
+export const checklistTerugzetten = opdracht('checklistTerugzetten', restoreChecklist)
 export const deelnemerVerwijderen = opdracht('deelnemerVerwijderen', removeParticipant)
 export const deelnemerWijzigen = opdracht('deelnemerWijzigen', changeParticipant)
 export const geldKoppelen = opdracht('geldKoppelen', fixMoneyWithoutPeriod)

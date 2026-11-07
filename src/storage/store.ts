@@ -176,6 +176,8 @@ export class Store {
   private readonly listeners = new Set<Listener>()
   private outbox: Outbox = {}
   private status: SyncStatus = { kind: 'synced' }
+  /** De fout die er stond toen de huidige sync begon; een ronde die niets controleert, zet hem terug. */
+  private errorBeforeSync: Extract<SyncStatus, { kind: 'error' }> | null = null
   private syncing: Promise<void> | null = null
   /** Er kwam een wijziging of een sync-verzoek binnen terwijl een sync liep: daarna nog een ronde. */
   private syncAgain = false
@@ -447,7 +449,9 @@ export class Store {
       this.syncAgain = true
       return this.syncing
     }
-    // Direct "Synchroniseren…": de ronde zelf begint pas als geen ander venster synct (Web Locks).
+    // Direct "Synchroniseren…": de ronde zelf begint pas als geen ander venster synct (Web Locks). Een fout die er
+    // stond (een onleesbaar bestand), blijft bewaard voor een ronde die niets controleert (zie runSync).
+    this.errorBeforeSync = this.status.kind === 'error' ? this.status : null
     if (!this.mismatch && !this.outdated && !this.locked) this.setStatus({ kind: 'syncing' })
     this.syncing = this.runRounds().finally(() => {
       this.syncing = null
@@ -582,9 +586,11 @@ export class Store {
       // vanzelf na een opslag niet als de vorige upload kort geleden mislukte (een groot bestand op een trage lijn).
       uploadDocs = this.pendingDocs.size > 0 && (full || Date.now() >= this.documentRetryAt)
       if (paths.length === 0 && !uploadDocs) {
-        // Vanzelf na een opslag, maar niets wacht meer (een ander venster synct het al): niets op het netwerk.
+        // Vanzelf na een opslag, maar niets wacht meer (een ander venster synct het al): niets op het netwerk. Deze
+        // ronde controleerde niets, dus een fout van daarvoor (een onleesbaar bestand) blijft staan, met de herstelknop.
         this.syncedSeq = Math.max(this.syncedSeq, covered)
-        this.setStatus(this.idleStatus())
+        const before = this.errorBeforeSync
+        this.setStatus(before ? { ...before, count: this.pendingCount() } : this.idleStatus())
         return
       }
       meta = await this.checkMeta()

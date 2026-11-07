@@ -47,6 +47,7 @@ const Review = lazyComponent(() => import('./Review').then((m) => m.Review))
 const Trash = lazyComponent(() => import('./Trash').then((m) => m.Trash))
 const HistoryScreen = lazyComponent(() => import('./History').then((m) => m.History))
 const Messages = lazyComponent(() => import('./Messages').then((m) => m.Messages))
+const Checklists = lazyComponent(() => import('./Checklists').then((m) => m.Checklists))
 const Periods = lazyComponent(() => import('./Periods').then((m) => m.Periods))
 
 // Ontgrendelde app: sync-status bovenaan, onderste balk Vandaag · Deze trip · + · Logboek · Meer.
@@ -79,6 +80,7 @@ const SCREEN_NAMES: Record<Screen, string> = {
   prullenbak: 'Prullenbak',
   geschiedenis: 'Geschiedenis',
   berichten: 'Berichten',
+  checklists: 'Checklists',
   periodes: 'Periodes',
 }
 
@@ -278,7 +280,7 @@ export function Home({ store }: { store: Store }) {
     ? 'toevoegen'
     : screen === 'logboek'
       ? logbookFrom
-      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes' || screen === 'prullenbak' || screen === 'geschiedenis' || screen === 'berichten'
+      : screen === 'statistieken' || screen === 'doelen' || screen === 'carriere' || screen === 'rekeningen' || screen === 'kluis' || screen === 'geld' || screen === 'termijnen' || screen === 'boten' || screen === 'plaatsen' || screen === 'kaarten' || screen === 'cursussen' || screen === 'archief' || screen === 'instellingen' || screen === 'opslag' || screen === 'nakijken' || screen === 'periodes' || screen === 'prullenbak' || screen === 'geschiedenis' || screen === 'berichten' || screen === 'checklists'
         ? 'meer'
         : screen
 
@@ -441,6 +443,12 @@ export function Home({ store }: { store: Store }) {
         <>
           <BackToMore onBack={() => select('meer')} />
           <Messages store={store} notify={notify} />
+        </>
+      )}
+      {screen === 'checklists' && (
+        <>
+          <BackToMore onBack={() => select('meer')} />
+          <Checklists store={store} notify={notify} />
         </>
       )}
       {screen === 'geschiedenis' && (

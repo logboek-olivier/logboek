@@ -44,8 +44,26 @@ export async function toggleCheck(store: Tx, trip: Trip, listId: string, itemId:
 
 export interface ChecklistEdit {
   title: string
-  /** Bestaande punten houden hun id; nieuwe punten hebben geen id. */
+  /** Bestaande punten houden hun id; nieuwe punten hebben geen id. De volgorde is de volgorde van de lijst. */
   items: { id?: string; text: string }[]
+  /** Bij welke soorten trip de lijst hoort; leeg = elke trip. Ontbreekt = ongewijzigd. */
+  tripTypes?: WeekType[]
+}
+
+/** Een punt verplaatsen (slepen of omhoog/omlaag): het punt op `from` komt op `to`, de rest schuift op. */
+export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
+  const next = [...items]
+  if (from < 0 || from >= next.length) return next
+  const target = Math.max(0, Math.min(next.length - 1, to))
+  const [item] = next.splice(from, 1)
+  next.splice(target, 0, item as T)
+  return next
+}
+
+/** Meegeleverde lijsten die verborgen zijn (verwijderd), om terug te zetten. */
+export function hiddenSeedChecklists(stored: readonly Checklist[]): Checklist[] {
+  const hidden = new Set(stored.filter((c) => SEED_IDS.has(c.id) && c.deletedAt !== null).map((c) => c.id))
+  return SEED_CHECKLISTS.filter((c) => hidden.has(c.id))
 }
 
 /**
@@ -68,14 +86,15 @@ export async function saveChecklist(store: Tx, list: Checklist, edit: ChecklistE
     ...list,
     title: title && title !== localized(list.title, lang) ? { ...list.title, [lang]: title } : list.title,
     items,
+    ...(edit.tripTypes ? { tripTypes: [...new Set(edit.tripTypes)] } : {}),
     updatedAt: nowIso(),
   }
   await store.put('checklists.json.enc', next)
 }
 
-/** Nieuwe eigen lijst voor deze soort trip. */
-export async function addChecklist(store: Tx, title: string, type: WeekType): Promise<Checklist> {
-  const list: Checklist = { id: newId(), title: { nl: title.trim(), en: title.trim() }, items: [], tripTypes: [type], source: 'eigen', updatedAt: nowIso(), deletedAt: null }
+/** Nieuwe eigen lijst voor deze soort trip (zonder soort: voor elke trip). */
+export async function addChecklist(store: Tx, title: string, type: WeekType | null): Promise<Checklist> {
+  const list: Checklist = { id: newId(), title: { nl: title.trim(), en: title.trim() }, items: [], tripTypes: type ? [type] : [], source: 'eigen', updatedAt: nowIso(), deletedAt: null }
   await store.put('checklists.json.enc', list)
   return list
 }
@@ -84,4 +103,13 @@ export async function addChecklist(store: Tx, title: string, type: WeekType): Pr
 export async function deleteChecklist(store: Tx, list: Checklist): Promise<void> {
   const now = nowIso()
   await store.put('checklists.json.enc', { ...list, updatedAt: now, deletedAt: now })
+}
+
+/** Een verborgen meegeleverde lijst terugzetten: de meegeleverde inhoud, zichtbaar bij de trips van zijn soort. */
+export async function restoreChecklist(store: Tx, seedId: string): Promise<void> {
+  const seed = SEED_CHECKLISTS.find((c) => c.id === seedId)
+  if (!seed) return
+  const stored = store.get('checklists.json.enc').find((c) => c.id === seedId)
+  if (stored && stored.deletedAt === null) return
+  await store.put('checklists.json.enc', { ...(stored ?? {}), ...seed, updatedAt: nowIso(), deletedAt: null })
 }
