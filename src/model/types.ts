@@ -122,6 +122,12 @@ export const COST_CATEGORIES: readonly CostCategory[] = ['vervoer', 'eten', 'ver
 
 /** Status van een declaratie: open (nog niet ingediend), ingediend, terugbetaald. */
 export type ClaimStatus = 'open' | 'ingediend' | 'terugbetaald'
+/**
+ * Soort declaratie: een declaratie bij de organisatie, geld dat Olivier voor iemand voorschoot (die het terugbetaalt), of
+ * geld dat iemand voor Olivier voorschoot (een schuld: Olivier betaalt het terug). Ontbreekt = declaratie.
+ */
+export type ClaimKind = 'declaratie' | 'voorgeschoten' | 'schuld'
+export const CLAIM_KINDS: readonly ClaimKind[] = ['declaratie', 'voorgeschoten', 'schuld']
 
 /**
  * Een declaratie (claims.json.enc): een uitgave die de organisatie terugbetaalt. Het bonnetje staat versleuteld in de
@@ -130,6 +136,10 @@ export type ClaimStatus = 'open' | 'ingediend' | 'terugbetaald'
 export interface Claim extends SyncRecord {
   /** jjjj-mm-dd: datum van de uitgave. */
   date: string
+  /** Ontbreekt = declaratie (zoals elke declaratie van vóór deze versie). */
+  kind?: ClaimKind
+  /** Bij voorgeschoten en schuld: alleen de voornaam van de ander (regel 14). */
+  person?: string
   tripId?: string
   note?: string
   amount?: number
@@ -139,7 +149,10 @@ export interface Claim extends SyncRecord {
   status: ClaimStatus
   /** jjjj-mm-dd */
   submittedAt?: string
-  /** Terugbetaald: datum, bedrag en het inkomen (soort terugbetaling) bij Geld. */
+  /**
+   * Terugbetaald: datum, bedrag en het inkomen (soort terugbetaling) bij Geld. Bij een schuld: betaald, met de uitgave
+   * (id `betaling:<claim>`) bij Geld.
+   */
   repaid?: { date: string; amount: number; currency: Currency; transactionId?: string }
 }
 

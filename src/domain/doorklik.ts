@@ -221,13 +221,17 @@ function receivableEntries(position: Position, byId: ReadonlyMap<string, Trip>, 
       org: groupOf(r.tx, byId),
     })
   }
-  for (const c of position.claims) {
-    const value = toEur(c.amount!, c.currency!, c.date, rates)
-    entries.push({
-      post: { key: c.id, claim: c, date: position.date, amount: sign * c.amount!, currency: c.currency!, eur: value ? sign * value.eur : null, provisional: value?.provisional ?? false },
-      section: section ?? 'declaraties',
-      kind: 'terugbetaling',
-    })
+  // Declaraties en voorschotten plus; schulden (te betalen) min, zoals Mijn positie ze telt.
+  for (const [list, factor] of [[position.claims, 1], [position.owed, -1]] as const) {
+    for (const c of list) {
+      const value = toEur(c.amount!, c.currency!, c.date, rates)
+      const s2 = sign * factor
+      entries.push({
+        post: { key: c.id, claim: c, date: position.date, amount: s2 * c.amount!, currency: c.currency!, eur: value ? s2 * value.eur : null, provisional: value?.provisional ?? false },
+        section: section ?? 'declaraties',
+        kind: factor === 1 ? 'terugbetaling' : 'kosten',
+      })
+    }
   }
   return entries
 }

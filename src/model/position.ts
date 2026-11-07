@@ -11,6 +11,7 @@ import { expectedTip, tipAverages, tripEnd } from './salary'
 import { salaryStatus } from '../domain/geldmodel'
 import type { Account, AccountKind, Balance, Claim, CostDayType, Currency, FixedCost, Leg, Organisation, ScenarioOneOff, Settings, Transaction, Trip } from './types'
 import { endedFor } from './trip-dates'
+import { isDebt, paymentIdOf } from './claims'
 import { round2 } from '../basis/bedrag'
 import { addDays, dayCount, daysInMonth, monthEnd, monthOf, monthsBetween, shiftMonth } from '../basis/datum'
 import { transactionList } from '../domain/geldrapport'
@@ -137,8 +138,10 @@ export interface Position {
   /** Contant: de kasrekeningen. */
   cashAccounts: AccountRow[]
   receivable: ReceivableRow[]
-  /** Declaraties met een bedrag die op die dag nog niet terugbetaald waren (open of ingediend). */
+  /** Declaraties en voorschotten met een bedrag die op die dag nog niet terugbetaald waren (open of ingediend). */
   claims: Claim[]
+  /** Schulden (iemand schoot voor Olivier voor) die op die dag nog niet betaald waren: tellen negatief bij te ontvangen. */
+  owed: Claim[]
   investments: AccountRow[]
   /** Bezittingen: huis, boot, auto (soort `bezit`), met hun geschatte waarde. */
   assets: AccountRow[]
@@ -183,6 +186,7 @@ export function positionAt(input: PositionInput, date: string): Position {
     cashAccounts: [],
     receivable: [],
     claims: [],
+    owed: [],
     investments: [],
     assets: [],
     debts: [],
@@ -224,6 +228,13 @@ export function positionAt(input: PositionInput, date: string): Position {
     if (c.status === 'terugbetaald' && !c.repaid) continue
     if (c.amount === undefined || c.currency === undefined || c.amount <= 0 || c.date > date) continue
     if (c.repaid && c.repaid.date <= date) continue
+    // Een schuld: te betalen tot de dag van betalen (de betaling is dan een uitgave en staat in de stand van de bank).
+    if (isDebt(c)) {
+      if (booked(transactions).some((tx) => tx.id === paymentIdOf(c.id) && tx.date <= date)) continue
+      out.owed.push(c)
+      add(out.totals.receivable, -c.amount, c.currency, c.date, rates)
+      continue
+    }
     // De terugbetaling staat er al (ook als de declaratie zelf nog niet op terugbetaald staat): niet meer te ontvangen.
     if (booked(transactions).some((tx) => tx.kind === 'terugbetaling' && tx.claimId === c.id && tx.date <= date)) continue
     out.claims.push(c)
@@ -591,7 +602,7 @@ export function forecast(
   for (let i = history - 1; i >= 1; i--) {
     const month = shiftMonth(current, -i)
     const p = positionAt(input, range && range.to < monthEnd(month) ? range.to : monthEnd(month))
-    const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0
+    const known = p.counted > 0 || p.receivable.length > 0 || p.claims.length > 0 || p.owed.length > 0
     months.push({ month, eur: known ? p.totals.net.eur : null, future: false })
   }
   months.push({ month: current, eur: now.eur, future: false })

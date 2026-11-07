@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { active } from './derive'
 import { addDocument, scrubbedDocument } from './documents'
 import { finalRateFields } from './rates'
-import { keepUnknownFields, newId, type Claim, type ClaimStatus, type Currency, type Transaction, type VaultDocument } from './types'
+import { firstNameOnly, keepUnknownFields, newId, type Claim, type ClaimKind, type ClaimStatus, type Currency, type Transaction, type VaultDocument } from './types'
 import type { Bytes } from '../crypto/encrypt'
 import { round2 } from '../basis/bedrag'
 import { todayIso } from '../basis/datum'
@@ -17,8 +17,18 @@ import { sourceForPeriod } from '../basis/organisatie'
 // uitgave en terugbetaling samen op nul uitkomen. Per declaratie "Bonnetje delen" (naar de app van de organisatie),
 // daarna "Ingediend?", en tot slot terugbetaald met datum en bedrag: een inkomen van soort terugbetaling (telt in het
 // saldo, niet als verdiend).
+//
+// Drie soorten (`kind`): een declaratie bij de organisatie (zoals hierboven), geld dat Olivier voor iemand voorschoot
+// (voorgeschoten: precies als een declaratie, maar zonder "ingediend": die persoon betaalt terug) en geld dat iemand voor
+// Olivier voorschoot (schuld). Een schuld is pas een uitgave als Olivier betaalt: dan een uitgave op de dag van betalen
+// (id `betaling:<declaratie>`, zonder claimId, want dat geld komt niet terug); tot dan telt hij als te betalen in Mijn
+// positie. Van de ander alleen de voornaam (regel 14).
 
 export interface ClaimInput {
+  /** Ontbreekt = declaratie. */
+  kind?: ClaimKind
+  /** Bij voorgeschoten en schuld: de voornaam van de ander. */
+  person?: string
   date: string
   tripId: string | null
   note: string
@@ -26,10 +36,15 @@ export interface ClaimInput {
   currency: Currency
 }
 
-function clean(input: ClaimInput): Pick<Claim, 'date'> & Partial<Pick<Claim, 'tripId' | 'note' | 'amount' | 'currency'>> {
+function clean(input: ClaimInput): Pick<Claim, 'date'> & Partial<Pick<Claim, 'kind' | 'person' | 'tripId' | 'note' | 'amount' | 'currency'>> {
   const note = input.note.trim().slice(0, 500)
   const amount = input.amount !== null && Number.isFinite(input.amount) && input.amount > 0 ? round2(input.amount) : null
+  const kind = input.kind ?? 'declaratie'
+  const person = kind === 'declaratie' ? '' : firstNameOnly(input.person ?? '').slice(0, 40)
   return {
+    // Een gewone declaratie houdt geen soort (zoals oudere declaraties): oudere versies lezen haar dan zoals altijd.
+    ...(kind !== 'declaratie' ? { kind } : {}),
+    ...(person ? { person } : {}),
     // Een lege datum is vandaag (zoals overal: niets is verplicht).
     date: /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : todayIso(),
     ...(input.tripId ? { tripId: input.tripId } : {}),
@@ -39,16 +54,29 @@ function clean(input: ClaimInput): Pick<Claim, 'date'> & Partial<Pick<Claim, 'tr
 }
 
 /** De velden van een declaratie die deze versie kent (de rest blijft bij bewerken staan, zie keepUnknownFields). */
-const CLAIM_FIELDS = ['id', 'date', 'tripId', 'note', 'amount', 'currency', 'documentId', 'status', 'submittedAt', 'repaid', 'updatedAt', 'deletedAt'] as const
+const CLAIM_FIELDS = ['id', 'date', 'kind', 'person', 'tripId', 'note', 'amount', 'currency', 'documentId', 'status', 'submittedAt', 'repaid', 'updatedAt', 'deletedAt'] as const
 
 /** Titel van het bonnetje in de kluis: neutraal, met de datum (de notitie staat alleen bij de declaratie). */
 function receiptTitle(date: string): string {
   return t('claims.receiptTitle', { date })
 }
 
-/** De uitgave bij een declaratie met een bedrag (soort kosten, met claimId); null zonder bedrag. */
+/** De soort van een declaratie (ontbreekt = declaratie). */
+export function claimKind(claim: Pick<Claim, 'kind'>): ClaimKind {
+  return claim.kind === 'voorgeschoten' || claim.kind === 'schuld' ? claim.kind : 'declaratie'
+}
+
+/** Een schuld: iemand schoot voor Olivier voor. */
+export function isDebt(claim: Pick<Claim, 'kind'>): boolean {
+  return claimKind(claim) === 'schuld'
+}
+
+/**
+ * De uitgave bij een declaratie met een bedrag (soort kosten, met claimId); null zonder bedrag. Een schuld heeft geen
+ * uitgave tot Olivier betaalt (dan `paymentFor`).
+ */
 function costFor(store: Reader, claim: Claim, id: string, now: string): Transaction | null {
-  if (claim.amount === undefined || claim.currency === undefined) return null
+  if (claim.amount === undefined || claim.currency === undefined || isDebt(claim)) return null
   const trip = claim.tripId ? store.list('trips.json.enc').find((x) => x.id === claim.tripId) : undefined
   const base = { date: claim.date, amount: claim.amount, currency: claim.currency }
   return {
@@ -75,10 +103,32 @@ function repaymentIdOf(claimId: string): string {
   return `terugbetaling:${claimId}`
 }
 
+/** De uitgave waarmee Olivier een schuld betaalde. */
+export function paymentIdOf(claimId: string): string {
+  return `betaling:${claimId}`
+}
+
 /** De levende uitgave bij een declaratie. */
 function costOf(store: Reader, claimId: string): Transaction | undefined {
   // De uitgave van de declaratie (ook als iemand er een investering van maakte); de terugbetaling is een inkomen.
   return store.list('transactions.json.enc').find((tx) => tx.claimId === claimId && (tx.kind === 'kosten' || tx.kind === 'investering'))
+}
+
+/** De betaling van een schuld: een gewone uitgave op de dag van betalen, bij de trip van de schuld. */
+function paymentFor(store: Reader, claim: Claim, paid: { date: string; amount: number; currency: Currency }, now: string): Transaction {
+  const trip = claim.tripId ? store.list('trips.json.enc').find((x) => x.id === claim.tripId) : undefined
+  return {
+    id: paymentIdOf(claim.id),
+    ...paid,
+    kind: 'kosten',
+    category: 'overig',
+    source: sourceForPeriod(trip),
+    ...(claim.tripId ? { tripId: claim.tripId } : {}),
+    ...(claim.note ? { note: claim.note } : {}),
+    ...(paid.currency === 'EUR' ? { amountEur: paid.amount } : (finalRateFields(paid) ?? {})),
+    updatedAt: now,
+    deletedAt: null,
+  }
 }
 
 /**
@@ -119,13 +169,13 @@ export async function updateClaim(store: Tx, claim: Claim, input: ClaimInput): P
 /** De trip van een declaratie wijzigen (Nakijken: declaratie zonder trip); de uitgave volgt de declaratie. */
 export function setClaimTrip(store: Tx, claim: Claim, tripId: string | null): Promise<void> {
   const latest = store.list('claims.json.enc').find((c) => c.id === claim.id) ?? claim
-  return updateClaim(store, latest, { date: latest.date, tripId, note: latest.note ?? '', amount: latest.amount ?? null, currency: latest.currency ?? 'EUR' })
+  return updateClaim(store, latest, { kind: claimKind(latest), person: latest.person ?? '', date: latest.date, tripId, note: latest.note ?? '', amount: latest.amount ?? null, currency: latest.currency ?? 'EUR' })
 }
 
-/** "Ingediend": na het delen met de app van de organisatie. Al ingediend of terugbetaald: niets. */
+/** "Ingediend": na het delen met de app van de organisatie. Al ingediend of terugbetaald, of geen declaratie: niets. */
 export async function markSubmitted(store: Tx, claim: Claim, date: string): Promise<void> {
   const before = store.list('claims.json.enc').find((c) => c.id === claim.id) ?? claim
-  if (before.status !== 'open') return
+  if (before.status !== 'open' || claimKind(before) !== 'declaratie') return
   await store.put('claims.json.enc', { ...before, status: 'ingediend', submittedAt: date, updatedAt: new Date().toISOString() })
 }
 
@@ -140,6 +190,15 @@ export async function markRepaid(store: Tx, claim: Claim, repaid: { date: string
   const trip = before.tripId ? store.list('trips.json.enc').find((x) => x.id === before.tripId) : undefined
   const now = new Date().toISOString()
   // De terugbetaling staat er al (de app sloot na het inkomen, vóór de declaratie): alleen de declaratie bijwerken.
+  // Een schuld: Olivier betaalt. Een uitgave op de dag van betalen (een vast id: een tweede tik boekt niets nog eens).
+  if (isDebt(before)) {
+    const paid = { date: repaid.date, amount: round2(repaid.amount), currency: repaid.currency }
+    const already = store.list('transactions.json.enc').find((tx) => tx.id === paymentIdOf(before.id))
+    const tx = already ?? paymentFor(store, before, paid, now)
+    if (!already) await store.put('transactions.json.enc', tx)
+    await store.put('claims.json.enc', { ...before, status: 'terugbetaald', repaid: { date: tx.date, amount: tx.amount, currency: tx.currency, transactionId: tx.id }, updatedAt: now })
+    return
+  }
   const existing = store.list('transactions.json.enc').find((tx) => tx.kind === 'terugbetaling' && tx.claimId === before.id)
   if (existing) {
     const paid = { date: existing.date, amount: existing.amount, currency: existing.currency, transactionId: existing.id }
@@ -201,9 +260,53 @@ export function claimsToShow(claims: readonly Claim[], liveTripIds?: ReadonlySet
     .sort((a, b) => b.date.localeCompare(a.date))
 }
 
-/** Open of ingediende declaraties met een bedrag: die tellen als te ontvangen. */
+/** Open of ingediende declaraties en voorschotten met een bedrag: die tellen als te ontvangen (een schuld niet). */
 export function openClaims(claims: readonly Claim[]): Claim[] {
-  return active(claims).filter((c) => c.status !== 'terugbetaald' && c.amount !== undefined && c.amount > 0 && c.currency !== undefined)
+  return active(claims).filter((c) => !isDebt(c) && c.status !== 'terugbetaald' && c.amount !== undefined && c.amount > 0 && c.currency !== undefined)
+}
+
+/** Schulden met een bedrag die Olivier nog niet betaalde: te betalen. */
+export function openDebts(claims: readonly Claim[]): Claim[] {
+  return active(claims).filter((c) => isDebt(c) && c.status !== 'terugbetaald' && c.amount !== undefined && c.amount > 0 && c.currency !== undefined)
+}
+
+/** Per persoon (of "declaraties" voor de organisatie) het openstaande bedrag per valuta. */
+export interface ClaimBalance {
+  /** De voornaam, of null voor declaraties bij de organisatie (en voorschotten zonder naam). */
+  person: string | null
+  sums: Partial<Record<Currency, number>>
+  count: number
+}
+
+function balances(claims: readonly Claim[]): ClaimBalance[] {
+  const byKey = new Map<string, ClaimBalance>()
+  // Nieuwste eerst: de schrijfwijze van de laatste keer is de naam in het overzicht (niet de volgorde van opslaan).
+  for (const c of [...claims].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id))) {
+    const person = c.person?.trim() || null
+    // Dezelfde voornaam met een andere hoofdletter is dezelfde persoon.
+    const key = person ? person.toLocaleLowerCase() : ''
+    const row = byKey.get(key) ?? { person, sums: {}, count: 0 }
+    row.sums[c.currency!] = round2((row.sums[c.currency!] ?? 0) + c.amount!)
+    row.count++
+    byKey.set(key, row)
+  }
+  // Declaraties (zonder persoon) eerst, daarna op naam.
+  return [...byKey.values()].sort((a, b) => (a.person === null ? -1 : b.person === null ? 1 : a.person.localeCompare(b.person)))
+}
+
+/** Overzicht: wat Olivier nog krijgt (declaraties en voorschotten) en wat hij nog moet betalen (schulden), per persoon. */
+export function claimOverview(claims: readonly Claim[]): { receivable: ClaimBalance[]; payable: ClaimBalance[] } {
+  return { receivable: balances(openClaims(claims)), payable: balances(openDebts(claims)) }
+}
+
+/** De voornamen van eerdere voorschotten en schulden (voorstel bij een nieuwe), meest recent eerst. */
+export function claimPeople(claims: readonly Claim[]): string[] {
+  const seen = new Map<string, string>()
+  for (const c of [...active(claims)].sort((a, b) => b.date.localeCompare(a.date))) {
+    const name = c.person?.trim()
+    if (name && !seen.has(name.toLocaleLowerCase())) seen.set(name.toLocaleLowerCase(), name)
+  }
+  return [...seen.values()]
 }
 
 /** Aantal per status, voor het geldpad van een trip. */

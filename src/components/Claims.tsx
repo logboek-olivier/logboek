@@ -5,12 +5,12 @@ import { DecryptError, type Bytes } from '../crypto/encrypt'
 import { recordError } from '../errors'
 import { formatDate, formatMoney } from '../format'
 import { t } from '../i18n'
-import { claimsToShow, receiptFileName, tripClaims, type ClaimInput } from '../model/claims'
+import { claimKind, claimOverview, claimPeople, claimsToShow, isDebt, receiptFileName, tripClaims, type ClaimBalance, type ClaimInput } from '../model/claims'
 import { nameWithCounter } from '../model/counters'
 import { active, tripForDate } from '../model/derive'
 import { isImage, prepareFile } from '../model/documents'
 import { currentSettings, defaultCurrency } from '../model/settings'
-import { CURRENCIES, type Claim, type Currency, type Trip } from '../model/types'
+import { CLAIM_KINDS, CURRENCIES, type Claim, type ClaimKind, type Currency, type Trip } from '../model/types'
 import { activeWeek } from '../model/weeks'
 import { shareOrDownload } from '../share'
 import type { Store } from '../storage/store'
@@ -51,6 +51,8 @@ function useClaimFields(store: Store, claim: Claim | null, preset?: string) {
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const trips = useCollection(store, 'trips.json.enc')
   const legs = useCollection(store, 'legs.json.enc')
+  const [kind, setKind] = useState<ClaimKind>(claim ? claimKind(claim) : 'declaratie')
+  const [person, setPerson] = useState(claim?.person ?? '')
   const [date, setDate] = useState(claim?.date ?? todayIso())
   const [note, setNote] = useState(claim?.note ?? '')
   const [amount, setAmount] = useState(claim?.amount !== undefined ? amountInput(claim.amount) : '')
@@ -71,13 +73,47 @@ function useClaimFields(store: Store, claim: Claim | null, preset?: string) {
   const tripId = chosenTrip ?? fallback
   const parsed = amount.trim() === '' ? null : parseAmount(amount)
   const invalid = amount.trim() !== '' && parsed === null
-  const input = (): ClaimInput => ({ date: date || todayIso(), tripId: tripId || null, note, amount: parsed, currency })
-  return { date, setDate, note, setNote, amount, setAmount, currency, setCurrency, tripId, setTripId: setChosenTrip, invalid, input }
+  const input = (): ClaimInput => ({ kind, person, date: date || todayIso(), tripId: tripId || null, note, amount: parsed, currency })
+  return { kind, setKind, person, setPerson, date, setDate, note, setNote, amount, setAmount, currency, setCurrency, tripId, setTripId: setChosenTrip, invalid, input }
+}
+
+/** Soort: een declaratie bij de organisatie, voorgeschoten voor iemand, of iemand schoot voor mij voor. */
+function ClaimKindField({ f }: { f: ReturnType<typeof useClaimFields> }) {
+  return (
+    <fieldset className="participants claim-kind">
+      <legend>{t('claims.kind')}</legend>
+      <div className="type-buttons" role="radiogroup" aria-label={t('claims.kind')}>
+        {CLAIM_KINDS.map((k) => (
+          <button key={k} type="button" role="radio" aria-checked={f.kind === k} className={`chip${f.kind === k ? ' active' : ''}`} onClick={() => f.setKind(k)}>
+            {t(`claimKind.${k}`)}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+/** Voornaam van de ander (regel 14: alleen het eerste woord), met de namen van eerdere voorschotten als voorstel. */
+function PersonField({ store, f }: { store: Store; f: ReturnType<typeof useClaimFields> }) {
+  const people = claimPeople(useCollection(store, 'claims.json.enc'))
+  if (f.kind === 'declaratie') return null
+  return (
+    <label>
+      {t('claims.person')}
+      <input type="text" autoComplete="off" autoCapitalize="words" maxLength={40} list="claim-people" value={f.person} onChange={(e) => f.setPerson(e.target.value)} />
+      <datalist id="claim-people">
+        {people.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+    </label>
+  )
 }
 
 function ClaimFieldsView({ store, f }: { store: Store; f: ReturnType<typeof useClaimFields> }) {
   return (
     <>
+      <PersonField store={store} f={f} />
       <NoteField label={t('claims.note')} value={f.note} onChange={f.setNote} maxLength={500} />
       <div className="row">
         <label className="grow">
@@ -132,7 +168,7 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
     }
   }
 
-  const empty = !file && f.note.trim() === '' && f.amount.trim() === ''
+  const empty = !file && f.note.trim() === '' && f.amount.trim() === '' && f.person.trim() === ''
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -146,7 +182,7 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
       } catch {
         // Geen trilling: niets.
       }
-      onDone(t('claims.saved'))
+      onDone(f.kind === 'declaratie' ? t('claims.saved') : t('toast.saved'))
     } finally {
       setBusy(false)
     }
@@ -154,6 +190,7 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
 
   return (
     <form className="stack" onSubmit={(e) => void submit(e)}>
+      <ClaimKindField f={f} />
       <div className="row wrap">
         <button type="button" className="btn" disabled={busy} onClick={() => camera.current?.click()}>
           <Icon icon={Camera} />
@@ -183,7 +220,23 @@ export function ClaimForm({ store, onDone, tripId }: { store: Store; onDone: (me
 }
 
 function statusLabel(claim: Claim): string {
+  if (isDebt(claim)) return t(claim.status === 'terugbetaald' ? 'claimStatus.debtPaid' : 'claimStatus.debtOpen')
   return t(`claimStatus.${claim.status}`)
+}
+
+/** Titel: een declaratie met de datum, een voorschot of schuld met de voornaam. */
+function claimTitle(claim: Claim): string {
+  const kind = claimKind(claim)
+  if (kind === 'voorgeschoten') return claim.person ? t('claims.oneAdvance', { person: claim.person }) : t('claims.oneAdvanceDate', { date: formatDate(claim.date) })
+  if (kind === 'schuld') return claim.person ? t('claims.oneDebt', { person: claim.person }) : t('claims.oneDebtDate', { date: formatDate(claim.date) })
+  return t('claims.one', { date: formatDate(claim.date) })
+}
+
+/** Regeltekst in een lijst: de notitie, anders de titel. */
+function claimLine(claim: Claim): string {
+  const kind = claimKind(claim)
+  if (kind === 'declaratie') return claim.note || t('claims.noNote')
+  return claim.note ? `${claimTitle(claim)} · ${claim.note}` : claimTitle(claim)
 }
 
 /** Per trip de declaraties met hun status (bedragen pas in de declaratie zelf). */
@@ -200,7 +253,7 @@ export function TripClaims({ store, trip, notify, heading = 'h2' }: { store: Sto
           <li key={c.id}>
             <button type="button" className="row claim-row" onClick={() => setOpen(c)}>
               <span className={`claim-status ${c.status}`}>{statusLabel(c)}</span>
-              <span className="grow">{c.note || t('claims.noNote')}</span>
+              <span className="grow">{claimLine(c)}</span>
               <span className="muted small">{formatDate(c.date)}</span>
             </button>
           </li>
@@ -211,16 +264,51 @@ export function TripClaims({ store, trip, notify, heading = 'h2' }: { store: Sto
   )
 }
 
-/** Geld → Declaraties: wat nog openstaat of ingediend is, en declaraties zonder trip (die staan niet bij een trip). */
+/** Per persoon het openstaande bedrag (per valuta), bovenaan Geld → Declaraties en voorschotten. */
+function BalanceRows({ rows, negative }: { rows: readonly ClaimBalance[]; negative: boolean }) {
+  return (
+    <ul className="plain-list claim-balances">
+      {rows.map((row) => (
+        <li key={row.person ?? ''} className="row">
+          <span className="grow">{row.person ?? t('claims.orgClaims')}</span>
+          <span className={`num${negative ? ' negative' : ''}`}>
+            {Object.entries(row.sums)
+              .map(([currency, amount]) => formatMoney(negative ? -amount! : amount!, currency as Currency))
+              .join(' · ')}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * Geld → Declaraties en voorschotten: bovenaan wat Olivier nog krijgt (declaraties en voorschotten, per persoon) en wat
+ * hij nog moet betalen (per persoon); daaronder wat nog openstaat of ingediend is, en declaraties zonder trip.
+ */
 export function ClaimsSection({ store, notify }: { store: Store; notify: Notify }) {
-  const claims = claimsToShow(useCollection(store, 'claims.json.enc'), new Set(useCollection(store, 'trips.json.enc').map((trip) => trip.id)))
+  const all = useCollection(store, 'claims.json.enc')
+  const claims = claimsToShow(all, new Set(useCollection(store, 'trips.json.enc').map((trip) => trip.id)))
+  const overview = claimOverview(all)
   const trips = useCollection(store, 'trips.json.enc')
   const counters = useCounters(store)
   const [open, setOpen] = useState<Claim | null>(null)
   if (claims.length === 0) return null
   return (
     <div className="section card card-body stack-sm claims-section">
-      <h2>{t('claims.title')}</h2>
+      <h2>{t('claims.overviewTitle')}</h2>
+      {overview.receivable.length > 0 && (
+        <div className="stack-sm">
+          <h3>{t('claims.toReceive')}</h3>
+          <BalanceRows rows={overview.receivable} negative={false} />
+        </div>
+      )}
+      {overview.payable.length > 0 && (
+        <div className="stack-sm">
+          <h3>{t('claims.toPay')}</h3>
+          <BalanceRows rows={overview.payable} negative />
+        </div>
+      )}
       <ul className="plain-list">
         {claims.map((c) => {
           const trip = trips.find((x) => x.id === c.tripId && x.deletedAt === null)
@@ -229,10 +317,10 @@ export function ClaimsSection({ store, notify }: { store: Store; notify: Notify 
               <button type="button" className="row claim-row" onClick={() => setOpen(c)}>
                 <span className={`claim-status ${c.status}`}>{statusLabel(c)}</span>
                 <span className="grow">
-                  {c.note || t('claims.noNote')}
+                  {claimLine(c)}
                   <span className="muted small"> · {trip ? nameWithCounter(trip, counters.get(trip.id)) : t('quick.noTrip')}</span>
                 </span>
-                {c.amount !== undefined && c.currency && <span className="num small">{formatMoney(c.amount, c.currency)}</span>}
+                {c.amount !== undefined && c.currency && <span className={`num small${isDebt(c) ? ' negative' : ''}`}>{formatMoney(isDebt(c) ? -c.amount : c.amount, c.currency)}</span>}
               </button>
             </li>
           )
@@ -296,7 +384,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
     try {
       // Een neutrale bestandsnaam en geen titel: de andere app krijgt alleen het bonnetje.
       const result = await shareOrDownload(new File([bytes], receiptFileName(mime), { type: mime }))
-      if (result !== 'afgebroken' && current.status === 'open') setAskSubmitted(true)
+      if (result !== 'afgebroken' && current.status === 'open' && claimKind(current) === 'declaratie') setAskSubmitted(true)
     } finally {
       setBusy(false)
     }
@@ -315,7 +403,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
   }
 
   return (
-    <Sheet title={t('claims.one', { date: formatDate(current.date) })} onClose={onClose} onEdit={() => setEditing(true)}>
+    <Sheet title={claimTitle(current)} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack view">
         {url && <img className="claim-receipt" src={url} alt={t('claims.receipt')} />}
         {document && mime === 'application/pdf' && (
@@ -329,7 +417,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
           <span className={`claim-status ${current.status}`}>{statusLabel(current)}</span>
           {current.submittedAt && <span className="muted small">{t('claims.submittedOn', { date: formatDate(current.submittedAt) })}</span>}
         </p>
-        {current.repaid && <p className="muted small">{t('claims.repaidLine', { date: formatDate(current.repaid.date), amount: formatMoney(current.repaid.amount, current.repaid.currency) })}</p>}
+        {current.repaid && <p className="muted small">{t(isDebt(current) ? 'claims.paidLine' : 'claims.repaidLine', { date: formatDate(current.repaid.date), amount: formatMoney(current.repaid.amount, current.repaid.currency) })}</p>}
         {current.note && <p className="note-text">{current.note}</p>}
         {trip && <p className="muted small">{nameWithCounter(trip, counters.get(trip.id))}</p>}
         {error && (
@@ -359,7 +447,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
             </div>
           </div>
         )}
-        {current.status === 'open' && !askSubmitted && (
+        {current.status === 'open' && !askSubmitted && claimKind(current) === 'declaratie' && (
           <button type="button" className="btn" disabled={busy} onClick={() => void submitted()}>
             <Icon icon={Check} />
             {t('claims.markSubmitted')}
@@ -368,7 +456,7 @@ export function ClaimView({ store, claim, notify, onClose }: { store: Store; cla
         {current.status !== 'terugbetaald' && (
           <button type="button" className="btn" onClick={() => setRepaying(true)}>
             <Icon icon={Wallet} />
-            {t('claims.markRepaid')}
+            {t(isDebt(current) ? 'claims.markPaid' : 'claims.markRepaid')}
           </button>
         )}
       </div>
@@ -393,29 +481,29 @@ function RepaySheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
     try {
       const undo = await declaratieTerugbetaald(store, claim, { date, amount: parsed, currency })
       onClose()
-      notify(t('claims.repaidToast'), undo)
+      notify(t(isDebt(claim) ? 'claims.paidToast' : 'claims.repaidToast'), undo)
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Sheet title={t('claims.markRepaid')} onClose={onClose}>
+    <Sheet title={t(isDebt(claim) ? 'claims.markPaid' : 'claims.markRepaid')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
         <div className="row">
           <label className="grow">
-            {t('claims.repaidAmount')}
+            {t(isDebt(claim) ? 'claims.paidAmount' : 'claims.repaidAmount')}
             <input className="amount" type="text" inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
           <CurrencySelect value={currency} onChange={setCurrency} />
         </div>
         <label>
-          {t('claims.repaidDate')}
+          {t(isDebt(claim) ? 'claims.paidDate' : 'claims.repaidDate')}
           <input type="date" max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
         <button className="btn primary" type="submit" disabled={parsed === null || !date || busy}>
           <Icon icon={Check} />
-          {t('claims.saveRepaid')}
+          {t(isDebt(claim) ? 'claims.savePaid' : 'claims.saveRepaid')}
         </button>
       </form>
     </Sheet>
@@ -455,6 +543,7 @@ function ClaimSheet({ store, claim, notify, onClose }: { store: Store; claim: Cl
   return (
     <Sheet title={t('claims.edit')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => void submit(e)}>
+        {claim.status !== 'terugbetaald' && <ClaimKindField f={f} />}
         <ClaimFieldsView store={store} f={f} />
         <div className="sheet-actions">
           <button className="btn primary" type="submit" disabled={f.invalid || busy}>
