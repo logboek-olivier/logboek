@@ -6,7 +6,7 @@ import { nameWithCounter, type TripCounter } from '../model/counters'
 import { placeUses } from '../model/places'
 import { routeOf } from '../model/trip-route'
 import type { Leg, StayPeriod, Trip } from '../model/types'
-import { feetToMetres, tripDayCounts, weekView, type WeekView } from '../model/weeks'
+import { feetToMetres, tripDayCounts, tripWeeks, weekView, type WeekView } from '../model/weeks'
 import { stayPeriod, waterPeriod } from '../model/periods'
 import { PeriodPage } from './PeriodPage'
 import { StaySheet } from './StaySheet'
@@ -53,6 +53,7 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
   const trip = view.trip
   const [details, setDetails] = useState(false)
   const range = view.startDate && view.endDate ? formatDateRangeShort(view.startDate, view.endDate) : ''
+  const weeks = view.startDate && view.endDate ? weeksText(tripWeeks(view.startDate, view.endDate)) : ''
   const boat = trip.boat || trip.boatModel || legs.find((l) => l.tripId === trip.id)?.boat || ''
   return (
     <div className="card trip-head">
@@ -79,7 +80,7 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
               {trip.area.trim()}
             </span>
           )}
-          <span className="trip-day-count">{[range, tripDaysText(view)].filter(Boolean).join(' · ')}</span>
+          <span className="trip-day-count">{[weeks, range, tripDaysText(view)].filter(Boolean).join(' · ')}</span>
           {boat && <span className="muted">{boat}</span>}
         </span>
         <Icon icon={ChevronRight} />
@@ -87,6 +88,12 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
       {details && <TripDetailsSheet view={view} counter={counter} legs={legs} onClose={() => setDetails(false)} onEdit={onEdit} />}
     </div>
   )
+}
+
+/** "Week 47" of "Week 47–48" (de weken van het jaar van een trip, src/model/weeks.ts tripWeeks). */
+export function weeksText(weeks: readonly number[]): string {
+  if (weeks.length === 0) return ''
+  return weeks.length === 1 ? t('week.ofYear', { n: weeks[0]! }) : t('week.ofYearRange', { from: weeks[0]!, to: weeks.at(-1)! })
 }
 
 /** Tripgegevens: alles wat de kop weglaat, eerst bekijken; bewerken via het potlood (als de trip hier te bewerken is). */

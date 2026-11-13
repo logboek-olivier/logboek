@@ -28,6 +28,33 @@ export function isoWeek(date: string): number {
   return 1 + Math.round(((day.getTime() - firstThursday.getTime()) / 86_400_000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7)
 }
 
+/**
+ * De weken van het jaar (ISO) van een trip, zoals Olivier ze telt: elke week waarin de trip minstens vier dagen heeft
+ * (een trip van zondag tot en met zaterdag is de week van maandag tot en met zondag die het grootst deel heeft). Een
+ * korte trip zonder zo'n week heeft de week met de meeste dagen (bij gelijke stand de latere). Weken lopen over het
+ * jaareinde heen (week 53 en week 1); de trip zelf verandert niet.
+ */
+export function tripWeeks(start: string, end: string): number[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return []
+  const counts: Array<{ week: number; days: number }> = []
+  const [y, m, d] = start.split('-').map(Number)
+  const day = new Date(Date.UTC(y!, m! - 1, d!))
+  // Hoogstens 120 dagen (de langste trip); daarna stoppen, zodat een rare datum nooit een eindeloze lus geeft.
+  for (let i = 0; i < 400; i++) {
+    const iso = day.toISOString().slice(0, 10)
+    if (iso > end) break
+    const week = isoWeek(iso)
+    const last = counts.at(-1)
+    if (last && last.week === week) last.days++
+    else counts.push({ week, days: 1 })
+    day.setUTCDate(day.getUTCDate() + 1)
+  }
+  const full = counts.filter((c) => c.days >= 4).map((c) => c.week)
+  if (full.length > 0) return full
+  const most = counts.reduce((best, c) => (c.days >= best.days ? c : best), counts[0]!)
+  return most ? [most.week] : []
+}
+
 /** Standaardnaam van een trip: basis en maand, bijvoorbeeld "Nanny Cay okt 2026"; zonder basis "Trip okt 2026". */
 export function defaultWeekName(startDate: string, lang: Lang, base = ''): string {
   const [y, m] = startDate.split('-').map(Number)

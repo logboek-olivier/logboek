@@ -32,6 +32,7 @@ import { useBack } from '../back'
 import { DayMoneySheet, totalText } from '../components/DayMoney'
 import { compactEur, dayNets, monthNet } from '../model/day-money'
 import type { MoneyTotals } from '../model/money'
+import { isoWeek } from '../model/weeks'
 import { monthOf, shiftMonth, sundayOf, todayIso } from '../basis/datum'
 
 // Agenda: het overzicht van het seizoen. Maandraster met een kleur per dagsoort (optie gestreept), een balk met de
@@ -221,13 +222,22 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
         </div>
       )}
       <div className={`cal${marking ? ' marking' : ''}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        <div className="cal-weekdays" aria-hidden="true">
-          {weekdays.map((d, i) => (
-            <span key={i}>{d}</span>
-          ))}
+        {/* Links naast elke rij het weeknummer van het jaar (ISO: maandag tot en met zondag), zoals Olivier weken telt. */}
+        <div className="cal-row" aria-hidden="true">
+          <span className="cal-wk cal-wk-head">{t('calendar.weekShort')}</span>
+          <div className="cal-weekdays">
+            {weekdays.map((d, i) => (
+              <span key={i}>{d}</span>
+            ))}
+          </div>
         </div>
         {weeks.map((week) => (
-          <Week key={week[0]} index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} salaryStates={salaryStates} nets={nets} lang={lang} onDay={onDay} />
+          <div key={week[0]} className="cal-row">
+            <span className="cal-wk" aria-label={`${t('calendar.weekNumber')} ${isoWeek(week[0]!)}`}>
+              {isoWeek(week[0]!)}
+            </span>
+            <Week index={index} week={week} month={month} today={today} dueDates={dueDates} closedSundays={closedSundays} rangeStart={marking?.start ?? null} counters={counters} salaryStates={salaryStates} nets={nets} lang={lang} onDay={onDay} />
+          </div>
         ))}
       </div>
       <dl className="agenda-summary" aria-label={t('calendar.summaryTitle')}>

@@ -1,5 +1,5 @@
 import { isBooked } from '../domain/geldmodel'
-import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Plus, Route, ChevronRight } from 'lucide-react'
+import { CalendarClock, CalendarPlus, Eye, EyeOff, KeyRound, MoveHorizontal, NotebookPen, Pencil, Plus, Route, ChevronRight } from 'lucide-react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { formatDate, formatDateRange, formatDateShort, formatHours, formatMoney, formatNm, formatWeekday } from '../format'
 import { t, useLang } from '../i18n'
@@ -19,11 +19,12 @@ import { isEarned, isIncome } from '../model/money'
 import { eurValue, getRates, subscribeRates } from '../model/rates'
 import { plannedFor, plannedNm } from '../model/routes'
 import { currentSettings } from '../model/settings'
-import { DAY_TYPES, type DayType, type Reminder, type StayPeriod, type Trip } from '../model/types'
+import { DAY_TYPES, type DayType, type Leg, type Reminder, type StayPeriod, type Trip } from '../model/types'
+import { totalNm } from '../model/derive'
 import { useDueItems } from '../screens/Deadlines'
 import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
-import type { Notify } from './EditSheets'
+import { LegSheet, type Notify } from './EditSheets'
 import { Icon } from './Icon'
 import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
@@ -374,6 +375,8 @@ export function DayView({
 }) {
   const lang = useLang()
   const [editing, setEditing] = useState(false)
+  /** De route van een gelogde dag direct wijzigen vanaf de dagkaart (Dag bewerken). */
+  const [editLeg, setEditLeg] = useState<Leg | null>(null)
   const today = todayIso()
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const legs = useCollection(store, 'legs.json.enc')
@@ -442,9 +445,27 @@ export function DayView({
           </button>
         )}
         <RouteMap route={route} small />
+        {/* De route van elke gelogde dag: een tik (of het potlood) opent Dag bewerken, zonder eerst de trip te openen. */}
+        {dayLegs.length > 0 && (
+          <ul className="rows day-legs">
+            {dayLegs.map((leg) => (
+              <li key={leg.id} className="leg-row">
+                <button type="button" className="row-button" onClick={() => setEditLeg(leg)}>
+                  <span className="row-main">
+                    <span className="muted small">{t('day.route')}</span>
+                    <span>{[leg.fromPlace, leg.toPlace].filter(Boolean).join(' → ') || '–'}</span>
+                  </span>
+                  <span className="row-value small">{formatNm(totalNm(leg))}</span>
+                </button>
+                <button type="button" className="btn icon" aria-label={t('day.editRoute')} onClick={() => setEditLeg(leg)}>
+                  <Icon icon={Pencil} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <ViewRows
           rows={[
-            [t('day.route'), dayLegs.length > 0 && dayLegs.map((l) => [l.fromPlace, l.toPlace].filter(Boolean).join(' → ')).join(' · ')],
             [t('day.boat'), boat],
             [t('week.nm'), info.nm > 0 && formatNm(info.nm)],
             [t('field.nightHours'), night > 0 && formatHours(night)],
@@ -520,6 +541,7 @@ export function DayView({
           </button>
         </div>
       </div>
+      {editLeg && <LegSheet store={store} leg={editLeg} notify={notify} onClose={() => setEditLeg(null)} />}
     </Sheet>
   )
 }
