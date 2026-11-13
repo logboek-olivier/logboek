@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BottomBar, type Tab } from '../components/BottomBar'
+import { SheetHost } from '../components/Sheet'
 import { useIsDemo } from '../components/DemoBar'
 import type { Notify } from '../components/EditSheets'
 import { SyncStatusLine, useSyncStatus } from '../components/SyncStatusLine'
@@ -298,21 +299,26 @@ export function Home({ store }: { store: Store }) {
       )}
       {conversion && !adding && (
         <section className="add-layer">
-          <Suspense fallback={<ScreenLoading />}>
-            <MoneyConversionScreen store={store} notify={notify} onLater={() => setConversion(false)} />
-          </Suspense>
+          <SheetHost>
+            <Suspense fallback={<ScreenLoading />}>
+              <MoneyConversionScreen store={store} notify={notify} onLater={() => setConversion(false)} />
+            </Suspense>
+          </SheetHost>
         </section>
       )}
       {adding && (
         <section className="add-layer">
-          <BackToMore onBack={closeAdd} to="common.back" />
-          <Suspense fallback={<ScreenLoading />}>
-            <QuickAdd key={adding.key} store={store} onDone={done} init={adding.init} notify={notify} tab={adding.tab} />
-          </Suspense>
+          <SheetHost>
+            <BackToMore onBack={closeAdd} to="common.back" />
+            <Suspense fallback={<ScreenLoading />}>
+              <QuickAdd key={adding.key} store={store} onDone={done} init={adding.init} notify={notify} tab={adding.tab} />
+            </Suspense>
+          </SheetHost>
         </section>
       )}
       <Suspense fallback={<ScreenLoading />}>
       <div className="screen" hidden={!!adding || conversion}>
+      <SheetHost>
       {screen === 'vandaag' && (
         <Today store={store} notify={notify} onSettings={() => select('instellingen')} onAdd={(init) => openAdd(init)} onAddExpense={() => openAdd(undefined, 'uitgave')} onReminders={() => select('termijnen')} onReview={() => select('nakijken')} />
       )}
@@ -463,6 +469,7 @@ export function Home({ store }: { store: Store }) {
           <Trash store={store} notify={notify} />
         </>
       )}
+      </SheetHost>
       </div>
       </Suspense>
       <Toast message={toast} onDone={clearToast} />

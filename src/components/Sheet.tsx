@@ -1,5 +1,6 @@
 import { Pencil, X, ChevronLeft } from 'lucide-react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { onBack } from '../back'
 import { t } from '../i18n'
@@ -9,6 +10,33 @@ import { t } from '../i18n'
 // Bladen kunnen genest zijn (een dag in het tripoverzicht): Escape sluit alleen het bovenste, en `sheet-open` blijft
 // staan tot het laatste blad dicht is.
 const openSheets: object[] = []
+
+// Een blad wordt getekend in de bladlaag van zijn scherm (SheetHost), niet midden in het scherm dat het opende. Anders
+// zat een blad met een eigen formulier ("Dag bewerken" vanuit Trip bewerken) in het formulier eronder: Opslaan
+// verstuurde dan het buitenste formulier (door de CSP geblokkeerd) en er gebeurde niets. Zonder SheetHost (de eerste
+// keer, ontgrendelen) staat het blad gewoon waar het geopend wordt.
+const SheetHostContext = createContext<HTMLElement | null>(null)
+
+/** De bladlaag van een scherm: bladen erbinnen komen hier, buiten elk formulier, en verbergen mee met het scherm. */
+export function SheetHost({ children }: { children: ReactNode }) {
+  const [layer] = useState(() => {
+    const el = document.createElement('div')
+    el.className = 'sheet-host'
+    return el
+  })
+  const anchor = useRef<HTMLDivElement>(null)
+  // Vóór de effecten van de bladen zelf (focus) in de pagina, zodat een blad dat meteen opent er al in staat.
+  useLayoutEffect(() => {
+    anchor.current?.appendChild(layer)
+    return () => layer.remove()
+  }, [layer])
+  return (
+    <SheetHostContext.Provider value={layer}>
+      {children}
+      <div ref={anchor} className="sheet-anchor" />
+    </SheetHostContext.Provider>
+  )
+}
 
 /**
  * `onEdit`: een leesweergave. Rechtsboven dan een potloodknop naar het bewerkscherm (verwijderen zit pas daar); zo
@@ -31,6 +59,7 @@ export function Sheet({
   back?: { label: string; onBack: () => void }
   children: ReactNode
 }) {
+  const host = useContext(SheetHostContext)
   const panel = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
@@ -56,8 +85,10 @@ export function Sheet({
     }
   }, [])
 
-  return (
-    <div className="sheet-layer">
+  const layer = (
+    // Opslaan in dit blad blijft in dit blad: een formulier van het scherm eronder krijgt het nooit (React laat
+    // gebeurtenissen anders door de bladlaag heen naar boven gaan).
+    <div className="sheet-layer" onSubmit={(e) => e.stopPropagation()}>
       <div className="sheet-scrim" onClick={onClose} aria-hidden="true" />
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} ref={panel} tabIndex={-1}>
         {back && (
@@ -84,4 +115,5 @@ export function Sheet({
       </div>
     </div>
   )
+  return host ? createPortal(layer, host) : layer
 }

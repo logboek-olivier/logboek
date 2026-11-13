@@ -2728,6 +2728,27 @@ body.presenting .bottom-bar {
   touch-action: pan-y;
 }
 
+/* Weeknummer van het jaar links naast elke rij: een smalle kolom, de dagen houden de rest van de breedte. */
+.cal-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 2px;
+  align-items: start;
+}
+
+.cal-wk {
+  padding-top: 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.cal-wk-head {
+  padding-top: 0;
+  text-transform: uppercase;
+}
+
 .cal-weekdays,
 .cal-week {
   display: grid;
