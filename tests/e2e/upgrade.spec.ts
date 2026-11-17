@@ -9,7 +9,7 @@ import { COLLECTION_PATHS } from '../../src/model/types'
 import { decryptRecords } from '../../src/storage/sync'
 import { UPGRADE_SAMPLES } from '../upgrade/upgrade-samples'
 import { mockGithub, newGithub, type E2eGithub } from './helpers/fake-github'
-import { enterToken, lock, openMore, PASSPHRASE } from './helpers/logbook'
+import { enterToken, lock, openMore, PASSPHRASE, openUpdates } from './helpers/logbook'
 import { startStaticServer, type SwitchableServer } from './helpers/static-server'
 
 // Verplichte upgradetest (harde regel 16): gegevens van de vorige release, bijwerken in dezelfde browseropslag,
@@ -320,6 +320,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     // Salaris per tocht (één loon-transactie met een status): Vandaag vraagt na de einddatum of het verwachte salaris
     // binnen is; "Ja" zet die ene transactie op ontvangen.
     await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
+    await openUpdates(page)
     const salaryQuestion = page.locator('.salary-question', { hasText: 'Nepsalaris upgrade' })
     await expect(salaryQuestion).toBeVisible()
     const salaryPuts = puts('transactions.json.enc')

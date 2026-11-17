@@ -26,6 +26,7 @@ import type { AddInit } from '../screens/QuickAdd'
 import type { Store } from '../storage/store'
 import { LegSheet, type Notify } from './EditSheets'
 import { Icon } from './Icon'
+import { DayTasks } from './TripTasks'
 import { NoteField } from './NoteField'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
@@ -504,6 +505,7 @@ export function DayView({
             {t('day.log')}
           </button>
         ))}
+        <DayTasks store={store} notify={notify} date={date} />
         <div className="day-reminders">
           {due.length > 0 && (
             <>

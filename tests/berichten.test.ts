@@ -5,7 +5,6 @@ import {
   effectiveTemplates,
   fillTemplate,
   messageKinds,
-  messageReminders,
   messageValues,
   SEED_TEMPLATES,
   templatesFor,
@@ -140,9 +139,9 @@ describe('keuze van het sjabloon', () => {
     expect(templatesFor(templates, 'afsluiting', 'yacht-week', 'skipper-charter')).toEqual([])
   })
 
-  it('eigen soorten komen bij introductie en afsluiting', () => {
+  it('eigen soorten komen bij introductie, boodschappen en afsluiting', () => {
     const own = tpl('eigen', { kind: 'eigen:x', kindName: 'Herinnering dag voor vertrek' })
-    expect(messageKinds([...SEED_TEMPLATES, own]).map((k) => k.kind)).toEqual(['introductie', 'afsluiting', 'eigen:x'])
+    expect(messageKinds([...SEED_TEMPLATES, own]).map((k) => k.kind)).toEqual(['introductie', 'boodschappen', 'afsluiting', 'eigen:x'])
   })
 })
 
@@ -186,26 +185,6 @@ describe('opslaan via opdrachten', () => {
     const everything = JSON.stringify(Object.fromEntries(['trips.json.enc', 'settings.json.enc', 'templates.json.enc', 'history.json.enc'].map((p) => [p, s.list(p as 'trips.json.enc')])))
     expect(everything).not.toContain(text.slice(0, 40))
     expect(everything).not.toContain('Welcome aboard')
-  })
-})
-
-describe('herinnering op Vandaag', () => {
-  const trips = [TRIP]
-  it('introductie vanaf X dagen vóór de start (standaard 3, per organisatie in te stellen), afsluiting op de laatste dag', () => {
-    expect(messageReminders(trips, [], {}, '2026-11-10')).toEqual([])
-    expect(messageReminders(trips, [], {}, '2026-11-11').map((r) => r.kind)).toEqual(['introductie'])
-    expect(messageReminders(trips, [], {}, '2026-11-14').map((r) => r.kind)).toEqual(['introductie'])
-    expect(messageReminders(trips, [], {}, '2026-11-15')).toEqual([])
-    expect(messageReminders(trips, [], { messageDefaults: { 'yacht-week': { introDaysBefore: 5 } } }, '2026-11-09').map((r) => r.kind)).toEqual(['introductie'])
-    expect(messageReminders(trips, [], {}, '2026-11-20')).toEqual([])
-    expect(messageReminders(trips, [], {}, '2026-11-21').map((r) => r.kind)).toEqual(['afsluiting'])
-  })
-
-  it('weg na Verstuurd of Niet nodig, en nooit bij een trip die geen werk is', () => {
-    const sent: Trip = { ...TRIP, messages: { introductie: { status: 'verstuurd', date: '2026-11-12' }, afsluiting: { status: 'niet-nodig', date: '2026-11-21' } } }
-    expect(messageReminders([sent], [], {}, '2026-11-12')).toEqual([])
-    expect(messageReminders([sent], [], {}, '2026-11-21')).toEqual([])
-    expect(messageReminders([{ ...TRIP, kind: 'plezier', type: 'zelf-cruisen', organisation: undefined }], [], {}, '2026-11-12')).toEqual([])
   })
 })
 

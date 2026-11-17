@@ -182,7 +182,7 @@ export function WeekClose({ store, index, today, notify }: { store: Store; index
   if (!date) return null
   const summary = weekSummary(index, students, date, today)
   return (
-    <div className="card card-body week-close stack">
+    <div id="week-close" className="card card-body week-close stack">
       <h2>
         <Icon icon={CalendarCheck} />
         {t('weekClose.title', { week: isoWeek(date) })}

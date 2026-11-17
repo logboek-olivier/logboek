@@ -81,10 +81,11 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await openMore(page, L('reminder.screen'), L('nav.more'))
       await expect(page.locator('.due-list')).toContainText('Nepwerf: Nabellen')
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
-      // Vandaag (studenten kijken mee): wel de termijn, niet het bedrijf.
+      // Vandaag (studenten kijken mee): niet het bedrijf.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
-      await expect(page.locator('.due-list')).toContainText(L('career.dueTitle'))
-      await expect(page.locator('.due-list')).not.toContainText('Nepwerf')
+      // Vandaag doen toont hem pas op zijn dag (dan zonder titel, zie TodoToday); nu staat er niets van op Vandaag.
+      await expect(page.locator('.todo-today')).toBeVisible()
+      await expect(page.getByRole('main')).not.toContainText('Nepwerf')
       expect(github.requests.some((r) => r.method === 'PUT' && r.url.endsWith('/contents/career.json.enc'))).toBe(true)
       expect(errors).toEqual([])
     })

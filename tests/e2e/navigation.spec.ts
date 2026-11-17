@@ -35,9 +35,9 @@ test('onderbalk Vandaag · Deze trip · + · Agenda · Meer; onder Meer Geld, Cu
   const today = page.locator('main')
   await expect(today).not.toContainText('€')
   await expect(today).not.toContainText('85')
-  const due = page.locator('.due-list')
-  await expect(due).toContainText('over 40 dagen')
-  await expect(due).toContainText('GitHub-token')
+  // Vandaag doen: de token pas een week vóór het verlopen (hier over 40 dagen: nog niet).
+  await expect(page.locator('.todo-today')).toContainText('Niets meer te doen vandaag')
+  await expect(page.locator('.todo-today')).not.toContainText('GitHub-token')
   await expectNoHorizontalOverflow(page)
 
   // Meer: Geld en Instellingen, met terug naar Meer.

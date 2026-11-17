@@ -1,11 +1,9 @@
 import type { Tx } from '../domain/tx'
-import { addDays } from '../basis/datum'
 import { organisationOfTrip } from '../basis/organisatie'
 import { translate, type Lang, type MessageKey } from '../i18n'
 import { organisationLabel } from '../i18n/labels'
 import { placeKey } from './places'
 import { currentSettings, saveSettings } from './settings'
-import { tripKind } from './trip-kind'
 import {
   keepUnknownFields,
   MESSAGE_FIELDS,
@@ -27,7 +25,8 @@ import {
 // zelf niets (delen of kopiëren) en bewaart de tekst van een bericht nooit; alleen "verstuurd" of "niet nodig" met de
 // datum, op de trip (regel 14: voornamen alleen in de trip).
 
-export const STANDARD_KINDS = ['introductie', 'afsluiting'] as const
+// Boodschappenlijst (provisioning): een lijst voor de groep, net als de andere berichten te delen via WhatsApp.
+export const STANDARD_KINDS = ['introductie', 'boodschappen', 'afsluiting'] as const
 export type StandardKind = (typeof STANDARD_KINDS)[number]
 
 /** Een invulveld. In de opgeslagen tekst staat `{sleutel}`; in beeld `{naam in de taal van de app}`. */
@@ -54,7 +53,8 @@ export type Token = (typeof TOKENS)[number]
 /** Velden die de app zelf niet weet en die per trip (en als standaard per organisatie) in te vullen zijn. */
 export const FIELD_TOKENS: readonly MessageField[] = MESSAGE_FIELDS
 
-export const DEFAULT_INTRO_DAYS = 3
+// 4 dagen: bij een start op zondag de woensdag ervoor.
+export const DEFAULT_INTRO_DAYS = 4
 export const MAX_TEMPLATE_LENGTH = 4000
 const MAX_FIELD_LENGTH = 120
 
@@ -162,6 +162,45 @@ export const SEED_TEMPLATES: readonly MessageTemplate[] = [
       'Looking forward to sailing with you. See you {startWeekday}! 🤙🏻',
     ].join('\n'),
     updatedAt: '2026-11-06T00:00:00.000Z',
+    deletedAt: null,
+  },
+  {
+    id: 'seed-boodschappen-en',
+    kind: 'boodschappen',
+    lang: 'en',
+    text: [
+      'Hi all,',
+      '',
+      "Here's the provisioning list for our week on board. We shop together on {startWeekday}. Let me know if you want to add anything, or if you have any dietary wishes.",
+      '',
+      'Breakfast',
+      '• Bread and wraps',
+      '• Eggs',
+      '• Yoghurt and granola',
+      '• Fruit',
+      '• Coffee, tea and milk',
+      '',
+      'Lunch',
+      '• Cheese, ham and spreads',
+      '• Salad, tomatoes and cucumber',
+      '• Tuna and hummus',
+      '',
+      'Dinners on board',
+      '• Pasta and rice',
+      '• Vegetables and sauces',
+      '• Meat or fish for the barbecue',
+      '',
+      'Drinks and snacks',
+      '• Drinking water (big bottles)',
+      '• Soft drinks and juice',
+      '• Crisps, nuts and biscuits',
+      '',
+      'On board',
+      '• Toilet paper and kitchen roll',
+      '• Washing-up liquid and sponges',
+      '• Bin bags',
+    ].join('\n'),
+    updatedAt: '2026-11-17T00:00:00.000Z',
     deletedAt: null,
   },
   {
@@ -377,29 +416,6 @@ export function isFieldToken(token: Token): token is MessageField {
   return (FIELD_TOKENS as readonly string[]).includes(token)
 }
 
-export interface MessageReminder {
-  trip: Trip
-  kind: StandardKind
-}
-
-/**
- * Herinneringen op Vandaag: "Introductie sturen voor <trip>" vanaf X dagen vóór de start (X per organisatie, standaard
- * 3) tot en met de startdag, en "Afsluiting sturen" vanaf de laatste dag van de trip, drie dagen lang. Alleen bij werk
- * met datums; weg na "Verstuurd" of "Niet nodig".
- */
-export function messageReminders(trips: readonly Trip[], legs: readonly Leg[], settings: Pick<Settings, 'messageDefaults'>, today: string): MessageReminder[] {
-  const out: MessageReminder[] = []
-  for (const trip of trips) {
-    if (trip.deletedAt !== null || !trip.startDate || !trip.endDate) continue
-    if (tripKind(trip, legs).kind !== 'werk') continue
-    const marks = trip.messages ?? {}
-    const days = introDaysBefore(settings, organisationOfTrip(trip))
-    if (!marks.introductie && today >= addDays(trip.startDate, -days) && today <= trip.startDate) out.push({ trip, kind: 'introductie' })
-    if (!marks.afsluiting && today >= trip.endDate && today <= addDays(trip.endDate, 2)) out.push({ trip, kind: 'afsluiting' })
-  }
-  return out.sort((a, b) => (a.kind === 'afsluiting' ? a.trip.endDate! : a.trip.startDate!).localeCompare(b.kind === 'afsluiting' ? b.trip.endDate! : b.trip.startDate!))
-}
-
 // ── Schrijven (alleen via opdrachten in src/domain/berichten.ts) ──────────────────────────────────────────────────
 
 export interface TemplateInput {
@@ -486,6 +502,8 @@ export function cleanMessageDefaults(defaults: MessageDefaults): MessageDefaults
   }
   const days = defaults.introDaysBefore
   if (typeof days === 'number' && Number.isInteger(days) && days >= 0 && days <= 60) clean.introDaysBefore = days
+  const off = (defaults.tasksOff ?? []).filter((k, i, all) => typeof k === 'string' && k.length > 0 && k.length <= 40 && all.indexOf(k) === i)
+  if (off.length > 0) clean.tasksOff = off
   return Object.keys(clean).length > 0 ? clean : null
 }
 

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { mockGithub, type E2eGithub } from './helpers/fake-github'
 import { mockRates } from './helpers/rates'
-import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, openLogbook, openMore, PASSPHRASE } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, enterToken, expectNoHorizontalOverflow, lock, openLogbook, openMore, PASSPHRASE, openUpdates } from './helpers/logbook'
 
 // Onafhankelijke review (november 2026, docs/review.md): de kernstromen zoals een nieuwe schipper ze doorloopt, op 360 px,
 // met verzonnen gegevens en zonder de organisaties van Olivier. Elke test maakt schermafbeeldingen in screenshots/review/
@@ -370,6 +370,7 @@ test('6. geld: eigen organisatie, salaris, fooi in dollars, uitgave, eerder seiz
 
   // Vandaag vraagt of het salaris van de voorbije trip binnen is (zonder bedrag).
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
+  await openUpdates(page)
   await expect(page.getByRole('main')).toContainText(/Salaris van .*Nepweek voorbij ontvangen\?/)
   await shot(page, '52-vandaag-salarisvraag')
   await page.getByRole('button', { name: 'Ja', exact: true }).click()

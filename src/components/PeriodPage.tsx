@@ -26,6 +26,7 @@ import { Icon } from './Icon'
 import { PeriodMoneyAddSheet, type MoneyAdd } from './PeriodMoneyAdd'
 import { TripHead, TripRouteSection } from './TripOverview'
 import { TripMessages } from './MessageSheets'
+import { TripTasks } from './TripTasks'
 import { PeriodMenu } from './PeriodMenu'
 import { TripMoneySection } from './TripMoney'
 import { useCollection } from './useCollection'
@@ -184,6 +185,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
           )}
 
           {/* Berichten aan de gasten (introductie, afsluiting, eigen soorten): alleen bij werk. */}
+          {view.kind === 'werk' && <TripTasks store={store} notify={notify} trip={trip} heading={Heading} />}
           {view.kind === 'werk' && <TripMessages store={store} notify={notify} trip={trip} heading={Heading} />}
         </>
       )}

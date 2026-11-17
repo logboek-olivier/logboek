@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, openUpdates } from './helpers/logbook'
 
 // Salaris en geld per tocht (src/domain/geldmodel.ts: het salaris is één loon-transactie met een status): "Geen
 // salaris" op Vandaag, het salaris en de fooien in "Trip bewerken", het resultaat van de tocht (de som van zijn
@@ -66,6 +66,7 @@ test('geen salaris, fooi toevoegen bij de trip, resultaat van de trip en zeilgel
 
   // Vandaag vraagt of het salaris binnen is: "Geen salaris" haalt de vraag weg.
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
+  await openUpdates(page)
   const question = page.locator('.salary-question').filter({ hasText: 'Nep trainingsweek' })
   await expect(question).toBeVisible()
   await question.getByRole('button', { name: 'Geen salaris' }).click()

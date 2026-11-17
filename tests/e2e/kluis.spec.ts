@@ -106,10 +106,11 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await openMore(page, L('reminder.screen'), L('nav.more'))
       await expect(page.locator('.due-list')).toContainText('Nepcertificaat VHF')
       await expect(page.getByRole('status').first()).toHaveText(L('sync.synced'), { timeout: 15_000 })
-      // Vandaag (studenten kijken mee): wel de termijn, niet de titel van het document.
+      // Vandaag (studenten kijken mee): niet de titel van het document.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
-      await expect(page.locator('.due-list')).toContainText(L('vault.dueTitle'))
-      await expect(page.locator('.due-list')).not.toContainText('Nepcertificaat')
+      // Vandaag doen toont hem pas op zijn dag (dan zonder titel, zie TodoToday); nu staat er niets van op Vandaag.
+      await expect(page.locator('.todo-today')).toBeVisible()
+      await expect(page.getByRole('main')).not.toContainText('Nepcertificaat')
       // Alleen api.github.com, nooit een andere bestemming.
       expect(github.requests.every((r) => r.url.startsWith('https://api.github.com/'))).toBe(true)
       expect(errors).toEqual([])

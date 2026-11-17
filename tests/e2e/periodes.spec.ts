@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { translate, type Lang } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openUpdates } from './helpers/logbook'
 
 // Periodemodel (docs/PERIODEMODEL.md): reis, thuis en vrij zijn periodes. Periode markeren maakt een periode, een dag
 // ernaast maakt hem langer, een dagtoestand midden erin splitst hem. Een uitgave zonder periode staat in Nakijken
@@ -75,6 +75,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await page.getByRole('button', { name: L('common.save') }).click()
       await expect(page.locator('.add-layer')).toHaveCount(0)
       await nav.getByRole('button', { name: L('nav.today'), exact: true }).click()
+      // Nakijken staat onder "Bijwerken" (ingeklapt).
+      await openUpdates(page)
       const notice = page.locator('.review-notice')
       await expect(notice).toContainText(L('review.notice', { n: 1 }))
       // Vandaag toont geen bedragen.
