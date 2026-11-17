@@ -58,6 +58,8 @@ export interface AddInit {
   /** Geplande etappe ("Aanpassen" op Vandaag). */
   from?: string
   to?: string
+  /** Toevoegen → Inkomsten met een soort (de taak "Fooi invoeren" op Vandaag). */
+  incomeKind?: 'fooi'
 }
 
 export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' }: { store: Store; onDone: (message: string) => void; init?: AddInit; notify: Notify; tab?: AddTab }) {
@@ -87,7 +89,7 @@ export function QuickAdd({ store, onDone, init, notify, tab: initialTab = 'dag' 
       </div>
       {tab === 'trip' && <TripForm store={store} onDone={onDone} />}
       {tab === 'dag' && <DayForm store={store} onDone={onDone} init={init} notify={notify} />}
-      {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} />}
+      {tab === 'inkomsten' && <IncomeForm store={store} onDone={onDone} {...(init?.tripId ? { tripId: init.tripId } : {})} {...(init?.incomeKind ? { kind: init.incomeKind } : {})} />}
       {tab === 'uitgave' && <CostForm store={store} onDone={onDone} />}
       {tab === 'skill' && <SkillTab store={store} onDone={onDone} notify={notify} />}
       {tab === 'declaratie' && !demo && <ClaimForm store={store} onDone={onDone} />}
@@ -164,10 +166,10 @@ function dateIn(trips: readonly Trip[], tripId: string | undefined, today: strin
   return today < trip.startDate ? trip.startDate : today > trip.endDate ? trip.endDate : today
 }
 
-export function IncomeForm({ store, onDone, tripId: preset }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de trip staat al vast. */ tripId?: string }) {
+export function IncomeForm({ store, onDone, tripId: preset, kind: presetKind }: { store: Store; onDone: (message: string) => void; /** Vanaf de periodepagina: de trip staat al vast. */ tripId?: string; /** Vanaf de taak "Fooi invoeren". */ kind?: IncomeKind }) {
   const { settings } = useDefaults(store)
   const [amount, setAmount] = useState('')
-  const [kind, setKindState] = useState<IncomeKind>(settings.lastIncomeKind ?? 'fooi')
+  const [kind, setKindState] = useState<IncomeKind>(presetKind ?? settings.lastIncomeKind ?? 'fooi')
   // De valuta volgt de laatst gebruikte van deze soort (een fooi apart van ander inkomen), tot je er zelf een kiest.
   const currencyFor = (k: IncomeKind) => defaultCurrency(settings, k === 'fooi' ? 'fooi' : 'inkomen')
   const [currency, setCurrencyState] = useState<Currency>(() => currencyFor(settings.lastIncomeKind ?? 'fooi'))

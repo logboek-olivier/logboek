@@ -253,6 +253,18 @@ export interface Trip extends SyncRecord {
    * datum. De tekst van het bericht zelf wordt nooit bewaard (regel 14: voornamen alleen in de trip).
    */
   messages?: Record<string, MessageMark>
+  /**
+   * Schrijfversie 16 (Vandaag doen): per weektaak (safety briefing, lesplanning, fooi, declaraties …) of hij gedaan is of
+   * niet nodig, met de datum. De taken zelf worden uitgerekend uit de trip (src/model/tasks.ts); alleen de tik staat hier.
+   * De berichten (introductie, boodschappen, afsluiting) gebruiken `messages`.
+   */
+  tasks?: Record<string, TaskMark>
+}
+
+/** Een weektaak gedaan of niet nodig, op een datum (jjjj-mm-dd). */
+export interface TaskMark {
+  status: 'gedaan' | 'niet-nodig'
+  date: string
 }
 
 /** De velden van een bericht die de app niet uit de trip, boot of plaatsen kan halen. */
@@ -266,7 +278,11 @@ export interface MessageMark {
 }
 
 /** Per organisatie: de standaard voor de berichtvelden (de laatst gebruikte waarde) en hoeveel dagen vooraf de introductie. */
-export type MessageDefaults = Partial<Record<MessageField, string>> & { introDaysBefore?: number }
+export type MessageDefaults = Partial<Record<MessageField, string>> & {
+  introDaysBefore?: number
+  /** Schrijfversie 16: weektaken die bij deze organisatie niet op Vandaag komen (src/model/tasks.ts). */
+  tasksOff?: string[]
+}
 
 /**
  * Sjabloon voor een bericht aan de gasten (templates.json.enc, Meer → Berichten). Gewone tekst met invulvelden

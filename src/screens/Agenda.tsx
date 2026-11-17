@@ -33,7 +33,9 @@ import { DayMoneySheet, totalText } from '../components/DayMoney'
 import { compactEur, dayNets, monthNet } from '../model/day-money'
 import type { MoneyTotals } from '../model/money'
 import { isoWeek } from '../model/weeks'
-import { monthOf, shiftMonth, sundayOf, todayIso } from '../basis/datum'
+import { addDays, monthOf, shiftMonth, sundayOf, todayIso } from '../basis/datum'
+import { useTaskData } from '../components/TodoToday'
+import { LATE_DAYS, openTasksBetween } from '../model/tasks'
 
 // Agenda: het overzicht van het seizoen. Maandraster met een kleur per dagsoort (optie gestreept), een balk met de
 // tripnaam over de dagen van elke trip, nm klein in het vakje en een stip voor termijnen. Vegen of de pijlen voor de
@@ -105,7 +107,12 @@ export function Agenda({ store, notify, onAdd, onLogbook }: { store: Store; noti
   useSyncExternalStore(subscribeRates, getRates)
   // Termijnen op hun dag: eigen termijnen (in de index) en de vervaldatum van de token.
   const due = useDueItems(store)
-  const dueDates = useMemo(() => new Set(due.filter((i) => i.source !== 'trip').map((i) => i.date.slice(0, 10))), [due])
+  // Plus de open weektaken (introductie, lesplanning, declaraties …) op hun dag, vanaf twee weken terug (src/model/tasks.ts).
+  const taskData = useTaskData(store)
+  const dueDates = useMemo(
+    () => new Set([...due.filter((i) => i.source !== 'trip').map((i) => i.date.slice(0, 10)), ...openTasksBetween(taskData, addDays(today, -LATE_DAYS), '9999-12-31').map((x) => x.date)]),
+    [due, taskData, today],
+  )
   // Afgesloten weken: een merkje op de zondag (de afsluiting staat op de dagkaart van die zondag).
   const closings = useCollection(store, 'weekreviews.json.enc')
   const closedSundays = useMemo(() => new Set(closings.filter((c) => closingFor(closings, c.start)).map((c) => sundayOf(c.start))), [closings])

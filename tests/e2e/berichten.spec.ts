@@ -61,11 +61,13 @@ test('bericht: sjabloon aanpassen, introductie met ontbrekende verzamelplaats in
   await sheet.getByRole('button', { name: L('common.save') }).click()
   await expect(sheet).toHaveCount(0)
 
-  // Vandaag: de herinnering. Bericht maken: de verzamelplaats ontbreekt en houdt delen tegen.
+  // Vandaag doen: de taak (4 dagen vóór de start, dus sinds gisteren). Bericht maken: de verzamelplaats ontbreekt en
+  // houdt delen tegen.
   await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
-  const reminder = page.locator('.msg-reminder', { hasText: L('msg.remind.introductie', { trip: 'YW #1 · Nepweek Berichten' }) })
+  const reminder = page.locator('.todo-row', { hasText: L('task.introductie') }).filter({ hasText: 'YW #1 · Nepweek Berichten' })
   await expect(reminder).toBeVisible()
-  await reminder.getByRole('button', { name: L('msg.open') }).click()
+  await expect(reminder).toContainText(L('todo.late', { n: 1 }))
+  await reminder.locator('.todo-main').click()
   await expect(sheet.getByText(L('msg.missing', { field: L('msgField.meetingPlace') }))).toBeVisible()
   await expect(sheet.getByRole('button', { name: L('msg.share') })).toHaveCount(0)
   await expect(sheet.locator('.msg-preview')).not.toContainText('{')

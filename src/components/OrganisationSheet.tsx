@@ -5,6 +5,7 @@ import { instellingenOpslaan } from '../domain/instellingen'
 import { t } from '../i18n'
 import { cleanMessageDefaults, DEFAULT_INTRO_DAYS } from '../model/messages'
 import { currentSettings } from '../model/settings'
+import { WEEK_TASKS } from '../model/tasks'
 import { MESSAGE_FIELDS, newId, type MessageDefaults } from '../model/types'
 import type { Store } from '../storage/store'
 import type { Notify } from './EditSheets'
@@ -105,6 +106,29 @@ export function OrganisationsSheet({ store, notify, onClose }: { store: Store; n
                       }}
                     />
                   </label>
+                </div>
+              </details>
+              <details className="org-tasks">
+                <summary>{t('tasks.orgTitle')}</summary>
+                <div className="stack-sm">
+                  {WEEK_TASKS.map((kind) => {
+                    const off = defaults[row.id]?.tasksOff ?? []
+                    return (
+                      <label key={kind} className="check">
+                        <input
+                          type="checkbox"
+                          checked={!off.includes(kind)}
+                          onChange={(e) => {
+                            const next: MessageDefaults = { ...(defaults[row.id] ?? {}) }
+                            const rest = off.filter((k) => k !== kind)
+                            next.tasksOff = e.target.checked ? rest : [...rest, kind]
+                            setDefaults({ ...defaults, [row.id]: next })
+                          }}
+                        />
+                        {t(`task.${kind}`)}
+                      </label>
+                    )
+                  })}
                 </div>
               </details>
               {count > 0 ? (

@@ -130,3 +130,10 @@ export async function fillBoat(scope: Locator, lang: Lang = 'nl', boat = 'Nepboo
   await scope.getByLabel(L('boat.length'), { exact: true }).fill('40')
   await scope.getByLabel(L('boat.base'), { exact: true }).fill('Nepbasis')
 }
+
+/** Vandaag: "Bijwerken (N)" openklappen (salaris, uitbetaling, aanvullen, nakijken staan daar ingeklapt). */
+export async function openUpdates(page: Page): Promise<void> {
+  const box = page.locator('details.today-update')
+  await expect(box).toBeVisible()
+  if (!(await box.evaluate((d) => (d as HTMLDetailsElement).open))) await box.locator('> summary').click()
+}

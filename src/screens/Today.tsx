@@ -1,5 +1,5 @@
 import { ReviewNotice, useReviewItems } from '../components/ReviewNotice'
-import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane, Plus } from 'lucide-react'
+import { CalendarDays, Check, ChevronRight, LoaderCircle, NotebookPen, Pencil, Plane } from 'lucide-react'
 import { plannedFor, plannedNm } from '../model/routes'
 import { dayCountOf, missingDays, tripOfToday, weekView } from '../model/weeks'
 import { routeOf } from '../model/trip-route'
@@ -23,10 +23,12 @@ import { useCollection } from '../components/useCollection'
 import { formatDate, formatNm, formatNumber } from '../format'
 import { buildIndex, dayInfo, dayLabelKey, stayTravel } from '../model/calendar'
 import { nmInYear } from '../model/derive'
-import { DueList, useDueItems } from './Deadlines'
+import { useDueItems } from './Deadlines'
 import { SalaryQuestions } from '../components/SalarySheets'
 import { PayoutQuestions } from '../components/MoneyPath'
-import { MessageReminders } from '../components/MessageReminders'
+import { TodoToday } from '../components/TodoToday'
+import { salaryQuestions } from '../model/salary'
+import { asksPerTrip, payoutQuestions } from '../model/money-path'
 import { currentSettings, yearGoal } from '../model/settings'
 import { type Reminder, type Trip } from '../model/types'
 import { daysUntil, useSession } from '../session'
@@ -117,6 +119,13 @@ export function Today({
   // Open vragen: vergeten dagen van de lopende trip tot en met gisteren (vandaag heeft zijn eigen knop).
   const forgotten = running ? missingDays(weekView(running, legs), addDays(today, -1)) : []
   const plannedDistance = planned ? plannedNm(legs, planned) : null
+  // Bijwerken: het aantal vragen die niet vandaag hoeven (zelfde regels als de vragen zelf).
+  const transactions = useCollection(store, 'transactions.json.enc')
+  const updateCount =
+    salaryQuestions(trips, legs, today, transactions).filter((q) => asksPerTrip(settings, q.trip)).slice(0, 3).length +
+    payoutQuestions(trips, legs, settings, today, transactions).length +
+    (gaps.length > 0 ? 1 : 0) +
+    (onReview && !demo && reviewCount > 0 ? 1 : 0)
   async function logAsPlanned() {
     if (!running || !planned) return
     await dagZoalsGepland(store, running, planned, today, settings)
@@ -168,6 +177,36 @@ export function Today({
       ) : (
         <DayKind day={day} onOpen={() => setDayOpen(true)} />
       )}
+      {/* Vandaag doen: alleen wat vandaag moet of te laat is (src/model/tasks.ts), daaronder "Morgen: …". */}
+      <TodoToday
+        store={store}
+        notify={notify}
+        due={due}
+        forgotten={running && forgotten.length > 0 ? { trip: running, dates: forgotten } : null}
+        onOpenTrip={(trip) => setViewTrip({ trip })}
+        onToken={onSettings}
+        onReminders={onReminders}
+      />
+      <WeekClose store={store} index={index} today={today} notify={notify} />
+      {/* Bijwerken: vragen die niet vandaag hoeven (salaris, uitbetaling, aanvullen, nakijken), samen op één regel. */}
+      {updateCount > 0 && (
+        <details className="card card-body today-update">
+          <summary>{t('todo.update', { n: updateCount })}</summary>
+          <div className="stack-sm">
+            <SalaryQuestions store={store} notify={notify} />
+            <PayoutQuestions store={store} notify={notify} />
+            {gaps.length > 0 && (
+              <div className="notice">
+                <span>{t('gaps.card', { n: gaps.length })}</span>
+                <button className="btn small primary" onClick={() => setFilling(true)}>
+                  {t('gaps.start')}
+                </button>
+              </div>
+            )}
+            {onReview && !demo && <ReviewNotice count={reviewCount} onOpen={onReview} />}
+          </div>
+        </details>
+      )}
       {planned && running && (
         <div className="card card-body planned-today">
           <span className="label">{t('route.today')}</span>
@@ -201,27 +240,6 @@ export function Today({
       {running && <WeatherCard store={store} trip={running} />}
       {/* Uitgaven van vandaag: het aantal en de laatste drie; het totaal en de bedragen pas na een tik. */}
       <TodayExpenses store={store} today={today} notify={notify} onAdd={() => (onAddExpense ? onAddExpense() : onAdd())} />
-      {forgotten.length > 0 && running && (
-        <div className="notice">
-          <p className="small">{t('trip.missingDays', { n: forgotten.length })}</p>
-          <button className="btn small primary" onClick={() => onAdd({ date: forgotten[0]!, tripId: running.id })}>
-            {t('trip.logMissing', { date: formatDate(forgotten[0]!) })}
-          </button>
-        </div>
-      )}
-      <MessageReminders store={store} notify={notify} />
-      <SalaryQuestions store={store} notify={notify} />
-      <PayoutQuestions store={store} notify={notify} />
-      {gaps.length > 0 && (
-        <div className="notice">
-          <span>{t('gaps.card', { n: gaps.length })}</span>
-          <button className="btn small primary" onClick={() => setFilling(true)}>
-            {t('gaps.start')}
-          </button>
-        </div>
-      )}
-      {onReview && !demo && <ReviewNotice count={reviewCount} onOpen={onReview} />}
-      <WeekClose store={store} index={index} today={today} notify={notify} />
       <button
         className="stat hero goal"
         onClick={() => setGoalOpen(true)}
@@ -248,20 +266,6 @@ export function Today({
           <span className="progress-fill" ref={(el) => setWidth(el, share)} />
         </span>
       </button>
-      <div className="section">
-        <div className="section-head">
-          <h2>{t('reminder.screen')}</h2>
-          <button className="btn link small" onClick={onReminders}>
-            {t('reminder.all')}
-            <Icon icon={ChevronRight} />
-          </button>
-        </div>
-        {due.length > 0 && <DueList store={store} items={due.slice(0, 3)} notify={notify} onToken={onSettings} discreet />}
-        <button className="btn" onClick={() => setAddingReminder(true)}>
-          <Icon icon={Plus} />
-          {t('reminder.new')}
-        </button>
-      </div>
       <Suspense fallback={null}>
       {addingReminder && <ReminderSheet store={store} reminder={null} notify={notify} onClose={() => setAddingReminder(false)} />}
       {dayOpen && (

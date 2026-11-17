@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openLogbook, openUpdates } from './helpers/logbook'
 
 const fixture = fileURLToPath(new URL('../fixtures/mijlen-nep.csv', import.meta.url))
 
@@ -28,6 +28,7 @@ test('Niets verplicht: lege dag en lege trip opslaan met "Onvolledig"; op zondag
   await expect(page.locator('.trip .badge-incomplete').first()).toBeVisible()
 
   await nav.getByRole('button', { name: 'Vandaag', exact: true }).click()
+  await openUpdates(page)
   const card = page.locator('.notice').filter({ hasText: /dingen aanvullen/ })
   await expect(card).toBeVisible()
   const before = Number((await card.textContent())!.match(/(\d+) dingen/)![1])

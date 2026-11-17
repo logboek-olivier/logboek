@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { translate, type Lang, type MessageKey } from '../../src/i18n'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, openUpdates } from './helpers/logbook'
 
 // Het geldpad per tocht (src/domain/geldmodel.ts: het salaris is één loon-transactie met een status). Uitbetaling per
 // organisatie (maandelijks), het salaris van een voorbije tocht direct vanuit de agenda zetten (bolletje grijs, oranje,
@@ -97,6 +97,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
 
       // Vandaag: één vraag voor de uitbetaling van vorige maand, zonder bedragen.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.today'), exact: true }).click()
+      // De vraag staat onder "Bijwerken" (ingeklapt: hij hoeft niet vandaag).
+      await openUpdates(page)
       const question = page.locator('.salary-question', { hasText: 'Sailing Virgins' })
       await expect(question).toContainText(lang === 'nl' ? '2 trips' : '2 trips')
       await expect(question).not.toContainText('1.000')

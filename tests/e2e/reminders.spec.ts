@@ -4,11 +4,13 @@ import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, ope
 
 test.use({ viewport: { width: 360, height: 800 } })
 
-test('Termijnen: deadline en vervaldatum in een paar tikken, eerstvolgende op Vandaag, afronden met ongedaan maken', async ({ page }) => {
+test('Termijnen: deadline en vervaldatum in een paar tikken, afronden met ongedaan maken', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const github = await mockGithub(page)
   await createNewLogbook(page)
-  const section = page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Termijnen' }) })
+  // Vandaag toont alleen termijnen op hun dag (Vandaag doen); vooruit staan ze onder Meer → Termijnen.
+  await openMore(page, 'Termijnen')
+  const section = page.getByRole('main')
 
   // Deadline: vliegticket boeken, uiterlijk over 3 weken (de standaardkeuze).
   await section.getByRole('button', { name: 'Termijn toevoegen' }).click()
@@ -32,19 +34,18 @@ test('Termijnen: deadline en vervaldatum in een paar tikken, eerstvolgende op Va
   await expect(rows.first()).toContainText('over 21 dagen')
   await expect(section).toContainText('Neppas')
   await expectNoHorizontalOverflow(page)
-  await page.screenshot({ path: 'screenshots/trips/vandaag-termijnen.png', fullPage: true })
+  await page.screenshot({ path: 'screenshots/trips/termijnen.png', fullPage: true })
 
   // Afronden, ongedaan maken, en weer afronden.
   await rows.first().getByRole('button').click()
   await page.getByRole('dialog').getByRole('button', { name: 'Afronden' }).click()
-  await expect(section).not.toContainText('Nepticket boeken')
+  await expect(section.locator('.due-list')).not.toContainText('Nepticket boeken')
   await page.locator('.toast').getByRole('button', { name: 'Ongedaan maken' }).click()
-  await expect(section).toContainText('Nepticket boeken')
+  await expect(section.locator('.due-list')).toContainText('Nepticket boeken')
   await section.locator('.due-list li').filter({ hasText: 'Nepticket boeken' }).getByRole('button').click()
   await page.getByRole('dialog').getByRole('button', { name: 'Afronden' }).click()
 
   // Meer → Termijnen: open en afgerond.
-  await openMore(page, 'Termijnen')
   await expect(page.getByRole('heading', { name: 'Termijnen', level: 1 })).toBeVisible()
   await expect(page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Afgerond' }) })).toContainText('Nepticket boeken')
 
@@ -59,7 +60,8 @@ test('Terugkerende termijn en Zet in agenda (.ics met herinnering vooraf); snelk
   const errors = collectConsoleErrors(page)
   await mockGithub(page)
   await createNewLogbook(page)
-  const section = page.locator('.section').filter({ has: page.getByRole('heading', { name: 'Termijnen' }) })
+  await openMore(page, 'Termijnen')
+  const section = page.getByRole('main')
 
   // Maandelijks terugkerend; agenda-bestand met herinnering 3 dagen vooraf.
   await section.getByRole('button', { name: 'Termijn toevoegen' }).click()

@@ -5345,3 +5345,98 @@ button.drill-post {
   border-top: 1px solid var(--border);
   padding-top: var(--s-2);
 }
+
+/* Vandaag doen (src/components/TodoToday.tsx): een rondje om af te vinken, de regel zelf opent de actie. Te laat in rood. */
+.todo-today .section-head {
+  margin: 0;
+}
+.todo-list {
+  display: flex;
+  flex-direction: column;
+}
+.todo-row {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--border);
+}
+.todo-row:first-child {
+  border-top: none;
+}
+.todo-check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+.todo-check:disabled {
+  opacity: 0.5;
+}
+span.todo-check {
+  cursor: default;
+}
+.todo-check svg {
+  width: 26px;
+  height: 26px;
+}
+.todo-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.todo-main .row-main {
+  flex: 1;
+  min-width: 0;
+}
+.todo-when {
+  flex: none;
+  color: var(--text-muted);
+}
+.todo-when.negative {
+  color: var(--negative);
+  font-weight: var(--fw-medium);
+}
+.todo-none {
+  margin: 0;
+}
+.todo-tomorrow {
+  margin: 0;
+}
+.todo-add {
+  align-self: flex-start;
+}
+.today-update > summary {
+  cursor: pointer;
+  font-weight: var(--fw-medium);
+}
+.today-update[open] > summary {
+  margin-bottom: var(--s-3);
+}
+.org-tasks > summary {
+  cursor: pointer;
+  padding: var(--s-2) 0;
+}
+
+/* Taken op de periodepagina: per weektaak de dag en of hij gedaan is. */
+.trip-tasks .todo-when.done {
+  color: var(--positive);
+}
+.todo-main .row-main > span {
+  overflow-wrap: normal;
+  word-break: normal;
+}

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { mockGithub } from './helpers/fake-github'
-import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore } from './helpers/logbook'
+import { collectConsoleErrors, createNewLogbook, expectNoHorizontalOverflow, openMore, openUpdates } from './helpers/logbook'
 
 // Salaris per tocht (src/domain/geldmodel.ts): precies één loon-transactie per tocht met een status. Het standaardbedrag
 // per organisatie is een instelling: een komende tocht krijgt het als verwacht salaris, een voorbije nooit vanzelf.
@@ -113,6 +113,7 @@ test('salaris per tocht: standaardbedrag voor komende tochten, eigen bedrag blij
 
   // Vandaag: de vraag na de einddatum, zonder bedragen; ander bedrag invullen.
   await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
+  await openUpdates(page)
   const question = page.locator('.salary-question')
   await expect(question).toHaveCount(1)
   await expect(question).toContainText('Salaris van SV #1 · Nepweek voorbij ontvangen?')

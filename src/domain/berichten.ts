@@ -1,4 +1,5 @@
 import { deleteTemplate, markMessage, saveTemplate, setMessageDefaults, setMessageField } from '../model/messages'
+import { markTask } from '../model/tasks'
 import { opdracht, opdrachtMet } from './opdracht'
 
 // Berichtengenerator: sjablonen (templates.json.enc), de velden en "verstuurd" per trip, en de standaard per
@@ -9,3 +10,6 @@ export const sjabloonVerwijderen = opdracht('sjabloonVerwijderen', deleteTemplat
 export const berichtVeldZetten = opdracht('berichtVeldZetten', setMessageField)
 export const berichtMarkeren = opdracht('berichtMarkeren', markMessage)
 export const berichtStandaardZetten = opdracht('berichtStandaardZetten', setMessageDefaults)
+
+// Vandaag doen: een weektaak afvinken (src/model/tasks.ts). Een bericht deelt zijn vinkje met het blok Berichten.
+export const taakMarkeren = opdracht('taakMarkeren', markTask)
