@@ -27,6 +27,7 @@ import { PeriodMoneyAddSheet, type MoneyAdd } from './PeriodMoneyAdd'
 import { TripHead, TripRouteSection } from './TripOverview'
 import { TripMessages } from './MessageSheets'
 import { PeriodMenu } from './PeriodMenu'
+import { LessonWeek } from './LessonWeek'
 import { TripMoneySection } from './TripMoney'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
@@ -182,6 +183,9 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
               )}
             </div>
           )}
+
+          {/* Lesweek: afvinken per blok, bij les geven of met studenten. */}
+          {(teaching || people.some((p) => p.role === 'student')) && <LessonWeek store={store} trip={trip} heading={Heading} />}
 
           {/* Berichten aan de gasten (introductie, afsluiting, eigen soorten): alleen bij werk. */}
           {view.kind === 'werk' && <TripMessages store={store} notify={notify} trip={trip} heading={Heading} />}

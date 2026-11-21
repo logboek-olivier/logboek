@@ -5345,3 +5345,109 @@ button.drill-post {
   border-top: 1px solid var(--border);
   padding-top: var(--s-2);
 }
+
+/* Lesweek: afvinken per blok */
+.lesson-overview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.lesson-overview summary {
+  cursor: pointer;
+}
+
+.lesson-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.lesson-check {
+  display: flex;
+  min-width: 52px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 0 var(--s-3);
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lesson-block.on .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.lesson-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-4) var(--s-1) var(--s-3);
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lesson-block.on .lesson-title .row-main > span:first-child {
+  color: var(--text-muted);
+}
+
+.lesson-code {
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.lesson-detail {
+  padding: 0 var(--s-4) var(--s-3) calc(52px + var(--s-3));
+}
+
+.lesson-elements {
+  margin: 0;
+  padding-left: var(--s-4);
+}
+
+.lesson-blocks .lesson-elements li + li {
+  border-top: none;
+}
+
+.lesson-label {
+  margin-left: var(--s-2);
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+}
+
+.lesson-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.lesson-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.lesson-name.ok {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lesson-name.not-yet {
+  border-color: var(--negative);
+  background: var(--negative-soft);
+  color: var(--negative);
+}

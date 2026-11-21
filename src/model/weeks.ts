@@ -6,7 +6,7 @@ import { MAX_COUNTRY, MAX_TAG } from './guests'
 import { saveSettings } from './settings'
 import { applySalaryDefault } from './salary'
 import { kindForType, tripKind } from './trip-kind'
-import { firstNameOnly, newId, PERSON_ROLES, type PersonRole, type WaterKind, type BoatKind, type Leg, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
+import { firstNameOnly, newId, PERSON_ROLES, type PersonRole, type WaterKind, type BoatKind, type Leg, type LessonCourse, type Organisation, type Participant, type PlannedLeg, type Role, type Settings, type Student, type StudentLevel, type Trip, type WeekPlan, type WeekReview, type WeekType } from './types'
 import { addDays, todayIso } from '../basis/datum'
 
 // Trips (in de code nog "week"): een tocht van elke lengte met type, datums, boot (naam, model, lengte, soort, basis,
@@ -268,6 +268,7 @@ export interface ParticipantInput {
   country?: string
   tag?: string
   guestId?: string
+  courses?: LessonCourse[]
 }
 
 export interface WeekInput {
@@ -317,6 +318,7 @@ export function cleanParticipants(rows: readonly ParticipantInput[]): Participan
         ...(country ? { country } : {}),
         ...(tag ? { tag } : {}),
         ...(r.guestId ? { guestId: r.guestId } : {}),
+        ...(r.courses && r.courses.length > 0 ? { courses: [...new Set(r.courses)] } : {}),
       }
     })
 }

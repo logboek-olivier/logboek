@@ -542,6 +542,12 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
       expect(claims.find((c) => c.id === 'upg-claim-3')).toMatchObject({ kind: 'voorgeschoten', person: 'Nepgaspar' })
       expect(transactions.some((tx) => (tx as { claimId?: string }).claimId === 'upg-claim-4')).toBe(false)
     }
+    // Lesweek (schemaversie 10): cursussen per student en afgevinkte blokken komen ongeschonden over (als de vorige release ze al schreef).
+    const lesweek = trips.find((t) => t.id === 'upg-trip-les') as { participants?: { courses?: string[] }[]; lessonChecks?: unknown } | undefined
+    if (lesweek?.lessonChecks) {
+      expect(lesweek.participants?.map((p) => p.courses)).toEqual([['101', '103'], ['104', '114']])
+      expect(lesweek.lessonChecks).toEqual({ T1: { at: '2026-09-20' }, P4: { at: '2026-09-22', open: ['upg-les-pb'] } })
+    }
     const reviews = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
     // Het voorbeeld van de vorige release komt ongeschonden over (alleen als die release het bestand al kende).
     if (data.paths.includes('weekreviews.json.enc')) expect(reviews.find((r) => r.id === 'week:2026-W43')).toMatchObject({ spent: { amount: 85, currency: 'EUR' } })
