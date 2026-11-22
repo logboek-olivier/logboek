@@ -23,6 +23,7 @@ export function PersonSheet({
   tripLabel,
   defaultTripId,
   defaultRole,
+  fixedTrip = false,
   onSave,
   onClose,
 }: {
@@ -32,6 +33,8 @@ export function PersonSheet({
   tripLabel: (trip: Trip) => string
   defaultTripId: string | null
   defaultRole: PersonRole
+  /** Toevoegen vanuit een trip: de trip ligt vast en staat niet in beeld. */
+  fixedTrip?: boolean
   onSave: (form: PersonForm) => void
   onClose: () => void
 }) {
@@ -60,7 +63,7 @@ export function PersonSheet({
             </button>
           ))}
         </div>
-        {!person && (
+        {!person && !fixedTrip && (
           <label>
             {t('people.trip')}
             <select value={tripId} onChange={(e) => setTripId(e.target.value)}>

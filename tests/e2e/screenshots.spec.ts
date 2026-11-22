@@ -234,12 +234,11 @@ for (const { width, scheme, lang } of RUNS) {
       await page.getByRole('radio', { name: L('stats.all') }).click()
       await button('week.showAmounts').click()
       await shot('statistieken')
-      // Periode verwijderen onder "⋯", de prullenbak en terugzetten.
+      // Periode verwijderen onderaan de periodepagina, de prullenbak en terugzetten.
       await openLogbook(page, lang)
       await page.locator('.trip').first().getByRole('button').first().click()
       const periodSheet = page.getByRole('dialog')
-      await periodSheet.locator('.trip-head .btn.icon').last().click()
-      await page.getByRole('dialog').last().getByRole('button', { name: L('periodMenu.delete') }).click()
+      await periodSheet.locator('.period-actions').getByRole('button', { name: L('periodMenu.delete') }).click()
       await shot('periode-verwijderen')
       await page.getByRole('dialog').last().getByRole('button', { name: L('periodMenu.keep') }).click()
       // Na een periode verwijderen staat "Ongedaan maken" 30 seconden in beeld.

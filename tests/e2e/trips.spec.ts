@@ -49,15 +49,12 @@ test('Deze trip: eerdere en komende trips invoeren, bootgegevens van een bekende
   await expect(sheet.getByLabel('Basis', { exact: true })).toHaveValue('Nepbaai')
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByRole('heading', { name: 'Deze trip' })).toBeVisible()
-  // De kop is rustig (naam, datums, boot); de rest staat na een tik in Tripgegevens.
-  await expect(page.locator('.trip-head')).toContainText('Nepster')
-  await expect(page.locator('.trip-head')).not.toContainText('45 ft')
-  await page.locator('.trip-head-summary').click()
-  const details = page.getByRole('dialog', { name: 'Tripgegevens' })
-  await expect(details).toContainText('Nepcat 45')
-  await expect(details).toContainText('45 ft (13,7 m)')
-  await expect(details).toContainText('Nepbaai')
-  await details.getByRole('button', { name: 'Sluiten' }).click()
+  // De kop toont alles in één kaart: boot, model, lengte en basis, zonder extra blad.
+  const head = page.locator('.trip-head')
+  await expect(head).toContainText('Nepster')
+  await expect(head).toContainText('Nepcat 45')
+  await expect(head).toContainText('45 ft (13,7 m)')
+  await expect(head).toContainText('Nepbaai')
 
   // Vergeten dagen: één tik opent Dag met die datum; de eerste dag begint op de basis.
   await expect(page.getByText('4 dagen in deze trip nog niet gelogd')).toBeVisible()

@@ -229,10 +229,9 @@ test('3. dag toevoegen, trip bewerken, verwijderen en terughalen uit de prullenb
   await edit.getByRole('button', { name: 'Opslaan' }).click()
   await expect(page.getByRole('main')).toContainText('Nepweek bewerkt')
 
-  // Verwijderen alleen onder "⋯", met wat eraan hangt.
-  await page.getByRole('button', { name: 'Meer bij Nepweek bewerkt' }).click()
+  // Verwijderen onderaan de periodepagina, met wat eraan hangt.
+  await page.getByRole('main').getByRole('button', { name: 'Periode verwijderen' }).click()
   const menu = page.getByRole('dialog').last()
-  await menu.getByRole('button', { name: 'Periode verwijderen' }).click()
   await expect(menu.locator('.delete-choice')).toContainText('Hieraan hangt: 2 gelogde dagen.')
   await shot(page, '24-periode-verwijderen')
   await menu.getByRole('button', { name: 'Alles naar de prullenbak' }).click()

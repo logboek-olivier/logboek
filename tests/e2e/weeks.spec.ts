@@ -56,12 +56,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await sheet.getByRole('button', { name: L('week.start') }).click()
       await expect(page.locator('.toast')).toHaveText(L('week.started'))
       await expect(card).toContainText('Nepboot')
-      // De kop is rustig: soort en organisatie staan in de tripgegevens.
-      await page.locator('.trip-head-summary').click()
-      const details = page.getByRole('dialog', { name: L('trip.details') })
-      await expect(details).toContainText(L('weekType.training-geven'))
-      await details.getByRole('button', { name: L('common.close') }).click()
-      await expect(details).toHaveCount(0)
+      // Soort en organisatie staan in de kop zelf.
+      await expect(page.locator('.trip-head')).toContainText(L('weekType.training-geven'))
 
       // Dag loggen: week, boot en rol komen uit de lopende week.
       await page.getByRole('navigation').getByRole('button', { name: L('nav.add'), exact: true }).click()

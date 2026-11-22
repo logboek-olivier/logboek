@@ -42,11 +42,7 @@ test('bekijken eerst: tripoverzicht met route, dag, dagkaart, Logboek-kaartje en
   const head = page.locator('.trip-head')
   await expect(head.locator('h2')).toContainText('SV #1 · Nepgebied')
   await expect(head).toContainText('Nepboot')
-  await page.locator('.trip-head-summary').click()
-  const details = page.getByRole('dialog', { name: 'Tripgegevens' })
-  await expect(details).toContainText('Nepmodel 40')
-  await details.getByRole('button', { name: 'Sluiten' }).click()
-  await expect(details).toHaveCount(0)
+  await expect(head).toContainText('Nepmodel 40')
   await expect(page.locator('.trip-route')).toContainText('Plaatsen zonder pin')
   await expect(page.locator('.trip-route')).toContainText('Vis')
 

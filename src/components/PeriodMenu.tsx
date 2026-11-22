@@ -1,4 +1,4 @@
-import { Ellipsis, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { periodeVerwijderen } from '../domain/trips'
 import { landperiodeVerwijderen } from '../domain/agenda'
@@ -12,13 +12,13 @@ import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { HistoryButton } from '../screens/History'
 
-// "⋯" bij een periode: hier, en alleen hier, staat "Periode verwijderen" (nooit naast de dagen of onderaan een
-// bewerkscherm). Eerst wat er aan de periode hangt, dan de keuze: geld en dagen behouden zonder periode, of alles naar de
-// prullenbak. Daarna 30 seconden ongedaan maken, en 30 dagen in Meer → Prullenbak.
+// Onderaan de periodepagina: de geschiedenis van de periode en "Periode verwijderen" (in een eigen rij, nooit naast de
+// dagen of onderaan een bewerkscherm). Verwijderen toont eerst wat er aan de periode hangt, dan de keuze: geld en dagen
+// behouden zonder periode, of alles naar de prullenbak. Daarna 30 seconden ongedaan maken, en 30 dagen in Meer → Prullenbak.
 
 type Target = { trip: Trip; stay?: undefined } | { stay: StayPeriod; trip?: undefined }
 
-export function PeriodMenu({ store, notify, onDeleted, ...target }: Target & { store: Store; notify: Notify; onDeleted?: () => void }) {
+export function PeriodActions({ store, notify, onDeleted, ...target }: Target & { store: Store; notify: Notify; onDeleted?: () => void }) {
   const [open, setOpen] = useState(false)
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -50,9 +50,18 @@ export function PeriodMenu({ store, notify, onDeleted, ...target }: Target & { s
   }
 
   return (
-    <>
-      <button type="button" className="btn icon" aria-label={t('periodMenu.open', { name })} onClick={() => setOpen(true)}>
-        <Icon icon={Ellipsis} />
+    <div className="section stack-sm period-actions">
+      <HistoryButton store={store} notify={notify} filter={{ periodId: target.trip ? target.trip.id : target.stay!.id }} title={t('history.periodTitle', { name })} />
+      <button
+        type="button"
+        className="btn danger"
+        onClick={() => {
+          setAsking(true)
+          setOpen(true)
+        }}
+      >
+        <Icon icon={Trash2} />
+        {t('periodMenu.delete')}
       </button>
       {open && (
         <Sheet
@@ -62,15 +71,7 @@ export function PeriodMenu({ store, notify, onDeleted, ...target }: Target & { s
             setAsking(false)
           }}
         >
-          {!asking ? (
-            <div className="stack">
-              <HistoryButton store={store} notify={notify} filter={{ periodId: target.trip ? target.trip.id : target.stay!.id }} title={t('history.periodTitle', { name })} />
-              <button type="button" className="btn danger" onClick={() => setAsking(true)}>
-                <Icon icon={Trash2} />
-                {t('periodMenu.delete')}
-              </button>
-            </div>
-          ) : (
+          {asking && (
             <div className="stack delete-choice" role="group" aria-label={t('periodMenu.delete')}>
               <h3>{t('periodMenu.confirm', { name })}</h3>
               <p>{parts.length > 0 ? t('periodMenu.attached', { parts: parts.join(', ') }) : t('periodMenu.nothing')}</p>
@@ -84,13 +85,20 @@ export function PeriodMenu({ store, notify, onDeleted, ...target }: Target & { s
                 {t(parts.length > 0 ? 'periodMenu.all' : 'periodMenu.toTrash')}
               </button>
               <p className="muted small">{t('periodMenu.trashNote')}</p>
-              <button type="button" className="btn link" onClick={() => setAsking(false)}>
+              <button
+                type="button"
+                className="btn link"
+                onClick={() => {
+                  setAsking(false)
+                  setOpen(false)
+                }}
+              >
                 {t('common.cancel')}
               </button>
             </div>
           )}
         </Sheet>
       )}
-    </>
+    </div>
   )
 }

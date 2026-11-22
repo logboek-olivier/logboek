@@ -3619,33 +3619,11 @@ body.presenting .bottom-bar {
 }
 
 /* De rest van de tripgegevens zit achter één tik (Tripgegevens): de kop blijft rustig. */
-.trip-head-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  width: 100%;
-  min-height: 44px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
 .trip-head-lines {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-}
-
-.trip-head-summary > .icon {
-  flex: none;
-  color: var(--text-muted);
 }
 
 .trip-totals {
@@ -5450,4 +5428,14 @@ button.drill-post {
   border-color: var(--negative);
   background: var(--negative-soft);
   color: var(--negative);
+}
+
+/* Onderaan de periodepagina: geschiedenis, en verwijderen in een eigen rij met een lijn erboven. */
+.period-actions {
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.period-actions > .btn.danger {
+  margin-top: var(--s-4);
 }

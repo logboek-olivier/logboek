@@ -10,15 +10,24 @@ test('Lesweek: cursussen per student, blok afvinken voor iedereen, één student
   await createNewLogbook(page, 'nl', { olivier: true })
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
 
-  // Een lesweek met twee studenten (alleen voornamen).
+  // Een lesweek met één student; de tweede komt erbij via "Persoon toevoegen" op de trip zelf.
   await page.getByRole('button', { name: 'Nieuwe trip' }).click()
   const sheet = page.getByRole('dialog')
   await sheet.getByRole('radio', { name: 'Training geven' }).click()
   await sheet.getByLabel('Deelnemer 1', { exact: true }).fill('Nepanna')
-  await sheet.getByLabel('Deelnemer 2', { exact: true }).fill('Nepbram')
   await fillBoat(sheet)
   await sheet.getByRole('button', { name: 'Trip opslaan' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('main').getByRole('button', { name: 'Persoon toevoegen' }).click()
+  const add = page.getByRole('dialog')
+  await expect(add.getByRole('radio', { name: 'Student' })).toHaveAttribute('aria-checked', 'true')
+  await expect(add.getByLabel('Trip')).toHaveCount(0)
+  await add.getByLabel('Voornaam').fill('Nepbram')
+  await add.getByRole('button', { name: 'Opslaan' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  // Geen tik op de kop meer naar een apart blad; geschiedenis en verwijderen staan onderaan.
+  await expect(page.locator('.trip-head-summary')).toHaveCount(0)
+  await expect(page.locator('.period-actions').getByRole('button', { name: 'Periode verwijderen' })).toBeVisible()
 
   const week = page.locator('.lesson-week')
   await expect(week.getByRole('heading', { name: 'Lesweek' })).toBeVisible()
