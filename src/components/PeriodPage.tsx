@@ -206,10 +206,11 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
       )}
 
       {/* 4. Planning: lesplanning (bij les geven) en de vaste checklists bij de soort trip. */}
-      {mode === 'page' && teaching && (hasCourses || ownPlans.length > 0) && !studentOpen && (
+      {/* Oude planningen (van vóór de Lesweek): alleen nog te openen, een nieuwe planning maakt de Lesweek. */}
+      {mode === 'page' && ownPlans.length > 0 && !studentOpen && (
         <div className="section">
           {!detail && <Heading>{t('plan.list')}</Heading>}
-          <PlansView store={store} notify={notify} curricula={curricula} week={trip} onDetail={onPlanDetail ?? noop} />
+          <PlansView store={store} notify={notify} curricula={curricula} week={trip} onDetail={onPlanDetail ?? noop} allowNew={false} />
         </div>
       )}
       {!detail && (

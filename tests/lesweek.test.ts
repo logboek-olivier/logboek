@@ -37,11 +37,13 @@ async function device() {
   return Store.open(await openLogboekDb(`logboek-lesweek-${++counter}`), masterKey, new GithubClient('github_pat_LESWEEK_0123456789abcdefghijklmnopqrstuvwx', new FakeGithub().fetch))
 }
 const student = (id: string, courses: LessonCourse[]): LessonStudent => ({ id, name: id, courses })
+const s0 = student
 
-// Hoofdstuk 8 van het idee: welke blokken bij welk certificaat horen (T2 ook bij 104, voor het manoeuvreren op een monohull).
+// Hoofdstuk 8 van het idee: welke blokken bij welk certificaat horen. Afwijkend (november 2026, Olivier): T2 en P1
+// (manoeuvreren op de motor) horen bij elk certificaat: maandagochtend begint altijd met manoeuvreren, ook voor beginners.
 const TABLE: Record<string, string[]> = {
-  '101': ['T1', 'T3', 'T4', 'T5', 'K2', 'K3', 'P2', 'P3', 'P4', 'P8', 'P9', 'D2'],
-  '103': ['T1', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T11', 'T12', 'K2', 'K3', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'D1', 'D2'],
+  '101': ['T1', 'T2', 'T3', 'T4', 'T5', 'K2', 'K3', 'P1', 'P2', 'P3', 'P4', 'P8', 'P9', 'D2'],
+  '103': ['T1', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T11', 'T12', 'K2', 'K3', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'D1', 'D2'],
   '104': ['T1', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8', 'T11', 'T12', 'K1', 'K3', 'P1', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'D1', 'D2', 'D3'],
   '114': ['T1', 'T2', 'T3', 'T5', 'T6', 'T10', 'T11', 'T12', 'K3', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P8', 'P9', 'D1'],
 }
@@ -73,7 +75,8 @@ describe('lesweek: blokken', () => {
     const ids = blocksForWeek(week, {}).map((x) => x.id)
     expect(ids).toContain('T10')
     expect(ids).not.toContain('P10')
-    expect(studentsFor(lessonBlock('P1')!, week).map((s) => s.id)).toEqual(['Nepb'])
+    expect(studentsFor(lessonBlock('P7')!, [s0('Nepa', ['101']), s0('Nepb', ['104'])]).map((s) => s.id)).toEqual(['Nepb'])
+    expect(studentsFor(lessonBlock('P1')!, week).map((s) => s.id)).toEqual(['Nepa', 'Nepb'])
     expect(studentsFor(lessonBlock('P4')!, week).map((s) => s.id)).toEqual(['Nepa', 'Nepb'])
     expect(blocksForWeek([student('Nepc', ['101', '103'])], {}).map((x) => x.id)).not.toContain('D3')
   })
@@ -118,7 +121,7 @@ describe('lesweek: afvinken', () => {
     checks = toggledStudent(checks, 'P8', 'Nepb', '2026-11-24')
     const overview = openPerCourse({ lessonChecks: checks }, week)
     const c101 = overview.find((o) => o.course === '101')!
-    expect(c101.total).toBe(13)
+    expect(c101.total).toBe(15)
     expect(c101.open.map((o) => [o.block.id, o.names])).toEqual([
       ['P8', ['Nepb']],
       ['examen-101', []],

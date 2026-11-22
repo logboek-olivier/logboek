@@ -77,7 +77,7 @@ export const LESSON_BLOCKS: readonly LessonBlock[] = [
     ['Spullen vastzetten en opbergen', 'Stowing and securing gear'],
     ['Catamaranbegrippen en systemen', 'Catamaran terms and systems', '114'],
   ], '101: 1, 2 · 103: 1, 5, 32 · 104: 8–10, 12, 13, 33, 34, 36 · 114: 1, 2, 19, 20, 22, 23, 34'),
-  b('T2', G, 'theorie', 'Manoeuvreren', 'Manoeuvring', [C104, C114, C106], [
+  b('T2', G, 'theorie', 'Manoeuvreren', 'Manoeuvring', [C101, C103, C104, C114, C106], [
     ['Draaipunt van de boot', 'Pivot point of the boat'],
     ['Effect van de wind', 'Effect of the wind'],
     ['Schroefeffect', 'Prop walk', 'mono'],
@@ -184,7 +184,7 @@ export const LESSON_BLOCKS: readonly LessonBlock[] = [
     ['AIS en dieptemeter', 'AIS and depth sounder', 'star'],
   ], '101: 3 · 103: 7, 9, 24, 31, 33 · 104: 17, 20 · 114: 24'),
   // Praktijk (per student)
-  b('P1', S, 'praktijk', 'Manoeuvreren op de motor', 'Manoeuvring under power', [C104, C114, C106], [
+  b('P1', S, 'praktijk', 'Manoeuvreren op de motor', 'Manoeuvring under power', [C101, C103, C104, C114, C106], [
     ['Vooruit en achteruit', 'Ahead and astern'],
     ['Draaien op de plaats', 'Turning in her own length'],
     ['Rondjes door het mooringveld', 'Laps through the mooring field'],

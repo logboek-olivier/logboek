@@ -15,11 +15,14 @@ export const MAX_PLAN_DAYS = 14
 
 type DayTemplate = Record<LessonSlot, string[]>
 
-/** De standaardweek per weekdag (0 = zondag). */
+/**
+ * De standaardweek per weekdag (0 = zondag). Zondag (aan boord rond 14:00, uitvaren 15–16 uur): onderdelen van de boot
+ * en knopen, meer niet. Maandag: manoeuvreren op de motor, zeil hijsen en mooring ball oppikken (november 2026, Olivier).
+ */
 const TEMPLATE: Record<number, DayTemplate> = {
-  0: { ochtend: [], middag: ['T1'], avond: [] },
-  1: { ochtend: ['T2', 'P1'], middag: ['T3', 'P2'], avond: [] },
-  2: { ochtend: ['T4', 'P3'], middag: ['T5', 'P4'], avond: [] },
+  0: { ochtend: [], middag: ['T1', 'D2'], avond: [] },
+  1: { ochtend: ['T2', 'P1'], middag: ['P2', 'P3'], avond: [] },
+  2: { ochtend: ['T3', 'T4'], middag: ['T5', 'P4'], avond: [] },
   3: { ochtend: ['T6', 'T7', 'T12', 'P6'], middag: ['T8', 'P7'], avond: ['examen-101', 'P10'] },
   4: { ochtend: ['T9', 'P8'], middag: ['T10', 'T11', 'P5'], avond: ['examen-104', 'examen-114', 'examen-103'] },
   5: { ochtend: ['P9'], middag: [], avond: ['examen-106'] },
@@ -63,21 +66,12 @@ function teachDays(days: LessonPlanDay[], weekdays: readonly number[]): LessonPl
  */
 export function draftLessonPlan(trip: Pick<Trip, 'startDate' | 'endDate' | 'boatKind'>, students: readonly LessonStudent[], inputs: readonly LessonPlanDay[] = []): LessonPlanDay[] {
   const relevant = new Set(blocksForWeek(students, trip).map((b) => b.id))
-  const courses = new Set(students.flatMap((s) => s.courses))
   const days = planDates(trip).map((date) => {
     const day = emptyDay(date, inputs.find((x) => x.date === date))
     const tpl = TEMPLATE[weekday(date)]!
     for (const s of SLOTS) place(day, s, tpl[s])
     return day
   })
-  // Met 104 aan boord al maandag een mooring ball (grote kans dat het maandag al nodig is).
-  if (courses.has('104') || courses.has('106')) {
-    const monday = days.find((d) => weekday(d.date) === 1)
-    if (monday) {
-      remove(days, 'P3')
-      place(monday, 'middag', ['P3'])
-    }
-  }
   // Veel wind: reven en bijliggen naar de eerste dag met veel wind (maandag t/m donderdag).
   const windy = teachDays(days, [1, 2, 3, 4]).find((d) => d.wind === 'veel')
   if (windy) {

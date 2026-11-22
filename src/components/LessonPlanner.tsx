@@ -1,10 +1,15 @@
 import { Anchor, Check, Plus, RefreshCw, Wind } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { formatWeekday } from '../format'
+
+/** "zo 22" (korte weekdag en dag), voor het raster om te verplaatsen. */
+function formatWeekdayShort(iso: string, lang: string): string {
+  return new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'nl-NL', { weekday: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T12:00:00Z`))
+}
 import { t, useLang } from '../i18n'
 import { localized } from '../model/curricula'
 import { blocksForWeek, elementsFor, lessonBlock, type ElementLabel, type LessonStudent } from '../model/lesweek'
-import { draftLessonPlan, examGaps, movedBlock, redraftFrom, SLOTS, unplanned, withDayInput } from '../model/lesweek-plan'
+import { draftLessonPlan, examGaps, movedBlock, planDay, redraftFrom, SLOTS, unplanned, withDayInput } from '../model/lesweek-plan'
 import type { LessonPlanDay, LessonSlot, Trip } from '../model/types'
 import type { Store } from '../storage/store'
 import { lesblokAfvinken, lesplanningOpslaan } from '../domain/training'
@@ -43,7 +48,8 @@ export function LessonPlanner({ store, trip, students, labels, notify }: { store
 
   const gaps = examGaps(days, trip.lessonChecks, students, trip)
   const missing = unplanned(days, students, trip).filter((id) => !trip.lessonChecks?.[id])
-  const allWeek = blocksForWeek(students, trip).filter((b) => b.section === 'kort' || b.section === 'doorlopend')
+  const plannedIds = new Set(days.flatMap((d) => SLOTS.flatMap((slot) => d[slot])))
+  const allWeek = blocksForWeek(students, trip).filter((b) => (b.section === 'kort' || b.section === 'doorlopend') && !plannedIds.has(b.id))
 
   return (
     <div className="stack-sm lesson-plan">
@@ -177,24 +183,37 @@ function PlanBlockSheet({ trip, days, at, labels, onToggle, onMove, onClose }: {
           <Icon icon={Check} />
           {done ? t('lessonPlan.undone') : t('lessonPlan.done')}
         </button>
-        <label>
-          {t('lessonPlan.move')}
-          <select
-            value={`${at.date}|${at.slot}`}
-            onChange={(e) => {
-              const [date, slot] = e.target.value.split('|') as [string, LessonSlot]
-              onMove({ date, slot })
-            }}
-          >
-            {days.flatMap((d) =>
-              SLOTS.map((s) => (
-                <option key={`${d.date}|${s}`} value={`${d.date}|${s}`}>
-                  {`${formatWeekday(d.date, lang)} · ${t(`lessonPlan.slot.${s}`)}`}
-                </option>
-              )),
-            )}
-          </select>
-        </label>
+        <div className="stack-sm">
+          <p className="small muted">{t('lessonPlan.move')}</p>
+          <div className="lesson-move-grid" role="group" aria-label={t('lessonPlan.move')}>
+            <span />
+            {SLOTS.map((slot) => (
+              <span key={slot} className="small muted lesson-move-head">
+                {t(`lessonPlan.slotShort.${slot}`)}
+              </span>
+            ))}
+            {days.map((d) => (
+              <Fragment key={d.date}>
+                <span className="small lesson-move-day">{formatWeekdayShort(d.date, lang)}</span>
+                {SLOTS.map((slot) => {
+                  const here = d.date === at.date && slot === at.slot
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      className={`lesson-move-cell${here ? ' here' : ''}`}
+                      aria-pressed={here}
+                      aria-label={`${formatWeekday(d.date, lang)} · ${t(`lessonPlan.slot.${slot}`)}`}
+                      onClick={() => !here && onMove({ date: d.date, slot })}
+                    >
+                      {d[slot].length > 0 ? d[slot].length : ''}
+                    </button>
+                  )
+                })}
+              </Fragment>
+            ))}
+          </div>
+        </div>
         <div className="lesson-remove">
           <button type="button" className="btn danger" onClick={() => onMove(null)}>
             {t('lessonPlan.remove')}
@@ -202,5 +221,35 @@ function PlanBlockSheet({ trip, days, at, labels, onToggle, onMove, onClose }: {
         </div>
       </div>
     </Sheet>
+  )
+}
+
+/** Vandaag: de blokken van de lesplanning van vandaag per dagdeel; één tik = afvinken (geen namen, studenten kijken mee). */
+export function LessonToday({ store, trip, today }: { store: Store; trip: Trip; today: string }) {
+  const lang = useLang()
+  const day = planDay(trip.lessonPlan, today)
+  if (!day || SLOTS.every((slot) => day[slot].length === 0)) return null
+  return (
+    <div className="card card-body stack-sm lesson-today">
+      <h2>{t('lessonPlan.today')}</h2>
+      {SLOTS.filter((slot) => day[slot].length > 0).map((slot) => (
+        <div key={slot} className="stack-sm">
+          <p className="small muted">{t(`lessonPlan.slot.${slot}`)}</p>
+          <ul className="check-items">
+            {day[slot].map((id) => {
+              const on = !!trip.lessonChecks?.[id]
+              return (
+                <li key={id}>
+                  <button type="button" role="checkbox" aria-checked={on} className={`check-item${on ? ' on' : ''}`} onClick={() => void lesblokAfvinken(store, trip.id, id)}>
+                    <span className="check-box">{on && <Icon icon={Check} />}</span>
+                    <span>{localized(lessonBlock(id)!.title, lang)}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
   )
 }

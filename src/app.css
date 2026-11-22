@@ -5518,3 +5518,37 @@ button.drill-post {
   padding-top: var(--s-4);
   border-top: 1px solid var(--border);
 }
+
+/* Verplaatsen: raster met dagen × dagdelen, één tik */
+.lesson-move-grid {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  gap: var(--s-1);
+  align-items: center;
+}
+
+.lesson-move-head {
+  text-align: center;
+}
+
+.lesson-move-day {
+  padding-right: var(--s-2);
+  white-space: nowrap;
+}
+
+.lesson-move-cell {
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.lesson-move-cell.here {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}

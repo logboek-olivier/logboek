@@ -51,6 +51,7 @@ const GoalSheet = lazyComponent(() => import('../components/EditSheets').then((m
 const ReminderSheet = lazyComponent(() => import('../components/ReminderSheet').then((m) => m.ReminderSheet))
 const WeekSheet = lazyComponent(() => import('../components/WeekSheet').then((m) => m.WeekSheet))
 const TodayPlan = lazyComponent(() => import('./Planning').then((m) => m.TodayPlan))
+const LessonToday = lazyComponent(() => import('../components/LessonPlanner').then((m) => m.LessonToday))
 
 const TOKEN_WARNING_DAYS = 30
 /** Zo ver omlaag trekken (px) start een sync. */
@@ -190,6 +191,11 @@ export function Today({
       {!nothingToLog && (
         <Suspense fallback={null}>
           <TodayPlan store={store} notify={notify} />
+        </Suspense>
+      )}
+      {!nothingToLog && running?.lessonPlan && (
+        <Suspense fallback={null}>
+          <LessonToday store={store} trip={running} today={today} />
         </Suspense>
       )}
       {!nothingToLog && (

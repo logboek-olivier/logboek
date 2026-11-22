@@ -42,7 +42,7 @@ test('Lesweek: cursussen per student, blok afvinken voor iedereen, één student
   await page.getByRole('dialog').getByRole('button', { name: 'Klaar' }).click()
   await expect(week.getByRole('button', { name: 'Cursussen kiezen: Nepanna' })).toContainText('101 · 103')
   await expect(week.getByText('Tik op een naam om de cursussen te kiezen.')).toHaveCount(0)
-  await expect(week.getByText('101: nog 13 van 13 open')).toBeVisible()
+  await expect(week.getByText('101: nog 15 van 15 open')).toBeVisible()
   await expect(week.getByRole('checkbox', { name: 'Catamaran' })).toBeVisible()
 
   // Groepsblok: één tik.
@@ -61,7 +61,7 @@ test('Lesweek: cursussen per student, blok afvinken voor iedereen, één student
   await page.reload()
   await page.getByRole('navigation').getByRole('button', { name: 'Deze trip', exact: true }).click()
   await expect(week.getByText('Nog niet: Nepbram')).toBeVisible()
-  await expect(week.getByText('101: nog 11 van 13 open')).toBeVisible()
+  await expect(week.getByText('101: nog 13 van 15 open')).toBeVisible()
   // Toch goed: één tik op de naam.
   await week.getByRole('button', { name: /Overstag en gijpen/ }).click()
   await week.getByRole('button', { name: 'Nepbram: nog niet' }).click()
@@ -74,6 +74,17 @@ test('Lesweek: cursussen per student, blok afvinken voor iedereen, één student
   await expect(week.locator('.lesson-chip', { hasText: 'Rondje over de boot' })).toHaveCount(1)
   await expect(week.locator('.lesson-chip', { hasText: 'Examen 101' })).toHaveCount(1)
   await expect(week.locator('.lesson-chip', { hasText: 'Catamaran' })).toHaveCount(1)
+  // Zondag: onderdelen van de boot en knopen; geen oude "Nieuwe planning" meer.
+  await expect(page.getByRole('button', { name: 'Nieuwe planning' })).toHaveCount(0)
+  const sunday = week.locator('.lesson-day').filter({ hasText: /^zondag/ })
+  await expect(sunday.locator('.lesson-chip')).toHaveText(['Rondje over de boot', 'Knopen'])
+  // Verplaatsen: één tik op het blok, één tik op de nieuwe plek.
+  await week.locator('.lesson-chip', { hasText: 'Kaart' }).click()
+  const moveSheet = page.getByRole('dialog', { name: 'Kaart' })
+  await moveSheet.getByRole('button', { name: /^zaterdag .* · Ochtend$/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(week.locator('.lesson-day').filter({ hasText: /^zaterdag/ }).locator('.lesson-chip', { hasText: 'Kaart' })).toHaveCount(1)
+  await expect(week.getByText(/Voor examen 103 nog niet gepland: Kaart/)).toBeVisible()
   // Overstag en gijpen is al afgevinkt; een blok openen, afvinken en verplaatsen.
   await expect(week.locator('.lesson-chip.done', { hasText: 'Overstag en gijpen' })).toHaveCount(1)
   await week.locator('.lesson-chip', { hasText: 'Veiligheid' }).click()
@@ -97,5 +108,17 @@ test('Lesweek: cursussen per student, blok afvinken voor iedereen, één student
   await expect(week.locator('.lesson-chip', { hasText: 'Steiger' })).toHaveCount(1)
   await expectNoHorizontalOverflow(page)
   await week.screenshot({ path: 'test-results/lesweek-planning-360.png' })
+
+  // Vandaag: de lesplanning van vandaag, één tik = afvinken (zaterdag staat er niets).
+  await page.getByRole('navigation').getByRole('button', { name: 'Vandaag', exact: true }).click()
+  const todayCard = page.locator('.lesson-today')
+  if (new Date().getDay() === 6) await expect(todayCard).toHaveCount(0)
+  else {
+    await expect(todayCard.getByRole('heading', { name: 'Lesweek vandaag' })).toBeVisible()
+    const item = todayCard.getByRole('checkbox').first()
+    const was = await item.getAttribute('aria-checked')
+    await item.click()
+    await expect(item).toHaveAttribute('aria-checked', was === 'true' ? 'false' : 'true')
+  }
   expect(errors).toEqual([])
 })

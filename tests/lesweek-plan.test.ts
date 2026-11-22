@@ -15,9 +15,10 @@ describe('lesweekplanner: voorstel', () => {
   it('de standaardweek van het idee (catamaran, 2× 101/103 en 2× 104/114)', () => {
     const plan = draftLessonPlan(trip, mixed)
     expect(plan.map((d) => d.date)).toEqual(planDates(trip))
-    expect(at(plan, '2026-11-22').middag).toEqual(['T1'])
-    expect(at(plan, '2026-11-23')).toMatchObject({ ochtend: ['T2', 'P1'], middag: ['T3', 'P2', 'P3'] })
-    expect(at(plan, '2026-11-24')).toMatchObject({ ochtend: ['T4'], middag: ['T5', 'P4'] })
+    // Zondag: onderdelen van de boot en knopen. Maandag: motor, zeil hijsen, mooring ball.
+    expect(at(plan, '2026-11-22')).toMatchObject({ ochtend: [], middag: ['T1', 'D2'], avond: [] })
+    expect(at(plan, '2026-11-23')).toMatchObject({ ochtend: ['T2', 'P1'], middag: ['P2', 'P3'] })
+    expect(at(plan, '2026-11-24')).toMatchObject({ ochtend: ['T3', 'T4'], middag: ['T5', 'P4'] })
     expect(at(plan, '2026-11-25')).toMatchObject({ ochtend: ['T6', 'T7', 'T12', 'P6'], middag: ['T8', 'P7'], avond: ['examen-101'] })
     expect(at(plan, '2026-11-26')).toMatchObject({ ochtend: ['T9', 'P8'], middag: ['T10', 'T11', 'P5'], avond: ['examen-104', 'examen-114', 'examen-103'] })
     expect(at(plan, '2026-11-27')).toMatchObject({ ochtend: ['P9'], middag: [], avond: [] })
@@ -26,9 +27,13 @@ describe('lesweekplanner: voorstel', () => {
     expect(examGaps(plan, undefined, mixed, trip)).toEqual([])
   })
 
-  it('alleen 101/103: mooring ball dinsdag, geen catamaran- of 104-blokken; monohull zonder 114', () => {
-    const plan = draftLessonPlan(trip, [s('a', ['101', '103'])])
-    expect(at(plan, '2026-11-24').ochtend).toEqual(['T4', 'P3'])
+  it('drie beginners (101/103): zondag boot en knopen, maandag motor, zeil en mooring ball; geen 104-blokken; monohull zonder 114', () => {
+    const beginners = [s('a', ['101', '103']), s('b', ['101', '103']), s('c', ['101', '103'])]
+    const plan = draftLessonPlan(trip, beginners)
+    expect(at(plan, '2026-11-22').middag).toEqual(['T1', 'D2'])
+    expect(at(plan, '2026-11-23')).toMatchObject({ ochtend: ['T2', 'P1'], middag: ['P2', 'P3'] })
+    expect(unplanned(plan, beginners, trip)).toEqual([])
+    expect(examGaps(plan, undefined, beginners, trip)).toEqual([])
     expect(plan.flatMap((d) => [...d.ochtend, ...d.middag, ...d.avond])).not.toContain('T10')
     const mono = draftLessonPlan({ ...trip, boatKind: 'eenromp' }, [s('b', ['104', '114'])])
     const all = mono.flatMap((d) => [...d.ochtend, ...d.middag, ...d.avond])
@@ -70,7 +75,7 @@ describe('lesweekplanner: voorstel', () => {
     // Nieuw voorstel op woensdag: maandag en dinsdag blijven, wat al gedaan is komt niet opnieuw.
     const edited = movedBlock(plan, 'T4', { date: '2026-11-24', slot: 'ochtend' }, null)
     const redraft = redraftFrom(withDayInput(edited, '2026-11-26', { dock: true }), { ...trip, lessonChecks: { T6: { at: '2026-11-25' } } }, mixed, '2026-11-25')
-    expect(at(redraft, '2026-11-24').ochtend).toEqual([])
+    expect(at(redraft, '2026-11-24').ochtend).toEqual(['T3'])
     // T6 is gedaan: niet opnieuw ingepland, maar blijft op zijn eigen dag staan.
     expect(at(redraft, '2026-11-25').ochtend.filter((id) => id === 'T6')).toHaveLength(1)
     expect(redraft.flatMap((d) => [...d.ochtend, ...d.middag, ...d.avond]).filter((id) => id === 'T6')).toHaveLength(1)
