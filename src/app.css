@@ -5439,3 +5439,82 @@ button.drill-post {
 .period-actions > .btn.danger {
   margin-top: var(--s-4);
 }
+
+/* Lesweek: planning per dag */
+.lesson-day {
+  padding: var(--s-3) var(--s-4);
+}
+
+.lesson-day.today {
+  border-color: var(--accent);
+}
+
+.lesson-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+
+.lesson-day-date {
+  flex: 1;
+  font-weight: var(--fw-medium);
+}
+
+.lesson-day-inputs {
+  display: flex;
+  flex: 1 1 100%;
+  gap: var(--s-2);
+}
+
+.lesson-day-head .chip,
+.lesson-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  padding: 0 var(--s-2);
+  font-size: var(--fs-xs);
+  text-align: left;
+}
+
+.lesson-day-head .chip .icon,
+.lesson-chip .icon {
+  --icon: 14px;
+}
+
+.lesson-slot {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  padding: var(--s-1) 0;
+}
+
+.lesson-slot + .lesson-slot {
+  border-top: 1px solid var(--border);
+}
+
+.lesson-slot-label {
+  padding-top: 6px;
+  font-size: var(--fs-xs);
+}
+
+.lesson-slot-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  align-items: center;
+}
+
+.lesson-chip.done {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+}
+
+.lesson-remove {
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}

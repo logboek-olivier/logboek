@@ -97,6 +97,23 @@ export interface LessonCheck {
   open?: string[]
 }
 
+/** Dagdeel in de lesweekplanner: ochtend, middag of eind van de dag (examens, rond 17–18 uur). */
+export type LessonSlot = 'ochtend' | 'middag' | 'avond'
+
+/** Eén dag van de lesweekplanner: wind (ontbreekt = normaal), steiger beschikbaar, en de blok-id's per dagdeel. */
+export interface LessonPlanDay {
+  date: string
+  wind?: 'weinig' | 'veel'
+  dock?: boolean
+  ochtend: string[]
+  middag: string[]
+  avond: string[]
+}
+
+export interface LessonPlan {
+  days: LessonPlanDay[]
+}
+
 /** Van wie een fooi komt. Ontbreekt = onbekend (ook bij oudere fooien). */
 export type TipFrom =
   | { kind: 'onbekend' }
@@ -272,6 +289,8 @@ export interface Trip extends SyncRecord {
   messages?: Record<string, MessageMark>
   /** Schrijfversie 16: de afgevinkte blokken van de lesweek, per blok-id (T1, P3, examen-101). */
   lessonChecks?: Record<string, LessonCheck>
+  /** Schrijfversie 16: de weekplanning van de lesweek (src/model/lesweek-plan.ts). */
+  lessonPlan?: LessonPlan
 }
 
 /** De velden van een bericht die de app niet uit de trip, boot of plaatsen kan halen. */

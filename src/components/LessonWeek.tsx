@@ -23,6 +23,8 @@ import { participantRole } from '../model/weeks'
 import type { Store } from '../storage/store'
 import { lesblokAfvinken, lesblokStudentWisselen, lescursussenZetten } from '../domain/training'
 import { Icon } from './Icon'
+import { LessonPlanner } from './LessonPlanner'
+import type { Notify } from './EditSheets'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 
@@ -38,7 +40,7 @@ export function lessonStudents(trip: Trip, studentIds: ReadonlySet<string>): { p
     .map((p) => ({ participant: p, student: { id: p.id, name: participantName(p, people), courses: coursesOf(p, trip) } }))
 }
 
-export function LessonWeek({ store, trip, heading: Heading }: { store: Store; trip: Trip; heading: 'h2' | 'h3' }) {
+export function LessonWeek({ store, trip, notify, heading: Heading }: { store: Store; trip: Trip; notify: Notify; heading: 'h2' | 'h3' }) {
   const lang = useLang()
   const studentRecords = useCollection(store, 'students.json.enc')
   const ids = new Set(studentRecords.filter((s) => s.deletedAt === null).map((s) => s.id))
@@ -49,6 +51,7 @@ export function LessonWeek({ store, trip, heading: Heading }: { store: Store; tr
   const overview = openPerCourse(trip, students)
   const [openBlock, setOpenBlock] = useState<string | null>(null)
   const [choosing, setChoosing] = useState<Participant | null>(null)
+  const [view, setView] = useState<'afvinken' | 'planning'>(trip.lessonPlan ? 'planning' : 'afvinken')
   const without = list.filter((x) => x.student.courses.length === 0)
 
   function tick(block: LessonBlock) {
@@ -73,6 +76,19 @@ export function LessonWeek({ store, trip, heading: Heading }: { store: Store; tr
       )}
       {without.length > 0 && <p className="muted small">{t('lesson.chooseHint')}</p>}
 
+      {trip.startDate && (
+        <div className="segments small" role="radiogroup" aria-label={t('lesson.title')}>
+          {(['afvinken', 'planning'] as const).map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={view === v} className={`segment${view === v ? ' active' : ''}`} onClick={() => setView(v)}>
+              {t(`lesson.view.${v}`)}
+            </button>
+          ))}
+        </div>
+      )}
+      {view === 'planning' && trip.startDate && <LessonPlanner store={store} trip={trip} students={students} labels={labels} notify={notify} />}
+
+      {(view === 'afvinken' || !trip.startDate) && (
+        <>
       {overview.length > 0 && (
         <ul className="lesson-overview">
           {overview.map((o) => (
@@ -104,6 +120,8 @@ export function LessonWeek({ store, trip, heading: Heading }: { store: Store; tr
           </div>
         )
       })}
+        </>
+      )}
       {choosing && <CoursesSheet store={store} trip={trip} participant={choosing} onClose={() => setChoosing(null)} />}
     </div>
   )

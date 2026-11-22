@@ -547,6 +547,7 @@ test('upgrade: vorige release → deze release in dezelfde opslag → schoon app
     if (lesweek?.lessonChecks) {
       expect(lesweek.participants?.map((p) => p.courses)).toEqual([['101', '103'], ['104', '114']])
       expect(lesweek.lessonChecks).toEqual({ T1: { at: '2026-09-20' }, P4: { at: '2026-09-22', open: ['upg-les-pb'] } })
+      expect((lesweek as { lessonPlan?: { days: unknown[] } }).lessonPlan?.days).toHaveLength(2)
     }
     const reviews = await decryptRecords(key, 'weekreviews.json.enc', Uint8Array.from(Buffer.from(github.files.get('weekreviews.json.enc')!.content, 'base64')))
     // Het voorbeeld van de vorige release komt ongeschonden over (alleen als die release het bestand al kende).

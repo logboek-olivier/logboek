@@ -302,7 +302,7 @@ export interface LessonStudent {
 
 /** Welke blokken in deze week voorkomen: alles wat bij een cursus van een student hoort; zonder cursussen alle blokken van 101 t/m 114. */
 export function blocksForWeek(students: readonly LessonStudent[], trip: Pick<Trip, 'boatKind'>): LessonBlock[] {
-  const all = new Set(students.flatMap((s) => s.courses))
+  const all = new Set(students.flatMap((s) => s.courses).filter((c) => !(isMonohull(trip) && c === '114')))
   const chosen = all.size > 0 ? all : new Set<LessonCourse>(isMonohull(trip) ? ['101', '103', '104'] : ['101', '103', '104', '114'])
   return LESSON_BLOCKS.filter((x) => x.courses.some((c) => chosen.has(c)))
 }

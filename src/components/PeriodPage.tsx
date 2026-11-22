@@ -97,7 +97,9 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
   const teaching = view.kind === 'werk' && view.type === 'training-geven'
   const tripStudents = activeStudents(students).filter((st) => studentWeek(st, trips, legs) === trip.id)
   const ownPlans = plans.filter((p) => p.deletedAt === null && planWeek(p, trips, legs) === trip.id)
-  const hasCourses = people.some((p) => p.curriculumId) || teaching || tripStudents.length > 0
+  // De oude checklists per ASA-onderwerp en het oude weekplan alleen bij een trip die ze gebruikt (een cursus bij een
+  // deelnemer of student, of al een planning); anders is de Lesweek genoeg.
+  const hasCourses = people.some((p) => p.curriculumId) || tripStudents.some((st) => st.curriculumId)
   const Heading = mode === 'page' ? 'h2' : 'h3'
   const hasMoney = transactions.some((tx) => tx.deletedAt === null && tx.tripId === trip.id)
 
@@ -190,7 +192,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
           </div>
 
           {/* Lesweek: afvinken per blok, bij les geven of met studenten. */}
-          {(teaching || people.some((p) => p.role === 'student')) && <LessonWeek store={store} trip={trip} heading={Heading} />}
+          {(teaching || people.some((p) => p.role === 'student')) && <LessonWeek store={store} trip={trip} notify={notify} heading={Heading} />}
 
           {/* Berichten aan de gasten (introductie, afsluiting, eigen soorten): alleen bij werk. */}
           {view.kind === 'werk' && <TripMessages store={store} notify={notify} trip={trip} heading={Heading} />}
@@ -204,7 +206,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
       )}
 
       {/* 4. Planning: lesplanning (bij les geven) en de vaste checklists bij de soort trip. */}
-      {mode === 'page' && teaching && !studentOpen && (
+      {mode === 'page' && teaching && (hasCourses || ownPlans.length > 0) && !studentOpen && (
         <div className="section">
           {!detail && <Heading>{t('plan.list')}</Heading>}
           <PlansView store={store} notify={notify} curricula={curricula} week={trip} onDetail={onPlanDetail ?? noop} />
