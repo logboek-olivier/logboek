@@ -1,12 +1,12 @@
-import { ChevronRight, MapPin, Pencil, Share2 } from 'lucide-react'
-import { Suspense, useState, type ReactNode } from 'react'
-import { formatDateRange, formatDateRangeShort, formatHours, formatNm, formatNumber } from '../format'
+import { MapPin, Pencil, Share2 } from 'lucide-react'
+import { Suspense, useState } from 'react'
+import { formatDateRangeShort, formatHours, formatNm, formatNumber } from '../format'
 import { t } from '../i18n'
 import { nameWithCounter, type TripCounter } from '../model/counters'
 import { placeUses } from '../model/places'
 import { routeOf } from '../model/trip-route'
 import type { Leg, StayPeriod, Trip } from '../model/types'
-import { feetToMetres, tripDayCounts, tripWeeks, weekView, type WeekView } from '../model/weeks'
+import { tripDayCounts, tripWeeks, weekView, type WeekView } from '../model/weeks'
 import { stayPeriod, waterPeriod } from '../model/periods'
 import { PeriodPage } from './PeriodPage'
 import { StaySheet } from './StaySheet'
@@ -22,7 +22,6 @@ import { RouteMap } from './LazyMap'
 import { Sheet } from './Sheet'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
-import { ViewRows } from './Views'
 import { organisationLabel, WeekSheet, weekTypeLabel } from './WeekSheet'
 
 // Tripoverzicht (lopende trip in Deze trip, en elke eerdere trip uit het Logboek): kop "SV #3 · BVI · 8–21 nov ·
@@ -49,43 +48,46 @@ export function kindLine(view: Pick<WeekView, 'kind' | 'type'>): string {
  * organisatie, model, lengte, basis, charter) staan na een tik in "Tripgegevens". `compact`: zonder de titel
  * (in het tripoverzicht staat die al bovenaan het blad).
  */
-export function TripHead({ view, counter, onEdit, legs, compact = false, menu }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean; menu?: ReactNode }) {
+/**
+ * Kop van een trip, alles in één rustige kaart zonder extra blad: naam met teller, regio, weken, datums en dagen, soort en
+ * organisatie, en de boot (naam, model, lengte, soort, basis). Bewerken via het potlood.
+ */
+export function TripHead({ view, counter, onEdit, legs, compact = false }: { view: WeekView; counter: TripCounter | undefined; onEdit?: () => void; legs: readonly Leg[]; compact?: boolean }) {
   const trip = view.trip
-  const [details, setDetails] = useState(false)
   const range = view.startDate && view.endDate ? formatDateRangeShort(view.startDate, view.endDate) : ''
   const weeks = view.startDate && view.endDate ? weeksText(tripWeeks(view.startDate, view.endDate)) : ''
-  const boat = trip.boat || trip.boatModel || legs.find((l) => l.tripId === trip.id)?.boat || ''
+  const boat = [boatLine(trip, legs.find((l) => l.tripId === trip.id)?.boat ?? ''), trip.base ?? ''].filter(Boolean).join(' · ')
+  const kind = [kindLine(view), trip.organisation ? organisationLabel(trip.organisation) : ''].filter(Boolean).join(' · ')
+  const incomplete = tripIncomplete(trip, legs)
   return (
     <div className="card trip-head">
-      <div className="trip-head-title">
-        {compact ? (
-          tripIncomplete(trip, legs) && <IncompleteBadge />
-        ) : (
-          <h2>
-            {nameWithCounter(trip, counter)} {tripIncomplete(trip, legs) && <IncompleteBadge />}
-          </h2>
-        )}
-        {onEdit && (
-          <button type="button" className="btn icon" aria-label={`${t('week.edit')}: ${trip.name}`} onClick={onEdit}>
-            <Icon icon={Pencil} />
-          </button>
-        )}
-        {menu}
-      </div>
-      <button type="button" className="trip-head-summary" onClick={() => setDetails(true)} aria-label={t('trip.detailsOpen', { name: trip.name })}>
-        <span className="trip-head-lines">
-          {trip.area?.trim() && (
-            <span className="trip-head-region">
-              <Icon icon={MapPin} />
-              {trip.area.trim()}
-            </span>
+      {(!compact || incomplete || onEdit) && (
+        <div className="trip-head-title">
+          {compact ? (
+            incomplete && <IncompleteBadge />
+          ) : (
+            <h2>
+              {nameWithCounter(trip, counter)} {incomplete && <IncompleteBadge />}
+            </h2>
           )}
-          <span className="trip-day-count">{[weeks, range, tripDaysText(view)].filter(Boolean).join(' · ')}</span>
-          {boat && <span className="muted">{boat}</span>}
-        </span>
-        <Icon icon={ChevronRight} />
-      </button>
-      {details && <TripDetailsSheet view={view} counter={counter} legs={legs} onClose={() => setDetails(false)} onEdit={onEdit} />}
+          {onEdit && (
+            <button type="button" className="btn icon" aria-label={`${t('week.edit')}: ${trip.name}`} onClick={onEdit}>
+              <Icon icon={Pencil} />
+            </button>
+          )}
+        </div>
+      )}
+      <div className="trip-head-lines">
+        {trip.area?.trim() && (
+          <span className="trip-head-region">
+            <Icon icon={MapPin} />
+            {trip.area.trim()}
+          </span>
+        )}
+        <span className="trip-day-count">{[weeks, range, tripDaysText(view)].filter(Boolean).join(' · ')}</span>
+        {kind && <span className="muted">{kind}</span>}
+        {boat && <span className="muted">{boat}</span>}
+      </div>
     </div>
   )
 }
@@ -94,45 +96,6 @@ export function TripHead({ view, counter, onEdit, legs, compact = false, menu }:
 export function weeksText(weeks: readonly number[]): string {
   if (weeks.length === 0) return ''
   return weeks.length === 1 ? t('week.ofYear', { n: weeks[0]! }) : t('week.ofYearRange', { from: weeks[0]!, to: weeks.at(-1)! })
-}
-
-/** Tripgegevens: alles wat de kop weglaat, eerst bekijken; bewerken via het potlood (als de trip hier te bewerken is). */
-function TripDetailsSheet({ view, counter, legs, onClose, onEdit }: { view: WeekView; counter: TripCounter | undefined; legs: readonly Leg[]; onClose: () => void; onEdit?: () => void }) {
-  const trip = view.trip
-  const length = trip.boatLengthFt ? t('boat.feet', { ft: formatNumber(trip.boatLengthFt), m: formatNumber(feetToMetres(trip.boatLengthFt)) }) : ''
-  return (
-    <Sheet
-      title={t('trip.details')}
-      onClose={onClose}
-      onEdit={
-        onEdit
-          ? () => {
-              onClose()
-              onEdit()
-            }
-          : undefined
-      }
-    >
-      <div className="view">
-        <ViewRows
-          rows={[
-            [t('trip.name'), nameWithCounter(trip, counter)],
-            [t('trip.kind'), kindLine(view)],
-            [t('week.organisation'), trip.organisation && organisationLabel(trip.organisation)],
-            [t('week.area'), trip.area],
-            [t('trip.dates'), view.startDate && view.endDate && formatDateRange(view.startDate, view.endDate)],
-            [t('stat.days'), tripDaysText(view)],
-            [t('boat.name'), trip.boat || legs.find((l) => l.tripId === trip.id)?.boat],
-            [t('boat.model'), trip.boatModel],
-            [t('boat.length'), length],
-            [t('boat.kind'), trip.boatKind && t(`boatKind.${trip.boatKind}`)],
-            [t('boat.base'), trip.base],
-            [t('boat.charter'), trip.charter],
-          ]}
-        />
-      </div>
-    </Sheet>
-  )
 }
 
 /** Kaart met de route, plaatsen zonder pin, en de totalen. */

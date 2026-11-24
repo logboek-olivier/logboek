@@ -8,7 +8,7 @@ import { Sheet } from './Sheet'
 import { landperiodeBewerken } from '../domain/agenda'
 
 // Een periode aan land bewerken: soort (reis, thuis, vrij), naam, datums, notitie en bij reis van, naar en vervoer.
-// Verwijderen staat niet hier maar onder "⋯" op de periodepagina (src/components/PeriodMenu.tsx).
+// Verwijderen staat niet hier maar onderaan de periodepagina (src/components/PeriodMenu.tsx).
 
 export function StaySheet({ store, stay, notify, onClose }: { store: Store; stay: StayPeriod; notify: Notify; onClose: () => void }) {
   const [kind, setKind] = useState<StayKind>(stay.kind)

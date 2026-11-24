@@ -22,6 +22,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     // over de ander heen.
     { id: 'upg-gouden-a', name: 'Nep zeilweekend', participants: [{ id: 'upg-gouden-pa', firstName: 'Nepgouda', curriculumId: 'upg-course-1', level: 'beginner' }], updatedAt: T, deletedAt: null },
     { id: 'upg-gouden-b', name: 'Nep zeilweekend', participants: [{ id: 'upg-gouden-pb', firstName: 'Nepgoudb' }], updatedAt: T, deletedAt: null },
+    // Lesweek (schrijfversie 16): een student met twee cursussen, afgevinkte blokken (één met "nog niet") en een weekplanning.
+    { id: 'upg-trip-les', name: 'Nep lesweek upgrade', kind: 'werk', type: 'training-geven', boatKind: 'catamaran', startDate: '2026-09-20', endDate: '2026-09-26', participants: [{ id: 'upg-les-pa', firstName: 'Neplesa', role: 'student', courses: ['101', '103'] }, { id: 'upg-les-pb', firstName: 'Neplesb', role: 'student', courses: ['104', '114'] }], lessonChecks: { T1: { at: '2026-09-20' }, P4: { at: '2026-09-22', open: ['upg-les-pb'] } }, lessonPlan: { days: [{ date: '2026-09-20', ochtend: [], middag: ['T1'], avond: [] }, { date: '2026-09-21', wind: 'veel', dock: true, ochtend: ['T2', 'P1'], middag: ['T11', 'P5'], avond: [] }] }, updatedAt: T, deletedAt: null },
     { id: 'upg-trip-1', name: 'Nepweek upgrade', type: 'skipper-charter', organisation: 'yacht-week', startDate: '2026-10-18', endDate: '2026-10-24', boat: 'Nepboot', boatModel: 'Nepmodel 40', boatLengthFt: 40, base: 'Nephaven', expectedTip: { amount: 400, currency: 'USD' }, messageFields: { meetingPlace: 'Nepmarina', meetingTime: '16:00' }, messages: { introductie: { status: 'verstuurd', date: '2026-10-16' } }, checks: { 'seed-paklijst': [] }, participants: [{ id: 'upg-p-1', firstName: 'Nepnick', country: 'VS', tag: 'B', guestId: 'upg-p-0' }, { id: 'upg-p-2', firstName: 'Nepanna', country: 'NL', role: 'medezeiler' }], updatedAt: T, deletedAt: null },
   ],
   'legs.json.enc': [
@@ -53,6 +55,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-thuis', date: '2026-11-11', kind: 'kosten', amount: 7.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
     // Kosten (ronde 3): een losse uitgave met een soort.
     { id: 'upg-tx-kosten', date: '2026-10-19', kind: 'kosten', amount: 12.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
+    // Privé-uitgave (schrijfversie 16): bewust bij geen periode.
+    { id: 'upg-tx-prive', date: '2026-10-20', kind: 'kosten', amount: 30, currency: 'EUR', source: 'overig', category: 'overig', note: 'Nepcadeau', personal: true, updatedAt: T, deletedAt: null },
     // Declaraties (ronde 3): de uitgave bij een declaratie, met claimId.
     { id: 'upg-tx-claim', date: '2026-10-20', kind: 'kosten', amount: 18.4, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', category: 'overig', claimId: 'upg-claim-1', updatedAt: T, deletedAt: null },
   ],
@@ -99,7 +103,11 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-stay-reis', kind: 'reis', name: 'Nepreis', startDate: '2026-12-06', endDate: '2026-12-06', travel: { from: 'Nepstad', to: 'Nephaven', by: 'vliegtuig' }, updatedAt: T, deletedAt: null },
   ],
   // Vaste lasten (ronde 3): een bedrag dat vanaf een maand verandert.
-  'fixedcosts.json.enc': [{ id: 'upg-fixed-1', name: 'Nepabonnement', currency: 'EUR', amounts: [{ from: '2026-09', amount: 20 }, { from: '2026-11', amount: 25 }], updatedAt: T, deletedAt: null }],
+  'fixedcosts.json.enc': [
+    { id: 'upg-fixed-1', name: 'Nepabonnement', currency: 'EUR', amounts: [{ from: '2026-09', amount: 20 }, { from: '2026-11', amount: 25 }], updatedAt: T, deletedAt: null },
+    // Jaarlijks (schrijfversie 16): alleen in maart.
+    { id: 'upg-fixed-jaar', name: 'Nepjaarabonnement', currency: 'EUR', every: 'jaar', amounts: [{ from: '2026-03', amount: 120 }], updatedAt: T, deletedAt: null },
+  ],
   // Declaraties (ronde 3): een ingediende declaratie zonder bonnetje en een terugbetaalde.
   'claims.json.enc': [
     { id: 'upg-claim-1', date: '2026-10-20', tripId: 'upg-trip-1', note: 'Nepbonnetje', amount: 18.4, currency: 'EUR', status: 'ingediend', submittedAt: '2026-10-21', updatedAt: T, deletedAt: null },

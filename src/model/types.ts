@@ -78,6 +78,40 @@ export interface Participant {
    * aan het eigen id na "nee", zodat de vraag niet terugkomt. Ontbreekt = nog niet gevraagd.
    */
   guestId?: string
+  /**
+   * Schrijfversie 16: de cursussen die deze student in de lesweek doet (meerdere tegelijk, zoals 101 en 103). Ontbreekt =
+   * nog niet gekozen (src/model/lesweek.ts).
+   */
+  courses?: LessonCourse[]
+}
+
+/** Een cursus in de lesweek. `plus` is geen certificaat: extra uitdaging voor een sterke student (104+). */
+export type LessonCourse = '101' | '103' | '104' | '114' | '106' | 'plus'
+
+/**
+ * Een afgevinkt blok van de lesweek (src/model/lesweek.ts): de datum, en bij een studentblok de studenten (deelnemer-id's)
+ * die het nog niet kunnen.
+ */
+export interface LessonCheck {
+  at: string
+  open?: string[]
+}
+
+/** Dagdeel in de lesweekplanner: ochtend, middag of eind van de dag (examens, rond 17–18 uur). */
+export type LessonSlot = 'ochtend' | 'middag' | 'avond'
+
+/** Eén dag van de lesweekplanner: wind (ontbreekt = normaal), steiger beschikbaar, en de blok-id's per dagdeel. */
+export interface LessonPlanDay {
+  date: string
+  wind?: 'weinig' | 'veel'
+  dock?: boolean
+  ochtend: string[]
+  middag: string[]
+  avond: string[]
+}
+
+export interface LessonPlan {
+  days: LessonPlanDay[]
 }
 
 /** Van wie een fooi komt. Ontbreekt = onbekend (ook bij oudere fooien). */
@@ -169,6 +203,11 @@ export interface FixedCost extends SyncRecord {
   currency: Currency
   /** Oudste eerst; `from` is jjjj-mm. */
   amounts: { from: string; amount: number }[]
+  /**
+   * Schrijfversie 16: `jaar` = een jaarlijks bedrag (een abonnement), betaald in de maand van `from` van het bedrag dat
+   * geldt, elk jaar opnieuw. Ontbreekt = per maand.
+   */
+  every?: 'jaar'
 }
 
 export interface WeekReview {
@@ -253,6 +292,10 @@ export interface Trip extends SyncRecord {
    * datum. De tekst van het bericht zelf wordt nooit bewaard (regel 14: voornamen alleen in de trip).
    */
   messages?: Record<string, MessageMark>
+  /** Schrijfversie 16: de afgevinkte blokken van de lesweek, per blok-id (T1, P3, examen-101). */
+  lessonChecks?: Record<string, LessonCheck>
+  /** Schrijfversie 16: de weekplanning van de lesweek (src/model/lesweek-plan.ts). */
+  lessonPlan?: LessonPlan
 }
 
 /** De velden van een bericht die de app niet uit de trip, boot of plaatsen kan halen. */
@@ -355,6 +398,11 @@ export interface Transaction extends SyncRecord {
    * aan de maand, niet aan een periode.
    */
   fixedCostId?: string
+  /**
+   * Schrijfversie 16: een privé-uitgave (bijvoorbeeld een cadeau): kosten om te leven die bewust bij geen periode horen.
+   * Geen `tripId`, en nooit in Nakijken als "geld zonder periode".
+   */
+  personal?: boolean
   /**
    * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
    * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.

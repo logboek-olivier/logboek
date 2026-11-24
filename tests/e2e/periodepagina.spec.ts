@@ -64,10 +64,8 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       const at = (text: string) => order.indexOf(text)
       expect(at(L('period.routeAndDays'))).toBeGreaterThanOrEqual(0)
       expect(at(L('period.routeAndDays'))).toBeLessThan(at(L('checklist.section')))
-      // De soort staat in Tripgegevens (een tik op de kop), niet meer in de kop zelf.
-      await page.locator('.trip-head-summary').click()
-      await expect(page.getByRole('dialog', { name: L('trip.details') })).toContainText(`${L('periodKind.werk')} · ${L('weekType.skipper-charter')}`)
-      await page.getByRole('dialog', { name: L('trip.details') }).getByRole('button', { name: L('common.close') }).click()
+      // De soort staat in de kop zelf.
+      await expect(page.locator('.trip-head')).toContainText(`${L('periodKind.werk')} · ${L('weekType.skipper-charter')}`)
       await expect(page.locator('.leg-row')).toHaveCount(1)
       await shots(page, 'deze-trip', lang, true)
 

@@ -1,5 +1,7 @@
 // Opdrachten voor de training: cursussen, studenten en planningen. Elke wijziging is een benoemde opdracht via `commit` (src/domain/commit.ts, docs/FUNDERING.md).
 
+import { deleteLessonPlan, saveLessonPlan } from '../model/lesweek-plan'
+import { setLessonCourses, toggleLessonBlock, toggleLessonStudent } from '../model/lesweek'
 import { deleteCurriculum, saveCurriculum } from '../model/curricula'
 import { deletePlan, savePlan, setGroupCurriculum, setPlanTrip } from '../model/plans'
 import { addStudent, autoArchive, deleteStudents, saveStudents, setArchived, setStudentCurriculum, updateStudent, type StudentInput } from '../model/students'
@@ -32,3 +34,8 @@ export const persoonBewerken = opdracht('persoonBewerken', editPerson)
 export const studentenArchiveren = opdracht('studentenArchiveren', autoArchive)
 export const studentenOpslaan = opdracht('studentenOpslaan', saveStudents)
 export const studentenWissen = opdracht('studentenWissen', deleteStudents)
+export const lesblokAfvinken = opdracht('lesblokAfvinken', toggleLessonBlock)
+export const lesblokStudentWisselen = opdracht('lesblokStudentWisselen', toggleLessonStudent)
+export const lescursussenZetten = opdracht('lescursussenZetten', setLessonCourses)
+export const lesplanningOpslaan = opdracht('lesplanningOpslaan', saveLessonPlan)
+export const lesplanningVerwijderen = opdracht('lesplanningVerwijderen', deleteLessonPlan)

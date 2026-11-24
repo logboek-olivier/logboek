@@ -58,14 +58,14 @@ export async function addMoney(tx: Tx, fields: NewMoney, tripId: string | null, 
 export async function addExpense(tx: Tx, target: ExpenseTarget, fields: Omit<NewMoney, 'source'>, remember: Remember): Promise<Transaction> {
   const tripId = (await resolveTarget(tx, target, fields.date)) ?? null
   const trip = tripId ? tx.list('trips.json.enc').find((x) => x.id === tripId) : undefined
-  return addMoney(tx, { ...fields, source: sourceForPeriod(trip) }, tripId, remember)
+  return addMoney(tx, { ...fields, source: sourceForPeriod(trip), ...(target.kind === 'prive' ? { personal: true } : {}) }, tripId, remember)
 }
 
 /** Een uitgave bewerken met Hoort bij (een declaratie-uitgave volgt haar declaratie en gaat via geldBewerken). */
 export async function editExpense(tx: Tx, record: Transaction, target: ExpenseTarget, patch: Omit<TransactionPatch, 'tripId' | 'source'>): Promise<void> {
   const tripId = (await resolveTarget(tx, target, patch.date)) ?? null
   const trip = tripId ? tx.list('trips.json.enc').find((x) => x.id === tripId) : undefined
-  await updateTransaction(tx, record, { ...patch, tripId, source: sourceOnSave(trip, record.source) })
+  await updateTransaction(tx, record, { ...patch, tripId, source: sourceOnSave(trip, record.source), personal: target.kind === 'prive' })
 }
 
 /**

@@ -16,11 +16,45 @@ import { allPeriods, periodAt } from './periods'
 
 const month = (date: string) => date.slice(0, 7)
 
-/** Het bedrag van een vaste last in een maand: het laatste bedrag vanaf die maand of eerder (0 vóór het begin). */
+/**
+ * Het bedrag van een vaste last in een maand: het laatste bedrag vanaf die maand of eerder (0 vóór het begin). Een
+ * jaarlijkse vaste last kost alleen iets in zijn betaalmaand (de maand van `from` van het bedrag dat geldt).
+ */
 export function fixedAmount(cost: FixedCost, m: string): number {
+  let current: { from: string; amount: number } | null = null
+  for (const a of [...cost.amounts].sort((x, y) => x.from.localeCompare(y.from))) if (a.from <= m) current = a
+  if (!current) return 0
+  if (cost.every === 'jaar') return current.from.slice(5, 7) === m.slice(5, 7) ? current.amount : 0
+  return current.amount
+}
+
+/** Het bedrag dat nu geldt (per maand, of per jaar bij een jaarlijkse vaste last). */
+export function fixedRate(cost: FixedCost, m: string): number {
   let amount = 0
   for (const a of [...cost.amounts].sort((x, y) => x.from.localeCompare(y.from))) if (a.from <= m) amount = a.amount
   return amount
+}
+
+/** De betaalmaand (1–12) van een jaarlijkse vaste last die nu geldt; null bij per maand. */
+export function fixedDueMonth(cost: FixedCost, m: string): number | null {
+  if (cost.every !== 'jaar') return null
+  const sorted = [...cost.amounts].sort((x, y) => x.from.localeCompare(y.from))
+  const current = sorted.filter((a) => a.from <= m).at(-1) ?? sorted[0]
+  return current ? Number(current.from.slice(5, 7)) : null
+}
+
+/** Per maand gemiddeld (een jaarlijks bedrag gedeeld door 12), voor het totaal "samen per maand". */
+export function fixedMonthlyEquivalent(costs: readonly FixedCost[], m: string, rates: RatesFile | null): { eur: number; other: Partial<Record<Currency, number>> } {
+  const out = { eur: 0, other: {} as Partial<Record<Currency, number>> }
+  for (const c of active(costs)) {
+    const rate = fixedRate(c, m)
+    const amount = c.every === 'jaar' ? round2(rate / 12) : rate
+    if (amount <= 0) continue
+    const v = toEur(amount, c.currency, `${m}-01`, rates)
+    if (v === null) out.other[c.currency] = round2((out.other[c.currency] ?? 0) + amount)
+    else out.eur = round2(out.eur + v.eur)
+  }
+  return out
 }
 
 /** Vaste lasten van een maand in euro; zonder koers per valuta apart. */
@@ -37,12 +71,13 @@ export function fixedInMonth(costs: readonly FixedCost[], m: string, rates: Rate
 }
 
 /** Een nieuwe vaste last vanaf een maand. */
-export async function addFixedCost(store: Tx, input: { name: string; amount: number; currency: Currency; from: string }): Promise<FixedCost> {
+export async function addFixedCost(store: Tx, input: { name: string; amount: number; currency: Currency; from: string; every?: 'jaar' }): Promise<FixedCost> {
   const record: FixedCost = {
     id: newId(),
     name: input.name.trim().slice(0, 80),
     currency: input.currency,
     amounts: [{ from: input.from, amount: round2(input.amount) }],
+    ...(input.every === 'jaar' ? { every: 'jaar' as const } : {}),
     updatedAt: new Date().toISOString(),
     deletedAt: null,
   }

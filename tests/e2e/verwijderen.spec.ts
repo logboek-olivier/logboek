@@ -65,14 +65,13 @@ test('overlappende trips zonder melding, tikfout in de naam herstellen, trip met
   await page.getByRole('button', { name: 'Opslaan' }).click()
   await openLogbook(page)
   await page.locator('.trip').filter({ hasText: 'Nepweek eerder' }).getByRole('button').first().click()
-  // Verwijderen staat alleen onder "⋯" in de kop van de periode, nooit in het bewerkscherm of bij de dagen.
+  // Verwijderen staat onderaan de periodepagina, nooit in het bewerkscherm of bij de dagen.
   await page.getByRole('dialog').getByRole('button', { name: 'Bewerken', exact: true }).click()
   await expect(page.getByRole('dialog').getByRole('button', { name: /^(Trip|Periode) verwijderen$/ })).toHaveCount(0)
   // Sluiten: terug in het tripoverzicht (terug waar je was).
   await page.getByRole('dialog').getByRole('button', { name: 'Sluiten' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Meer bij Nepweek eerder' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Periode verwijderen' }).click()
   const menu = page.getByRole('dialog').last()
-  await menu.getByRole('button', { name: 'Periode verwijderen' }).click()
   await expect(menu.locator('.delete-choice')).toContainText('Hieraan hangt: 1 gelogde dag.')
   await expect(menu.getByRole('button', { name: 'Geld en dagen behouden zonder periode' })).toBeVisible()
   await expectNoHorizontalOverflow(page)

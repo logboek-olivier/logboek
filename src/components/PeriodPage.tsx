@@ -26,7 +26,9 @@ import { Icon } from './Icon'
 import { PeriodMoneyAddSheet, type MoneyAdd } from './PeriodMoneyAdd'
 import { TripHead, TripRouteSection } from './TripOverview'
 import { TripMessages } from './MessageSheets'
-import { PeriodMenu } from './PeriodMenu'
+import { PeriodActions } from './PeriodMenu'
+import { PersonSheet } from './PersonSheet'
+import { LessonWeek } from './LessonWeek'
 import { TripMoneySection } from './TripMoney'
 import { useCollection } from './useCollection'
 import { useCounters } from './useCounters'
@@ -34,6 +36,7 @@ import { LegView, ParticipantView, TransactionView } from './Views'
 import { CloseWeekSheet } from './WeekSheet'
 import { formatNm } from '../format'
 import { checklistToevoegen, terugkerendeGastBeantwoorden } from '../domain/trips'
+import { persoonToevoegen } from '../domain/training'
 import { daysBetween, todayIso } from '../basis/datum'
 
 // Eén periodepagina, overal hetzelfde (Deze trip, het tripoverzicht uit de agenda, het Logboek, Vandaag en de lijst met
@@ -49,7 +52,7 @@ export interface PeriodPageProps {
   mode: 'page' | 'sheet'
   /** Potlood in de kop (in een onderblad staat het potlood in de kop van het blad). */
   onEdit?: () => void
-  /** Na "Periode verwijderen" (onder "⋯"): het blad sluiten. */
+  /** Na "Periode verwijderen" (onderaan de pagina): het blad sluiten. */
   onDeleted?: () => void
   /** Planning of student open (volledig scherm in Deze trip): de andere onderdelen wijken. */
   planOpen?: boolean
@@ -78,6 +81,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
   const [participant, setParticipant] = useState<Participant | null>(null)
   const [closing, setClosing] = useState(false)
   const [adding, setAdding] = useState<MoneyAdd | null>(null)
+  const [addingPerson, setAddingPerson] = useState(false)
   const trip = trips.find((x) => x.id === given.id) ?? given
   const live = active(legs)
   const full = weekView(trip, live)
@@ -93,7 +97,9 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
   const teaching = view.kind === 'werk' && view.type === 'training-geven'
   const tripStudents = activeStudents(students).filter((st) => studentWeek(st, trips, legs) === trip.id)
   const ownPlans = plans.filter((p) => p.deletedAt === null && planWeek(p, trips, legs) === trip.id)
-  const hasCourses = people.some((p) => p.curriculumId) || teaching || tripStudents.length > 0
+  // De oude checklists per ASA-onderwerp en het oude weekplan alleen bij een trip die ze gebruikt (een cursus bij een
+  // deelnemer of student, of al een planning); anders is de Lesweek genoeg.
+  const hasCourses = people.some((p) => p.curriculumId) || tripStudents.some((st) => st.curriculumId)
   const Heading = mode === 'page' ? 'h2' : 'h3'
   const hasMoney = transactions.some((tx) => tx.deletedAt === null && tx.tripId === trip.id)
 
@@ -102,7 +108,7 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
       {!detail && (
         <>
           {/* 1. Overzicht */}
-          <TripHead view={view} counter={counter} legs={legs} compact={mode === 'sheet'} onEdit={onEdit} menu={<PeriodMenu store={store} notify={notify} trip={trip} onDeleted={onDeleted} />} />
+          <TripHead view={view} counter={counter} legs={legs} compact={mode === 'sheet'} onEdit={onEdit} />
           {missing.length > 0 && (
             <div className="notice">
               <p className="small">{t('trip.missingDays', { n: missing.length })}</p>
@@ -125,63 +131,68 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
           </div>
 
           {/* 3. Mensen */}
-          {(people.length > 0 || returning.length > 0 || hasCourses) && (
-            <div className="section">
-              <Heading>{t('period.people')}</Heading>
-              {people.length > 0 && (
-                <ul className="participant-chips">
-                  {people.map((p) => {
-                    const course = curricula.find((c) => c.id === p.curriculumId)
-                    return (
-                      <li key={p.id}>
-                        <button type="button" className="chip-static participant-chip" onClick={() => setParticipant(p)} aria-label={`${t('participant.open')}: ${participantName(p, people)}`}>
-                          <Icon icon={Users} />
-                          <span>{participantName(p, people)}</span>
-                          {(p.level || course) && <span className="muted small">{[p.level ? t(`level.${p.level}`) : '', course ? courseLabel(course, lang) : ''].filter(Boolean).join(' · ')}</span>}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {returning.map((r) => {
-                const name = participantName(r.participant, people)
-                return (
-                  <div key={r.participant.id} className="notice returning-guest">
-                    <span>{t('guest.same', { name, previous: guestLabel(r.previous), trip: r.previousTrip.name })}</span>
-                    <span className="notice-actions">
-                      <button
-                        className="btn small primary"
-                        onClick={async () => {
-                          await terugkerendeGastBeantwoorden(store, trip.id, r.participant.id, r.previous)
-                          notify(t('guest.linked', { name }))
-                        }}
-                      >
-                        {t('guest.yes')}
+          <div className="section stack-sm">
+            <Heading>{t('period.people')}</Heading>
+            {people.length > 0 && (
+              <ul className="participant-chips">
+                {people.map((p) => {
+                  const course = curricula.find((c) => c.id === p.curriculumId)
+                  return (
+                    <li key={p.id}>
+                      <button type="button" className="chip-static participant-chip" onClick={() => setParticipant(p)} aria-label={`${t('participant.open')}: ${participantName(p, people)}`}>
+                        <Icon icon={Users} />
+                        <span>{participantName(p, people)}</span>
+                        {(p.level || course) && <span className="muted small">{[p.level ? t(`level.${p.level}`) : '', course ? courseLabel(course, lang) : ''].filter(Boolean).join(' · ')}</span>}
                       </button>
-                      <button
-                        className="btn small"
-                        onClick={async () => {
-                          await terugkerendeGastBeantwoorden(store, trip.id, r.participant.id, null)
-                          notify(t('guest.notLinked', { name }))
-                        }}
-                      >
-                        {t('guest.no')}
-                      </button>
-                    </span>
-                  </div>
-                )
-              })}
-              {mode === 'sheet' && tripStudents.length > 0 && <h4>{t('students.title')}</h4>}
-              {mode === 'sheet' && tripStudents.length > 0 && (
-                <ul className="rows">
-                  {tripStudents.map((st) => (
-                    <StudentRow key={st.id} student={st} course={curricula.find((c) => c.id === st.curriculumId)} onOpen={() => openStudent(st.id)} />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {returning.map((r) => {
+              const name = participantName(r.participant, people)
+              return (
+                <div key={r.participant.id} className="notice returning-guest">
+                  <span>{t('guest.same', { name, previous: guestLabel(r.previous), trip: r.previousTrip.name })}</span>
+                  <span className="notice-actions">
+                    <button
+                      className="btn small primary"
+                      onClick={async () => {
+                        await terugkerendeGastBeantwoorden(store, trip.id, r.participant.id, r.previous)
+                        notify(t('guest.linked', { name }))
+                      }}
+                    >
+                      {t('guest.yes')}
+                    </button>
+                    <button
+                      className="btn small"
+                      onClick={async () => {
+                        await terugkerendeGastBeantwoorden(store, trip.id, r.participant.id, null)
+                        notify(t('guest.notLinked', { name }))
+                      }}
+                    >
+                      {t('guest.no')}
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+            <button type="button" className="btn" onClick={() => setAddingPerson(true)}>
+              <Icon icon={Plus} />
+              {t('people.add')}
+            </button>
+            {mode === 'sheet' && tripStudents.length > 0 && <h4>{t('students.title')}</h4>}
+            {mode === 'sheet' && tripStudents.length > 0 && (
+              <ul className="rows">
+                {tripStudents.map((st) => (
+                  <StudentRow key={st.id} student={st} course={curricula.find((c) => c.id === st.curriculumId)} onOpen={() => openStudent(st.id)} />
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Lesweek: afvinken per blok, bij les geven of met studenten. */}
+          {(teaching || people.some((p) => p.role === 'student')) && <LessonWeek store={store} trip={trip} notify={notify} heading={Heading} />}
 
           {/* Berichten aan de gasten (introductie, afsluiting, eigen soorten): alleen bij werk. */}
           {view.kind === 'werk' && <TripMessages store={store} notify={notify} trip={trip} heading={Heading} />}
@@ -195,10 +206,11 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
       )}
 
       {/* 4. Planning: lesplanning (bij les geven) en de vaste checklists bij de soort trip. */}
-      {mode === 'page' && teaching && !studentOpen && (
+      {/* Oude planningen (van vóór de Lesweek): alleen nog te openen, een nieuwe planning maakt de Lesweek. */}
+      {mode === 'page' && ownPlans.length > 0 && !studentOpen && (
         <div className="section">
           {!detail && <Heading>{t('plan.list')}</Heading>}
-          <PlansView store={store} notify={notify} curricula={curricula} week={trip} onDetail={onPlanDetail ?? noop} />
+          <PlansView store={store} notify={notify} curricula={curricula} week={trip} onDetail={onPlanDetail ?? noop} allowNew={false} />
         </div>
       )}
       {!detail && (
@@ -242,6 +254,24 @@ function WaterPeriod({ store, notify, mode, onEdit, onDeleted, planOpen = false,
           )}
         </>
       )}
+      {!detail && <PeriodActions store={store} notify={notify} trip={trip} onDeleted={onDeleted} />}
+      {addingPerson && (
+        <PersonSheet
+          person={null}
+          trips={[trip]}
+          tripLabel={(x) => x.name}
+          defaultTripId={trip.id}
+          fixedTrip
+          defaultRole={teaching ? 'student' : view.type === 'skipper-charter' ? 'gast' : view.type === 'delivery' ? 'crew' : 'medezeiler'}
+          onClose={() => setAddingPerson(false)}
+          onSave={(form) =>
+            void persoonToevoegen(store, trip.id, { firstName: form.firstName, role: form.role, country: form.country, tag: form.tag }).then(({ undo }) => {
+              setAddingPerson(false)
+              notify(t('people.added'), undo)
+            })
+          }
+        />
+      )}
       {participant && <ParticipantView store={store} trip={trip} participant={participant} notify={notify} onClose={() => setParticipant(null)} onOpenStudent={openStudent} />}
       {closing && <CloseWeekSheet store={store} trip={trip} notify={notify} onClose={() => setClosing(false)} />}
       {adding && <PeriodMoneyAddSheet store={store} what={adding} periodId={trip.id} title={nameWithCounter(trip, counter)} onClose={() => setAdding(null)} notify={notify} />}
@@ -261,7 +291,6 @@ function LandPeriod({ store, notify, period, onDeleted, stay: given }: PeriodPag
       <div className="card trip-head">
         <div className="trip-head-title">
           <p className="muted small">{[t(`periodKind.${stay.kind}`), formatDateRange(stay.startDate, stay.endDate)].join(' · ')}</p>
-          <PeriodMenu store={store} notify={notify} stay={stay} onDeleted={onDeleted} />
         </div>
         <p className="muted small">{t('unit.days', { n: days })}</p>
         {travel && <p className="muted small">{travel}</p>}
@@ -278,6 +307,7 @@ function LandPeriod({ store, notify, period, onDeleted, stay: given }: PeriodPag
           <p className="note-text">{stay.note}</p>
         </div>
       )}
+      <PeriodActions store={store} notify={notify} stay={stay} onDeleted={onDeleted} />
       {adding && <PeriodMoneyAddSheet store={store} what={adding} periodId={stay.id} title={period.name || stayName(stay)} onClose={() => setAdding(null)} notify={notify} />}
     </div>
   )

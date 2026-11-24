@@ -36,6 +36,9 @@ import { dagAutomatisch, dagOpslaan, dagsoortKiezen, periodeDatumsWijzigen } fro
 import { dagZoalsGepland } from '../domain/dagen'
 import { todayIso } from '../basis/datum'
 
+/** Groepsleutel voor privé-uitgaven in het geld van een dag (geen periode-id). */
+const PERSONAL = 'prive:'
+
 // Dagblad: dagsoort als knoppen (één tik slaat op; "Automatisch" volgt weer de trips en dagen). Bij werk de trip, de
 // boot (van de trip, per dag te overschrijven), "Zoals gepland" of "Dag loggen", nm en inkomsten (bedragen pas na
 // "Toon bedragen": studenten kunnen meekijken); bij reis van, naar en vlucht; altijd een notitie; de termijnen van de dag.
@@ -559,13 +562,16 @@ function DayMoney({ store, date }: { store: Store; date: string }) {
   const [shown, setShown] = useState(false)
   if (list.length === 0) return null
   const nameOf = (id: string | undefined) => {
+    if (id === PERSONAL) return t('belongsTo.personal')
     const trip = id ? trips.find((x) => x.id === id && x.deletedAt === null) : undefined
     if (trip) return nameWithCounter(trip, counters.get(trip.id))
     const stay = id ? stays.find((x) => x.id === id && x.deletedAt === null) : undefined
     return stay ? stayName(stay) : t('day.noPeriod')
   }
   const groups = new Map<string, typeof list>()
-  for (const tx of list) groups.set(tx.tripId ?? '', [...(groups.get(tx.tripId ?? '') ?? []), tx])
+  // Privé-uitgaven (bij geen periode) staan samen onder "Privé".
+  const groupKey = (tx: (typeof list)[number]) => tx.tripId ?? (tx.personal ? PERSONAL : '')
+  for (const tx of list) groups.set(groupKey(tx), [...(groups.get(groupKey(tx)) ?? []), tx])
   return (
     <div className="day-tips">
       <div className="section-head">

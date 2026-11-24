@@ -76,7 +76,7 @@ export function violations(reader: Reader): Violation[] {
     // Een salaris mag 0 zijn (geen salaris, of nog geen bedrag); al het andere geld heeft een bedrag.
     if (!(finite(tx.amount) && (tx.amount > 0 || (tx.kind === 'loon' && tx.amount === 0)))) out.push(v('getal', 'transactions.json.enc', tx.id))
     // Geld bij een eerder seizoen hoort bij geen tocht of periode, en dat klopt.
-    if (!(tx.claimId && liveClaims.has(tx.claimId)) && !tx.fixedCostId && !tx.season && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
+    if (!(tx.claimId && liveClaims.has(tx.claimId)) && !tx.fixedCostId && !tx.season && !(tx.personal && !tx.tripId) && !(tx.tripId && periodIds.has(tx.tripId))) out.push(v('geld-zonder-periode', 'transactions.json.enc', tx.id))
     if (tx.kind === 'loon' && tx.tripId) {
       salaries.set(tx.tripId, (salaries.get(tx.tripId) ?? 0) + 1)
       if (salaryStatus(tx) === 'ontvangen' && tx.amount === 0) out.push(v('salaris-zonder-bedrag', 'transactions.json.enc', tx.id))

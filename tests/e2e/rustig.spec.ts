@@ -33,16 +33,13 @@ test('rustige schermen: Vandaag zonder voorbije trip, korte tripkop, dag en trip
   await expect(page.locator('.today-trip')).toHaveCount(0)
   await expect(page.locator('.today-kind')).toBeVisible()
 
-  // Deze trip: een korte kop (naam, datums en dagen); soort en boot staan in Tripgegevens. Geen komende trips.
+  // Deze trip: één kop met naam, datums en dagen; geen extra blad met tripgegevens. Geen komende trips.
   await nav.getByRole('button', { name: 'Deze trip', exact: true }).click()
   const head = page.locator('.trip-head')
   await expect(head.locator('h2')).toHaveText(/Nepweek Rustig/)
   await expect(head).toContainText('5 dagen')
   await expect(page.locator('main')).not.toContainText('Komende trips')
-  await page.locator('.trip-head-summary').click()
-  const details = page.getByRole('dialog', { name: 'Tripgegevens' })
-  await expect(details).toContainText('Nepweek Rustig')
-  await details.getByRole('button', { name: 'Sluiten' }).click()
+  await expect(page.locator('.trip-head-summary')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
 
   // Agenda: de dagkaart zegt bij welke trip de dag hoort; de trip heeft een terugknop naar die dag.

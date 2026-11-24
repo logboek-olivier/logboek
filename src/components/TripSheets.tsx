@@ -10,7 +10,7 @@ import { Icon } from './Icon'
 import { Sheet } from './Sheet'
 import { deelnemerVerwijderen, deelnemerWijzigen } from '../domain/trips'
 
-// Eén deelnemer bewerken of verwijderen. Een periode verwijderen staat onder "⋯" op de periodepagina
+// Eén deelnemer bewerken of verwijderen. Een periode verwijderen staat onderaan de periodepagina
 // (src/components/PeriodMenu.tsx). Trips mogen overlappen: daar is geen melding of keuze meer voor.
 
 /** Eén deelnemer: alle velden, en onderaan verwijderen (met ongedaan maken). Alleen voornaam, land en kort kenmerk (regel 14). */

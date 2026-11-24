@@ -3619,33 +3619,11 @@ body.presenting .bottom-bar {
 }
 
 /* De rest van de tripgegevens zit achter één tik (Tripgegevens): de kop blijft rustig. */
-.trip-head-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  width: 100%;
-  min-height: 44px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
 .trip-head-lines {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-}
-
-.trip-head-summary > .icon {
-  flex: none;
-  color: var(--text-muted);
 }
 
 .trip-totals {
@@ -5344,4 +5322,233 @@ button.drill-post {
 .day-money-total {
   border-top: 1px solid var(--border);
   padding-top: var(--s-2);
+}
+
+/* Lesweek: afvinken per blok */
+.lesson-overview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.lesson-overview summary {
+  cursor: pointer;
+}
+
+.lesson-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.lesson-check {
+  display: flex;
+  min-width: 52px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 0 var(--s-3);
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lesson-block.on .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.lesson-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-4) var(--s-1) var(--s-3);
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lesson-block.on .lesson-title .row-main > span:first-child {
+  color: var(--text-muted);
+}
+
+.lesson-code {
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.lesson-detail {
+  padding: 0 var(--s-4) var(--s-3) calc(52px + var(--s-3));
+}
+
+.lesson-elements {
+  margin: 0;
+  padding-left: var(--s-4);
+}
+
+.lesson-blocks .lesson-elements li + li {
+  border-top: none;
+}
+
+.lesson-label {
+  margin-left: var(--s-2);
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+}
+
+.lesson-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.lesson-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.lesson-name.ok {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lesson-name.not-yet {
+  border-color: var(--negative);
+  background: var(--negative-soft);
+  color: var(--negative);
+}
+
+/* Onderaan de periodepagina: geschiedenis, en verwijderen in een eigen rij met een lijn erboven. */
+.period-actions {
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.period-actions > .btn.danger {
+  margin-top: var(--s-4);
+}
+
+/* Lesweek: planning per dag */
+.lesson-day {
+  padding: var(--s-3) var(--s-4);
+}
+
+.lesson-day.today {
+  border-color: var(--accent);
+}
+
+.lesson-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+
+.lesson-day-date {
+  flex: 1;
+  font-weight: var(--fw-medium);
+}
+
+.lesson-day-inputs {
+  display: flex;
+  flex: 1 1 100%;
+  gap: var(--s-2);
+}
+
+.lesson-day-head .chip,
+.lesson-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  padding: 0 var(--s-2);
+  font-size: var(--fs-xs);
+  text-align: left;
+}
+
+.lesson-day-head .chip .icon,
+.lesson-chip .icon {
+  --icon: 14px;
+}
+
+.lesson-slot {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  padding: var(--s-1) 0;
+}
+
+.lesson-slot + .lesson-slot {
+  border-top: 1px solid var(--border);
+}
+
+.lesson-slot-label {
+  padding-top: 6px;
+  font-size: var(--fs-xs);
+}
+
+.lesson-slot-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  align-items: center;
+}
+
+.lesson-chip.done {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+}
+
+.lesson-remove {
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+/* Verplaatsen: raster met dagen × dagdelen, één tik */
+.lesson-move-grid {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  gap: var(--s-1);
+  align-items: center;
+}
+
+.lesson-move-head {
+  text-align: center;
+}
+
+.lesson-move-day {
+  padding-right: var(--s-2);
+  white-space: nowrap;
+}
+
+.lesson-move-cell {
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.lesson-move-cell.here {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
 }

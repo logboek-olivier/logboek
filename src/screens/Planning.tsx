@@ -59,12 +59,15 @@ export function PlansView({
   curricula,
   week,
   onDetail,
+  allowNew = true,
 }: {
   store: Store
   notify: Notify
   curricula: Curriculum[]
   week: Trip
   onDetail?: (open: boolean) => void
+  /** Op de periodepagina staat de Lesweek: daar alleen de bestaande oude planningen, geen nieuwe. */
+  allowNew?: boolean
 }) {
   const allPlans = useCollection(store, 'plans.json.enc')
   const trips = useCollection(store, 'trips.json.enc')
@@ -122,13 +125,15 @@ export function PlansView({
 
   return (
     <div className="stack-lg">
-      <div className="row wrap">
-        <button className="btn small primary" onClick={() => setView({ kind: 'wizard' })}>
-          <Icon icon={Plus} />
-          {t('plan.new')}
-        </button>
-      </div>
-      {current.length === 0 && past.length === 0 && <p className="muted">{t('plan.emptyWeek')}</p>}
+      {allowNew && (
+        <div className="row wrap">
+          <button className="btn small primary" onClick={() => setView({ kind: 'wizard' })}>
+            <Icon icon={Plus} />
+            {t('plan.new')}
+          </button>
+        </div>
+      )}
+      {allowNew && current.length === 0 && past.length === 0 && <p className="muted">{t('plan.emptyWeek')}</p>}
       {current.length > 0 && <ul className="rows">{current.map(row)}</ul>}
       {past.length > 0 && (
         <div className="section">
