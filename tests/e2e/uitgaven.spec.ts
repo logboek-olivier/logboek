@@ -86,6 +86,17 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await nav.getByRole('button', { name: L('nav.calendar'), exact: true }).click()
       await page.getByLabel(L('calendar.chooseMonth')).fill('2027-02')
       await expect(day(20)).toHaveClass(/day-thuis/)
+
+      // Privé (een cadeau): hoort bij geen periode; de dag krijgt geen periode en Nakijken blijft leeg.
+      await nav.getByRole('button', { name: L('nav.add'), exact: true }).click()
+      await page.getByRole('tab', { name: L('quick.tabExpense') }).click()
+      await page.getByLabel(L('field.amount')).fill('25')
+      await page.getByLabel(L('field.description')).fill('Nepcadeau')
+      await page.getByLabel(L('field.date'), { exact: true }).fill('2027-02-25')
+      await belongs.getByRole('radio', { name: L('belongsTo.personal') }).click()
+      await page.getByRole('button', { name: L('common.save') }).click()
+      await expect(page.locator('.add-layer')).toHaveCount(0)
+      await expect(day(25)).not.toHaveClass(/day-thuis/)
       await expect(page.locator('.toast')).toHaveCount(0, { timeout: 15_000 })
 
       // De vlucht staat bij de werkweek; de thuisperiode heeft zijn eigen uitgave.

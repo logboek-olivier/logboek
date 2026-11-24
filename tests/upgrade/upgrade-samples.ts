@@ -55,6 +55,8 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-tx-thuis', date: '2026-11-11', kind: 'kosten', amount: 7.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
     // Kosten (ronde 3): een losse uitgave met een soort.
     { id: 'upg-tx-kosten', date: '2026-10-19', kind: 'kosten', amount: 12.5, currency: 'EUR', source: 'overig', category: 'eten', updatedAt: T, deletedAt: null },
+    // Privé-uitgave (schrijfversie 16): bewust bij geen periode.
+    { id: 'upg-tx-prive', date: '2026-10-20', kind: 'kosten', amount: 30, currency: 'EUR', source: 'overig', category: 'overig', note: 'Nepcadeau', personal: true, updatedAt: T, deletedAt: null },
     // Declaraties (ronde 3): de uitgave bij een declaratie, met claimId.
     { id: 'upg-tx-claim', date: '2026-10-20', kind: 'kosten', amount: 18.4, currency: 'EUR', source: 'yacht-week', tripId: 'upg-trip-1', category: 'overig', claimId: 'upg-claim-1', updatedAt: T, deletedAt: null },
   ],
@@ -101,7 +103,11 @@ export const UPGRADE_SAMPLES: Record<string, Record<string, unknown>[]> = {
     { id: 'upg-stay-reis', kind: 'reis', name: 'Nepreis', startDate: '2026-12-06', endDate: '2026-12-06', travel: { from: 'Nepstad', to: 'Nephaven', by: 'vliegtuig' }, updatedAt: T, deletedAt: null },
   ],
   // Vaste lasten (ronde 3): een bedrag dat vanaf een maand verandert.
-  'fixedcosts.json.enc': [{ id: 'upg-fixed-1', name: 'Nepabonnement', currency: 'EUR', amounts: [{ from: '2026-09', amount: 20 }, { from: '2026-11', amount: 25 }], updatedAt: T, deletedAt: null }],
+  'fixedcosts.json.enc': [
+    { id: 'upg-fixed-1', name: 'Nepabonnement', currency: 'EUR', amounts: [{ from: '2026-09', amount: 20 }, { from: '2026-11', amount: 25 }], updatedAt: T, deletedAt: null },
+    // Jaarlijks (schrijfversie 16): alleen in maart.
+    { id: 'upg-fixed-jaar', name: 'Nepjaarabonnement', currency: 'EUR', every: 'jaar', amounts: [{ from: '2026-03', amount: 120 }], updatedAt: T, deletedAt: null },
+  ],
   // Declaraties (ronde 3): een ingediende declaratie zonder bonnetje en een terugbetaalde.
   'claims.json.enc': [
     { id: 'upg-claim-1', date: '2026-10-20', tripId: 'upg-trip-1', note: 'Nepbonnetje', amount: 18.4, currency: 'EUR', status: 'ingediend', submittedAt: '2026-10-21', updatedAt: T, deletedAt: null },

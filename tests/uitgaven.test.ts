@@ -41,9 +41,9 @@ describe('Hoort bij', () => {
   it('standaard de periode van de datum, met de periodes ervoor en erna als keuze', () => {
     const { options, fallback } = expenseTargets(periods, '2026-11-03', 'eten')
     expect(targetKey(fallback)).toBe('thuis')
-    expect(options.map(targetKey)).toEqual(['thuis', 'reis'])
+    expect(options.map(targetKey)).toEqual(['thuis', 'reis', 'prive'])
     const mid = expenseTargets(periods, '2026-11-10', 'eten')
-    expect(mid.options.map(targetKey)).toEqual(['reis', 'sv3', 'terug'])
+    expect(mid.options.map(targetKey)).toEqual(['reis', 'sv3', 'terug', 'prive'])
     expect(targetKey(mid.fallback)).toBe('sv3')
   })
 
@@ -141,7 +141,7 @@ describe('punten uit de review', () => {
 
   it('wisseldag: beide trips staan als keuze; een dag met een dagtoestand krijgt niet vanzelf een nieuwe periode', () => {
     const two = allPeriods([trip('a', { startDate: '2026-11-01', endDate: '2026-11-07' }), trip('b', { startDate: '2026-11-07', endDate: '2026-11-14' })], [], [])
-    expect(expenseTargets(two, '2026-11-07', 'eten').options.map(targetKey)).toEqual(['a', 'b'])
+    expect(expenseTargets(two, '2026-11-07', 'eten').options.map(targetKey)).toEqual(['a', 'b', 'prive'])
     expect(targetKey(expenseTargets(periods, '2026-11-20', 'eten', true).fallback)).toBe('terug')
   })
 })

@@ -100,6 +100,7 @@ function MoneyContent({ store, notify, onAdd }: { store: Store; notify: Notify; 
   const groups = useMemo(() => perOrganisation(transactions, trips, period), [transactions, trips, period])
   const periodName = (tx: Transaction) => {
     if (!tx.tripId && tx.season) return t('tripPicker.seasonLabel', { org: organisationLabel(tx.season.org), year: tx.season.year })
+    if (!tx.tripId && tx.personal) return t('belongsTo.personal')
     const trip = tx.tripId ? tripMap.get(tx.tripId) : undefined
     if (trip) return trip.name
     const stay = tx.tripId ? stayMap.get(tx.tripId) : undefined

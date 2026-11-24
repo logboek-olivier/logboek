@@ -203,6 +203,11 @@ export interface FixedCost extends SyncRecord {
   currency: Currency
   /** Oudste eerst; `from` is jjjj-mm. */
   amounts: { from: string; amount: number }[]
+  /**
+   * Schrijfversie 16: `jaar` = een jaarlijks bedrag (een abonnement), betaald in de maand van `from` van het bedrag dat
+   * geldt, elk jaar opnieuw. Ontbreekt = per maand.
+   */
+  every?: 'jaar'
 }
 
 export interface WeekReview {
@@ -393,6 +398,11 @@ export interface Transaction extends SyncRecord {
    * aan de maand, niet aan een periode.
    */
   fixedCostId?: string
+  /**
+   * Schrijfversie 16: een privé-uitgave (bijvoorbeeld een cadeau): kosten om te leven die bewust bij geen periode horen.
+   * Geen `tripId`, en nooit in Nakijken als "geld zonder periode".
+   */
+  personal?: boolean
   /**
    * Eén uitbetaling van een organisatie voor meerdere trips ("SV betaalde € X op <datum>"): per trip een eigen
    * inkomen (naar verhouding van het verwachte salaris), met hetzelfde payoutId.

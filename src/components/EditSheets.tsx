@@ -65,7 +65,7 @@ export function TransactionSheet({
   const tripId = link.kind === 'tocht' ? link.tripId : ''
   // Een oude investering zonder soort: geen gok, Olivier kiest zelf (anders blijft hij zonder soort, in Nakijken).
   const [category, setCategory] = useState<CostCategory | null>(expenseCategory(tx))
-  const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId, true)
+  const belongs = useBelongsTo(store, date || tx.date, category ?? 'overig', tx.tripId, true, !!tx.personal && !tx.tripId)
   const trips = active(store.get('trips.json.enc')).sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))
   const [busy, setBusy] = useState(false)
   // Fooi: van wie, achteraf te wijzigen; een andere trip begint weer bij onbekend.

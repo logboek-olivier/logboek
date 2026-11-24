@@ -10,6 +10,7 @@ import { useCounters } from './useCounters'
 
 // "Hoort bij" bij een uitgave (docs/PERIODEMODEL.md): de periodes rond de datum als knoppen, standaard de periode van
 // die datum (een vlucht op een reisdag: de werkweek). Zonder periode op die dag: een nieuwe periode thuis of vrij.
+// Altijd als laatste: Privé (kosten om te leven die nergens bij horen, zoals een cadeau).
 
 export function usePeriods(store: Store): Period[] {
   const trips = useCollection(store, 'trips.json.enc')
@@ -22,7 +23,7 @@ export function usePeriods(store: Store): Period[] {
  * `editing`: een bestaande uitgave. Hoort die bij geen (bestaande) periode, dan staat "Zonder periode" bovenaan en is die
  * gekozen: opslaan verhuist hem nooit stil naar de periode van de datum.
  */
-export function useBelongsTo(store: Store, date: string, category: CostCategory, preset?: string, editing = false) {
+export function useBelongsTo(store: Store, date: string, category: CostCategory, preset?: string, editing = false, personal = false) {
   const periods = usePeriods(store)
   const calendar = useCollection(store, 'calendar.json.enc')
   // Een zelf ingestelde dagtoestand (optie, onbeschikbaar, beschikbaar) op die dag.
@@ -32,10 +33,11 @@ export function useBelongsTo(store: Store, date: string, category: CostCategory,
     // Een vooraf gekozen periode (vanaf de periodepagina, of de huidige bij bewerken) staat er altijd bij.
     const given = preset ? periods.find((p) => p.id === preset) : undefined
     if (given && !result.options.some((o) => o.kind === 'periode' && o.period.id === given.id)) result.options.unshift({ kind: 'periode', period: given })
-    if (editing && !given) result.options.unshift({ kind: 'zonder', keep: preset ?? null })
+    // Een privé-uitgave hoort bewust nergens bij: dan geen "Zonder periode", maar Privé gekozen.
+    if (editing && !given && !personal) result.options.unshift({ kind: 'zonder', keep: preset ?? null })
     return result
-  }, [periods, date, category, preset, dayState, editing])
-  const [chosen, setChosen] = useState<string | null>(editing && !(preset && periods.some((p) => p.id === preset)) ? 'zonder' : (preset ?? null))
+  }, [periods, date, category, preset, dayState, editing, personal])
+  const [chosen, setChosen] = useState<string | null>(personal ? 'prive' : editing && !(preset && periods.some((p) => p.id === preset)) ? 'zonder' : (preset ?? null))
   const key = chosen && options.some((o) => targetKey(o) === chosen) ? chosen : targetKey(fallback)
   const current = options.find((o) => targetKey(o) === key) ?? fallback
   return { options, key, choose: setChosen, current }
@@ -43,6 +45,7 @@ export function useBelongsTo(store: Store, date: string, category: CostCategory,
 
 export function targetLabel(target: ExpenseTarget, counter?: (period: Period) => string): string {
   if (target.kind === 'zonder') return t('belongsTo.none')
+  if (target.kind === 'prive') return t('belongsTo.personal')
   if (target.kind === 'nieuw') return t('belongsTo.new', { kind: t(`periodKind.${target.stayKind}`) })
   const p = target.period
   const name = counter ? counter(p) : p.name

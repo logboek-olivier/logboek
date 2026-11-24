@@ -28,10 +28,11 @@ export function expenseCategory(tx: Pick<Transaction, 'kind' | 'category'>): Cos
  * Waar een uitgave bij hoort: een bestaande periode, een nieuwe periode thuis of vrij op die dag, of (alleen bij
  * bewerken) "Zonder periode": de koppeling blijft zoals hij is, ook als de periode in de prullenbak ligt.
  */
-export type ExpenseTarget = { kind: 'periode'; period: Period } | { kind: 'nieuw'; stayKind: StayKind } | { kind: 'zonder'; keep: string | null }
+export type ExpenseTarget = { kind: 'periode'; period: Period } | { kind: 'nieuw'; stayKind: StayKind } | { kind: 'zonder'; keep: string | null } | { kind: 'prive' }
 
 export function targetKey(target: ExpenseTarget): string {
   if (target.kind === 'zonder') return 'zonder'
+  if (target.kind === 'prive') return 'prive'
   return target.kind === 'periode' ? target.period.id : `nieuw:${target.stayKind}`
 }
 
@@ -63,10 +64,10 @@ export function expenseTargets(periods: readonly Period[], date: string, categor
       const trip = next ?? prev
       if (trip) {
         if (!options.some((o) => o.kind === 'periode' && o.period.id === trip.id)) options.push({ kind: 'periode', period: trip })
-        return { options: sortTargets(options), fallback: { kind: 'periode', period: trip } }
+        return { options: [...sortTargets(options), PRIVE], fallback: { kind: 'periode', period: trip } }
       }
     }
-    return { options: sortTargets(options), fallback: { kind: 'periode', period: current } }
+    return { options: [...sortTargets(options), PRIVE], fallback: { kind: 'periode', period: current } }
   }
   // Geen periode op die dag: tussen twee trips (hoogstens twee dagen) is het vrij, anders thuis. Staat er een zelf
   // ingestelde dagtoestand (optie, onbeschikbaar), dan niet vanzelf een nieuwe periode (die zou de dagtoestand
@@ -74,8 +75,11 @@ export function expenseTargets(periods: readonly Period[], date: string, categor
   const between = !!before && !!after && isWaterKind(before.kind) && isWaterKind(after.kind) && addDays(before.end, REST_GAP_DAYS + 1) >= after.start
   const fresh: ExpenseTarget[] = between ? [{ kind: 'nieuw', stayKind: 'vrij' }, { kind: 'nieuw', stayKind: 'thuis' }] : [{ kind: 'nieuw', stayKind: 'thuis' }, { kind: 'nieuw', stayKind: 'vrij' }]
   const near = dayState ? (before ?? after) : undefined
-  return { options: [...sortTargets(options), ...fresh], fallback: near ? { kind: 'periode', period: near } : fresh[0]! }
+  return { options: [...sortTargets(options), ...fresh, PRIVE], fallback: near ? { kind: 'periode', period: near } : fresh[0]! }
 }
+
+/** Privé: kosten om te leven die bij geen periode horen (een cadeau, iets voor thuis); altijd als laatste keuze. */
+const PRIVE: ExpenseTarget = { kind: 'prive' }
 
 function sortTargets(list: ExpenseTarget[]): ExpenseTarget[] {
   return [...list].sort((a, b) => (a.kind === 'periode' && b.kind === 'periode' ? (a.period.start < b.period.start ? -1 : 1) : 0))
@@ -122,6 +126,7 @@ export function careerInvestment(transactions: readonly Transaction[], eurOf: (t
  */
 export async function resolveTarget(store: Tx, target: ExpenseTarget, date: string): Promise<string | undefined> {
   if (target.kind === 'zonder') return target.keep ?? undefined
+  if (target.kind === 'prive') return undefined
   if (target.kind === 'periode') return target.period.id
   await setStayDays(store, [date], target.stayKind)
   return active(store.list('periods.json.enc')).find((s) => s.startDate <= date && date <= s.endDate)?.id

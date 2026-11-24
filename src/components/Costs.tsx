@@ -1,9 +1,9 @@
 import { Plus, Receipt, Trash2 } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
-import { formatMoney, formatMonth } from '../format'
+import { formatMoney, formatMonth, formatMonthName } from '../format'
 import { t } from '../i18n'
 import { buildIndex } from '../model/calendar'
-import { bookingsOf, cleanDefaults, dayAverages, fixedAmount, fixedInMonth } from '../model/costs'
+import { bookingsOf, cleanDefaults, dayAverages, fixedDueMonth, fixedMonthlyEquivalent, fixedRate } from '../model/costs'
 import { missingBookings } from '../model/fixed-bookings'
 import { active } from '../model/derive'
 import { getRates, subscribeRates } from '../model/rates'
@@ -40,7 +40,8 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
   const [adding, setAdding] = useState(false)
   const [defaults, setDefaults] = useState(false)
   const thisMonth = today.slice(0, 7)
-  const perMonth = fixedInMonth(fixed, thisMonth, rates)
+  // Samen per maand: een jaarlijks bedrag telt als een twaalfde (de vooruitblik rekent het in zijn betaalmaand).
+  const perMonth = fixedMonthlyEquivalent(fixed, thisMonth, rates)
   // Voorbije maanden van een vaste last komen pas als uitgave in Werkelijk na een tik (nooit vanzelf), en pas na een
   // geslaagde sync: anders zou een maand terugkomen die een ander apparaat al verwijderde. Geen ongedaan maken: een
   // weggehaalde maand wordt nooit opnieuw geboekt, dus de knop zou niet terugkomen; een maand is los te verwijderen.
@@ -76,7 +77,7 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
             <li key={c.id}>
               <button type="button" className="row cost-row" onClick={() => setViewing(c)}>
                 <span className="grow">{c.name}</span>
-                <span className="num">{t('costs.perMonth', { amount: formatMoney(fixedAmount(c, thisMonth), c.currency) })}</span>
+                <span className="num">{rateLabel(c, thisMonth)}</span>
               </button>
             </li>
           ))}
@@ -122,6 +123,15 @@ export function CostsSection({ store, notify }: { store: Store; notify: Notify }
   )
 }
 
+/** "€ 20 per maand", of "€ 120 per jaar · in maart" bij een jaarlijkse vaste last (een abonnement). */
+function rateLabel(cost: FixedCost, month: string): string {
+  // Nog niet begonnen: het eerste bedrag (anders zou er € 0 staan).
+  const first = [...cost.amounts].sort((x, y) => x.from.localeCompare(y.from))[0]
+  const amount = formatMoney(fixedRate(cost, month) || (first && first.from > month ? first.amount : 0), cost.currency)
+  const due = fixedDueMonth(cost, month)
+  return due === null ? t('costs.perMonth', { amount }) : t('costs.perYear', { amount, month: formatMonthName(due) })
+}
+
 /** Eén vaste last bekijken: het bedrag nu en de wijzigingen per maand; bewerken via het potlood. */
 function FixedCostView({ store, cost, notify, onClose }: { store: Store; cost: FixedCost; notify: Notify; onClose: () => void }) {
   const [editing, setEditing] = useState(false)
@@ -131,7 +141,7 @@ function FixedCostView({ store, cost, notify, onClose }: { store: Store; cost: F
   return (
     <Sheet title={current.name} onClose={onClose} onEdit={() => setEditing(true)}>
       <div className="stack view">
-        <p className="view-amount">{t('costs.perMonth', { amount: formatMoney(fixedAmount(current, month), current.currency) })}</p>
+        <p className="view-amount">{rateLabel(current, month)}</p>
         <ViewRows rows={[...current.amounts].sort((a, b) => b.from.localeCompare(a.from)).map((a): [string, string] => [t('costs.from', { month: formatMonth(a.from) }), a.amount > 0 ? formatMoney(a.amount, current.currency) : t('costs.stopped')])} />
       </div>
     </Sheet>
@@ -144,9 +154,13 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
   const settings = currentSettings(useCollection(store, 'settings.json.enc'))
   const transactions = useCollection(store, 'transactions.json.enc')
   const [name, setName] = useState(cost?.name ?? '')
-  const [amount, setAmount] = useState(cost ? amountInput(fixedAmount(cost, month)) : '')
+  const [amount, setAmount] = useState(cost ? amountInput(fixedRate(cost, month)) : '')
+  const [yearly, setYearly] = useState(cost?.every === 'jaar')
   const [currency, setCurrency] = useState<Currency>(cost?.currency ?? defaultCurrency(settings, 'vast'))
-  const [from, setFrom] = useState(month)
+  // Een jaarabonnement wijzigen: standaard vanaf de eerstvolgende betaalmaand (anders schuift de betaalmaand mee).
+  const due = cost ? fixedDueMonth(cost, month) : null
+  const nextDue = due === null ? month : `${Number(month.slice(5, 7)) <= due ? month.slice(0, 4) : String(Number(month.slice(0, 4)) + 1)}-${String(due).padStart(2, '0')}`
+  const [from, setFrom] = useState(nextDue)
   const [busy, setBusy] = useState(false)
   const parsed = parseAmount(amount)
   const valid = name.trim() !== '' && parsed !== null && /^\d{4}-\d{2}$/.test(from)
@@ -161,7 +175,7 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
         onClose()
         notify(t('costs.saved'), undo)
       } else {
-        await vasteLastToevoegen(store, { name, amount: parsed, currency, from })
+        await vasteLastToevoegen(store, { name, amount: parsed, currency, from, ...(yearly ? { every: 'jaar' as const } : {}) })
         onClose()
         notify(t('costs.saved'))
       }
@@ -196,9 +210,18 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
           {t('costs.name')}
           <input type="text" autoComplete="off" autoCapitalize="sentences" maxLength={80} placeholder={t('costs.namePlaceholder')} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        {!cost && (
+          <div className="segments small" role="radiogroup" aria-label={t('costs.every')}>
+            {([false, true] as const).map((y) => (
+              <button key={String(y)} type="button" role="radio" aria-checked={yearly === y} className={`segment${yearly === y ? ' active' : ''}`} onClick={() => setYearly(y)}>
+                {t(y ? 'costs.everyYear' : 'costs.everyMonth')}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="row">
           <label className="grow">
-            {t('costs.amount')}
+            {t(yearly ? 'costs.amountYear' : 'costs.amount')}
             <input type="text" inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
           <label>
@@ -213,7 +236,7 @@ function FixedCostSheet({ store, cost, notify, onClose }: { store: Store; cost: 
           </label>
         </div>
         <label>
-          {t('costs.fromMonth')}
+          {t(yearly ? 'costs.paidIn' : 'costs.fromMonth')}
           <input type="month" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <div className="sheet-actions">

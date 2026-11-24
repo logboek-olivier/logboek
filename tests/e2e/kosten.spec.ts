@@ -70,6 +70,16 @@ for (const lang of ['nl', 'en'] as Lang[]) {
       await expect(page.getByRole('dialog')).toContainText(lang === 'nl' ? '€ 35,00' : '€35.00')
       await page.getByRole('dialog').getByRole('button', { name: L('common.close') }).click()
 
+      // Een jaarabonnement: per jaar, betaald in één maand.
+      await costs.getByRole('button', { name: L('costs.addFixed') }).click()
+      sheet = page.getByRole('dialog')
+      await sheet.getByRole('radio', { name: L('costs.everyYear') }).click()
+      await sheet.getByLabel(L('costs.name')).fill('Nepjaarabonnement')
+      await sheet.getByLabel(L('costs.amountYear')).fill('120')
+      await sheet.getByLabel(L('costs.paidIn')).fill('2027-03')
+      await sheet.getByRole('button', { name: L('common.save') }).click()
+      await expect(costs.getByRole('button', { name: /Nepjaarabonnement/ })).toContainText(lang === 'nl' ? '€ 120,00 per jaar · in maart' : '€120.00 a year · in March')
+
       // Standaardbedragen per dagsoort (nog te weinig eigen gegevens).
       await costs.getByRole('button', { name: L('costs.defaults') }).click()
       sheet = page.getByRole('dialog')

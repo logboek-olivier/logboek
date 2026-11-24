@@ -27,7 +27,7 @@
 // van versie 8 blijven ongewijzigd leesbaar (zonder soort = declaratie); een oudere build leest een bestand van versie 9
 // als "van een nieuwere versie".
 // 10: de lesweek: per deelnemer de cursussen (`courses`, meerdere tegelijk) en per trip de afgevinkte blokken
-// (`lessonChecks`) en de weekplanning (`lessonPlan`). Bestanden van versie 9 blijven ongewijzigd leesbaar (niets om te zetten); een oudere build leest een
+// (`lessonChecks`) en de weekplanning (`lessonPlan`); privé-uitgaven (`personal`) en jaarlijkse vaste lasten (`every`). Bestanden van versie 9 blijven ongewijzigd leesbaar (niets om te zetten); een oudere build leest een
 // bestand van versie 10 als "van een nieuwere versie".
 export const SCHEMA_VERSION = 10
 
@@ -69,7 +69,8 @@ export const SCHEMA_VERSION = 10
 // 15: soorten declaratie. Een oudere build zou een schuld als declaratie lezen (te ontvangen in plaats van te betalen) en
 // bij het bewerken de soort en de persoon weggooien, en de uitgave van een schuld als declaratie boeken.
 // 16: de lesweek. Een oudere build bouwt de deelnemers bij het opslaan van een trip opnieuw op en zou de cursussen van
-// een student weggooien, en kent de afgevinkte blokken en de weekplanning niet.
+// een student weggooien, en kent de afgevinkte blokken en de weekplanning niet; een jaarlijkse vaste last zou
+// hij elke maand rekenen, en een privé-uitgave als geld zonder periode zien.
 export const WRITER_VERSION = 16
 
 let writer = WRITER_VERSION

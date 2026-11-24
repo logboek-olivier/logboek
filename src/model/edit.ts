@@ -95,11 +95,13 @@ export type TransactionPatch = Pick<Transaction, 'date' | 'kind' | 'amount' | 'c
   tipFrom?: TipFrom | null
   /** Soort losse uitgave; null = weg; ontbreekt het, dan blijft het zoals het was. */
   category?: CostCategory | null
+  /** Privé-uitgave (bij geen periode); ontbreekt het, dan blijft het zoals het was. */
+  personal?: boolean
 }
 
 /** Werkt een transactie bij; amountEur volgt uit valuta en datum, de trip uit de keuze of anders de datum. */
 export async function updateTransaction(store: Tx, tx: Transaction, patch: TransactionPatch): Promise<void> {
-  const { tripId: chosenTrip, season, tipFrom, category, ...fields } = patch
+  const { tripId: chosenTrip, season, tipFrom, category, personal, ...fields } = patch
   const next: Transaction = { ...tx, ...fields, amount: round2(patch.amount), updatedAt: store.now }
   if (tipFrom) next.tipFrom = tipFrom
   if (category) next.category = category
@@ -125,6 +127,9 @@ export async function updateTransaction(store: Tx, tx: Transaction, patch: Trans
   }
   if (trip) next.tripId = trip.id
   else delete next.tripId
+  if (personal === true) next.personal = true
+  // Privé kan alleen zonder periode en alleen bij een uitgave.
+  if (personal === false || next.tripId || (next.kind !== 'kosten' && next.kind !== 'investering')) delete next.personal
   // Tocht óf seizoen óf niets: een tocht gaat voor.
   if (season) next.season = season
   if (season === null || next.tripId) delete next.season
